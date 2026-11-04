@@ -227,6 +227,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// and the ones a layout puts in it as it's made (`tile_drag_end`).
     pub round_then: Vec<crate::shell::WindowElement>,
     pub round_collecting: Option<Vec<crate::shell::WindowElement>>,
+    /// Windows that only move in the round to come (`round_move`).
+    pub round_moves: Vec<(crate::shell::WindowElement, smithay::utils::Point<i32, smithay::utils::Logical>)>,
     /// Auto-tiling's trees (`shell::autotile`).
     pub auto: crate::shell::autotile::AutoTiler,
     /// A tab ⌘-dragged along its group's, out of it or into another
@@ -1137,6 +1139,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             rounds: 0,
             round_then: Vec::new(),
             round_collecting: None,
+            round_moves: Vec::new(),
             auto: Default::default(),
             tab_drag: None,
             tile_followers: Vec::new(),

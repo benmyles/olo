@@ -20,6 +20,7 @@
 //! picture.
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use olo_protocol::Tile;
@@ -285,6 +286,12 @@ pub struct TileDrag {
     start: Rectangle<i32, Logical>,
     sides: Vec<Side>,
     links: Vec<Link>,
+    /// The smallest frame it takes (its group's: a tab behind may take
+    /// more than the front one's app).
+    min: Size<i32, Logical>,
+    /// Auto-tiled: each window's least size in its tree's terms
+    /// (`auto_mins`), for `auto_keeps`.
+    mins: HashMap<u64, (f32, f32)>,
     /// The size change last applied to the neighbours, and the one the
     /// drag has got to (which the next round applies: `rounds`).
     applied: (i32, i32),
@@ -379,6 +386,33 @@ fn links_for(dragged: Rectangle<i32, Logical>, sides: &[Side], others: &[(Window
         }
     }
     out
+}
+
+/// The frames a drag that changed the dragged window's size by `d` asks:
+/// its neighbours' (`targets`) and its own.
+fn drag_frames(t: &TileDrag, d: (i32, i32)) -> Vec<(WindowElement, Rectangle<i32, Logical>)> {
+    let mut frames: Vec<(WindowElement, Rectangle<i32, Logical>)> = targets(&t.links, d).into_iter().map(|(w, _, r)| (w, r)).collect();
+    frames.push((t.window.clone(), t.sides.iter().fold(t.start, |r, &side| with_side(r, side, moved(side, d)))));
+    frames
+}
+
+/// The furthest from 0 towards `to` that `ok` takes, given it takes 0
+/// and what it takes is all of a piece (a least size holds a split at
+/// one end of what it may be).
+fn furthest(to: i32, ok: impl Fn(i32) -> bool) -> i32 {
+    if ok(to) {
+        return to;
+    }
+    let (mut lo, mut hi) = (0, to.abs());
+    while hi - lo > 1 {
+        let mid = (lo + hi) / 2;
+        if ok(mid * to.signum()) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo * to.signum()
 }
 
 /// The size change (dw, dh) cut down so no linked neighbour gets smaller
@@ -879,7 +913,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if links.is_empty() && !self.auto_tiled(window) {
             self.forget_tile(window);
         }
-        self.tile_drag = Some(TileDrag { window: window.clone(), start, sides: sides.to_vec(), links, applied: (0, 0), wanted: (0, 0) });
+        let min = self.min_frame(window);
+        let mins = match self.window_output(window).and_then(|o| self.tile_area(&o)) {
+            Some(area) if self.auto_tiled(window) && !links.is_empty() => self.auto_mins(&self.all_windows(), area),
+            _ => HashMap::new(),
+        };
+        self.tile_drag = Some(TileDrag { window: window.clone(), start, sides: sides.to_vec(), links, min, mins, applied: (0, 0), wanted: (0, 0) });
     }
 
     /// The smallest frame a window takes: its app's minimum content size
@@ -922,10 +961,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         give_way(frame, self.least_frame(window), area)
     }
 
-    /// The size change the drag may make (neighbours keep a minimum).
+    /// The size change the drag may make: neighbours keep their least
+    /// sizes, and so does the window dragged (its group's); auto-tiled,
+    /// only as far as its tree lays the tiles out where the drag has them
+    /// (`auto_keeps`: what it shows is what stays as it's let go, not an
+    /// edge held off by a least size the drag didn't count, the tiles
+    /// jumping there).
     pub fn tile_drag_limit(&self, d: (i32, i32)) -> (i32, i32) {
         let Some(t) = self.tile_drag.as_ref() else { return d };
         let (mut dw, mut dh) = limit(&t.links, d);
+        if !t.links.is_empty() {
+            dw = dw.max((t.min.w - t.start.size.w).min(0));
+            dh = dh.max((t.min.h - t.start.size.h).min(0));
+        }
         // An auto-tiled window's sides at the edge of the display stay.
         if self.auto_tiled(&t.window) {
             let moves = |s: &Side| self.auto_side_moves(&t.window, *s);
@@ -934,6 +982,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             if !t.sides.iter().filter(|s| matches!(s, Side::Top | Side::Bottom)).any(moves) {
                 dh = 0;
+            }
+            if !t.links.is_empty() {
+                let keeps = |d: (i32, i32)| self.auto_keeps(&t.window, &drag_frames(t, d), &t.mins);
+                // (Where it began isn't as its tree lays it out: something
+                // else moved it, and it's put back as it's let go whatever
+                // the drag does.)
+                if !keeps((dw, dh)) && keeps((0, 0)) {
+                    dw = furthest(dw, |x| keeps((x, 0)));
+                    dh = furthest(dh, |y| keeps((dw, y)));
+                }
             }
         }
         (dw, dh)
@@ -1002,9 +1060,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             None => self.tile_followers.push(Follower { window: window.clone(), start, target, asked }),
         }
         let content = window.inner_size(target.size);
+        // (Following a drag, it's being resized by hand as much as the
+        // window dragged: so told, an app keeps room to grow, as the kit's
+        // does, rather than making new buffers at every step, a new
+        // swapchain of GPU memory each, and each new buffer checked and
+        // freed here too, which a round then waits for.)
+        let resizing = self.tile_drag.is_some();
         let WindowSurface::Wayland(t) = window.0.underlying_surface();
         t.with_pending_state(|state| {
             state.states.unset(xdg_toplevel::State::Maximized);
+            if resizing {
+                state.states.set(xdg_toplevel::State::Resizing);
+            } else {
+                state.states.unset(xdg_toplevel::State::Resizing);
+            }
             state.size = Some(content);
         });
     }
@@ -1038,6 +1107,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let x = if target.loc.x != start.loc.x { target.loc.x + target.size.w - geo.size.w } else { target.loc.x };
         let y = if target.loc.y != start.loc.y { target.loc.y + target.size.h - geo.size.h } else { target.loc.y };
         let at = Point::from((x, y)) - (geo.loc - loc);
+        debug!(target: "olo::rounds", window = window.id(), drew = ?(geo.size.w, geo.size.h), target = ?(target.loc.x, target.loc.y, target.size.w, target.size.h), in_round = self.round_has(window), "follower drew");
         if at != loc {
             self.space.relocate_element(window, at);
         }
@@ -1071,16 +1141,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 windows.push(w);
             }
         }
+        // (The neighbours resized no longer, `ask_to_follow`: told in it
+        // too, so they fit their buffers to their size again.)
+        for l in &t.links {
+            let WindowSurface::Wayland(x) = l.window.0.underlying_surface();
+            x.with_pending_state(|state| state.states.unset(xdg_toplevel::State::Resizing));
+            if !windows.contains(&l.window) {
+                windows.push(l.window.clone());
+            }
+        }
         let window = t.window.clone();
         let gap = self.tile_gap();
         if let Some(area) = self.window_output(&t.window).and_then(|o| self.tile_area(&o)) {
             self.tile_followers.retain(|f| f.window.alive());
             // The frames the drag asked for (they may not have drawn them yet).
-            let mut frames: Vec<(WindowElement, Rectangle<i32, Logical>)> = targets(&t.links, t.applied).into_iter().map(|(w, _, r)| (w, r)).collect();
-            // Its own frame as the drag left it (it may not have drawn it yet).
-            let own = t.sides.iter().fold(t.start, |r, &side| with_side(r, side, moved(side, t.applied)));
-            frames.push((t.window.clone(), own));
-            for (w, r) in frames {
+            for (w, r) in drag_frames(&t, t.applied) {
                 Self::set_part(&w, Some(fraction_of(area, r, gap)));
             }
             // Auto-tiled: the splits move just there, and what that lays out
@@ -1829,6 +1904,15 @@ mod tests {
 
     fn r(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
         Rectangle::new((x, y).into(), (w, h).into())
+    }
+
+    /// A drag held by its tree goes as far as it may, either way.
+    #[test]
+    fn a_drag_goes_as_far_as_it_may() {
+        assert_eq!(furthest(300, |x| x <= 137), 137);
+        assert_eq!(furthest(-300, |x| x >= -42), -42);
+        assert_eq!(furthest(80, |_| true), 80);
+        assert_eq!(furthest(80, |x| x == 0), 0);
     }
 
     #[test]

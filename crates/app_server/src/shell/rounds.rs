@@ -16,12 +16,14 @@ use smithay::{
         calloop::timer::{TimeoutAction, Timer},
         wayland_server::{Resource, protocol::wl_surface::WlSurface},
     },
-    utils::{Logical, Serial, Size},
+    utils::{IsAlive, Logical, Point, Serial, Size},
     wayland::{
         compositor::{BufferAssignment, CompositorHandler, SurfaceAttributes, add_blocker, with_states},
         shell::xdg::XdgToplevelSurfaceData,
     },
 };
+
+use tracing::{debug, info};
 
 use super::WindowElement;
 use crate::{
@@ -38,6 +40,9 @@ pub struct Round {
     /// Which round (the timer that ends it checks it's still this one).
     number: u64,
     members: Vec<Member>,
+    /// Windows it only moves (drawn at their new size already): moved as
+    /// it shows, with the rest, not on their own before.
+    moves: Vec<(WindowElement, Point<i32, Logical>)>,
     gate: Gate,
     began: Instant,
 }
@@ -50,10 +55,11 @@ struct Member {
     serial: Serial,
     asked: Option<Size<i32, Logical>>,
     was: Option<(i64, i64)>,
-    /// What it drew for it has come (and waits), and it's otherwise ready
-    /// to show (the GPU done drawing it: `round_fenced`).
+    /// What it drew for it has come (and waits), and how many things it
+    /// waits for besides (the GPU drawing it, its buffer's check:
+    /// `round_fenced`): it's ready to show at none.
     drawn: bool,
-    ready: bool,
+    waits: u32,
 }
 
 /// What a surface shows of its buffers, as committed (`pending`: as the
@@ -144,9 +150,18 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         }
     }
 
+    /// `w` goes to `loc` (its element's location) with the drag's last
+    /// round, as it's being made (`tile_drag_end`): it moves as the round
+    /// shows, with the windows changing size, not a frame or more before.
+    pub fn round_move(&mut self, w: &WindowElement, loc: Point<i32, Logical>) {
+        self.round_moves.retain(|(m, _)| m != w);
+        self.round_moves.push((w.clone(), loc));
+    }
+
     /// Send `windows` the sizes waiting for them (their pending state), as
-    /// one round. Windows with nothing new aren't in it; with none, there
-    /// is no round.
+    /// one round, with the moves waiting (`round_move`). Windows with
+    /// nothing new aren't in it; with none, there is no round (the moves
+    /// are made now).
     pub fn round_send(&mut self, windows: &[WindowElement]) {
         let mut members = Vec::new();
         for w in windows {
@@ -162,15 +177,18 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             if let Some(serial) = t.send_pending_configure()
                 && had != Some(asked)
             {
-                members.push(Member { surface: t.wl_surface().clone(), serial, asked, was, drawn: false, ready: true });
+                members.push(Member { surface: t.wl_surface().clone(), serial, asked, was, drawn: false, waits: 0 });
             }
         }
+        let moves = std::mem::take(&mut self.round_moves);
         if members.is_empty() {
+            self.round_moved(moves);
             return;
         }
         self.rounds += 1;
         let number = self.rounds;
-        self.round = Some(Round { number, members, gate: Gate::default(), began: Instant::now() });
+        debug!(target: "olo::rounds", number, members = ?members.iter().map(|m| (self.window_for_surface(&m.surface).map(|w| w.id()), m.surface.id(), m.asked.map(|a| (a.w, a.h)))).collect::<Vec<_>>(), moves = moves.len(), "round sent");
+        self.round = Some(Round { number, members, moves, gate: Gate::default(), began: Instant::now() });
         let _ = self.handle.insert_source(Timer::from_duration(LIMIT), move |_, _, state| {
             if state.round.as_ref().is_some_and(|r| r.number == number) {
                 state.round_shown();
@@ -204,6 +222,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             None => drawn_part(surface, true).is_some_and(|now| Some(now) != member.was),
         };
         if !drawn {
+            debug!(target: "olo::rounds", number = round.number, surface = ?surface.id(), asked = ?member.asked, coming = ?coming_size(surface), "a round's window drew another size");
             return None;
         }
         member.drawn = true;
@@ -220,27 +239,28 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         Some(number)
     }
 
-    /// The commit `round_commit` took waits for its GPU work too (a fence:
-    /// `round_ready` when it's done). Shown with the others' before that,
-    /// its frame would come a moment after them, a step behind them.
+    /// The commit `round_commit` took waits for something else too: its
+    /// GPU work (a fence), or its buffer's check (`dmabuf_check::Gate`),
+    /// each a `round_ready` when it's done. Shown with the others' before
+    /// that, its frame would come after them, a step or more behind.
     pub fn round_fenced(&mut self, surface: &WlSurface) {
         if let Some(m) = self.round.as_mut().and_then(|r| r.members.iter_mut().find(|m| m.surface == *surface)) {
-            m.ready = false;
+            m.waits += 1;
         }
     }
 
-    /// Round `number`'s commit of `surface` is drawn on the GPU.
+    /// One of what round `number`'s commit of `surface` waits for is done.
     pub fn round_ready(&mut self, surface: &WlSurface, number: u64) {
         let Some(round) = self.round.as_mut().filter(|r| r.number == number) else { return };
         if let Some(m) = round.members.iter_mut().find(|m| m.surface == *surface) {
-            m.ready = true;
+            m.waits = m.waits.saturating_sub(1);
         }
         self.round_try_show();
     }
 
     /// The round shown if every window has drawn it and is ready.
     fn round_try_show(&mut self) {
-        if self.round.as_ref().is_some_and(|r| r.members.iter().all(|m| m.drawn && m.ready)) {
+        if self.round.as_ref().is_some_and(|r| r.members.iter().all(|m| m.drawn && m.waits == 0)) {
             self.round_shown();
         }
     }
@@ -253,15 +273,30 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         for client in round.gate.open() {
             self.client_compositor_state(&client).blocker_cleared(self, &dh);
         }
+        debug!(target: "olo::rounds", number = round.number, took = ?round.began.elapsed(), "round shown");
+        self.round_moved(round.moves);
         // (In `timings`' phases: how long rounds take, and how many ran
-        // out of time.)
-        self.timings.add(if round.members.iter().all(|m| m.drawn) { "drag round" } else { "drag round (out of time)" }, round.began.elapsed());
+        // out of time; and which windows didn't keep up, in the log.)
+        let all = round.members.iter().all(|m| m.drawn);
+        self.timings.add(if all { "drag round" } else { "drag round (out of time)" }, round.began.elapsed());
+        if !all {
+            let late: Vec<u64> = round.members.iter().filter(|m| !m.drawn).filter_map(|m| Some(self.window_for_surface(&m.surface)?.id())).collect();
+            info!(round = round.number, ?late, "a drag round ran out of time");
+        }
         self.backend_data.wake(None);
         let then = std::mem::take(&mut self.round_then);
         if then.is_empty() {
             self.tile_drag_next();
         } else {
             self.round_send(&then);
+        }
+    }
+
+    fn round_moved(&mut self, moves: Vec<(WindowElement, Point<i32, Logical>)>) {
+        for (w, loc) in moves {
+            if w.alive() && self.space.element_location(&w).is_some_and(|at| at != loc) {
+                self.space.relocate_element(&w, loc);
+            }
         }
     }
 }

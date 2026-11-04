@@ -130,12 +130,22 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                     _ => None,
                 })
             });
+            if tracing::enabled!(target: "olo::rounds", tracing::Level::DEBUG) && state.round.is_some() {
+                tracing::debug!(target: "olo::rounds", surface = ?surface.id(), ?round, dmabuf = maybe_dmabuf.is_some(), checking = maybe_dmabuf.as_ref().is_some_and(|d| state.backend_data.dmabuf_gate(d).is_some()), "commit");
+            }
             if let Some(dmabuf) = maybe_dmabuf {
                 // Not shown before it is checked (`dmabuf_check`).
                 if let Some(gate) = state.backend_data.dmabuf_gate(&dmabuf)
                     && let Some(client) = surface.client()
                 {
                     gate.hold(client);
+                    // (A round's: it waits for the check too, else it shows
+                    // without this, which lands after it, a step or more
+                    // behind, the next ones queued behind it.)
+                    if let Some(n) = round {
+                        gate.in_round(surface.clone(), n);
+                        state.round_fenced(surface);
+                    }
                     add_blocker(surface, gate);
                 }
                 #[cfg(feature = "udev")]
@@ -146,6 +156,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                     let fenced = surface.clone();
                     let res = state.handle.insert_source(source, move |_, _, data| {
                         let dh = data.display_handle.clone();
+                        tracing::debug!(target: "olo::rounds", surface = ?fenced.id(), ?round, "fence signalled");
                         data.client_compositor_state(&client).blocker_cleared(data, &dh);
                         if let Some(n) = round {
                             data.round_ready(&fenced, n);
@@ -166,6 +177,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
                     let fenced = surface.clone();
                     let res = state.handle.insert_source(source, move |_, _, data| {
                         let dh = data.display_handle.clone();
+                        tracing::debug!(target: "olo::rounds", surface = ?fenced.id(), ?round, "fence signalled");
                         data.client_compositor_state(&client).blocker_cleared(data, &dh);
                         if let Some(n) = round {
                             data.round_ready(&fenced, n);
@@ -223,6 +235,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     keep_on_screen(&mut self.space, surface, &window, held);
                     self.tile_follower_drew(&window);
                     self.keep_in_tile_area(&window);
+                    if tracing::enabled!(target: "olo::rounds", tracing::Level::DEBUG) && (self.tile_drag.as_ref().is_some_and(|d| d.moves(&window)) || self.round_has(&window)) {
+                        tracing::debug!(target: "olo::rounds", window = window.id(), geometry = ?self.space.element_geometry(&window), "drag window committed");
+                    }
                 }
             }
         }

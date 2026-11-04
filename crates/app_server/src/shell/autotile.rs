@@ -455,6 +455,25 @@ fn laid_ratio(cut: Cut, ratio: f32, r: Part, ma: Measure, mb: Measure, inset: In
     }
 }
 
+/// Whether `tree`, its splits taken from where windows are (`moved`:
+/// these windows' frames in `area`; the others' parts, `part_of`), lays
+/// the `moved` ones out just there (to a pixel: parts round), their and
+/// the others' least sizes (`min`) holding no edge off where it is.
+pub fn lays_out_as(tree: &Node, moved: &[(u64, Rectangle<i32, Logical>)], part_of: &dyn Fn(u64) -> Option<Part>, min: &dyn Fn(u64) -> (f32, f32), area: Rectangle<i32, Logical>, gap: i32) -> bool {
+    let frame = |i: u64| moved.iter().find(|(m, _)| *m == i).map(|(_, r)| *r);
+    let mut tree = tree.clone();
+    take_ratios(&mut tree, &|i| frame(i).map(|r| fraction_of(area, r, gap)).or_else(|| part_of(i)), still_in(area));
+    let inset = Inset::of(area, gap);
+    let laid = as_laid_out(&tree, min, inset);
+    layout(&laid, min, inset).into_iter().all(|(n, p)| {
+        let Node::Window(i) = n else { return true };
+        let Some(r) = frame(*i) else { return true };
+        let q = part(area, p, gap);
+        let near = |a: i32, b: i32| (a - b).abs() <= 1;
+        near(q.loc.x, r.loc.x) && near(q.loc.y, r.loc.y) && near(q.loc.x + q.size.w, r.loc.x + r.size.w) && near(q.loc.y + q.size.h, r.loc.y + r.size.h)
+    })
+}
+
 /// A place kept for a window that closed or isn't back yet (not one away
 /// for now: minimized, or on another workspace).
 fn closing(n: &Node) -> bool {
@@ -682,12 +701,20 @@ fn take_nearest(rest: Option<Node>, to: (f32, f32), centre: &dyn Fn(u64) -> (f32
 }
 
 /// Each split's ratio as the windows' parts (`part_of`) have it, after
-/// their edges were dragged: where they were let go.
-pub fn take_ratios(node: &mut Node, part_of: &dyn Fn(u64) -> Option<Part>) {
+/// their edges were dragged: where they were let go. An edge within
+/// `still` of its split (in fractions of the area across and down: what
+/// the parts' pixels round by) didn't move, and its split stays as it is.
+pub fn take_ratios(node: &mut Node, part_of: &dyn Fn(u64) -> Option<Part>, still: (f32, f32)) {
     let mut boxes = Vec::new();
     bounds(node, part_of, &mut boxes);
     let mut i = 0;
-    set_ratios(node, (0.0, 0.0, 1.0, 1.0), &boxes, &mut i);
+    set_ratios(node, (0.0, 0.0, 1.0, 1.0), &boxes, &mut i, still);
+}
+
+/// `take_ratios`' `still` for `area`: a pixel and a half (an edge's part
+/// rounds to a pixel, and its split is half way across the gap).
+pub fn still_in(area: Rectangle<i32, Logical>) -> (f32, f32) {
+    (1.5 / area.size.w.max(1) as f32, 1.5 / area.size.h.max(1) as f32)
 }
 
 /// Each node's windows' bounds (pre-order), and how many nodes it is.
@@ -715,7 +742,7 @@ fn bounds(node: &Node, part_of: &dyn Fn(u64) -> Option<Part>, out: &mut Vec<(Opt
     i
 }
 
-fn set_ratios(node: &mut Node, r: Part, boxes: &[(Option<Part>, usize)], i: &mut usize) {
+fn set_ratios(node: &mut Node, r: Part, boxes: &[(Option<Part>, usize)], i: &mut usize, still: (f32, f32)) {
     let me = *i;
     *i += 1;
     let Node::Split { cut, ratio, a, b } = node else { return };
@@ -733,14 +760,14 @@ fn set_ratios(node: &mut Node, r: Part, boxes: &[(Option<Part>, usize)], i: &mut
     };
     if let Some(e) = e {
         let was = start + len * *ratio;
-        if (e - was).abs() > 0.003 {
+        if (e - was).abs() > if *cut == Cut::Columns { still.0 } else { still.1 } {
             *ratio = ((e - start) / len).clamp(0.05, 0.95);
         }
     }
     let (ra, rb) = divide(*cut, *ratio, r);
-    set_ratios(a, ra, boxes, i);
+    set_ratios(a, ra, boxes, i, still);
     *i = ib;
-    set_ratios(b, rb, boxes, i);
+    set_ratios(b, rb, boxes, i, still);
 }
 
 /// The tree with window `w` a full column (`Axis::Vertical`) or row
@@ -1108,7 +1135,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     /// Each window's least size, in fractions of `area` (gap included).
-    fn auto_mins(&self, windows: &[WindowElement], area: Rectangle<i32, Logical>) -> HashMap<u64, (f32, f32)> {
+    pub(super) fn auto_mins(&self, windows: &[WindowElement], area: Rectangle<i32, Logical>) -> HashMap<u64, (f32, f32)> {
         let gap = self.tile_gap();
         windows
             .iter()
@@ -1527,9 +1554,15 @@ impl<B: Backend + 'static> AnvilState<B> {
             // Drawn at its tile's size, and asked for no other: there now.
             // (Following, it is where it was going: it would move nowhere
             // else, and no commit may come to move it.)
+            // (Laid out as a drag is let go: it moves with the drag's last
+            // round, as the tiles changing size draw theirs, not before.)
             if geo != rect {
                 let Some(loc) = self.space.element_location(w) else { return };
-                self.space.relocate_element(w, loc + (rect.loc - geo.loc));
+                if self.round_collecting.is_some() {
+                    self.round_move(w, loc + (rect.loc - geo.loc));
+                } else {
+                    self.space.relocate_element(w, loc + (rect.loc - geo.loc));
+                }
             }
             self.unfollow(w);
         } else if !t.is_initial_configure_sent() {
@@ -1952,6 +1985,18 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
     }
 
+    /// Whether `w`'s tree, its splits moved to where a drag has the
+    /// windows it moves (`frames`; the other tiles' parts as they are),
+    /// lays those out just there: what the drag shows is what stays as
+    /// it's let go (`auto_drag_ended`), no least size (`mins`, its
+    /// `auto_mins`) holding an edge off where it went.
+    pub(super) fn auto_keeps(&self, w: &WindowElement, frames: &[(WindowElement, Rectangle<i32, Logical>)], mins: &HashMap<u64, (f32, f32)>) -> bool {
+        let (Some(tree), Some(area)) = (self.tree_of(w).and_then(|k| self.auto.trees.get(&k)), self.window_output(w).and_then(|o| self.tile_area(&o))) else { return true };
+        let moved: Vec<(u64, Rectangle<i32, Logical>)> = frames.iter().map(|(f, r)| (f.id(), *r)).collect();
+        let others: HashMap<u64, Part> = tree.windows().into_iter().filter_map(|i| Some((i, Self::custom_part(&self.window_by_id(i)?)?))).collect();
+        lays_out_as(tree, &moved, &|i| others.get(&i).copied(), &|i| mins.get(&i).copied().unwrap_or((0.0, 0.0)), area, self.tile_gap())
+    }
+
     /// An edge drag of a tile ended (its neighbours have their parts):
     /// the splits moved to where they now are.
     pub fn auto_drag_ended(&mut self, w: &WindowElement) {
@@ -1959,11 +2004,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some(mut tree) = self.auto.trees.remove(&key) else { return };
         self.auto.undo = Some(Undo::Tree(key.clone(), Some(tree.clone())));
         let parts: HashMap<u64, Part> = tree.windows().into_iter().filter_map(|i| Some((i, Self::custom_part(&self.window_by_id(i)?)?))).collect();
-        take_ratios(&mut tree, &|i| parts.get(&i).copied());
         // Where it can be: not past a window's least size (else the split
         // would be one place and the windows another, until they are
-        // laid out again).
+        // laid out again; the drag stopped there, `auto_keeps`).
         if let Some(area) = self.window_output(w).and_then(|o| self.tile_area(&o)) {
+            take_ratios(&mut tree, &|i| parts.get(&i).copied(), still_in(area));
             let mins = self.auto_mins(&self.all_windows(), area);
             tree = as_laid_out(&tree, &|i| mins.get(&i).copied().unwrap_or((0.0, 0.0)), Inset::of(area, self.tile_gap()));
         }
@@ -2030,6 +2075,47 @@ mod tests {
         let p = layout(&middle, &|id| if id == 1 { (208.0 / 1000.0, 0.0) } else { (0.05, 0.0) }, Inset::of(area, gap));
         let one = p.iter().find(|(n, _)| **n == w(1)).unwrap().1;
         assert!(crate::shell::tiling::part(area, one, gap).size.w >= 200);
+    }
+
+    /// A drag is held where the tree would hold the tiles as it's let go:
+    /// a split's side no smaller than the least of all it holds (a row of
+    /// two beside a column, each of the row at its least), and nowhere
+    /// at all where the least sizes don't fit (the split is at their
+    /// shares then, whatever its ratio).
+    #[test]
+    fn a_drag_lays_out_as_the_tree_will() {
+        let area = Rectangle::new((0, 0).into(), (1000, 800).into());
+        let gap = 8;
+        // [1 | [2 / [3 | 4]]]: 3 and 4 each at least 200 wide (a whole gap
+        // with it), 2 small.
+        let min = |id: u64| match id {
+            3 | 4 => (208.0 / 1000.0, 0.0),
+            _ => (0.05, 0.0),
+        };
+        let tree = Node::split(Cut::Columns, 0.4, w(1), Node::split(Cut::Rows, 0.5, w(2), Node::split(Cut::Columns, 0.5, w(3), w(4))));
+        let laid: HashMap<u64, Rectangle<i32, Logical>> =
+            layout(&tree, &min, Inset::of(area, gap)).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, crate::shell::tiling::part(area, p, gap))) } else { None }).collect();
+        let part_of = |i: u64| laid.get(&i).map(|r| fraction_of(area, *r, gap));
+        // 1's right edge dragged right by `dx`: 2's and 3's left edges with it.
+        let drag = |dx: i32| {
+            let grow = |r: Rectangle<i32, Logical>| Rectangle::new(r.loc, (r.size.w + dx, r.size.h).into());
+            let shrink = |r: Rectangle<i32, Logical>| Rectangle::new((r.loc.x + dx, r.loc.y).into(), (r.size.w - dx, r.size.h).into());
+            vec![(1, grow(laid[&1])), (2, shrink(laid[&2])), (3, shrink(laid[&3]))]
+        };
+        assert!(lays_out_as(&tree, &drag(0), &part_of, &min, area, gap));
+        assert!(lays_out_as(&tree, &drag(50), &part_of, &min, area, gap));
+        // 3 down to its least (200), and no further.
+        let room = laid[&3].size.w - 200;
+        assert!(lays_out_as(&tree, &drag(room), &part_of, &min, area, gap));
+        assert!(!lays_out_as(&tree, &drag(room + 10), &part_of, &min, area, gap));
+        // 1, 3 and 4 can't all be 600 wide: the split stays at the shares.
+        let wide = |id: u64| if id == 2 { (0.05, 0.0) } else { (0.6, 0.0) };
+        let shares: HashMap<u64, Rectangle<i32, Logical>> =
+            layout(&tree, &wide, Inset::of(area, gap)).into_iter().filter_map(|(n, p)| if let Node::Window(i) = n { Some((*i, crate::shell::tiling::part(area, p, gap))) } else { None }).collect();
+        let at = |i: u64| shares.get(&i).map(|r| fraction_of(area, *r, gap));
+        let moved = |dx: i32| vec![(1, Rectangle::new(shares[&1].loc, (shares[&1].size.w + dx, shares[&1].size.h).into()))];
+        assert!(lays_out_as(&tree, &moved(0), &at, &wide, area, gap));
+        assert!(!lays_out_as(&tree, &moved(-20), &at, &wide, area, gap));
     }
 
     fn parts(t: &Node) -> Vec<(u64, Part)> {
@@ -2136,18 +2222,22 @@ mod tests {
     fn dragged_edges_stay_where_let_go() {
         // Dragged to 0.71: there, not on a quarter or an eighth.
         let mut t = Node::split(Cut::Columns, 0.5, w(1), w(2));
-        take_ratios(&mut t, &|i| Some(if i == 1 { (0.0, 0.0, 0.71, 1.0) } else { (0.71, 0.0, 0.29, 1.0) }));
+        take_ratios(&mut t, &|i| Some(if i == 1 { (0.0, 0.0, 0.71, 1.0) } else { (0.71, 0.0, 0.29, 1.0) }), (0.003, 0.003));
         assert!(near(parts(&t)[0].1, (0.0, 0.0, 0.71, 1.0)), "{t:?}");
         // Within the right half: just there too, and the splits that
         // didn't move stay as they are.
         let mut t = Node::split(Cut::Columns, 0.5, w(1), Node::split(Cut::Columns, 0.5, w(2), w(3)));
-        take_ratios(&mut t, &|i| {
-            Some(match i {
-                1 => (0.0, 0.0, 0.5, 1.0),
-                2 => (0.5, 0.0, 0.08, 1.0),
-                _ => (0.58, 0.0, 0.42, 1.0),
-            })
-        });
+        take_ratios(
+            &mut t,
+            &|i| {
+                Some(match i {
+                    1 => (0.0, 0.0, 0.5, 1.0),
+                    2 => (0.5, 0.0, 0.08, 1.0),
+                    _ => (0.58, 0.0, 0.42, 1.0),
+                })
+            },
+            (0.003, 0.003),
+        );
         let p = parts(&t);
         assert!(near(p[1].1, (0.5, 0.0, 0.08, 1.0)), "{p:?}");
         assert!(near(p[0].1, (0.0, 0.0, 0.5, 1.0)));

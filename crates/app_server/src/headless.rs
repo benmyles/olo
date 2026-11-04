@@ -109,9 +109,8 @@ impl AnvilState<HeadlessData> {
         } else {
             notifier.failed();
         }
-        let dh = self.display_handle.clone();
-        for client in gate.map(|g| g.open()).unwrap_or_default() {
-            smithay::wayland::compositor::CompositorHandler::client_compositor_state(self, &client).blocker_cleared(self, &dh);
+        if let Some(gate) = gate {
+            self.gate_opened(&gate);
         }
     }
 }

@@ -44,7 +44,10 @@ use smithay::{
         allocator::dmabuf::{Dmabuf, WeakDmabuf},
         egl::{EGLDisplay, ffi::egl::types::EGLImage},
     },
-    reexports::{calloop::channel, wayland_server::Client},
+    reexports::{
+        calloop::channel,
+        wayland_server::{Client, protocol::wl_surface::WlSurface},
+    },
     wayland::{
         compositor::{Blocker, BlockerState},
         dmabuf::ImportNotifier,
@@ -62,6 +65,10 @@ const GRACE_FRAMES: u64 = 3;
 /// More than this many let go of, they're freed even while checks wait
 /// (a window resized live).
 const MOST_HELD: usize = 8;
+/// How many are freed at a time (a bind each): a check coming in waits
+/// for these and no more (1–4 ms a buffer on Apple's GPUs: a check behind
+/// a dozen waited 45 ms, and a drag's round with it).
+const FREE_AT_ONCE: usize = 2;
 /// Buffers waiting for a bind in the renderer this long (nothing new
 /// coming in), the loop is asked for one ([`Answer::Bind`]).
 const BIND_WITHIN: Duration = Duration::from_millis(500);
@@ -102,26 +109,55 @@ fn bind(display: &EGLDisplay, spare: &Dmabuf) {
 
 /// Holds back commits of a buffer until its check is done: a blocker
 /// (`compositor::add_blocker`) for each, and the clients to tell
-/// (`blocker_cleared`) when it opens.
+/// (`blocker_cleared`) when it opens; and the drag rounds
+/// (`shell::rounds`) a commit of it is in, to tell they may show.
 #[derive(Clone, Default)]
-pub struct Gate(Arc<(AtomicBool, Mutex<Vec<Client>>)>);
+pub struct Gate(Arc<GateState>);
+
+#[derive(Default)]
+pub struct GateState {
+    open: AtomicBool,
+    clients: Mutex<Vec<Client>>,
+    rounds: Mutex<Vec<(WlSurface, u64)>>,
+}
 
 impl Blocker for Gate {
     fn state(&self) -> BlockerState {
-        if self.0.0.load(Ordering::Acquire) { BlockerState::Released } else { BlockerState::Pending }
+        if self.0.open.load(Ordering::Acquire) { BlockerState::Released } else { BlockerState::Pending }
     }
 }
 
 impl Gate {
     /// A commit of `client`'s waits for this.
     pub fn hold(&self, client: Client) {
-        self.0.1.lock().unwrap().push(client);
+        self.0.clients.lock().unwrap().push(client);
+    }
+
+    /// The commit of `surface` that waits is round `n`'s: it shows only
+    /// once this opens (`AnvilState::gate_opened` tells it).
+    pub fn in_round(&self, surface: WlSurface, n: u64) {
+        self.0.rounds.lock().unwrap().push((surface, n));
     }
 
     /// Done: the clients whose commits were waiting.
     pub fn open(&self) -> Vec<Client> {
-        self.0.0.store(true, Ordering::Release);
-        std::mem::take(&mut *self.0.1.lock().unwrap())
+        self.0.open.store(true, Ordering::Release);
+        std::mem::take(&mut *self.0.clients.lock().unwrap())
+    }
+}
+
+impl<B: crate::state::Backend + 'static> crate::state::AnvilState<B> {
+    /// A buffer's check is done: the commits waiting for it go on, and
+    /// the round any of them is in may show.
+    pub fn gate_opened(&mut self, gate: &Gate) {
+        let dh = self.display_handle.clone();
+        for client in gate.open() {
+            smithay::wayland::compositor::CompositorHandler::client_compositor_state(self, &client).blocker_cleared(self, &dh);
+        }
+        let rounds = std::mem::take(&mut *gate.0.rounds.lock().unwrap());
+        for (surface, n) in rounds {
+            self.round_ready(&surface, n);
+        }
     }
 }
 
@@ -235,13 +271,18 @@ impl Worker {
         self.kept.iter().filter(|k| k.released).count()
     }
 
-    /// Frees what the renderer has let go of: the images let go of, then a
-    /// bind of the spare, so the kernel frees them now rather than in the
-    /// next check.
-    fn free(&mut self) {
+    /// Frees what the renderer has let go of, `most` buffers of it: the
+    /// images let go of, then a bind of the spare, so the kernel frees
+    /// them now rather than in the next check.
+    fn free(&mut self, most: usize) {
         let t = Instant::now();
         let before = self.kept.len();
-        self.kept.retain(|k| !k.released);
+        let mut n = 0;
+        self.kept.retain(|k| {
+            let go = k.released && n < most;
+            n += go as usize;
+            !go
+        });
         if self.kept.len() == before {
             return;
         }
@@ -308,10 +349,12 @@ impl Checks {
             let (display, spare) = node.as_deref().and_then(own_display).unwrap_or((display, None));
             *shared.lock().unwrap() = spare.clone();
             let mut worker = Worker { display, spare, kept: Vec::new(), waiting: None, look_until: None };
+            let mut next = None;
             loop {
-                let job = match worker.wait() {
-                    None => rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
-                    Some(d) => rx.recv_timeout(d),
+                let job = match (next.take(), worker.wait()) {
+                    (Some(job), _) => Ok(job),
+                    (None, None) => rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+                    (None, Some(d)) => rx.recv_timeout(d),
                 };
                 let mut job = match job {
                     Ok(job) => Some(job),
@@ -330,7 +373,9 @@ impl Checks {
                 while let Some(j) = job.take() {
                     match j {
                         Job::Check(id, dmabuf) => {
+                            tracing::debug!(target: "olo::rounds", id, "checking a buffer");
                             let ok = worker.check(&dmabuf);
+                            tracing::debug!(target: "olo::rounds", id, "checked a buffer");
                             if done.send(Answer::Checked { id, ok }).is_err() {
                                 return;
                             }
@@ -346,10 +391,17 @@ impl Checks {
                     // much waits to be freed).
                     job = rx.try_recv().ok();
                     if job.is_some() && worker.released() > MOST_HELD {
-                        worker.free();
+                        worker.free(FREE_AT_ONCE);
                     }
                 }
-                worker.free();
+                // (A few at a time, a check that comes in going first.)
+                while worker.released() > 0 {
+                    worker.free(FREE_AT_ONCE);
+                    if let Ok(job) = rx.try_recv() {
+                        next = Some(job);
+                        break;
+                    }
+                }
             }
         });
         Checks { tx, pending: HashMap::new(), next: 0, frames, renderer, spare }

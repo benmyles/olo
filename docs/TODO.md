@@ -7,25 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Drag rounds: the last looks out of step in deeper trees** (found
-  2026-11-03 by auto-fuzz's mid-drag check): `tsession start af
-  3024x1890 --scale 1.75 --session --shell`, `tools/dev/auto-fuzz af
-  --seed 11 --steps 150`: 9 drags of the 150 steps have one to four
-  looks (of ~200) with tiles out of step, mostly at the very start of a
-  fast drag or as it's let go, in trees of four or more tiles with
-  groups (e.g. step 146: two tiles 227 px ahead of the two across the
-  edge for one look). Found so far (step 85, traced): the drag stops a
-  tile at its least size as `tiling.rs` counts it (`min_frame`, the
-  group's: 180 px of content), then the tree laid out as it's let go
-  holds it 16 px bigger and its row's other split 40 px over (a group's
-  least width the drag never touched), so the release snaps the tiles
-  there; it's in the last round, but a look can catch a tile at its new
-  frame while the dragged one is still at its old (a group's tab behind,
-  set to the group's frame at once?). So: the drag's limits and the
-  tree's least sizes made the same (one function for both), a drag
-  never leaving a tile under its least, and the look found; the seed
-  passing at 1×, 1.5×, 1.75× and 2×.
-
 - **Backup: everything, and onto another machine** (Ben, 2026-11-03,
   soon: he sets up his ThinkPad by exporting from this Mac and
   importing there): "do an audit of the import/export backup feature
@@ -43,6 +24,20 @@ of Finished; a new one goes where its priority puts it.
   and said so; tested by exporting from one sandbox and importing into
   another with a different user, home and displays (and an x86 one when
   the ThinkPad is here), every pane and app then checked.
+
+- **A tile too small for its window's least size, off its part**
+  (found 2026-11-03 by `wm-fuzz --tiles`, seeds 5 and 9, the build
+  before the drag-round fixes too): `tsession start fz
+  2560x1600,1920x1080 --session --shell`, `tools/dev/wm-fuzz fz --seed 9
+  --steps 46 --tiles`: step 44, Styled Edit on the smaller display
+  tiled to the centre third (256 px) and on through tile-left and
+  tile-top-right, ends 290 wide (its least) at x 268 rather than its
+  part at 264: it grew 34 px but moved right, not inwards as
+  `give_way` has it (seed 5, step 193: 290 wide at 1766, its part 1800
+  and 256 wide). Find which of the three commands leaves it there, have
+  a window too big for its tile give way the same every time (and
+  wm-fuzz's check take a window at its least size, given way, as in its
+  tile), and keep both seeds passing 200 steps with `--tiles`.
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
@@ -987,6 +982,45 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Drag rounds: the last looks out of step in deeper trees**~~ (found
+  2026-11-03 by auto-fuzz's mid-drag check): `tsession start af
+  3024x1890 --scale 1.75 --session --shell`, `tools/dev/auto-fuzz af
+  --seed 11 --steps 150`: 9 drags of the 150 steps have one to four
+  looks (of ~200) with tiles out of step, mostly at the very start of a
+  fast drag or as it's let go, in trees of four or more tiles with
+  groups (e.g. step 146: two tiles 227 px ahead of the two across the
+  edge for one look). Found so far (step 85, traced): the drag stops a
+  tile at its least size as `tiling.rs` counts it (`min_frame`, the
+  group's: 180 px of content), then the tree laid out as it's let go
+  holds it 16 px bigger and its row's other split 40 px over (a group's
+  least width the drag never touched), so the release snaps the tiles
+  there; it's in the last round, but a look can catch a tile at its new
+  frame while the dragged one is still at its old (a group's tab behind,
+  set to the group's frame at once?). So: the drag's limits and the
+  tree's least sizes made the same (one function for both), a drag
+  never leaving a tile under its least, and the look found; the seed
+  passing at 1×, 1.5×, 1.75× and 2×.
+  *Done* 2026-11-03: four things, found with a trace of each round
+  (`RUST_LOG=info,olo::rounds=debug`). A neighbour following a drag
+  wasn't told it was being resized (xdg's `Resizing`, the dragged
+  window's alone), so the kit's apps made a new swapchain at every
+  step, four new buffers each; a round didn't wait for a new buffer's
+  check (`dmabuf_check`), so it showed without that window, whose frames
+  then queued behind the check and landed a round or two late; and the
+  check worker freed every buffer let go of at once, a check waiting
+  behind it 45 ms (a round's whole `LIMIT`). Now neighbours are
+  `Resizing` while the drag lasts, a round waits for its buffers' checks
+  as for their fences (`Gate::in_round`), and the worker frees two at a
+  time. And the drag's limits are the tree's: the window dragged keeps
+  its own least size (its group's), an auto-tiled drag goes only as far
+  as its tree lays the tiles out where it has them (`auto_keeps`,
+  `lays_out_as`), an edge moved a pixel or two is kept (`take_ratios`'
+  `still`: it was 0.3% of the area, 5 px here), and a tile that only
+  moves as it's let go moves with the last round (`round_move`). Seed 11,
+  150 steps: 14 drags out of step before; none after, at 1×, 1.5×,
+  1.75× and 2× (release). New buffers in a run: 8,324 before the
+  `Resizing` change, 2,188 after.
 
 - ~~**⌘` moves a window from another workspace to this one**~~ (found by
   wm-fuzz, 2026-11-03, seed 5 step 124 on a `2560x1600,1920x1080`

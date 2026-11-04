@@ -53,7 +53,9 @@ like pixel alignment is.
    renderer's) and holds each buffer till the renderer has let it go, so
    the kernel's freeing of old buffers (1–4 ms a window-sized one, done in
    the next bind into a GPU address space) happens on the worker, never in
-   the renderer's bind under its lock. A bind of the renderer's own big
+   the renderer's bind under its lock; a few at a time (`FREE_AT_ONCE`),
+   so a check coming in waits behind two, not a dozen (45 ms, a drag's
+   round held back with it). A bind of the renderer's own big
    buffers' leftovers (a screenshot's) still lands in its next import:
    keep app_server's own big GPU buffers few and long-lived. Measure with
    `tools/dev/perf-fuzz` (`{"type":"timings"}` names what held the loop;
@@ -3799,9 +3801,13 @@ drag is a round (`shell::rounds`): the dragged window and every
 neighbour are sent their new sizes at once (`tile_drag_next`, from
 where the pointer has got to), and what each draws for it waits, a
 commit blocker (`dmabuf_check::Gate`, in the pre-commit hook:
-`round_commit`), till every one has drawn it at the size asked and its
-GPU fence says the drawing is done (`round_fenced`, `round_ready`), so
-they show in the same frame: no tile over another and no gap between
+`round_commit`), till every one has drawn it at the size asked, its
+GPU fence says the drawing is done and its buffer, if new, has been
+checked (`round_fenced` counts what each waits for, `round_ready` each
+done; a buffer's check gate tells the round when it opens,
+`dmabuf_check::Gate::in_round`, `gate_opened`: without it, a window
+drawing into new buffers as it grew showed a round or two behind, its
+frames queued behind the check), so they show in the same frame: no tile over another and no gap between
 them at any moment. The next round goes as one shows, so the tiles move
 at the rate the slowest of them draws, the display's when they keep up
 (at 120 Hz a round takes 7 ms, one a frame); one that hasn't drawn in
@@ -3809,7 +3815,14 @@ at the rate the slowest of them draws, the display's when they keep up
 is a round too (`round_last`: the dragged window's final configure,
 which `end_resize` leaves to it, with the neighbours' last sizes and
 whatever auto-tiling lays out otherwise as the drag ends, which `follow`
-puts in it while it's made: `round_collecting`).
+puts in it while it's made: `round_collecting`; a tile that only moves
+then, drawn at its size already, moves as the round shows,
+`round_move`, not a frame or more before the rest). A round that runs
+out of time names the windows that didn't keep up in the log;
+`RUST_LOG=info,olo::rounds=debug` (a `tsession start` takes it) traces
+every round: what each window was asked, each commit (in which round,
+a new buffer still being checked or not), fences, and where each window
+landed.
 Without rounds each window was paced on its own and moved when it drew:
 neighbours trailed the edge by up to 600 px or ran over the dragged
 window, and some apps answer a configure with a frame of the size
@@ -3819,14 +3832,35 @@ drawn only by a buffer of the size asked (the viewport's source at the
 window's scale, for the kit's apps, which draw into part of a bigger
 buffer). Each window is moved only when it commits
 (`tile_follower_drew`: the sides that don't move stay put, whatever size
-it drew), and keeps catching up after the drag (`Follower`). A
+it drew), and keeps catching up after the drag (`Follower`). A neighbour
+is resized as much as the window dragged, and told so (xdg's
+`Resizing`, set in `ask_to_follow` while the drag lasts, cleared in its
+last round): the kit's apps then keep room to grow (GPUI's
+`update_drawable_size_within`), where before each made a new swapchain
+at every step, four new buffers of GPU memory each checked and freed by
+app_server, and its round waited for the checks (a 150-step auto-fuzz
+run: 8,324 new buffers before, 2,188 after). A
 neighbour linked on two sides (a corner drag) moves both. Auto-tiling's
 layout leaves every window the drag moves to it (`TileDrag::moves`):
 the tree has their tiles where they were until the drag ends, and laid
 out each turn it asked them back there, against the drag. `timings`
 counts rounds as phases (`drag round`, and `drag round (out of time)`).
 The drag stops where
-one would get smaller than its app's minimum or `MIN_TILE`; at the end
+one would get smaller than its app's minimum or `MIN_TILE`, the window
+dragged included (`TileDrag::min`, its group's: a tab behind it may
+take more than the front one's app); auto-tiled, also where its tree
+would lay the tiles out otherwise than the drag has them
+(`tile_drag_limit` asks `auto_keeps`, `autotile::lays_out_as`: the
+tree's splits taken from the drag's frames, laid out with every
+window's least size, must put them back just there; `furthest` finds
+how far it may go). So what a drag shows is what stays as it's let go:
+before, the drag counted only the least sizes of the windows on its
+edge, and a split's side holding more (a row of two beside a column, a
+group's tab) or sides whose least sizes don't all fit (laid out at
+their shares, whatever the ratio) moved the tiles as it was let go, out
+of step. Edges a drag moved by a pixel or two count too (`take_ratios`'
+`still`, a pixel and a half, `still_in`: it was 0.3% of the area, 5 px
+on a big display, and a small drag snapped back). At the end
 each keeps its new part (`TilePart`, fractions that `part` turns back
 into the same frame: `fraction_of`), which `retile` uses from then on (a
 tiling command starts afresh; Tile All and Tile App tile each window as a
