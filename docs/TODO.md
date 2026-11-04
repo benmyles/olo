@@ -85,8 +85,34 @@ of Finished; a new one goes where its priority puts it.
   - The panel: Samsung's ATNA panels are OLED (`OLED_PANELS`), so no
     stripes. VRR: Preferences ▸ Display ▸ "Variable refresh rate" for a
     display that has it, off by default (tried headless, simulated).
-    Left: VRR tried on the panel (it may modeset as it turns on); HDR,
-    P3 and the panel's calibration.
+    Left: HDR, P3 and the panel's calibration (VRR: Ben turned it on
+    and off, 2026-11-04, the mode following).
+  - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
+    was two displays, 5120 × 2880 and a copy of its right half: a tiled
+    monitor, now shown whole through the connector offering the whole
+    picture (`tiles.rs`; tried on the machine after the upgrade). The
+    Dell S2425HS got no picture on the left USB-C port: that port's
+    display path (the GPU's TC#1, in DP-alt) is also the Thunderbolt 5
+    controller's second DisplayPort input, which the Studio Display's
+    second stream holds (the kernel's Thunderbolt driver tunnels both
+    of its streams even when Olo shows it whole through one). On the
+    right-hand port (TC#4) it works. Lenovo's UCSI also says every
+    partner is a DFP, so the kernel's `typec_displayport` refuses each
+    (error -71); harmless here, the EC routes DisplayPort itself.
+    Left: tell the person when a display on USB-C gets no picture,
+    and why; free the Studio Display's second tunnel if the kernel
+    ever lets us.
+  - The touch filter never ran on the ThinkPad: libinput has no
+    `BTN_MISC`, and the plugin unloaded at the first key pressed
+    (fixed, with the test harness strict about evdev names).
+  - At the 2026-11-04 upgrade: Chrome and xdg-desktop-portal-gnome
+    crashed in GTK 4's `pointer_surface_fractional_scale_preferred_scale_cb`
+    as app_server reloaded (a fractional-scale event for a pointer
+    surface GTK had let go of); the NVIDIA GPU woke as the session
+    reloaded; a headless app_server crashed on exit in libnvidia-eglcore's
+    thread-exit destructor (its dmabuf-check thread had NVIDIA's EGL in
+    it: glvnd asks `10_nvidia.json` before Mesa's). Left: each found
+    and fixed.
   - Windows fit what they show: `WindowOptions::fits_content` in the
     kit (every alert and dialog, Preferences' panels, Drive Setup's forms,
     the network sheet), `TabView::grows`, whole-panel scroll views gone,
