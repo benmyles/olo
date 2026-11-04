@@ -1005,6 +1005,18 @@ of Finished; a new one goes where its priority puts it.
   lightweight then just do it after each new sample is collected." On
   the CPU's SIMD (never the NVIDIA GPU), measured per keystroke.
 
+- **Olo Suggestions: worktrunk, and a notification for each new
+  suggestion** (Ben, 2026-11-04): "add to olo suggestions the
+  installation of https://worktrunk.dev/ and auto-configuration to have
+  it put worktrees in the same place as olo terminal. also have olo
+  suggestions show a notification when a new suggestion is available,
+  but don't want it to repeatedly come up just show the notification
+  once for any given suggestion." Olo Suggestions is apps/doctor's
+  `olo-suggestions` (HACKING's "Olo Suggestions"); Terminal makes
+  worktrees in apps/terminal/src/git.rs (`add`, its path chosen by the
+  caller): worktrunk's worktree path set to the same place. Each
+  suggestion notified once, ever (kept by its id).
+
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
