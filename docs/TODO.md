@@ -22,7 +22,15 @@ of Finished; a new one goes where its priority puts it.
   nothing: no panic in the journal, no core (`coredumpctl`), no kernel
   line (segfault, OOM). So either it exited on purpose (on Deskbar's
   launch, say, handed to the running copy) or it died in a way nothing
-  records: the next item is what would have told us.
+  records: the next item is what would have told us. Why nothing: an
+  app started by Tracker, Deskbar or another app (`olo_xdg::open::
+  spawn_app`) has its stderr sent to /dev/null, so a panic's message
+  is lost, and a panic exits 101 without a core. Not reproduced
+  headless: a 1:51 H.264 video played, minimized, left past its end,
+  then its Deskbar entry clicked: it came back at its end, no panic,
+  memory steady (162 MB) while hidden. Try next with what the crash
+  report says, else: behind other windows rather than minimized, on
+  another workspace, across a lock or the display sleeping.
 
 - **Every Olo program leaves what's needed to debug its crash**
   (Ben, 2026-11-04): "make sure we capture debugging information
