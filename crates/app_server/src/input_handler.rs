@@ -123,6 +123,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if pressed {
             crate::contacts::note_key();
         }
+        // Escape while something is dragged: the drag ends, nothing
+        // dropped (and the Escape reaches nobody).
+        const KEY_ESC: u32 = 1;
+        if key == KEY_ESC {
+            if pressed && self.escape_drag() {
+                self.escaped = true;
+                return KeyAction::None;
+            }
+            if !pressed && std::mem::take(&mut self.escaped) {
+                return KeyAction::None;
+            }
+        }
         // Olo Rescue's keys, before anything else sees them (rescue.rs).
         match self.rescue_chord.feed(key, pressed) {
             crate::rescue::Fed::Pass => {}
@@ -182,6 +194,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
         }
         action
+    }
+
+    /// Escape, with something dragged: a drag-and-drop ends with nothing
+    /// dropped (its source told it was cancelled, the window it was over
+    /// that it left), a window being moved goes back where it was. False
+    /// when nothing is.
+    fn escape_drag(&mut self) -> bool {
+        let pointer = self.pointer.clone();
+        let moving = pointer.with_grab(|_, g| g.downcast_ref::<crate::shell::PointerMoveSurfaceGrab<BackendData>>().is_some_and(|m| m.started)).unwrap_or(false);
+        if !(moving || self.dragging) {
+            return false;
+        }
+        info!(moving, "Escape: the drag ends");
+        self.move_cancelled = moving;
+        pointer.unset_grab(self, SCOUNTER.next_serial(), InputTime::now());
+        true
     }
 
     fn keymap_action(&mut self, action: crate::keymap::Action) {

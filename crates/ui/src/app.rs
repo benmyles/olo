@@ -471,6 +471,15 @@ impl Render for Frame {
             .on_modifiers_changed(|e: &gpui::ModifiersChangedEvent, window, cx| crate::cut::modifiers(window, cx, window.mouse_position(), crate::cut::command_held(&e.modifiers)))
             .on_action(|_: &FocusNext, window, _| window.focus_next())
             .on_action(|_: &FocusPrev, window, _| window.focus_prev())
+            // Escape ends a drag within the window (GPUI's: a tab along a
+            // strip, rows in a list), nothing dropped, before anything
+            // in it takes the key. (app_server ends drags between windows
+            // and programs, and window moves, the same way.)
+            .capture_key_down(|e: &KeyDownEvent, window, cx| {
+                if e.keystroke.key == "escape" && cx.stop_active_drag(window) {
+                    cx.stop_propagation();
+                }
+            })
             // The menu bar's keys, when nothing in the window took them
             // (a text field's ⌘C is its own).
             .on_key_down(|e: &KeyDownEvent, window, cx| {

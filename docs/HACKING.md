@@ -674,7 +674,12 @@ Olo's apps and with any other Wayland program. (app_server tells a drag
 where the pointer is as it starts, `dnd_requested`: an app asks once the
 pointer has gone its drag distance, and in a quick drag the pointer is
 already over where it goes, and still; until it moved again the drag
-had no target, and was let go onto nothing.) As in BeOS (the Be
+had no target, and was let go onto nothing.) Escape ends any drag,
+nothing dropped: app_server's for a drag-and-drop (its source told it
+was cancelled, the window under it that it left: `escape_drag`) and
+for a window being moved (back where it was, zoomed again if it was,
+an auto-tiled one in its tile), the kit's Frame for GPUI's drags in a
+window (`stop_active_drag`); the Escape reaches nobody. As in BeOS (the Be
 Book's `DragAndDrop.md`), a drag carries the same data in several types
 and offers actions; where it is dropped picks the type and the action.
 

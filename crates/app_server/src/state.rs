@@ -205,6 +205,12 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub toplevel_handles: HashMap<u64, ForeignToplevelHandle>,
 
     pub dnd_icon: Option<DndIcon>,
+    /// A Wayland drag-and-drop is under way (Escape ends it: `escape_drag`).
+    pub dragging: bool,
+    /// Escape ended a drag or a move: its release reaches nobody either,
+    /// and the move grab, ending, puts its window back (`MoveCancelled`).
+    pub escaped: bool,
+    pub move_cancelled: bool,
 
     // input-related fields
     pub suppressed_keys: Vec<Keysym>,
@@ -362,6 +368,7 @@ impl<BackendData: Backend> WaylandDndGrabHandler for AnvilState<BackendData> {
             DndIcon { surface, offset }
         });
 
+        self.dragging = true;
         match type_ {
             GrabType::Pointer => {
                 let pointer = seat.get_pointer().unwrap();
@@ -388,6 +395,12 @@ impl<BackendData: Backend> WaylandDndGrabHandler for AnvilState<BackendData> {
 impl<BackendData: Backend> DndGrabHandler for AnvilState<BackendData> {
     fn dropped(&mut self, _target: Option<DndTarget<'_, Self>>, _validated: bool, _seat: Seat<Self>, _location: Point<f64, Logical>) {
         self.dnd_icon = None;
+        self.dragging = false;
+    }
+
+    fn cancelled(&mut self, _seat: Seat<Self>, _location: Point<f64, Logical>) {
+        self.dnd_icon = None;
+        self.dragging = false;
     }
 }
 
@@ -1154,6 +1167,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             foreign_toplevel_list_state,
             toplevel_handles: HashMap::new(),
             dnd_icon: None,
+            dragging: false,
+            escaped: false,
+            move_cancelled: false,
             suppressed_keys: Vec::new(),
             keymap: Default::default(),
             tab_tip: Default::default(),

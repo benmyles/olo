@@ -1065,16 +1065,6 @@ of Finished; a new one goes where its priority puts it.
   `archive`, `delete`, and `list` saying which is which (apps/screen,
   HACKING's "Agent Screens").
 
-- **Escape ends a drag, anywhere** (Ben, 2026-11-04): "when dragging
-  something in olo if the user presses escape it should drop the drag".
-  Escape while anything is being dragged, a file, text, a tab, a window
-  (app_server's move grab: the window back where it was), a Deskbar
-  entry, a list's band, cancels it: nothing dropped, the source as it
-  was, the pointer's drag look gone. In app_server for a Wayland
-  drag-and-drop (the data device's grab ended, `cancelled` to the
-  source, as other compositors do) and its own grabs; in the kit
-  (`olo_ui::dnd`, GPUI's drags) for drags within a window.
-
 - **Other programs' file handling through Olo, fixed** (Ben,
   2026-11-04): "the gtk/qt integration doesn't seem to be working
   properly e.g. even in olo chrome i can't click on the folder for a
@@ -1166,6 +1156,23 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Escape ends a drag, anywhere**~~ (Ben, 2026-11-04): "when dragging
+  something in olo if the user presses escape it should drop the drag".
+  Escape while anything is being dragged, a file, text, a tab, a window
+  (app_server's move grab: the window back where it was), a Deskbar
+  entry, a list's band, cancels it: nothing dropped, the source as it
+  was, the pointer's drag look gone. In app_server for a Wayland
+  drag-and-drop (the data device's grab ended, `cancelled` to the
+  source, as other compositors do) and its own grabs; in the kit
+  (`olo_ui::dnd`, GPUI's drags) for drags within a window. *Done*: app_server ends a
+  drag-and-drop on Escape (Smithay's cancel: the source told, the
+  window under it left) and puts a window being moved back where it was
+  (zoomed again if it was, an auto-tiled one in its tile); the kit's
+  Frame ends GPUI's own drags in a window. The Escape reaches nobody.
+  Tested on a test session: a file dragged onto a folder with Escape
+  before the release stayed; a window moved by its tab came back; both
+  without Escape as before. (GPUI's in-window drags not tried by hand.)
 
 - ~~**Tracker: a drag that starts on a name sometimes doesn't take**~~ (Ben,
   2026-11-04): "in tracker when trying to drag and starting on the

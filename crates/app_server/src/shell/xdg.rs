@@ -645,7 +645,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // Taken in hand: no longer on its way to a tile it was asked into.
         self.unfollow(&window);
         window.meta().moved_on_purpose.set(true);
-        let grab = PointerMoveSurfaceGrab { start_data, window, initial_window_location, over: None, started: false };
+        let grab = PointerMoveSurfaceGrab { start_data, window, initial_window_location, over: None, started: false, unzoomed: false, back_to: None };
 
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }

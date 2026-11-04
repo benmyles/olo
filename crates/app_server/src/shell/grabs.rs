@@ -38,6 +38,11 @@ pub struct PointerMoveSurfaceGrab<BackendData: Backend + 'static> {
     pub over: Option<(WindowElement, Point<f64, Logical>)>,
     /// The pointer has gone `MOVE_AFTER` from the press: it's a move.
     pub started: bool,
+    /// It was zoomed, and unzoomed as the move began (zoomed again if
+    /// Escape ends the move).
+    pub unzoomed: bool,
+    /// Where it was as the move began (Escape puts it back).
+    pub back_to: Option<Point<i32, Logical>>,
 }
 
 /// `delta` is past `distance` (a move, not a click).
@@ -63,7 +68,9 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
             }
             self.started = true;
             // Zoomed, it unzooms as it's taken away, under the pointer.
+            self.back_to = data.space.element_location(&self.window);
             if data.unzoom_to_move(&self.window) {
+                self.unzoomed = true;
                 self.initial_window_location = self.start_data.location.to_i32_round();
             }
         }
@@ -149,6 +156,23 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
     fn unset(&mut self, data: &mut AnvilState<BackendData>) {
         // A click: nothing moved.
         if !self.started {
+            data.move_cancelled = false;
+            return;
+        }
+        // Escape: back where it was, as it was (zoomed again; an
+        // auto-tiled one in its tile), nothing told it was let go anywhere.
+        if std::mem::take(&mut data.move_cancelled) {
+            self.window.meta().ghost.set(false);
+            if self.over.take().is_some() {
+                crate::window_drop::tell(&self.window, None, false);
+            }
+            if let Some(at) = self.back_to {
+                data.space.map_element(self.window.clone(), at, true);
+            }
+            if self.unzoomed {
+                data.zoom_window(&self.window);
+            }
+            data.auto_dropped(&self.window, self.start_data.location);
             return;
         }
         if let Some((onto, at)) = self.over.take() {
