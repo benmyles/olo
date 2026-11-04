@@ -1154,6 +1154,31 @@ of Finished; a new one goes where its priority puts it.
   its windows and messages readable and drivable by agents (the kit's
   tree, Agent Screens), and passwords and passkeys from Olo Passwords.
 
+- **Screen recording, for people and agents** (Ben, 2026-11-04):
+  "create an olo native screen recording app similar to CleanShot X
+  that can be used by humans but also is agent native so that agents
+  can use it to create polished screen recordings themselves too, from
+  within an agent screen. and make sure that it comes with agent skills
+  about doing it that is included with the agent screens skill and that
+  for screen recordings agents can have a high quality 4k agent screen
+  with 4k screen recordings". An Olo app (beside Screenshot, sharing its
+  region picker) that records the screen, a window or a region, with
+  CleanShot X's polish: the pointer drawn larger and smoothed, clicks
+  and keys shown, zoom that follows the action, a background and
+  rounded frame around a window, the microphone and the computer's
+  sound, a webcam bubble, pause and resume, then a trimming editor and
+  export (MP4, H.264/HEVC/AV1 through the GPU's encoder, and GIF), all
+  native in Rust (no ffmpeg), app_server's capture of the frames
+  (screencopy / dmabuf, no copies), on a worker, cancellable. Agent
+  native: everything a person can do there, an agent can drive through
+  a documented API (start, mark, zoom to, caption, stop, trim, export,
+  where it went), within an Agent Screen, without touching the person's
+  screen. An Agent Screen made for it can be 4K (3840 × 2160, at 1× or
+  2×) and record at 4K. And a skill for it, shipped with Olo Screens'
+  skill (olo-screens): how to plan, pace and record a polished demo
+  (rehearse, then record; the pointer's path, pauses, zooms; checking
+  the result).
+
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
