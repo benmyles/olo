@@ -2849,7 +2849,13 @@ Colour, kept per monitor in its `OutputConfig`):
   switches an eDP panel's HDR decoding (DPCD 0x344) and sets its
   brightness only as it enables the display; changed while it was on,
   the ThinkPad's OLED kept decoding SDR from the PQ signal, then went
-  dark as HDR went off (tried on the machine, 2026-11-04). SDR's white is
+  dark as HDR went off (tried on the machine, 2026-11-04). And it uses a
+  panel's HDR interface at all only if the VBT asks, the EDID has HDR
+  static metadata, or the kernel starts with `enable_dpcd_backlight=3`:
+  a built-in panel giving its HDR luminance in DisplayID alone (that
+  OLED) is offered HDR only once started so (`color::
+  kernel_drives_panel_hdr`); until then Preferences says it waits on a
+  setting at start, and Olo Doctor offers it (`AddKernelArgument`). SDR's white is
   "Everything else's brightness" (203 cd/m², BT.2408's, unless set);
   Preferences' band reverts HDR unless kept, as it does a resolution.
 

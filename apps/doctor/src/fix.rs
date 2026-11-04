@@ -57,6 +57,13 @@ pub enum Step {
     AddShell {
         path: PathBuf,
     },
+    /// Start the kernel with `arg` ("key=value") from the next boot: in
+    /// each boot entry (/boot/loader/entries, the rescue one left as it
+    /// is), /etc/kernel/cmdline (what new kernels' entries get) and GRUB's
+    /// defaults, as grubby does; a value for the same key replaced.
+    AddKernelArgument {
+        arg: String,
+    },
     /// Run a shell once (`-c 'exit 0'`): it starts, before it's anyone's
     /// login shell.
     TryShell {
@@ -100,6 +107,7 @@ impl Step {
             }
             Step::Signal { pid, .. } => format!("Stopping process {pid}"),
             Step::AddShell { path } => format!("Listing {} in /etc/shells", path.display()),
+            Step::AddKernelArgument { arg } => format!("Starting the kernel with {arg}"),
             Step::TryShell { path } => format!("Trying {}", path.display()),
             Step::SetLoginShell { user, shell } => format!("Making {} {user}'s login shell", shell.display()),
             Step::InstallPackages { names } => format!("Installing {}", names.join(", ")),
@@ -150,6 +158,7 @@ impl Step {
                 if unsafe { libc::kill(*pid, *signal) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) { Ok(()) } else { Err(failed(std::io::Error::last_os_error())) }
             }
             Step::AddShell { path } => add_shell(path).map_err(failed),
+            Step::AddKernelArgument { arg } => add_kernel_argument(Path::new("/"), arg).map_err(failed),
             Step::TryShell { path } => try_shell(path),
             Step::SetLoginShell { user, shell } => set_login_shell(user, shell).map_err(|e| format!("{}: {e}", self.describe())),
             Step::InstallPackages { .. } | Step::UpdatePackages { .. } => self.run_with(&mut |_| {}),
@@ -168,6 +177,74 @@ fn short_list(names: &[String]) -> String {
 /// `path` listed in /etc/shells (it is already: nothing written).
 fn add_shell(path: &Path) -> std::io::Result<()> {
     add_shell_to(Path::new("/etc/shells"), path)
+}
+
+/// `arg` ("key=value") in every place the kernel's command line is kept
+/// under `root` (see `Step::AddKernelArgument`).
+fn add_kernel_argument(root: &Path, arg: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mode = |p: &Path| std::fs::metadata(p).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o644);
+    let entries = root.join("boot/loader/entries");
+    let mut files: Vec<PathBuf> =
+        std::fs::read_dir(&entries).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "conf") && !p.to_string_lossy().contains("rescue")).collect();
+    files.sort();
+    for f in files {
+        let text = std::fs::read_to_string(&f)?;
+        let new: Vec<String> = text
+            .lines()
+            .map(|l| match l.strip_prefix("options ") {
+                Some(o) => format!("options {}", with_argument(o, arg)),
+                None => l.to_owned(),
+            })
+            .collect();
+        let new = new.join("\n") + if text.ends_with('\n') { "\n" } else { "" };
+        if new != text {
+            write_file(&f, &new, mode(&f))?;
+        }
+    }
+    let cmdline = root.join("etc/kernel/cmdline");
+    if let Ok(text) = std::fs::read_to_string(&cmdline) {
+        let new = format!("{}\n", with_argument(text.trim(), arg));
+        if new != text {
+            write_file(&cmdline, &new, mode(&cmdline))?;
+        }
+    }
+    let grub = root.join("etc/default/grub");
+    if let Ok(text) = std::fs::read_to_string(&grub) {
+        let new: Vec<String> = text
+            .lines()
+            .map(|l| match l.strip_prefix("GRUB_CMDLINE_LINUX=\"").and_then(|v| v.strip_suffix('"')) {
+                Some(v) => format!("GRUB_CMDLINE_LINUX=\"{}\"", with_argument(v, arg)),
+                None => l.to_owned(),
+            })
+            .collect();
+        let new = new.join("\n") + if text.ends_with('\n') { "\n" } else { "" };
+        if new != text {
+            write_file(&grub, &new, mode(&grub))?;
+        }
+    }
+    Ok(())
+}
+
+/// A command line with `arg`: its key's value replaced, else added.
+fn with_argument(line: &str, arg: &str) -> String {
+    let key = arg.split('=').next().unwrap_or(arg);
+    let mut found = false;
+    let mut out: Vec<&str> = line
+        .split_whitespace()
+        .map(|t| {
+            if t.split('=').next() == Some(key) {
+                found = true;
+                arg
+            } else {
+                t
+            }
+        })
+        .collect();
+    if !found {
+        out.push(arg);
+    }
+    out.join(" ")
 }
 
 /// `path` listed in the shells file `shells`.
@@ -240,6 +317,30 @@ fn unit(name: &str, action: &UnitAction) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_kernel_argument_everywhere_the_command_line_is_kept() {
+        let root = std::path::Path::new("/var/tmp").join(format!("olo-doctor-kargs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let w = |p: &str, t: &str| {
+            let p = root.join(p);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, t).unwrap();
+        };
+        w("boot/loader/entries/x-7.2.15.conf", "title Fedora\noptions root=UUID=1 ro rhgb quiet $tuned_params\ngrub_users $grub_users\n");
+        w("boot/loader/entries/x-0-rescue.conf", "title Rescue\noptions root=UUID=1 ro\n");
+        w("etc/kernel/cmdline", "root=UUID=1 ro rhgb quiet\n");
+        w("etc/default/grub", "GRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX=\"rhgb quiet xe.enable_dpcd_backlight=1\"\n");
+        add_kernel_argument(&root, "xe.enable_dpcd_backlight=3").unwrap();
+        // Twice is the same as once.
+        add_kernel_argument(&root, "xe.enable_dpcd_backlight=3").unwrap();
+        let r = |p: &str| std::fs::read_to_string(root.join(p)).unwrap();
+        assert_eq!(r("boot/loader/entries/x-7.2.15.conf"), "title Fedora\noptions root=UUID=1 ro rhgb quiet $tuned_params xe.enable_dpcd_backlight=3\ngrub_users $grub_users\n");
+        assert_eq!(r("boot/loader/entries/x-0-rescue.conf"), "title Rescue\noptions root=UUID=1 ro\n");
+        assert_eq!(r("etc/kernel/cmdline"), "root=UUID=1 ro rhgb quiet xe.enable_dpcd_backlight=3\n");
+        assert_eq!(r("etc/default/grub"), "GRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX=\"rhgb quiet xe.enable_dpcd_backlight=3\"\n");
+        let _ = std::fs::remove_dir_all(&root);
+    }
     use super::*;
 
     #[test]

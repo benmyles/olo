@@ -120,9 +120,20 @@ of Finished; a new one goes where its priority puts it.
     BT.2020) through Intel's eDP HDR interface (its DPCD says PQ decode,
     BT.2020 and tone mapping), Preferences ▸ Display ▸ Colour. Tried
     headless (a pretend P3 HDR screen) and the GPU's conversions read
-    back on this machine. Left: HDR tried on the panel (its modeset,
-    and whether the brightness keys still work in HDR: the kernel sets
-    brightness over AUX in nits either way). Done besides: programs'
+    back on this machine. Tried on the panel (2026-11-04, Ben agreeing):
+    the connector took HDR's metadata and BT.2020, but the panel's HDR
+    control (DPCD 0x344) stayed 0x10, even through a full re-enable:
+    Intel's driver uses an eDP panel's HDR interface only if the VBT
+    asks, the EDID has HDR static metadata, or it's started with
+    `xe.enable_dpcd_backlight=3`, and this OLED has neither of the first
+    two. So HDR on it waits on that boot argument: Olo Doctor offers it
+    ("The built-in display's HDR is off", editing the boot entries,
+    /etc/kernel/cmdline and GRUB's defaults natively), Preferences says
+    so, and app_server offers HDR on the panel only once started with
+    it. Left: Ben to decide on the argument (the driver then sets the
+    panel's brightness through that interface too, in nits), restart,
+    and HDR tried again on the panel; external HDR displays (an EDID
+    saying PQ) need none of this. Done besides: programs'
     own colours (`wp_color_management_v1`, tried with a test client),
     pictures converted from their profiles (`olo_images`), Viewer
     drawing in Display P3 while it shows a wide photo (GPUI's

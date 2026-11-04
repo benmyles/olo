@@ -653,6 +653,14 @@ fn color_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server, st: &mu
             };
             ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new(why).dim(true).wrap(true)));
         }
+        // A built-in panel whose HDR waits on a setting at start.
+        if o.hdr.is_none() && o.hdr_needs_boot {
+            ui.add(
+                div()
+                    .pl(px(label_w + m::TEXT_INSET))
+                    .child(StringView::new("HDR needs a setting at the computer's start: Olo Doctor offers it (“The built-in display's HDR is off”).").dim(true).wrap(true)),
+            );
+        }
         // HDR, kept only once seen to work (the band above reverts it).
         if let Some(hdr) = o.hdr {
             let (name, to) = (o.name.clone(), server.clone());

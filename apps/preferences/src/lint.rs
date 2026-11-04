@@ -55,6 +55,7 @@ fn outputs() -> Vec<OutputInfo> {
         color_mode: (number == Some(0)).then_some(olo_protocol::color::ColorMode::Accurate),
         hdr: (number == Some(0)).then_some(true),
         sdr_nits: 203.0,
+        hdr_needs_boot: false,
     };
     vec![
         display(

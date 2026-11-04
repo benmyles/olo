@@ -1511,6 +1511,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     color_mode: crate::color::of(o).filter(|c| c.display.wide()).map(|_| crate::color::applied(o).mode),
                     hdr: crate::color::of(o).filter(|c| c.hdr_capable).map(|_| crate::color::applied(o).hdr),
                     sdr_nits: crate::color::applied(o).sdr_nits,
+                    hdr_needs_boot: crate::color::of(o).is_some_and(|c| c.hdr_needs_boot),
                 }
             })
             .collect();

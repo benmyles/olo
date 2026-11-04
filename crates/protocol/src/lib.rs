@@ -1142,6 +1142,10 @@ pub struct OutputInfo {
     /// SDR's white in HDR, cd/m².
     #[serde(default)]
     pub sdr_nits: f32,
+    /// Its HDR waits on a setting at the computer's start (a built-in
+    /// panel whose HDR Intel's driver doesn't drive: Olo Doctor offers it).
+    #[serde(default)]
+    pub hdr_needs_boot: bool,
 }
 
 /// The number display `output` (a connector) goes by, from the main
@@ -2299,6 +2303,7 @@ mod tests {
             color_mode: None,
             hdr: None,
             sdr_nits: color::SDR_NITS,
+            hdr_needs_boot: false,
         };
         let one = [out("eDP-1", 0, None), out("HDMI-A-1", 0, Some("eDP-1"))];
         assert_eq!(display_number(&one, "eDP-1"), None);

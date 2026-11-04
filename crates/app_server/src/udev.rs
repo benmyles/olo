@@ -1863,7 +1863,8 @@ impl AnvilState<UdevData> {
                 Output::new(output_name, PhysicalProperties { size: (phys_w as i32, phys_h as i32).into(), subpixel: crate::desktop::from_panel_subpixel(panel.subpixel), make, model, serial_number });
             let hdr_capable = crate::color::hdr_capable(&display_color, internal, takes_hdr);
             info!(output = output.name(), gamut = ?display_color.gamut(), peak = ?display_color.peak_nits, hdr_capable, "colours");
-            crate::color::init(&output, display_color, hdr_capable);
+            let hdr_needs_boot = internal && takes_hdr && !hdr_capable && crate::color::panel_hdr(&display_color) && !display_color.pq;
+            crate::color::init_waiting(&output, display_color, hdr_capable, hdr_needs_boot);
             output.user_data().insert_if_missing(|| crate::desktop::DrmSubpixel(told));
             let global = output.create_global::<AnvilState<UdevData>>(&self.display_handle);
 

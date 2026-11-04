@@ -429,6 +429,7 @@ pub fn scan(roots: &Roots) -> Report {
     thunderbolt(roots, &mut r);
     login_keyring(roots, &mut r);
     presence_rule(roots, &mut r);
+    panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     r
@@ -1097,6 +1098,56 @@ fn presence_rule(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// A built-in HDR panel whose HDR the kernel doesn't drive: Intel's driver
+/// uses an eDP panel's own HDR interface (its PQ decoding, its brightness
+/// in nits) only if the firmware asks, the EDID has HDR static metadata,
+/// or it's started with `enable_dpcd_backlight=3`. The ThinkPad P1 Gen 9's
+/// OLED gives its HDR luminance in DisplayID only: HDR on it, without,
+/// was a PQ signal it read as SDR. (app_server offers HDR on it only with
+/// the argument: `color::kernel_drives_panel_hdr`.)
+fn panel_hdr(roots: &Roots, r: &mut Report) {
+    let drm = roots.fs.join("sys/class/drm");
+    let Some(edp) = std::fs::read_dir(&drm)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.file_name().is_some_and(|n| n.to_string_lossy().contains("-eDP-")) && read(&p.join("status")).as_deref() == Some("connected"))
+    else {
+        return;
+    };
+    let Some(edid) = std::fs::read(edp.join("edid")).ok().filter(|b| b.len() >= 128) else { return };
+    let color = olo_system::edid::color(&edid);
+    // An HDR panel (DisplayID's luminance) without HDR in its EDID.
+    if color.pq || !color.peak_nits.is_some_and(|n| n >= 400.0) {
+        return;
+    }
+    let card = edp.file_name().map(|n| n.to_string_lossy().split('-').next().unwrap_or_default().to_owned()).unwrap_or_default();
+    let driver = std::fs::read_link(drm.join(&card).join("device/driver")).ok().and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default();
+    if driver != "xe" && driver != "i915" {
+        return;
+    }
+    let arg = format!("{driver}.enable_dpcd_backlight=3");
+    let started_with = read(&roots.fs.join("proc/cmdline")).is_some_and(|c| c.split_whitespace().any(|a| a == arg));
+    let peak = color.peak_nits.unwrap_or_default();
+    if started_with {
+        r.fine.push(Fine {
+            title: "The built-in display's HDR is the kernel's to switch".into(),
+            detail: format!("Started with {arg}: Preferences ▸ Display ▸ Colour offers HDR, up to {peak:.0} cd/m²."),
+        });
+        return;
+    }
+    r.findings.push(Finding {
+        id: "boot:panel-hdr".into(),
+        severity: Severity::Advice,
+        title: "The built-in display's HDR is off".into(),
+        detail: format!(
+            "This display can show HDR, up to {peak:.0} cd/m², through its own HDR interface, which Linux's Intel driver uses only when started with {arg}. The fix starts it so from the next restart (every boot entry and new kernels too). The driver then sets the display's brightness through that interface as well, in nits; if brightness stops working, remove {arg} from /etc/kernel/cmdline and the entries in /boot/loader/entries."
+        ),
+        fix: Some(Fix { label: "Turn On HDR at Start".into(), root: true, steps: vec![Step::AddKernelArgument { arg }] }),
+    });
+}
+
 /// gnome-keyring's PAM module, as Fedora packages it.
 const KEYRING_PAM: &str = "gnome-keyring-pam";
 
@@ -1466,6 +1517,37 @@ mod tests {
         login_keyring(&roots, &mut r);
         assert!(r.findings.is_empty());
         assert_eq!(r.fine[0].title, "The login keyring opens when you log in");
+    }
+
+    #[test]
+    fn the_built_in_panels_hdr_at_start() {
+        let (fs, roots) = machine("panel-hdr");
+        let w = |p: &str, c: &[u8]| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // The ThinkPad's OLED, on Intel's xe.
+        let oled = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/system/tests/edid/thinkpad-p1-gen9-oled.bin")).unwrap();
+        w("sys/class/drm/card0-eDP-1/status", b"connected\n");
+        w("sys/class/drm/card0-eDP-1/edid", &oled);
+        std::fs::create_dir_all(fs.join("sys/bus/pci/drivers/xe")).unwrap();
+        std::fs::create_dir_all(fs.join("sys/class/drm/card0/device")).unwrap();
+        std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers/xe"), fs.join("sys/class/drm/card0/device/driver")).unwrap();
+        w("proc/cmdline", b"root=UUID=1 ro rhgb quiet\n");
+        let mut r = Report::default();
+        panel_hdr(&roots, &mut r);
+        let f = r.find("boot:panel-hdr").expect("HDR off at start");
+        assert!(f.detail.contains("1600 cd/m²"), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root);
+        assert_eq!(fix.steps, vec![Step::AddKernelArgument { arg: "xe.enable_dpcd_backlight=3".into() }]);
+        // Started so: fine.
+        w("proc/cmdline", b"root=UUID=1 ro xe.enable_dpcd_backlight=3\n");
+        let mut r = Report::default();
+        panel_hdr(&roots, &mut r);
+        assert!(r.findings.is_empty());
+        assert_eq!(r.fine[0].title, "The built-in display's HDR is the kernel's to switch");
     }
 
     #[test]

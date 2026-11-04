@@ -50,12 +50,20 @@ pub struct OutputColor {
     /// metadata (an eDP OLED's HDR is the panel's, through Intel's HDR
     /// interface, not its EDID's).
     pub hdr_capable: bool,
+    /// Its HDR waits on a setting at start (`kernel_drives_panel_hdr`).
+    pub hdr_needs_boot: bool,
     applied: RefCell<Applied>,
 }
 
 /// Keep what `output` can show.
 pub fn init(output: &Output, display: DisplayColor, hdr_capable: bool) {
-    output.user_data().insert_if_missing(|| OutputColor { display, hdr_capable, applied: RefCell::new(Applied::default()) });
+    init_waiting(output, display, hdr_capable, false);
+}
+
+/// Keep what `output` can show, and whether its HDR waits on a setting
+/// at start.
+pub fn init_waiting(output: &Output, display: DisplayColor, hdr_capable: bool, hdr_needs_boot: bool) {
+    output.user_data().insert_if_missing(|| OutputColor { display, hdr_capable, hdr_needs_boot, applied: RefCell::new(Applied::default()) });
 }
 
 pub fn of(output: &Output) -> Option<&OutputColor> {
@@ -152,10 +160,26 @@ pub fn hdr_metadata(display: &DisplayColor) -> [u8; 32] {
 }
 
 /// Whether a connector can take HDR: its EDID says PQ, or it's a built-in
-/// panel giving an HDR luminance; either way the connector has the
-/// metadata and BT.2020 properties.
+/// panel giving an HDR luminance whose HDR the kernel drives; either way
+/// the connector has the metadata and BT.2020 properties.
 pub fn hdr_capable(display: &DisplayColor, internal: bool, connector_takes_it: bool) -> bool {
-    connector_takes_it && (display.pq || (internal && display.peak_nits.is_some_and(|n| n >= 400.0)))
+    connector_takes_it && (display.pq || (internal && panel_hdr(display) && kernel_drives_panel_hdr()))
+}
+
+/// A built-in panel that gives an HDR luminance (DisplayID's): its HDR
+/// is the panel's own interface's, not its EDID's.
+pub fn panel_hdr(display: &DisplayColor) -> bool {
+    display.peak_nits.is_some_and(|n| n >= 400.0)
+}
+
+/// Whether the kernel switches a built-in panel into HDR. Intel's driver
+/// uses an eDP panel's HDR interface (its decoding of PQ, its brightness
+/// in nits) only if the firmware asks, or the EDID has HDR static
+/// metadata, or it was started with `enable_dpcd_backlight=3`: the
+/// ThinkPad P1 Gen 9's OLED has neither of the first two, and HDR on it
+/// sent a PQ signal it read as SDR. Olo Doctor offers the third.
+pub fn kernel_drives_panel_hdr() -> bool {
+    std::fs::read_to_string("/proc/cmdline").is_ok_and(|c| c.split_whitespace().any(|a| a == "xe.enable_dpcd_backlight=3" || a == "i915.enable_dpcd_backlight=3"))
 }
 
 /// What a headless screen pretends to be (`OLO_HEADLESS_COLOR`: "p3",
@@ -328,7 +352,11 @@ mod tests {
         assert_eq!(u16::from_le_bytes([m[20], m[21]]), 16455);
         assert_eq!(u16::from_le_bytes([m[22], m[23]]), 1600);
         assert_eq!(u16::from_le_bytes([m[28], m[29]]), 650);
-        assert!(hdr_capable(&oled(), true, true) && !hdr_capable(&oled(), false, true) && !hdr_capable(&oled(), true, false));
+        // (Built in: only as the kernel drives its HDR.)
+        assert_eq!(hdr_capable(&oled(), true, true), kernel_drives_panel_hdr());
+        assert!(!hdr_capable(&oled(), false, true) && !hdr_capable(&oled(), true, false));
+        let hdr10 = DisplayColor { pq: true, ..oled() };
+        assert!(hdr_capable(&hdr10, false, true));
     }
 
     /// The renderer's conversions on this computer's GPU, read back and
