@@ -2,7 +2,8 @@
 //! clicks, scrolls, gestures and keys pressed (how many, never which),
 //! for Activity Monitor ▸ Inputs (`InputActivity` in `Reply::Frames`).
 //! Each is a time noted as it's handled, the older than a minute let go
-//! as the next comes: a few nanoseconds an event, nothing while idle.
+//! as the next comes: 12–27 ns an event (`an_event_costs_nanoseconds`),
+//! nothing while idle.
 
 use std::{collections::VecDeque, time::Instant};
 
@@ -51,6 +52,23 @@ impl InputCounts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Its cost an event: `cargo test --release -p app_server
+    /// input_counts -- --nocapture`.
+    #[test]
+    fn an_event_costs_nanoseconds() {
+        let mut c = InputCounts::default();
+        let t0 = Instant::now();
+        const N: u32 = 1_000_000;
+        let start = Instant::now();
+        // (A key every 5 ms: a minute holds 12 000, let go as they age.)
+        for i in 0..N {
+            c.note(Input::Key, t0 + std::time::Duration::from_millis(i as u64 * 5));
+        }
+        let ns = start.elapsed().as_nanos() as f64 / N as f64;
+        eprintln!("input_counts: {ns:.1} ns an event");
+        assert!(ns < 200.0, "{ns}");
+    }
 
     #[test]
     fn counts_the_last_minute() {
