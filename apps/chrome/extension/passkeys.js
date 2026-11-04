@@ -100,9 +100,17 @@
   // ---- Credentials as the page expects them ----
 
   // Own properties over the prototype's (whose getters only work on
-  // Chrome's own objects), so `instanceof` holds too.
+  // Chrome's own objects), so `instanceof` holds too. Methods can be
+  // replaced, as on Chrome's own, whose methods are the prototype's:
+  // GitHub's webauthn-json sets its own `toJSON` on the credential it
+  // gets, and a read-only one threw ("Cannot assign to read only
+  // property 'toJSON'"), so the passkey Passwords had saved never
+  // reached GitHub.
   function define(o, props) {
-    for (const [k, v] of Object.entries(props)) Object.defineProperty(o, k, { value: v, enumerable: typeof v !== "function" });
+    for (const [k, v] of Object.entries(props)) {
+      const method = typeof v === "function";
+      Object.defineProperty(o, k, { value: v, enumerable: !method, writable: method, configurable: true });
+    }
     return o;
   }
 
