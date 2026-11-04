@@ -42,6 +42,10 @@ pub struct InputDeviceInfo {
     /// to sleep by USB power management (`power/control` isn't "on").
     #[serde(default)]
     pub may_sleep: bool,
+    /// A pointing stick (a ThinkPad's TrackPoint): a mouse to libinput,
+    /// but one that scrolls while its middle button is held.
+    #[serde(default)]
+    pub pointing_stick: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

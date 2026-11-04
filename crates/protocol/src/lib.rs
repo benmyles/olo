@@ -1794,6 +1794,9 @@ pub struct TouchpadSettings {
     pub left_handed: bool,
     /// Turn the touchpad off while a mouse is plugged in.
     pub off_with_mouse: bool,
+    /// A pointing stick (a TrackPoint) scrolls while its middle button
+    /// is held, as a ThinkPad's does.
+    pub pointing_stick_scroll: bool,
     /// Mice: "adaptive" or "flat".
     pub mouse_accel_profile: String,
 }
@@ -1956,6 +1959,7 @@ impl Default for TouchpadSettings {
             scroll_method: "two-finger".into(),
             left_handed: false,
             off_with_mouse: false,
+            pointing_stick_scroll: true,
             mouse_accel_profile: "adaptive".into(),
         }
     }

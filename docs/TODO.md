@@ -138,8 +138,13 @@ of Finished; a new one goes where its priority puts it.
     (`touchpad.lua`, Apple's thresholds, needs a size axis) on such a
     pad, so a model trained there is used there, the firmware's palm
     flag beside it.
-  - Left, not started: the TrackPoint's settings, the IR camera (face sign-in),
-    the proximity sensor, battery charge thresholds, Thunderbolt 5.
+  - The TrackPoint (the kernel's "PS/2 Logitech Mouse", not known as
+    a stick): shown as the TrackPoint in Preferences ▸ Touchpad & Mouse,
+    with its speed and acceleration, and scrolls while its middle button
+    is held, as a ThinkPad's does. Left: try it on the stick.
+  - Battery charge thresholds: Preferences ▸ Power's charge limit.
+  - Left, not started: the IR camera (face sign-in), the proximity
+    sensor, Thunderbolt 5.
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in

@@ -371,6 +371,7 @@ fn device_info(device: &smithay::reexports::input::Device) -> olo_protocol::touc
         Some((param("haptic_press_threshold")?, param("haptic_release_threshold")?))
     });
     let (bus, dpi, may_sleep) = device_facts(device.sysname());
+    let pointing_stick = pointing_stick(device);
     InputDeviceInfo {
         name: device.name().into_owned(),
         kind,
@@ -383,7 +384,24 @@ fn device_info(device: &smithay::reexports::input::Device) -> olo_protocol::touc
         bus,
         dpi,
         may_sleep,
+        pointing_stick,
     }
+}
+
+/// Whether `device` is a pointing stick (a TrackPoint): named so, or
+/// libinput scrolls it on a held button as it does its own; or the PS/2
+/// mouse on a ThinkPad's keyboard controller, which is its TrackPoint
+/// when the kernel didn't know it as one (the P1 Gen 9's comes as "PS/2
+/// Logitech Mouse"). Read from sysfs when asked, never per event.
+fn pointing_stick(device: &smithay::reexports::input::Device) -> bool {
+    use smithay::reexports::input::ScrollMethod;
+    let name = device.name();
+    if ["TrackPoint", "Pointing Stick", "PointingStick", "TPPS/2"].iter().any(|n| name.contains(n)) || device.config_scroll_default_method() == Some(ScrollMethod::OnButtonDown) {
+        return true;
+    }
+    let phys = std::fs::read_to_string(format!("/sys/class/input/{}/device/phys", device.sysname())).unwrap_or_default();
+    let thinkpad = std::fs::read_to_string("/sys/class/dmi/id/product_version").unwrap_or_default().contains("ThinkPad");
+    name.starts_with("PS/2 ") && phys.starts_with("isa0060/serio1") && thinkpad
 }
 
 /// What sysfs and udev's database say of input device `sysname`
@@ -758,6 +776,16 @@ fn configure_pointer(device: &mut smithay::reexports::input::Device, settings: &
         let modes = device.config_send_events_modes();
         if modes.contains(SendEventsMode::DISABLED_ON_EXTERNAL_MOUSE) {
             let _ = device.config_send_events_set_mode(if t.off_with_mouse { SendEventsMode::DISABLED_ON_EXTERNAL_MOUSE } else { SendEventsMode::ENABLED });
+        }
+    }
+    // A pointing stick scrolls while its middle button is held (libinput
+    // does so for those it knows; one the kernel took for a mouse, too).
+    if !touchpad && pointing_stick(device) && device.config_scroll_methods().contains(&ScrollMethod::OnButtonDown) {
+        let method = if t.pointing_stick_scroll { ScrollMethod::OnButtonDown } else { ScrollMethod::NoScroll };
+        let _ = device.config_scroll_set_method(method);
+        if t.pointing_stick_scroll {
+            // (BTN_MIDDLE.)
+            let _ = device.config_scroll_set_button(0x112);
         }
     }
     if device.config_middle_emulation_is_available() {

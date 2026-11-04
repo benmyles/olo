@@ -65,10 +65,13 @@ fn watch(proxy: olo_ui::Proxy) -> Shared {
             bus: bus.into(),
             dpi,
             may_sleep,
+            // (A ThinkPad's TrackPoint, as the kernel names the P1 Gen 9's.)
+            pointing_stick: name.starts_with("PS/2 "),
         };
         *devices.lock().unwrap() = Some(vec![
             device("Apple MTP multi-touch", olo_protocol::touchpad::DeviceKind::AppleMtp, Some((160.0, 100.0)), false, "macbook", 0x05ac, 0x0342, "spi", None, false),
             device("Logitech G309 LIGHTSPEED Wireless Gaming Mouse (USB Receiver)", olo_protocol::touchpad::DeviceKind::Mouse, None, false, "mouse", 0x046d, 0x40b1, "usb", Some(1600), true),
+            device("PS/2 Logitech Mouse", olo_protocol::touchpad::DeviceKind::Mouse, None, false, "mouse", 0x0002, 0x0001, "i8042", None, false),
         ]);
         return devices;
     }
@@ -386,13 +389,19 @@ fn mice_boxes(ui: &mut Ui, devices: Option<&[InputDeviceInfo]>) {
         problem(ui, format!("{r} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it."));
     }
     let found: Vec<&InputDeviceInfo> = all.iter().filter(|d| d.kind == DeviceKind::Mouse && remapper(d).is_none() && d.bus != "virtual").collect();
-    // (Two columns: the mice found, and what's for every mouse.)
+    // (Two columns: the mice found, and what's for every mouse, the
+    // computer's own pointing stick above it.)
     let mice = ui.collect(|ui| {
-        for d in &found {
+        for d in found.iter().filter(|d| !d.pointing_stick) {
             one_mouse(ui, d);
         }
     });
-    let every = ui.collect(|ui| every_mouse(ui, devices, found.is_empty()));
+    let every = ui.collect(|ui| {
+        for d in found.iter().filter(|d| d.pointing_stick) {
+            one_mouse(ui, d);
+        }
+        every_mouse(ui, devices, found.is_empty());
+    });
     if mice.is_empty() {
         for e in every {
             ui.add(e);
@@ -426,7 +435,8 @@ fn every_mouse(ui: &mut Ui, devices: Option<&[InputDeviceInfo]>, none: bool) {
 /// A mouse: what it is, how it's set up, what is known about it.
 fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
     let model = mice::identify(&d.name, d.vendor, d.product);
-    let title = model.map_or_else(|| d.name.clone(), mice::Model::full_name);
+    // (A ThinkPad's pointing stick, whatever the kernel named it.)
+    let title = if d.pointing_stick { "TrackPoint".to_owned() } else { model.map_or_else(|| d.name.clone(), mice::Model::full_name) };
     let key = mice::key(d.vendor, d.product);
     let s = ui.s.clone();
     ui.bbox(&title, |ui| {
@@ -446,7 +456,10 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
             "bluetooth" => facts.push("Bluetooth".into()),
             _ => {}
         }
-        if d.vendor != 0 {
+        if d.pointing_stick {
+            // (Its ids are PS/2's, the same for every one.)
+            facts = vec!["Built into the keyboard".into()];
+        } else if d.vendor != 0 {
             facts.push(key.clone());
         }
         ui.note(facts.join(" · "));
@@ -492,6 +505,9 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
                 });
             }
             Some(_) => ui.note(format!("{}.", class.describe())),
+        }
+        if d.pointing_stick {
+            ui.check("Scroll while the middle button is held", s.touchpad.pointing_stick_scroll, |s, v| s.touchpad.pointing_stick_scroll = v);
         }
         for q in model.map_or(&[][..], |m| m.quirks) {
             ui.add(StringView::new(format!("• {}", q.describe())).wrap(true));

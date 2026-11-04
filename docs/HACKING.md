@@ -5088,6 +5088,15 @@ own speed and acceleration (`profile: "custom"`); app_server's
 `configure_pointer` takes `mice::effective`. What gets in a mouse's way
 (a remapper's virtual pointer in the list, a receiver allowed to sleep)
 is shown with a button that opens Olo Doctor, which fixes it.
+A **pointing stick** (`InputDeviceInfo::pointing_stick`: named so,
+scrolled on a held button by libinput's own default, or the PS/2 mouse
+on a ThinkPad's keyboard controller, `isa0060/serio1`, which is its
+TrackPoint when the kernel didn't know it as one: the P1 Gen 9's comes
+as "PS/2 Logitech Mouse") is shown as the TrackPoint, at the top of the
+second column, and scrolls while its middle button is held
+(`TouchpadSettings::pointing_stick_scroll`, on: libinput's
+`ScrollMethod::OnButtonDown` on BTN_MIDDLE, which it gives only the
+sticks it knows).
 
 On MacBook pads (Apple MTP) app_server loads
 **Olo's touch filter** into its libinput: `touchpad.lua`, a libinput
