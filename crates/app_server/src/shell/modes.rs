@@ -81,8 +81,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         if was == WindowingMode::Focus && ws == showing {
             self.leave_focus(&shown, mode);
         }
-        crate::desktop::save_settings(&self.settings);
-        self.ipc.broadcast(olo_protocol::Event::SettingsChanged { settings: self.settings.clone() });
+        self.settings_changed();
         info!(workspace = ws, output = output.name(), ?mode, "windowing mode");
         self.auto.changed();
         mode

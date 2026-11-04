@@ -251,6 +251,7 @@ impl Power {
             caffeinated_lid: self.caffeinated_lid,
             keyboard_backlight: self.keyboard_level,
             locked: false,
+            rescue: false,
             auto_approve_until: None,
         }
     }
@@ -468,7 +469,13 @@ impl<B: Backend> AnvilState<B> {
     }
 
     pub fn power_status(&self) -> olo_protocol::PowerStatus {
-        olo_protocol::PowerStatus { screen_saver: self.saver.running(), locked: self.lock.locked(), auto_approve_until: self.auto_approve_until(), ..self.power.status() }
+        olo_protocol::PowerStatus {
+            screen_saver: self.saver.running(),
+            locked: self.lock.locked(),
+            rescue: self.rescue.is_some(),
+            auto_approve_until: self.auto_approve_until(),
+            ..self.power.status()
+        }
     }
 
     pub fn power_changed(&mut self) {
@@ -668,7 +675,18 @@ impl<B: Backend> AnvilState<B> {
             }
         }
         if std::mem::take(&mut self.power.unsaved) {
-            crate::desktop::save_settings(&self.settings);
+            match &mut self.rescue {
+                // In Rescue, into the person's own settings.
+                Some(r) => {
+                    for (key, c) in &self.settings.display.outputs {
+                        if c.brightness.is_some() {
+                            r.real.display.outputs.entry(key.clone()).or_default().brightness = c.brightness;
+                        }
+                    }
+                    crate::desktop::save_settings(&r.real);
+                }
+                None => crate::desktop::save_settings(&self.settings),
+            }
         }
     }
 

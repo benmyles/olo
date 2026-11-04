@@ -272,7 +272,8 @@ where
     let scale = output.current_scale().fractional_scale();
     let layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
         let map = layer_map_for_output(output);
-        map.layers().rev().filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
+        // (In Rescue, only Rescue's own.)
+        map.layers().rev().filter(|l| crate::rescue::shows_layer(l)).filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
     };
     let mut out = Vec::new();
     // A layer surface with its menus, or (`tree`) a surface alone.
@@ -387,7 +388,7 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + Send + 'static,
 {
-    let fullscreen = output.user_data().get::<FullscreenSurface>().is_some_and(|f| f.get().is_some());
+    let fullscreen = output.user_data().get::<FullscreenSurface>().is_some_and(|f| f.get().is_some()) && !crate::rescue::active();
     let warm = keep_warm(output, fullscreen).map(|e| OutputRenderElements::Custom(CustomRenderElements::Warm(e)));
     if warm_uploads() {
         crate::shell::deco::warm_tab_upload(renderer);
@@ -583,7 +584,8 @@ where
         add_indicator(&mut elements, indicator);
         return (elements, Color32F::new(r, g, b, a));
     }
-    if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()) {
+    // (In Rescue a full-screen window is put away with the rest.)
+    if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active()) {
         let scale = output.current_scale().fractional_scale().into();
         let window_render_elements: Vec<WindowRenderElement<R>> = AsRenderElements::<R>::render_elements(&window, renderer, (0, 0).into(), scale, 1.0);
 
@@ -601,9 +603,11 @@ where
         crate::shell::groups::mark_behind(space);
         crate::shell::modes::mark_covered(space);
         output_render_elements.extend(space_elements(renderer, space, output, overview));
-        // The wallpaper goes under everything, over the workspace colour.
+        // The wallpaper goes under everything, over the workspace colour
+        // (none in Rescue).
         let start = std::time::Instant::now();
-        output_render_elements.extend(crate::wallpaper::element(renderer, output).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
+        let wallpaper = if crate::rescue::active() { Vec::new() } else { crate::wallpaper::element(renderer, output) };
+        output_render_elements.extend(wallpaper.into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
         slow_elements(start, || "the wallpaper".into());
         part("gather: wallpaper", start);
 

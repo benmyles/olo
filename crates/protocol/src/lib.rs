@@ -21,6 +21,7 @@ pub mod mice;
 pub mod notifications;
 pub mod panels;
 pub mod performance;
+pub mod rescue;
 pub mod sharing;
 pub mod shortcuts;
 pub mod sound;
@@ -237,6 +238,15 @@ pub enum Request {
     },
     /// Lock the screen now.
     Lock,
+    /// Olo Rescue (⌃⇧⌘Delete, or Super for ⌘) on or off: on puts every
+    /// window away, runs the displays, keyboard and pointer on safe
+    /// settings and starts olo-rescue; off brings back what was, with
+    /// the person's own settings. Meanwhile `GetSettings`, `SetSettings`
+    /// and `ConfigureOutput` are the person's own settings, saved, and
+    /// applied as Rescue ends.
+    Rescue {
+        on: bool,
+    },
     /// Start the screen saver now (Preferences' Test).
     StartScreenSaver,
     /// Idle state, caffeinated mode and the built-in display's brightness.
@@ -886,6 +896,9 @@ pub struct PowerStatus {
     /// The screen is locked.
     #[serde(default)]
     pub locked: bool,
+    /// Olo Rescue is on ([`Request::Rescue`]).
+    #[serde(default)]
+    pub rescue: bool,
     /// Requests are approved without asking until then (seconds since
     /// the epoch; [`Request::SetAutoApprove`]).
     #[serde(default)]

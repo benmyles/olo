@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Olo Rescue
+
+*13:31* — Ctrl+Shift+Super+Delete, from anywhere: every window put away, the displays, keyboard and pointer on safe settings, and a screen of its own with a terminal (its own, in process), the processes to end, Preferences' panels (what's changed applies as Rescue ends), the displays' settings reset, Start Over, Log Out, Restart and Leave Rescue.
+
+![Olo Rescue](2026-11-04/133132-olo-rescue.png)
+
 ### Display: Colour, with HDR
 
 *11:01* — Preferences ▸ Display has a Colour tab beside the panel's facts: what the display shows (its gamut and light, from its EDID), whether sRGB's colours are shown accurately (converted into a wide display's gamut, the default) or vivid, and HDR on a display that takes it, with everything else's brightness and a band that reverts HDR unless kept. On a headless screen pretending to be a P3 HDR panel.

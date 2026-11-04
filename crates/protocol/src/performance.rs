@@ -240,6 +240,7 @@ pub fn tier(name: &str) -> Option<i32> {
         "olo-app-server" => Some(CORE_NICE),
         "olo-voice" | "olo-airpods" => Some(AUDIO_NICE),
         "olo-session" | "olo-deskbar" | "olo-wlproxy" => Some(SHELL_NICE),
+        "olo-rescue" => Some(RESCUE_NICE),
         _ => None,
     }
 }
@@ -259,6 +260,10 @@ pub const AUDIO_THREAD: &str = "data-loop";
 pub const AUDIO_RT_PRIORITY: u32 = 20;
 /// The session's, Deskbar's and the proxy's.
 pub const SHELL_NICE: i32 = -5;
+/// Olo Rescue's (and the shell in it): the highest rtkit gives, over
+/// the compositor's even, as it's what's left when something has taken
+/// the computer. It sleeps until the person does something.
+pub const RESCUE_NICE: i32 = -15;
 
 /// How busy the scheduler takes a frame's thread to be, at least, while
 /// it runs (its `uclamp.min`, of 1024): app_server's main thread (every

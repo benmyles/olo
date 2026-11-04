@@ -75,6 +75,10 @@ const REAL_SHELL: &[&[&str]] = &[
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
+/// app_server crashing this often in a minute starts again in Olo Rescue
+/// (safe display, keyboard and pointer settings: a setting may be what
+/// it can't start with), where the person can see, and fix it.
+const RESCUE_AFTER: usize = 2;
 
 fn log(msg: impl AsRef<str>) {
     eprintln!("olo-session: {}", msg.as_ref());
@@ -189,6 +193,8 @@ struct Session {
     lock: std::fs::File,
     backend: Vec<String>,
     server: Child,
+    /// The next app_server starts in Olo Rescue (`RESCUE_AFTER`).
+    rescue_next: bool,
     shell: Vec<Child>,
     /// Programs an upgrade may have left on the old version: looked at
     /// 20 s after (asked again) and 90 s after (stopped).
@@ -262,6 +268,7 @@ impl Session {
             lock,
             backend,
             server: Child { argv: Vec::new(), pid: 0, crashes: VecDeque::new() },
+            rescue_next: false,
             shell: Vec::new(),
             stale_check: None,
             binary: own_binary(),
@@ -339,6 +346,7 @@ impl Session {
             lock,
             backend: r.backend,
             server: r.server,
+            rescue_next: false,
             shell: r.shell,
             stale_check: r.stale.map(|(at, stage)| (Instant::now() - Duration::from_secs(now_secs().saturating_sub(at)), stage)),
             binary: own_binary(),
@@ -433,6 +441,10 @@ impl Session {
             fds.push(proxied.as_raw_fd());
         }
         let mut env = vec![("OLO_WAYLAND_FD", fds[0].to_string()), ("OLO_IPC_FD", fds[1].to_string())];
+        if std::mem::take(&mut self.rescue_next) {
+            // (olo_protocol::rescue::START_ENV.)
+            env.push(("OLO_RESCUE", "1".into()));
+        }
         if let Some(fd) = fds.get(2) {
             env.push(("OLO_WAYLAND_PROXY_FD", fd.to_string()));
         }
@@ -794,6 +806,10 @@ impl Session {
                 if !note_crash(&mut self.server) {
                     log("app_server keeps crashing; giving up");
                     self.shutdown(1);
+                }
+                if self.server.crashes.len() >= RESCUE_AFTER {
+                    log("app_server keeps crashing; starting it in Olo Rescue");
+                    self.rescue_next = true;
                 }
                 self.start_server();
             } else if let Some(i) = self.retired.iter().position(|&p| p == pid) {

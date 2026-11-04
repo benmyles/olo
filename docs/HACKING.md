@@ -8694,6 +8694,89 @@ OLO_PAM_CONFDIR=$dir OLO_PAM_SERVICE=exec tools/dev/tsession start lk --light
 tools/dev/tsession ipc lk '{"type":"lock"}'; tools/dev/tsession type lk secret; tools/dev/tsession key lk 28
 ```
 
+## Olo Rescue (app_server rescue.rs, apps/rescue, `olo_protocol::rescue`)
+
+Holding Ctrl+Shift+Super and pressing Delete (or Backspace, a Mac's
+delete; either side's modifiers), from anywhere, whatever has the
+keyboard, brings Olo Rescue: for when something has gone wrong and the
+person can't see or can't drive the desktop. app_server reads the chord
+on its input thread from the keys' physical codes, first of all
+(`physical_key`: before the keymap and its profile, shortcuts other
+programs took, keyboard hints, the overview, a layer surface that takes
+every key), so no setting, remapping or program can hide it; the
+Delete is seen by nobody, and Super let go after it is no tap (no
+palette). It costs a key 1.4 ns, and checking whether Rescue is on (each
+layer surface, each frame and pointer move) 0.32 ns
+(`rescue::tests::rescue_cost`).
+
+In Rescue:
+
+* **Everything is put away.** Each display shows a workspace of its own,
+  one past the person's (the count is one more meanwhile); only
+  Rescue's own layer surfaces (namespace `olo-rescue`) are drawn,
+  reached or given the keyboard (no Deskbar, desktop, banners or a
+  layer that took every key), nor a full-screen window, nor the
+  wallpaper. Shortcuts that would leave the workspace or open what it
+  doesn't show are off (`rescue::in_rescue`: other workspaces, the
+  overview, Show Desktop, hiding, the palette, hints, Find, a
+  screenshot's selection); ⌘Tab switches among what's open in Rescue.
+  Windows opened in Rescue (Preferences, say) open on it, over Rescue's
+  surface (it's on the Bottom layer).
+* **app_server runs on safe settings** (`rescue::safe`): each display on
+  its own at its preferred mode and the largest of 2×, 1.5× and 1× that
+  leaves it 1280×800 points (`safe_scale`: Olo's default 2× is too big
+  for a 1080p monitor), unrotated, unmirrored, no VRR, HDR or Vivid;
+  the built-in display the main one; night light off, no wallpaper, no
+  screen saver; a screen at a quarter of its brightness or less
+  brightened (and kept so); the keyboard's layout, variant, profile and
+  terminal and browser apps kept (it types, and shortcuts are where the
+  hands know them), its repeat, xkb options and hints, and the
+  pointer's settings, as Olo comes.
+* **The person's own settings are what clients see and change**:
+  `GetSettings`, `SettingsChanged` and `Outputs` tell them (Outputs:
+  each display's saved scale, rotation, mode, place, mirroring and
+  colours, so Preferences ▸ Display shows what broke), and
+  `SetSettings` and `ConfigureOutput` change them, saved at once, applied
+  as Rescue ends (`AnvilState::told_settings`, `settings_changed`). So
+  agents and tools reading `Outputs` in Rescue get the saved scale, not
+  the safe one on screen (tsession's crops are then off).
+* **olo-rescue** (apps/rescue) covers each display with a layer surface:
+  on the main one, Rescue itself, on the others "Rescue is on …" and
+  Show Rescue Here (only Rescue's takes the keyboard, and app_server
+  gives it it as it shows). It asks rtkit for `RESCUE_NICE` (−15, over
+  the compositor even) before it starts a thread, and depends on nothing
+  of the session but app_server: a terminal of its own (term.rs:
+  alacritty_terminal's emulator and PTY in process, `bash --noprofile
+  --norc` so a broken profile or login shell can't take it; ⌃⇧C and
+  ⌃⇧V, which the keymap makes ⌘C and ⌘V, as Rescue is a terminal to it;
+  the wheel and ⇧Page Up/Down for the scrollback; selection by the
+  pointer; deliberately apart from Terminal, no olo-termd or saved
+  windows), the person's processes (busiest first, read on a thread
+  every two seconds while it's up; End and Force End), Preferences'
+  panels (`olo_xdg::apps::PREFERENCE_PANELS`; what's changed applies as
+  Rescue ends), Reset Display Settings… (every display Olo's own again,
+  brightness kept), Start Over (`olo-session reload`: Rescue stays on),
+  Log Out… and Restart…, and Leave Rescue.
+
+Pressed in Rescue, the keys bring olo-rescue back if it had gone. While
+locked they change the displays (a lock screen must be seen to be
+unlocked) and olo-rescue comes once the screen is unlocked: Rescue is
+no way past the lock. Leaving (`Request::Rescue { on: false }`, Leave
+Rescue) brings the person's settings back, each display's mode,
+colours and VRR, and what was opened in Rescue onto the workspace its
+display showed before. An app_server restarted in place in Rescue stays
+in it, each display's workspace from before kept (handover.rs), and the
+session starts app_server in Rescue (`OLO_RESCUE`) once it has crashed
+twice in a minute, as a setting may be what it can't start with.
+
+Agents: `{"type":"rescue","on":true}` and `false`, and `rescue` in
+`PowerStatus` (and `PowerChanged`). `tools/dev/rescue-check` checks it
+all in headless sessions: the keys (both sides, Delete and Backspace),
+its shell taking the keyboard at once, each display's scale (2×, 1×,
+1.5×) and the layout review on each, Leave Rescue clicked (the window
+and the saved scale back), the keys while locked, and a restart in
+place.
+
 ## Passwords (apps/passwords, crates/onepassword)
 
 **Searching**: the toolbar's `SearchField` and a `FilterBar` over the

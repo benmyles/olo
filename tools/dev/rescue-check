@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""Olo Rescue, end to end, in headless sessions of its own.
+
+  rescue-check
+
+Release builds (`cargo build --release -p app_server -p olo-rescue -p
+olo-session -p olo-styled-edit`). Checks, exiting 1 on a mismatch:
+
+  the keys    Ctrl+Shift+Super+Delete (and Backspace) from a window that
+              has the keyboard: Rescue on, the window put away, Rescue's
+              surface on each display (its full one on the first, "Rescue
+              is on…" on the other), the Delete seen by nobody;
+  its shell   typed into at once: a file it makes appears;
+  displays    a 2560×1600 at 2×, a 1920×1080 at 1×, a 2560×1440 at
+              1.5× (each display's own scale, whatever was set: one set
+              to 1.5× meanwhile is saved, not shown, and comes back as
+              Rescue ends); the layout review finds nothing on any;
+  leaving     Leave Rescue clicked: the window back where it was, the
+              displays as they were;
+  locked      the keys while locked: the displays changed, nothing of
+              Rescue's over the lock;
+  restarting  app_server restarted in place in Rescue: still in it, and
+              leaving puts each display back on its workspace.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
+NAME = "rescuec"
+OUT = "/var/tmp/olo-rescue-check"
+CHORD = ["29", "42", "125", "111"]
+failures = []
+
+
+def ts(*args):
+    env = dict(os.environ, TSESSION_PROFILE="release")
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID"):
+        env.pop(k, None)
+    return subprocess.run(TSESSION + list(args), capture_output=True, text=True, env=env)
+
+
+def ipc(req):
+    out = ts("ipc", NAME, json.dumps(req)).stdout.strip()
+    try:
+        return json.loads(out.replace("'", '"')) if out else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def check(ok, what):
+    print(f"  {'ok ' if ok else 'BAD'} {what}")
+    if not ok:
+        failures.append(what)
+
+
+def rescue_on():
+    return ipc({"type": "power_status"}).get("status", {}).get("rescue")
+
+
+def windows():
+    return [(w["app_id"], w.get("workspace")) for w in ipc({"type": "list_windows"}).get("windows", [])]
+
+
+def review():
+    out = ts("review", NAME, "--all").stdout
+    rescue = [l for l in out.splitlines() if l.startswith("Olo Rescue")]
+    return rescue, all("0 findings" in l for l in rescue) and "nothing found" in out
+
+
+def start(screens, session=False):
+    ts("stop", NAME)
+    ts("start", NAME, screens, *(["--session"] if session else []))
+    ts("run", NAME, "olo-styled-edit")
+    time.sleep(2.5)
+
+
+def main():
+    os.makedirs(OUT, exist_ok=True)
+    try:
+        print("one display, 2560×1600:")
+        start("2560x1600")
+        ipc({"type": "configure_output", "name": "HEADLESS-1", "config": {"scale": 1.5}})
+        ts("key", NAME, *CHORD)
+        time.sleep(3)
+        check(rescue_on() is True, "the keys: Rescue on")
+        ws = dict(windows())
+        check(ws.get("olo.styled-edit") == 0, f"the window put away, on its workspace: {ws}")
+        shot = os.path.join(OUT, "typed")
+        if os.path.exists(shot):
+            os.remove(shot)
+        ts("type", NAME, f"touch {shot}")
+        ts("key", NAME, "28")
+        time.sleep(1)
+        check(os.path.exists(shot), "its shell has the keyboard at once")
+        rescue, clean = review()
+        check(rescue == ["Olo Rescue (1280×800 at 2×): 0 findings"], f"at 2× (its own, 1.5× set): {rescue}")
+        check(clean, "the layout review finds nothing")
+        # Leave Rescue, as clicked (its button, top right).
+        ts("click", NAME, "1225", "26")
+        time.sleep(2)
+        check(rescue_on() is False, "Leave Rescue: off")
+        outputs = ipc({"type": "outputs"}).get("outputs", [])
+        check([o["scale"] for o in outputs] == [1.5], f"the display's own scale back: {[o['scale'] for o in outputs]}")
+        check(dict(windows()).get("olo.styled-edit") == 0, "the window back")
+
+        print("locked:")
+        ipc({"type": "lock"})
+        time.sleep(2)
+        ts("key", NAME, *CHORD)
+        time.sleep(2)
+        st = ipc({"type": "power_status"}).get("status", {})
+        check(st.get("locked") and st.get("rescue"), "the keys while locked: Rescue's displays")
+        log = open(os.path.join("/tmp/olo-dev", NAME, "app_server.log")).read()
+        check(log.count("olo-rescue started") == 1, "nothing of Rescue's over the lock")
+        ipc({"type": "rescue", "on": False})
+
+        print("two displays, 1920×1080 and 2560×1440:")
+        start("1920x1080,2560x1440")
+        ts("key", NAME, "29", "42", "126", "14")
+        time.sleep(3)
+        check(rescue_on() is True, "the keys (right Super, Backspace): Rescue on")
+        rescue, clean = review()
+        check(sorted(rescue) == ["Olo Rescue (1707×960 at 1.5×): 0 findings", "Olo Rescue (1920×1080 at 1×): 0 findings"], f"each display at its own scale: {rescue}")
+        check(clean, "the layout review finds nothing")
+        ipc({"type": "rescue", "on": False})
+
+        print("restarted in place:")
+        start("2560x1600", session=True)
+        ipc({"type": "switch_workspace", "index": 1})
+        ipc({"type": "rescue", "on": True})
+        time.sleep(2)
+        ts("reload", NAME)
+        time.sleep(6)
+        check(rescue_on() is True, "still in Rescue after the restart")
+        check(dict(windows()).get("olo.styled-edit") == 0, "the window still put away")
+        ipc({"type": "rescue", "on": False})
+        time.sleep(1.5)
+        current = ipc({"type": "workspaces"}).get("current")
+        check(current == 1, f"leaving: the workspace it showed before ({current})")
+    finally:
+        if rescue_on():
+            ipc({"type": "rescue", "on": False})
+        ts("stop", NAME)
+    if failures:
+        print(f"{len(failures)} mismatched: {', '.join(failures)}")
+        sys.exit(1)
+    print("Rescue works as it should")
+
+
+if __name__ == "__main__":
+    main()

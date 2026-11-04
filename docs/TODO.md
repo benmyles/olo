@@ -7,28 +7,8 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Olo Rescue: Ctrl+Shift+Super+Delete, always** (Ben, 2026-11-04):
-  "an Olo Rescue app where, at any time ever in olo if you hold down
-  ctrl+shift+super+delete then olo brings up a special, full screen
-  rescue mode where the user gets a terminal as well as rescue
-  functionality like killing processes and so on. this should run on
-  its own thread with the highest priority and be as isolated from
-  everything else as possible so that we minimize the chance that
-  whatever problem the user is experiencing won't prevent them from
-  using olo rescue. it should also switch -- just for olo rescue -- to a
-  safe/simple configuration for displays etc. so that it can be used as
-  a way to recover from bad display settings that left them unable to
-  see anything. ideally they can also open any of the olo preferences in
-  this mode too and change things there in case it was a preference that
-  broke things." The chord caught in app_server's input before
-  anything else (as the lock screen's), a realtime thread of its own;
-  the displays put to a known-good mode (their preferred mode, sRGB, no
-  HDR, no VRR, 100% or 200%, no mirroring) for Rescue only; a terminal,
-  processes to end, and Preferences' panels, in a session that doesn't
-  depend on what may be broken; leaving it puts everything back.
-
 - **Preferences ▸ Backup: choose what goes in, exporting and importing**
-  (Ben, 2026-11-04; next, after Rescue): "in prefs -> backups made it
+  (Ben, 2026-11-04; next): "in prefs -> backups made it
   so that i can choose each type of thing i want included in an export
   and when importing. e.g. maybe i have an export with everything but i
   just want to include token pooler settings/accounts for my import".
@@ -1235,6 +1215,41 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Olo Rescue: Ctrl+Shift+Super+Delete, always**~~ (Ben, 2026-11-04):
+  "an Olo Rescue app where, at any time ever in olo if you hold down
+  ctrl+shift+super+delete then olo brings up a special, full screen
+  rescue mode where the user gets a terminal as well as rescue
+  functionality like killing processes and so on. this should run on
+  its own thread with the highest priority and be as isolated from
+  everything else as possible so that we minimize the chance that
+  whatever problem the user is experiencing won't prevent them from
+  using olo rescue. it should also switch -- just for olo rescue -- to a
+  safe/simple configuration for displays etc. so that it can be used as
+  a way to recover from bad display settings that left them unable to
+  see anything. ideally they can also open any of the olo preferences in
+  this mode too and change things there in case it was a preference that
+  broke things." The chord caught in app_server's input before
+  anything else (as the lock screen's), a realtime thread of its own;
+  the displays put to a known-good mode (their preferred mode, sRGB, no
+  HDR, no VRR, 100% or 200%, no mirroring) for Rescue only; a terminal,
+  processes to end, and Preferences' panels, in a session that doesn't
+  depend on what may be broken; leaving it puts everything back. *Done*: app_server's rescue.rs reads the keys first of all on
+  its input thread (1.4 ns a key); every window put away on a
+  workspace of Rescue's own; the displays, keyboard and pointer on safe
+  settings (each display at its preferred mode and a scale that leaves
+  it 1280×800 points, no HDR, VRR, rotation or mirroring, night light
+  off, a too-dim screen brightened) while the person's own are what
+  Preferences shows and changes, applied as Rescue ends; olo-rescue
+  (apps/rescue, at rtkit's highest priority) with a terminal of its own
+  in process (no olo-termd), the processes to end, Preferences' panels,
+  Reset Display Settings, Start Over, Log Out, Restart and Leave Rescue;
+  no way past the lock; kept through a restart in place, and the
+  session starts app_server in Rescue after two crashes in a minute.
+  HACKING's "Olo Rescue"; `tools/dev/rescue-check` (17 checks pass).
+  Still to see on the machine itself: rtkit's priority (refused with
+  EBUSY in test sessions, where many programs ask at once) and the
+  keys on the built-in keyboard and the Magic Keyboard.
 
 - ~~**Voice processing's input model: SIMD throughout, lowest latency**~~
   (Ben, 2026-11-04: "ensure that the voice processing model for input is

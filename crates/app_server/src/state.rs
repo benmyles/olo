@@ -275,6 +275,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// display unplugged and back shows the one it did): every display
     /// has workspaces of its own. One not here shows its first.
     pub showing: HashMap<String, u32>,
+    /// Olo Rescue, while it's on (rescue.rs), and its keys followed.
+    pub rescue: Option<crate::rescue::Rescue>,
+    pub rescue_chord: crate::rescue::Chord,
     /// The display a workspace was last switched on (its connector): the
     /// active one while no window has the focus.
     pub last_display: Option<String>,
@@ -1181,6 +1184,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             overview: None,
             parked: Default::default(),
             showing: HashMap::new(),
+            rescue: None,
+            rescue_chord: Default::default(),
             last_display: None,
             told_active: None,
             clipboard_helpers: Vec::new(),

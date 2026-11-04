@@ -25,6 +25,14 @@ fn bogus_error(m: &tracing::Metadata<'_>) -> bool {
 // Allow in this function because of existing usage
 #[allow(clippy::uninlined_format_args)]
 fn main() {
+    // Started in Olo Rescue (the session's, after app_server kept
+    // failing): taken out of the environment, before any thread is, so
+    // what it starts (and itself, restarting) doesn't.
+    if std::env::var_os(olo_protocol::rescue::START_ENV).is_some() {
+        // SAFETY: no other thread yet.
+        unsafe { std::env::remove_var(olo_protocol::rescue::START_ENV) };
+        app_server::rescue::start_in_rescue();
+    }
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};

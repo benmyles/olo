@@ -67,6 +67,7 @@ pub fn layer_menus(output: &Output, on: &[Layer]) -> Vec<(WlSurface, Point<i32, 
     let map = layer_map_for_output(output);
     on.iter()
         .flat_map(|&layer| map.layers_on(layer).rev())
+        .filter(|l| crate::rescue::shows_layer(l))
         .filter_map(|l| map.layer_geometry(l).map(|g| (l, g.loc)))
         .flat_map(|(l, at)| PopupManager::popups_for_surface(l.wl_surface()).map(move |(p, offset)| (p.wl_surface().clone(), at + offset - p.geometry().loc)))
         .collect()
@@ -279,17 +280,23 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         if smithay::wayland::compositor::get_role(surface) != Some(LAYER_SURFACE_ROLE) || self.lock.locked() {
             return;
         }
-        let shows = with_states(surface, |states| {
+        let (came, exclusive) = with_states(surface, |states| {
             let shown = states.data_map.get::<RendererSurfaceStateUserData>().is_some_and(|d| d.lock().unwrap().buffer().is_some());
             let was = states.data_map.get_or_insert(|| LayerShown(std::cell::Cell::new(false))).0.replace(shown);
             let mut cached = states.cached_state.get::<LayerSurfaceCachedState>();
             let c = cached.current();
-            shown && !was && c.keyboard_interactivity == KeyboardInteractivity::Exclusive && matches!(c.layer, Layer::Top | Layer::Overlay)
+            (shown && !was, c.keyboard_interactivity == KeyboardInteractivity::Exclusive && matches!(c.layer, Layer::Top | Layer::Overlay))
         });
-        if !shows {
+        if !came {
             return;
         }
         let Some(layer) = self.space.outputs().find_map(|o| layer_map_for_output(o).layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).cloned()) else { return };
+        // In Rescue, only Rescue's own; and Rescue's that takes the
+        // keyboard (the one with its terminal) as it comes, whatever had it.
+        let rescue = crate::rescue::active() && layer.namespace() == olo_protocol::rescue::NAMESPACE && layer.can_receive_keyboard_focus();
+        if !crate::rescue::shows_layer(&layer) || !(exclusive || rescue) {
+            return;
+        }
         let keyboard = self.seat.get_keyboard().unwrap();
         keyboard.set_focus(self, Some(layer.into()), smithay::utils::SERIAL_COUNTER.next_serial());
     }

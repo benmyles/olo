@@ -23,6 +23,10 @@ struct Handover {
     caffeinated_until: Option<u64>,
     caffeinated_lid: bool,
     approve_until: Option<u64>,
+    /// In Olo Rescue (it goes on): the workspace each display showed
+    /// before it, by the display's key.
+    #[serde(default)]
+    rescue: Option<std::collections::HashMap<String, u32>>,
 }
 
 fn paths() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
@@ -38,8 +42,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Some((state_path, secret_path)) = paths() else { return };
         let (caffeinated, caffeinated_until, caffeinated_lid) = self.power.caffeine_handover();
         let approve = self.auto_approve_handover();
-        let h = Handover { caffeinated, caffeinated_until, caffeinated_lid, approve_until: approve.as_ref().and_then(|(t, _)| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()) };
-        if !h.caffeinated && h.approve_until.is_none() {
+        let h = Handover {
+            caffeinated,
+            caffeinated_until,
+            caffeinated_lid,
+            approve_until: approve.as_ref().and_then(|(t, _)| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()),
+            rescue: self.rescue.as_ref().map(|r| r.before.clone()),
+        };
+        if !h.caffeinated && h.approve_until.is_none() && h.rescue.is_none() {
             let _ = std::fs::remove_file(&state_path);
             let _ = std::fs::remove_file(&secret_path);
             return;
@@ -61,6 +71,11 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// Read as this app_server starts, and taken on where still due.
     pub fn restore_handover(&mut self) {
+        // Started in Rescue (`OLO_RESCUE`): once the displays are up.
+        if crate::rescue::starts_in_rescue() {
+            info!("starting in Olo Rescue");
+            self.enter_rescue_soon(None);
+        }
         let Some((state_path, secret_path)) = paths() else { return };
         let text = std::fs::read_to_string(&state_path);
         let secret = std::fs::read_to_string(&secret_path);
@@ -85,5 +100,15 @@ impl<B: Backend + 'static> AnvilState<B> {
         {
             self.restore_auto_approve(UNIX_EPOCH + Duration::from_secs(until), secret);
         }
+        if let Some(before) = h.rescue {
+            info!("in Olo Rescue, as before the restart");
+            self.enter_rescue_soon(Some(before));
+        }
+    }
+
+    /// Into Rescue once the loop runs (the displays set up by then), the
+    /// displays' workspaces from before it as they were (`before`).
+    fn enter_rescue_soon(&mut self, before: Option<std::collections::HashMap<String, u32>>) {
+        self.handle.insert_idle(move |state| state.enter_rescue_from(before));
     }
 }

@@ -7386,6 +7386,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-rescue"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "libc",
+ "olo-protocol",
+ "olo-system",
+ "olo-theme",
+ "olo-ui",
+ "olo-xdg",
+ "tracing",
+]
+
+[[package]]
 name = "olo-richtext"
 version = "0.1.0"
 dependencies = [

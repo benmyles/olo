@@ -1877,8 +1877,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     self.settings.tiling.set_mode(ws, &crate::desktop::display_key(&o), was);
                 }
                 self.auto.forget(ws, &outputs);
-                crate::desktop::save_settings(&self.settings);
-                self.ipc.broadcast(olo_protocol::Event::SettingsChanged { settings: self.settings.clone() });
+                self.settings_changed();
                 self.undo_arrangement();
                 self.show_indicator(crate::osd::Indicator::Mode(was));
                 info!(?was, "undid turning auto-tiling on");

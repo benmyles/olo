@@ -363,6 +363,10 @@ impl<B: Backend + 'static> SessionLockHandler for AnvilState<B> {
             let _ = std::fs::remove_file(p);
         }
         self.power_changed();
+        // Rescue asked for while locked: its window now.
+        if self.rescue.is_some() {
+            self.start_rescue_app();
+        }
     }
 
     fn new_surface(&mut self, surface: LockSurface, output: WlOutput) {

@@ -1,0 +1,19 @@
+[package]
+name = "olo-rescue"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-rescue"
+path = "src/main.rs"
+
+[dependencies]
+olo-ui.workspace = true
+olo-theme.workspace = true
+olo-protocol.workspace = true
+olo-system.workspace = true
+olo-xdg.workspace = true
+tracing.workspace = true
+alacritty_terminal = "0.26"
+libc = "0.2"

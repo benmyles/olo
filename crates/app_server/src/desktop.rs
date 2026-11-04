@@ -312,6 +312,64 @@ pub(crate) fn save_settings(settings: &Settings) {
     }
 }
 
+/// A display's saved entry with what `config` sets.
+fn update_entry(entry: &mut OutputConfig, config: &OutputConfig) {
+    if let Some(mode) = &config.mode {
+        entry.mode = Some(mode.clone());
+    }
+    if let Some(scale) = config.scale {
+        entry.scale = Some(scale.clamp(0.5, 4.0));
+    }
+    if let Some(pos) = config.position {
+        entry.position = Some(pos);
+    }
+    if let Some(r) = config.rotation.filter(|r| olo_protocol::ROTATIONS.contains(r)) {
+        entry.rotation = Some(r);
+    }
+    if let Some(m) = &config.mirror {
+        entry.mirror = (!m.is_empty()).then(|| m.clone());
+    }
+    // The panel's corrections; Unknown, Unknown and Auto give it back
+    // to Olo's own.
+    if let Some(s) = config.subpixel {
+        entry.subpixel = (s != olo_protocol::panels::Subpixel::Unknown).then_some(s);
+    }
+    if let Some(t) = config.technology {
+        entry.technology = (t != olo_protocol::panels::Technology::Unknown).then_some(t);
+    }
+    if let Some(t) = config.text {
+        entry.text = (t != olo_protocol::panels::TextMode::Auto).then_some(t);
+    }
+    if let Some(on) = config.vrr {
+        entry.vrr = on.then_some(true);
+    }
+    // Its colours: Accurate and SDR's 203 cd/m² aren't kept (the
+    // defaults); HDR only while on.
+    if let Some(m) = config.color_mode {
+        entry.color_mode = (m != olo_protocol::color::ColorMode::Accurate).then_some(m);
+    }
+    if let Some(on) = config.hdr {
+        entry.hdr = on.then_some(true);
+    }
+    if let Some(n) = config.sdr_nits {
+        let n = n.clamp(crate::color::MIN_SDR_NITS, crate::color::MAX_SDR_NITS);
+        entry.sdr_nits = ((n - olo_protocol::color::SDR_NITS).abs() > 0.5).then_some(n);
+    }
+}
+
+/// Brightness as it's set (SetOutputBrightness, the keys) in `current`,
+/// not from a client's possibly older copy.
+fn keep_brightness(settings: &mut Settings, current: &Settings) {
+    for c in settings.display.outputs.values_mut() {
+        c.brightness = None;
+    }
+    for (key, c) in &current.display.outputs {
+        if c.brightness.is_some() {
+            settings.display.outputs.entry(key.clone()).or_default().brightness = c.brightness;
+        }
+    }
+}
+
 /// `output` is set to mirror another.
 fn entry_mirrors(display: &olo_protocol::DisplaySettings, output: &Output) -> bool {
     display.config(&display_key(output), &output.name()).is_some_and(|c| c.mirror.as_ref().is_some_and(|m| !m.is_empty()))
@@ -632,6 +690,10 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// The workspace `output` shows (each display has its own).
     pub fn showing(&self, output: &Output) -> u32 {
+        // In Rescue, every display its workspace of nothing.
+        if let Some(r) = &self.rescue {
+            return r.workspace;
+        }
         let last = self.settings.workspace_count.max(1) - 1;
         self.showing_raw(output).min(last)
     }
@@ -1189,6 +1251,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Show workspace `index` on `output`: its windows there go, that
     /// workspace's come; the other displays stay as they are.
     pub fn switch_workspace_on(&mut self, output: &Output, index: u32) {
+        // Rescue keeps to its own (rescue.rs).
+        if self.rescue.is_some() {
+            info!(workspace = index, "not in Olo Rescue");
+            return;
+        }
         let count = self.settings.workspace_count.max(1);
         let index = index.min(count - 1);
         self.last_display = Some(output.name());
@@ -1515,6 +1582,34 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             })
             .collect();
+        // In Olo Rescue: the person's own settings, as Preferences shows
+        // and changes them, not the safe ones the displays have now.
+        if let Some(r) = &self.rescue {
+            let d = &r.real.display;
+            let keys: Vec<(String, String)> = infos.iter().map(|i| (i.key.clone(), i.name.clone())).collect();
+            let named = |key: &str| keys.iter().find(|(k, n)| k == key || n == key).map(|(_, n)| n.clone());
+            for info in &mut infos {
+                let c = d.config(&info.key, &info.name).unwrap_or_default();
+                info.scale = d.scale_for(&info.key, &info.name);
+                info.rotation = d.rotation_for(&info.key, &info.name);
+                if let Some(m) = c.mode {
+                    info.current_mode = Some(m);
+                }
+                if let Some(p) = c.position {
+                    info.position = p;
+                }
+                info.mirror_of = c.mirror.as_deref().filter(|m| !m.is_empty()).and_then(named);
+                info.vrr = info.vrr.map(|_| c.vrr == Some(true));
+                info.color_mode = info.color_mode.map(|_| c.color_mode.unwrap_or_default());
+                info.hdr = info.hdr.map(|_| c.hdr == Some(true));
+                info.sdr_nits = c.sdr_nits.unwrap_or(olo_protocol::color::SDR_NITS);
+            }
+            if d.main.is_some() {
+                for info in &mut infos {
+                    info.main = d.is_main(&info.key, &info.name);
+                }
+            }
+        }
         // Numbered from the main display, once all are known.
         for i in 0..infos.len() {
             infos[i].number = olo_protocol::display_number(&infos, &infos[i].name);
@@ -1722,6 +1817,19 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn configure_output(&mut self, name: &str, config: OutputConfig) -> Result<(), String> {
         let output = self.space.outputs().chain(self.mirrors.iter()).find(|o| o.name() == name).cloned().ok_or_else(|| format!("no output named {name}"))?;
         let before = self.space.output_geometry(&output);
+        // In Olo Rescue: the person's own settings, saved, applied as it
+        // ends (the displays stay on Rescue's).
+        if let Some(r) = &mut self.rescue {
+            if let Some(m) = &config.mode
+                && !output.modes().iter().any(|o| (o.size.w, o.size.h, o.refresh) == (m.width, m.height, m.refresh))
+            {
+                return Err(format!("{name} doesn't offer {}×{}", m.width, m.height));
+            }
+            update_entry(r.real.display.config_mut(&display_key(&output), name), &config);
+            save_settings(&r.real);
+            self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+            return Ok(());
+        }
         if let Some(mode) = &config.mode {
             // Resolution goes through the backend (DRM, or headless for tests).
             let want = smithay::output::Mode { size: (mode.width, mode.height).into(), refresh: mode.refresh };
@@ -1733,50 +1841,11 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.backend_data.reset_buffers(&output);
             }
         }
-        let entry = self.settings.display.config_mut(&display_key(&output), name);
-        if let Some(mode) = config.mode {
-            entry.mode = Some(mode);
-        }
-        if let Some(scale) = config.scale {
-            entry.scale = Some(scale.clamp(0.5, 4.0));
-        }
-        if let Some(pos) = config.position {
-            entry.position = Some(pos);
-        }
-        if let Some(r) = config.rotation.filter(|r| olo_protocol::ROTATIONS.contains(r)) {
-            entry.rotation = Some(r);
-        }
-        if let Some(m) = config.mirror {
-            entry.mirror = (!m.is_empty()).then_some(m);
-        }
-        // The panel's corrections; Unknown, Unknown and Auto give it back
-        // to Olo's own.
-        if let Some(s) = config.subpixel {
-            entry.subpixel = (s != olo_protocol::panels::Subpixel::Unknown).then_some(s);
-        }
-        if let Some(t) = config.technology {
-            entry.technology = (t != olo_protocol::panels::Technology::Unknown).then_some(t);
-        }
-        if let Some(t) = config.text {
-            entry.text = (t != olo_protocol::panels::TextMode::Auto).then_some(t);
-        }
+        update_entry(self.settings.display.config_mut(&display_key(&output), name), &config);
         if let Some(on) = config.vrr {
-            entry.vrr = on.then_some(true);
             self.backend_data.set_vrr(&output, on)?;
         }
-        // Its colours: Accurate and SDR's 203 cd/m² aren't kept (the
-        // defaults); HDR only while on.
         let colors = config.color_mode.is_some() || config.hdr.is_some() || config.sdr_nits.is_some();
-        if let Some(m) = config.color_mode {
-            entry.color_mode = (m != olo_protocol::color::ColorMode::Accurate).then_some(m);
-        }
-        if let Some(on) = config.hdr {
-            entry.hdr = on.then_some(true);
-        }
-        if let Some(n) = config.sdr_nits {
-            let n = n.clamp(crate::color::MIN_SDR_NITS, crate::color::MAX_SDR_NITS);
-            entry.sdr_nits = ((n - olo_protocol::color::SDR_NITS).abs() > 0.5).then_some(n);
-        }
         if colors {
             self.apply_color(&output)?;
         }
@@ -1820,19 +1889,30 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     // ---- settings ------------------------------------------------------
 
+    /// A client's settings (Preferences'): applied and saved; in Olo
+    /// Rescue, the person's own changed and saved, applied as it ends.
     pub fn set_settings(&mut self, mut settings: Settings) {
         // A backup restored from before keyboard profiles.
         settings.migrate();
-        // Brightness is kept as it's set (SetOutputBrightness, the keys),
-        // not from a client's possibly older copy.
-        for c in settings.display.outputs.values_mut() {
-            c.brightness = None;
+        // Windowing modes are kept as they are chosen, not from a client's
+        // copy (which may be older).
+        let own = self.rescue.as_ref().map_or(&self.settings, |r| &r.real);
+        settings.tiling.modes = own.tiling.modes.clone();
+        settings.tiling.auto.clear();
+        if let Some(r) = &mut self.rescue {
+            keep_brightness(&mut settings, &r.real);
+            r.real = settings;
+            self.settings_changed();
+            return;
         }
-        for (key, c) in &self.settings.display.outputs {
-            if c.brightness.is_some() {
-                settings.display.outputs.entry(key.clone()).or_default().brightness = c.brightness;
-            }
-        }
+        self.apply_settings(settings);
+        save_settings(&self.settings);
+    }
+
+    /// `settings` live (all but their brightness, which is kept as it's
+    /// set), from what's live now: only what changed is done again.
+    pub fn apply_settings(&mut self, mut settings: Settings) {
+        keep_brightness(&mut settings, &self.settings);
         let scale_changed = settings.display != self.settings.display;
         let main_changed = settings.display.main != self.settings.display.main;
         let space_changed = (settings.tiling.gap, settings.tiling.margin) != (self.settings.tiling.gap, self.settings.tiling.margin);
@@ -1854,10 +1934,6 @@ impl<B: Backend + 'static> AnvilState<B> {
         if olo_xdg::themes::set(&settings.appearance.icon_theme) {
             crate::twitcher::theme_changed();
         }
-        // Windowing modes are kept as they are chosen, not from a client's
-        // copy (which may be older).
-        settings.tiling.modes = self.settings.tiling.modes.clone();
-        settings.tiling.auto.clear();
         if settings.tiling.default_mode != self.settings.tiling.default_mode {
             self.auto.changed();
         }
@@ -1905,7 +1981,6 @@ impl<B: Backend + 'static> AnvilState<B> {
         self.update_appearance(true);
         // (The presence sensor watched only while a setting wants it.)
         self.presence_settings();
-        save_settings(&self.settings);
     }
 
     /// Resolve Auto theme and the night-light schedule against the clock.
@@ -1942,7 +2017,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             self.set_night_light(kelvin);
         }
         if changed || force {
-            self.ipc.broadcast(Event::SettingsChanged { settings: self.settings.clone() });
+            self.ipc.broadcast(Event::SettingsChanged { settings: self.told_settings() });
         }
     }
 

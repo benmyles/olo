@@ -123,10 +123,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if pressed {
             crate::contacts::note_key();
         }
+        // Olo Rescue's keys, before anything else sees them (rescue.rs).
+        match self.rescue_chord.feed(key, pressed) {
+            crate::rescue::Fed::Pass => {}
+            crate::rescue::Fed::Swallow => return KeyAction::None,
+            crate::rescue::Fed::Rescue => {
+                // (Super let go now is no tap: no palette.)
+                self.keymap.command_used();
+                self.rescue_chord();
+                return KeyAction::None;
+            }
+        }
         if self.media_key(key, pressed) {
             return KeyAction::None;
         }
-        if self.hints_key(key, pressed) || self.overview_key(key, pressed) {
+        if self.rescue.is_none() && (self.hints_key(key, pressed) || self.overview_key(key, pressed)) {
             return KeyAction::None;
         }
         let opts = crate::keymap::Options::from(&self.settings.keyboard);
@@ -165,7 +176,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     let keys = chord.map(|c| c.map(|c| c.to_string()).unwrap_or_default());
                     self.ipc.broadcast(olo_protocol::Event::ShortcutRecorded { keys });
                 }
-                crate::keymap::Out::Grabbed(chord, pressed) if !self.lock.locked() => self.key_grabbed(chord, pressed),
+                // (Nor in Rescue: what took them is put away.)
+                crate::keymap::Out::Grabbed(chord, pressed) if !self.lock.locked() && self.rescue.is_none() => self.key_grabbed(chord, pressed),
                 crate::keymap::Out::Grabbed(..) => {}
             }
         }
@@ -174,6 +186,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn keymap_action(&mut self, action: crate::keymap::Action) {
         use crate::keymap::Action as A;
+        let action = match (self.rescue.is_some(), crate::rescue::in_rescue(action)) {
+            (false, _) => action,
+            (true, Some(a)) => a,
+            (true, None) => {
+                debug!(?action, "not in Olo Rescue");
+                return;
+            }
+        };
         debug!(?action, "keymap action");
         match action {
             A::NextApp { back, all } => self.twitch_step(true, all, back),
@@ -445,7 +465,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     let map = layer_map_for_output(o);
                     map.layers().find(|l| l.layer_surface() == &layer).cloned()
                 });
-                if let Some(surface) = surface {
+                if let Some(surface) = surface.filter(crate::rescue::shows_layer) {
                     keyboard.set_focus(self, Some(surface.into()), serial);
                     keyboard.input::<(), _>(self, keycode, state, serial, time, |_, _, _| FilterResult::Forward);
                     return KeyAction::None;
@@ -624,7 +644,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let output = self.space.output_under(location).next().cloned();
             if let Some(output) = output.as_ref() {
                 let output_geo = self.space.output_geometry(output).unwrap();
-                if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get())
+                if let Some(window) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active())
                     && let Some((_, _)) = window.surface_under(location - output_geo.loc.to_f64(), WindowSurfaceType::ALL)
                 {
                     keyboard.set_focus(self, Some(window.into()), serial);
@@ -636,7 +656,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let front = |layer, kind| {
                     let at = location - output_geo.loc.to_f64();
                     let layers = layer_map_for_output(output);
-                    layers.layers_on(layer).rev().find(|l| layers.layer_geometry(l).is_some_and(|g| l.surface_under(at - g.loc.to_f64(), kind).is_some())).cloned()
+                    layers.layers_on(layer).rev().find(|l| crate::rescue::shows_layer(l) && layers.layer_geometry(l).is_some_and(|g| l.surface_under(at - g.loc.to_f64(), kind).is_some())).cloned()
                 };
                 // One that takes the keyboard gets it; one that never does
                 // (Deskbar) leaves it where it is: a click on Deskbar went
@@ -670,7 +690,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             if let Some(output) = output.as_ref() {
                 let output_geo = self.space.output_geometry(output).unwrap();
                 let layers = layer_map_for_output(output);
-                if let Some(layer) = layers.layer_under(WlrLayer::Bottom, location - output_geo.loc.to_f64()).or_else(|| layers.layer_under(WlrLayer::Background, location - output_geo.loc.to_f64()))
+                let at = location - output_geo.loc.to_f64();
+                let under = |layer| layers.layers_on(layer).rev().find(|l| crate::rescue::shows_layer(l) && layers.layer_geometry(l).is_some_and(|g| g.to_f64().contains(at)));
+                if let Some(layer) = under(WlrLayer::Bottom).or_else(|| under(WlrLayer::Background))
                     && layer.can_receive_keyboard_focus()
                     && let Some((_, _)) = layer.surface_under(location - output_geo.loc.to_f64() - layers.layer_geometry(layer).unwrap().loc.to_f64(), WindowSurfaceType::ALL)
                 {
@@ -706,7 +728,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let layer_under = |layer| {
             let kind = if layer == WlrLayer::Overlay { WindowSurfaceType::ALL } else { WindowSurfaceType::ALL - WindowSurfaceType::POPUP };
             let at = pos - output_geo.loc.to_f64();
-            layers.layers_on(layer).rev().find_map(|l| {
+            layers.layers_on(layer).rev().filter(|l| crate::rescue::shows_layer(l)).find_map(|l| {
                 let layer_loc = layers.layer_geometry(l)?.loc;
                 l.surface_under(at - layer_loc.to_f64(), kind).map(|(surface, loc)| (PointerFocusTarget::from(surface), loc + layer_loc + output_geo.loc))
             })
@@ -718,7 +740,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return layer_under(WlrLayer::Overlay).or(menu).or_else(|| layer_under(WlrLayer::Top)).map(|(s, l)| (s, l.to_f64()));
         }
         let mut under = None;
-        if let Some((surface, loc)) = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).and_then(|w| w.surface_under(pos - output_geo.loc.to_f64(), WindowSurfaceType::ALL)) {
+        // (In Rescue a full-screen window is put away with the rest.)
+        let fullscreen = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get()).filter(|_| !crate::rescue::active());
+        if let Some((surface, loc)) = fullscreen.and_then(|w| w.surface_under(pos - output_geo.loc.to_f64(), WindowSurfaceType::ALL)) {
             under = Some((surface, loc + output_geo.loc));
         } else if let Some(focus) = layer_under(WlrLayer::Overlay)
             .or(menu)

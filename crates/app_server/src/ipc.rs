@@ -603,6 +603,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.lock_screen();
                 Reply::Ok
             }
+            Request::Rescue { on } => {
+                if on {
+                    self.enter_rescue();
+                } else {
+                    self.leave_rescue();
+                }
+                Reply::Ok
+            }
             Request::KeepAwake { why } => {
                 self.keep_awake(conn, why);
                 Reply::Ok
@@ -661,7 +669,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Ok(()) => Reply::Ok,
                 Err(message) => Reply::Error { message },
             },
-            Request::GetSettings => Reply::Settings { settings: self.settings.clone() },
+            Request::GetSettings => Reply::Settings { settings: self.told_settings() },
             Request::Looks => Reply::Looks { themes: olo_protocol::LookInfo::all(), palette: (*crate::theme::palette()).clone() },
             Request::Palette { theme, colors, mode } => {
                 let a = &self.settings.appearance;
