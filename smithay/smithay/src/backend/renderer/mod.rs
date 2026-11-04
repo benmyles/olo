@@ -34,7 +34,7 @@ pub mod glow;
 pub mod pixman;
 
 mod color;
-pub use color::Color32F;
+pub use color::{Color32F, ColorSource, SurfaceColor};
 
 use crate::backend::allocator::{Format, Fourcc, dmabuf::Dmabuf};
 #[cfg(all(
@@ -290,6 +290,12 @@ pub trait Frame {
 
     /// Returns the [`ContextId`] of the associated renderer.
     fn context_id(&self) -> ContextId<Self::TextureId>;
+
+    /// (Olo) What the textures drawn next hold (a surface's colours,
+    /// [`color::SurfaceColor`]), till set again: drawn converted into the
+    /// frame's colours. None: what each texture says (sRGB unless it
+    /// does). Renderers without colour management ignore it.
+    fn set_texture_color(&mut self, _source: Option<color::ColorSource>) {}
 
     /// Clear the complete current target with a single given color.
     ///

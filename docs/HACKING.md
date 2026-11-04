@@ -2858,6 +2858,21 @@ gpu_cost`); frames draw only what changed. `color::tests::
 the_gpu_converts_as_the_cpu_does` reads the GPU's conversions back
 against the CPU's. A headless screen pretends to be wide or HDR with
 `OLO_HEADLESS_COLOR=p3` or `p3-hdr`.
+
+Programs say what colours their windows hold with `wp_color_management_v1`
+(`color_management.rs`, version 1): parametric image descriptions only
+(gamma 2.2, sRGB, linear and PQ; sRGB, BT.2020, DCI-P3, Display P3 and
+Adobe RGB, or any primaries; luminances; mastering metadata taken and
+not used). A surface's description is cached state (Smithay's
+`SurfaceColor`), applied with its next commit, and the renderer converts
+its buffers from it as they're drawn (`Frame::set_texture_color`), never
+straight to a plane; a display's description says how app_server draws
+for it (PQ in BT.2020 with SDR's white as the reference, its own
+primaries and light as the target, in HDR; else its primaries at gamma
+2.2), and programs are told when it changes (`image_description_changed`,
+`preferred_changed`). `cargo run --release -p app_server --example
+color_probe` (in a test session) prints what's offered and shows a window
+tagged PQ: PQ's 100 cd/m² shows as sRGB's 185 where untagged it's 130.
 `tools/dev/layout-check NAME [--auto] [--unplug]` checks this quickly:
 it arranges a session's screens in an order unlike the one they're
 found in, puts windows on each and on another workspace (auto-tiled with

@@ -449,6 +449,8 @@ pub struct GlesFrame<'frame, 'buffer> {
     transform: Transform,
     size: Size<i32, Physical>,
     tex_program_override: Option<(GlesTexProgram, Vec<Uniform<'static>>)>,
+    /// What the textures drawn next hold (`Frame::set_texture_color`).
+    texture_color: Option<color::ColorSource>,
     finished: AtomicBool,
     /// (Olo) The textures drawn this frame: they share one read fence,
     /// made as the frame finishes (`SharedFence`).
@@ -2387,6 +2389,7 @@ impl Renderer for GlesRenderer {
             transform,
             size: output_size,
             tex_program_override: None,
+            texture_color: None,
             finished: AtomicBool::new(false),
             drawn: Vec::new(),
 
@@ -2502,6 +2505,10 @@ static OUTPUT_VERTS: [ffi::types::GLfloat; 8] = [
 impl Frame for GlesFrame<'_, '_> {
     type Error = GlesError;
     type TextureId = GlesTexture;
+
+    fn set_texture_color(&mut self, source: Option<color::ColorSource>) {
+        self.texture_color = source;
+    }
 
     fn context_id(&self) -> ContextId<GlesTexture> {
         self.renderer.context_id()
@@ -3045,7 +3052,7 @@ impl GlesFrame<'_, '_> {
         // Colour management: the default program converts when the
         // texture's colours aren't the target's (`color.rs`).
         let color_uniforms = if program.is_none() && self.tex_program_override.is_none() {
-            let source = tex.color_source();
+            let source = self.texture_color.or_else(|| tex.color_source());
             self.renderer.color_for(source)?
         } else {
             None

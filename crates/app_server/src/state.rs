@@ -1089,6 +1089,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             toplevel_icons.add_icon_size(size);
         }
         smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<Self>(&dh);
+        // Programs' own colours, and each display's (HDR, wide colour).
+        crate::color_management::init::<BackendData>(&dh);
         smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager::new::<Self>(&dh);
         IdleInhibitManagerState::new::<Self>(&dh);
         let lock = crate::lock::Lock::new::<BackendData>(&dh);

@@ -7,6 +7,7 @@
 #[cfg(feature = "udev")]
 pub mod capture;
 pub mod color;
+pub mod color_management;
 pub mod contacts;
 pub mod cursor;
 pub mod drawing;

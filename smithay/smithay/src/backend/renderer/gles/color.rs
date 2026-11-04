@@ -11,6 +11,7 @@
 //! Light is reckoned relative to SDR's white: sRGB's 1.0 is `sdr_nits`
 //! on an HDR display, and PQ's signal is absolute (10,000 cd/m² at 1.0).
 
+pub use crate::backend::renderer::color::ColorSource;
 pub use olo_color::{Mat3, Primaries, Transfer};
 
 use super::{Uniform, UniformName, UniformType, UniformValue};
@@ -49,24 +50,6 @@ impl ColorTarget {
         transfer: Transfer::Gamma22,
         sdr_nits: 203.0,
         max: 1.0,
-    };
-}
-
-/// What a texture holds.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ColorSource {
-    /// Its primaries and white.
-    pub primaries: Primaries,
-    /// How it encodes light. sRGB content is taken as gamma 2.2, as a
-    /// display shows it.
-    pub transfer: Transfer,
-}
-
-impl ColorSource {
-    /// What nearly everything is drawn in.
-    pub const SRGB: ColorSource = ColorSource {
-        primaries: Primaries::SRGB,
-        transfer: Transfer::Gamma22,
     };
 }
 

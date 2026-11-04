@@ -1810,6 +1810,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         if crate::color::apply(output, applied) {
             tracing::info!(output = output.name(), drawing = ?crate::color::drawing(output), "colours");
             self.backend_data.color_changed(output)?;
+            // Programs told (wp_color_management_v1): HDR video, say,
+            // drawn for the display as it is now.
+            crate::color_management::output_changed(output);
         }
         Ok(())
     }

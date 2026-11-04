@@ -2036,6 +2036,10 @@ where
         self.frame.as_ref().unwrap().context_id().map()
     }
 
+    fn set_texture_color(&mut self, source: Option<crate::backend::renderer::color::ColorSource>) {
+        self.frame.as_mut().unwrap().set_texture_color(source);
+    }
+
     #[instrument(level = "trace", parent = &self.span, skip(self))]
     #[profiling::function]
     fn clear(&mut self, color: Color32F, at: &[Rectangle<i32, Physical>]) -> Result<(), Error<R, T>> {

@@ -102,8 +102,8 @@ of Finished; a new one goes where its priority puts it.
     headless (a pretend P3 HDR screen) and the GPU's conversions read
     back on this machine. Left: HDR tried on the panel (its modeset,
     and whether the brightness keys still work in HDR: the kernel sets
-    brightness over AUX in nits either way); clients' own colours
-    (`wp_color_management_v1`: HDR video, wide-gamut photos).
+    brightness over AUX in nits either way). Programs' own colours
+    (`wp_color_management_v1`) done; tried with a test client headless.
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole

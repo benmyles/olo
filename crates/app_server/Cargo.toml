@@ -72,3 +72,6 @@ profile-with-tracy-mem = []
 [dev-dependencies]
 # Runs touchpad.lua against scripted frames (touch_filter's tests).
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
+# examples/color_probe: a client tagging its window's colours.
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }

@@ -241,6 +241,9 @@ pub struct WaylandSurfaceRenderElement<R: Renderer> {
     damage: DamageSnapshot<i32, BufferCoords>,
     opaque_regions: OpaqueRegions<i32, Logical>,
     texture: WaylandSurfaceTexture<R>,
+    /// (Olo) What its buffer's colours are in, if the client said
+    /// (`color::SurfaceColor`): drawn converted, never straight to a plane.
+    color: Option<crate::backend::renderer::color::ColorSource>,
 }
 
 impl<R: Renderer> fmt::Debug for WaylandSurfaceRenderElement<R> {
@@ -275,6 +278,13 @@ impl<R: Renderer + ImportAll> WaylandSurfaceRenderElement<R> {
         let Some(data_ref) = states.data_map.get::<RendererSurfaceStateUserData>() else {
             return Ok(None);
         };
+        let color = states
+            .cached_state
+            .get::<crate::backend::renderer::color::SurfaceColor>()
+            .current()
+            .0;
+        // (Converted as drawn, so never straight to a plane.)
+        let kind = if color.is_some() { Kind::Unspecified } else { kind };
         Ok(Self::from_state(
             renderer,
             id,
@@ -282,7 +292,8 @@ impl<R: Renderer + ImportAll> WaylandSurfaceRenderElement<R> {
             alpha * alpha_multiplier,
             kind,
             &data_ref.lock().unwrap(),
-        ))
+        )
+        .map(|e| Self { color, ..e }))
     }
 
     fn from_state(
@@ -320,6 +331,7 @@ impl<R: Renderer + ImportAll> WaylandSurfaceRenderElement<R> {
                 .map(OpaqueRegions::from_slice)
                 .unwrap_or_default(),
             texture,
+            color: None,
         })
     }
 
@@ -459,15 +471,24 @@ where
         _cache: Option<&UserDataMap>,
     ) -> Result<(), R::Error> {
         match self.texture {
-            WaylandSurfaceTexture::Texture(ref texture) => frame.render_texture_from_to(
-                texture,
-                src,
-                dst,
-                damage,
-                opaque_regions,
-                self.buffer_transform,
-                self.alpha,
-            ),
+            WaylandSurfaceTexture::Texture(ref texture) => {
+                if self.color.is_some() {
+                    frame.set_texture_color(self.color);
+                }
+                let drawn = frame.render_texture_from_to(
+                    texture,
+                    src,
+                    dst,
+                    damage,
+                    opaque_regions,
+                    self.buffer_transform,
+                    self.alpha,
+                );
+                if self.color.is_some() {
+                    frame.set_texture_color(None);
+                }
+                drawn
+            }
             WaylandSurfaceTexture::SolidColor(color) => frame.draw_solid(dst, damage, color * self.alpha),
         }
     }
