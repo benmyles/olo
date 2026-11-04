@@ -7,6 +7,26 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Olo Rescue: Ctrl+Shift+Super+Delete, always** (Ben, 2026-11-04):
+  "an Olo Rescue app where, at any time ever in olo if you hold down
+  ctrl+shift+super+delete then olo brings up a special, full screen
+  rescue mode where the user gets a terminal as well as rescue
+  functionality like killing processes and so on. this should run on
+  its own thread with the highest priority and be as isolated from
+  everything else as possible so that we minimize the chance that
+  whatever problem the user is experiencing won't prevent them from
+  using olo rescue. it should also switch -- just for olo rescue -- to a
+  safe/simple configuration for displays etc. so that it can be used as
+  a way to recover from bad display settings that left them unable to
+  see anything. ideally they can also open any of the olo preferences in
+  this mode too and change things there in case it was a preference that
+  broke things." The chord caught in app_server's input before
+  anything else (as the lock screen's), a realtime thread of its own;
+  the displays put to a known-good mode (their preferred mode, sRGB, no
+  HDR, no VRR, 100% or 200%, no mirroring) for Rescue only; a terminal,
+  processes to end, and Preferences' panels, in a session that doesn't
+  depend on what may be broken; leaving it puts everything back.
+
 - **Grouped and tiled windows come back in their order** (Ben,
   2026-11-04): "grouped windows and tiled tabs/windows should remember
   their order so that after e.g. an upgrade they come back in the same
