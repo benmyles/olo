@@ -22,7 +22,7 @@ use olo_ui::{
     widgets::{Button, CheckBox, EmptyState, RadioButton, Slider, StringView},
 };
 
-use crate::{Msg, PanelView, form::Ui, panel};
+use crate::{Msg, PanelView, form::Ui};
 
 /// The panel's state in its window.
 pub struct State {
