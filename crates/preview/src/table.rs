@@ -69,7 +69,8 @@ pub fn arrange(rows: &[Vec<String>], first: usize, key: &Key, stop: &AtomicBool)
 /// without regard to case, with runs of digits as numbers.
 fn compare(a: &str, b: &str) -> Ordering {
     match (number(a), number(b)) {
-        (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
+        // (A total order, "NaN" in a cell too: a sort panics on less.)
+        (Some(x), Some(y)) => x.total_cmp(&y),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
         (None, None) => olo_kit_base::files::natural_cmp(a, b),
@@ -156,5 +157,20 @@ mod tests {
         assert_eq!(arrange(&rows, 1, &key("file 1", 0, None), &stop), [1, 4]);
         assert_eq!(arrange(&rows, 1, &key("90", 1, None), &stop), Vec::<usize>::new());
         assert_eq!(arrange(&rows, 1, &key("90", 2, None), &stop), [2]);
+    }
+
+    /// "NaN" is a number to Rust: cells of it among others still sort (a
+    /// comparison that isn't a total order panics the sort).
+    #[test]
+    fn nan_cells_sort() {
+        let mut rows: Vec<&[&str]> = vec![&["Value"]];
+        let cells: Vec<[&str; 1]> = (0..40).map(|i| [["NaN", "3", "1", "nan", "2", "-1"][i % 6]]).collect();
+        rows.extend(cells.iter().map(|c| c.as_slice()));
+        let rows = sheet(&rows);
+        let stop = AtomicBool::new(false);
+        let key = Key { sheet: (0, 0), rows: rows.len(), search: String::new(), scope: 0, sort: Some((0, true)) };
+        let order = arrange(&rows, 1, &key, &stop);
+        assert_eq!(order.len(), 40);
+        assert_eq!(rows[order[0]][0], "-1");
     }
 }

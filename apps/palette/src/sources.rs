@@ -519,11 +519,19 @@ pub fn ranked<'a>(words: &[String], items: impl Iterator<Item = &'a Item>, boost
             *s = (*s).max(a + 1);
         }
     }
-    // Windows that tie keep their order (the one in front last).
-    let both_windows = |a: &Item, b: &Item| a.kind == Kind::Window && b.kind == Kind::Window;
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| if both_windows(a.1, b.1) { std::cmp::Ordering::Equal } else { a.1.title.cmp(&b.1.title) }));
+    best_first(&mut scored);
     scored.truncate(60);
     scored.into_iter().map(|(s, i)| (s, i.clone())).collect()
+}
+
+/// Best score first; of those that tie, windows first in the order they
+/// came (the one in front last), then the rest by title. A key, so a
+/// total order: comparing windows as equal to each other but by title to
+/// the rest wasn't one, and the sort panicked on it (Ben, 2026-11-03:
+/// "if i start by typing "n" it closes the pallette": an "n" ties many
+/// commands and windows).
+fn best_first(scored: &mut [(i32, &Item)]) {
+    scored.sort_by_key(|&(s, i)| (std::cmp::Reverse(s), i.kind != Kind::Window, if i.kind == Kind::Window { "" } else { i.title.as_str() }));
 }
 
 /// Do `action` (on a worker thread: it may wait on other processes).
@@ -761,6 +769,35 @@ mod tests {
         ix.changed(&home, &home.join("Documents"));
         assert!(ix.files.is_empty(), "{:?}", ix.files);
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Ties of windows and other things, every way round: a total order
+    /// (the sort panicked on the old one), windows first in their order,
+    /// then the rest by title.
+    #[test]
+    fn ties_sort_without_a_panic_windows_first_in_their_order() {
+        let w = |id, title: &str| Item::new(Kind::Window, title, Action::Activate(id));
+        let c = |title: &str| Item::new(Kind::Command, title, Action::Shortcut(title.into()));
+        let mut items = Vec::new();
+        for k in 0..12u64 {
+            let t = ["b", "z", "m", "a", "q", "n"][k as usize % 6];
+            items.push(w(k, t));
+            items.push(c(&format!("{t}{k}")));
+        }
+        for turn in 0..items.len() {
+            let mut scored: Vec<(i32, &Item)> = items.iter().cycle().skip(turn).take(items.len()).map(|i| (10, i)).collect();
+            let windows: Vec<u64> = scored.iter().filter_map(|(_, i)| if let Action::Activate(id) = i.action { Some(id) } else { None }).collect();
+            best_first(&mut scored);
+            let (front, rest) = scored.split_at(windows.len());
+            assert!(front.iter().all(|(_, i)| i.kind == Kind::Window));
+            assert_eq!(front.iter().map(|(_, i)| if let Action::Activate(id) = i.action { id } else { 99 }).collect::<Vec<_>>(), windows);
+            assert!(rest.windows(2).all(|p| p[0].1.title <= p[1].1.title));
+        }
+        // A better score still comes first.
+        let (a, b) = (c("z"), w(1, "a"));
+        let mut scored = vec![(1, &b), (5, &a)];
+        best_first(&mut scored);
+        assert_eq!(scored[0].1.title, "z");
     }
 
     #[test]

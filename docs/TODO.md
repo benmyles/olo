@@ -368,6 +368,15 @@ of Finished; a new one goes where its priority puts it.
     in the window it was opened over.
   - Commands and shortcuts by default; Ctrl switches to files and
     folders and back, and its hint (or placeholder) says so.
+  *Status* (2026-11-03): the bug was a crash, not a key: Ben's logs
+  have the palette panicking four times at 10:11 in the sort of its
+  results ("user-provided comparison function does not correctly
+  implement a total order"), windows comparing equal to each other but
+  by title to the rest, which an "n" (tying many commands and windows)
+  showed. Now a key (`best_first`), with a test that panics the old way;
+  and app_server's overview and the table preview sort floats with
+  `total_cmp` (a NaN broke theirs the same way). Left: every shortcut
+  in it, and Ctrl for files.
 
 - **Terminal: a tiny model of its own completes brush's commands**
   (Ben, 2026-11-03): "in prefs -> terminal have an option for using a

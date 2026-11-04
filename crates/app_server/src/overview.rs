@@ -190,7 +190,11 @@ pub fn spread(pane: Rect, frames: &[Rect], most: f64) -> Vec<Rect> {
     }
     let middle = |r: &Rect| (r.loc.y + r.size.h / 2.0, r.loc.x + r.size.w / 2.0);
     let mut order: Vec<usize> = (0..frames.len()).collect();
-    order.sort_by(|&a, &b| middle(&frames[a]).partial_cmp(&middle(&frames[b])).unwrap_or(std::cmp::Ordering::Equal));
+    // (total_cmp: a sort panics on an order that isn't total, a NaN's.)
+    order.sort_by(|&a, &b| {
+        let (a, b) = (middle(&frames[a]), middle(&frames[b]));
+        a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1))
+    });
     let rows_at = |s: f64| -> Option<Vec<Vec<usize>>> {
         let mut rows: Vec<Vec<usize>> = Vec::new();
         let mut width = 0.0;
@@ -489,7 +493,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 // In reading order, so the letters run as the eye does (a
                 // row's windows share their middle).
                 let mut placed: Vec<_> = in_it.iter().zip(spread(inside, &frames, most)).collect();
-                placed.sort_by(|a, b| (a.1.loc.y + a.1.size.h / 2.0, a.1.loc.x).partial_cmp(&(b.1.loc.y + b.1.size.h / 2.0, b.1.loc.x)).unwrap_or(std::cmp::Ordering::Equal));
+                placed.sort_by(|a, b| (a.1.loc.y + a.1.size.h / 2.0).total_cmp(&(b.1.loc.y + b.1.size.h / 2.0)).then(a.1.loc.x.total_cmp(&b.1.loc.x)));
                 for (m, to) in placed {
                     let z = stacking.iter().position(|s| s == &m.0).map_or(0, |i| i + 1);
                     cells.push(Cell { window: m.0.clone(), output: output.name(), workspace: *ws, from: m.3, to, letter: None, z });
