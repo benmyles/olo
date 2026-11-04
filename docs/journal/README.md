@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-03
 
+### Sound ▸ Voice Processing ▸ Try It
+
+*20:46* — A few seconds of your voice, recorded and put through each setting worth comparing: what each adds (delay, its time a 10 ms frame, what noise suppression and levelling did) and what ran it; played as the original or the chosen setting's sound, switching at the same place, with a live spectrum of both (the kit's new Spectrum).
+
+![Sound ▸ Voice Processing ▸ Try It](2026-11-03/204614-sound-voice-processing-try-it.png)
+
 ### Train for Your Palm: one thing a step, and a banner when it's done
 
 *20:00* — Each of the twelve exercises asks one thing, with a line under the title saying what to do now (rest, hold, point, lift) from the hands on the pad; a finished step gets a green banner in the place of the status line (the kit's new Banner), and the key caps sit level with their labels at every scale.

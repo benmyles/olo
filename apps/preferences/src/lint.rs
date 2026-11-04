@@ -130,6 +130,24 @@ fn ui_lint_the_palm_trainer() {
     assert_clean("the palm trainer", &found);
 }
 
+/// Try Voice Processing (Sound ▸ Voice Processing ▸ Try It…) in each
+/// state: nothing recorded, recording, trying, tried.
+#[test]
+fn ui_lint_try_voice() {
+    let mut lint = Lint::new();
+    let mut found = Vec::new();
+    for (name, phase) in crate::voice_try::lint_states() {
+        let options = WindowOptions::new("Try Voice Processing", 760.0, 600.0);
+        for f in lint.window(&options, move |_, cx| {
+            let prefs = cx.new(|_| prefs());
+            cx.new(|cx| crate::voice_try::TryWindow::for_lint(prefs, phase, cx))
+        }) {
+            found.push(olo_ui::lint::Found { text: format!("{name}: {}", f.text), ..f });
+        }
+    }
+    assert_clean("Try Voice Processing", &found);
+}
+
 /// A name from the test data or this computer: a display's ("D0 Built-in
 /// Display"), as the Display panel's buttons for them are named.
 fn this_machines(name: &str) -> bool {

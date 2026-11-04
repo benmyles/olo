@@ -25,6 +25,7 @@ pub mod network;
 pub mod polkit;
 pub mod power;
 pub mod priority;
+pub mod recording;
 pub mod secrets;
 pub mod systemd;
 pub mod time;

@@ -40,6 +40,7 @@ mod touchid;
 mod touchpad;
 mod tracker;
 mod typing_tutor;
+mod voice_try;
 mod windows;
 mod workspaces;
 

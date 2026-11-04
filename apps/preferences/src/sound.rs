@@ -232,7 +232,29 @@ fn voice_section(ui: &mut Ui, st: &mut State, devices: &Devices) {
             CheckBox::new("Cancel echo from the speakers", settings.echo_cancellation).enabled(settings.enabled).on_toggle(move |on, _, _| s2(voice::Settings { echo_cancellation: on, ..settings })),
         );
         let s2 = save.clone();
-        ui.add(CheckBox::new("Even out the voice's level", settings.normalize).enabled(settings.enabled).on_toggle(move |on, _, _| s2(voice::Settings { normalize: on, ..settings })));
+        // Trying it on your own voice (each setting, heard and measured) at
+        // the last setting's right: alone at the box's foot it sat nearly
+        // level with the other column's controls. As tall as the button,
+        // the check box's text shares its baseline.
+        let (prefs, microphone) = (ui.prefs(), state.microphone.clone());
+        ui.add(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .child(
+                    CheckBox::new("Even out the voice's level", settings.normalize)
+                        .height(olo_ui::metrics::CONTROL_HEIGHT)
+                        .enabled(settings.enabled)
+                        .on_toggle(move |on, _, _| s2(voice::Settings { normalize: on, ..settings })),
+                )
+                .child(div().flex_1())
+                .child(Button::new("Try It…").on_click(move |_, cx| {
+                    if let Some(p) = prefs.upgrade() {
+                        crate::voice_try::open(p, settings, microphone.clone(), cx);
+                    }
+                })),
+        );
         ui.note(voice_note(&state, &settings, devices));
     });
 }

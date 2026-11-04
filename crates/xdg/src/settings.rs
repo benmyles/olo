@@ -173,6 +173,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Background noise", role: "ComboBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Cancel echo from the speakers", role: "CheckBox" },
     Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Even out the voice's level", role: "CheckBox" },
+    Setting { panel: "sound", tab: "", group: "Voice Processing", name: "Try It…", role: "Button" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Tell coding agents about the repositories in their tab group", role: "CheckBox" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Let coding agents keep their tab’s title current", role: "CheckBox" },
     Setting { panel: "terminal", tab: "", group: "Coding Agents", name: "Tell coding agents to use Olo’s Agent Screens", role: "CheckBox" },

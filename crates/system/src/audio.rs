@@ -17,7 +17,9 @@ pub struct Volume {
     pub muted: bool,
 }
 
-fn socket_path() -> Option<PathBuf> {
+/// The sound server's socket, as libpulse finds it (`PULSE_SERVER`,
+/// `PULSE_RUNTIME_PATH`, `XDG_RUNTIME_DIR`).
+pub(crate) fn socket_path() -> Option<PathBuf> {
     if let Ok(s) = std::env::var("PULSE_SERVER")
         && let Some(p) = s.strip_prefix("unix:")
     {
@@ -26,6 +28,14 @@ fn socket_path() -> Option<PathBuf> {
     let runtime = std::env::var_os("PULSE_RUNTIME_PATH").map(PathBuf::from).or_else(|| std::env::var_os("XDG_RUNTIME_DIR").map(|d| PathBuf::from(d).join("pulse")))?;
     let p = runtime.join("native");
     p.exists().then_some(p)
+}
+
+/// The cookie to show the sound server. No cookie file (a new account, a
+/// sandbox): one of zeros, the length the protocol wants. PipeWire doesn't
+/// check what's in it, but turns away an empty one, and with it every
+/// sound control.
+pub(crate) fn cookie() -> Vec<u8> {
+    pulseaudio::cookie_path_from_env().and_then(|p| std::fs::read(p).ok()).filter(|c| c.len() == 256).unwrap_or_else(|| vec![0; 256])
 }
 
 struct Conn {
@@ -40,10 +50,7 @@ impl Conn {
         let stream = UnixStream::connect(path)?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         let mut c = Conn { sock: BufReader::new(stream), version: protocol::MAX_VERSION, seq: 0 };
-        // No cookie file (a new account, a sandbox): a cookie of zeros, the
-        // length the protocol wants. PipeWire doesn't check what's in it, but
-        // turns away an empty one, and with it every sound control.
-        let cookie = pulseaudio::cookie_path_from_env().and_then(|p| std::fs::read(p).ok()).filter(|c| c.len() == 256).unwrap_or_else(|| vec![0; 256]);
+        let cookie = cookie();
         let auth = protocol::AuthParams { version: protocol::MAX_VERSION, supports_shm: false, supports_memfd: false, cookie };
         let reply: protocol::AuthReply = c.request(&Command::Auth(auth))?;
         c.version = protocol::MAX_VERSION.min(reply.version);

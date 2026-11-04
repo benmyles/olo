@@ -5855,6 +5855,28 @@ one are always told apart:
 - **UI**: Preferences ▸ Sound's Voice Processing box (and what it's
   doing in a line); Deskbar's speaker menu: "Clean Up Microphone Sound"
   and a Voice Processing submenu.
+- **Try It…** (Preferences ▸ Sound ▸ Voice Processing,
+  apps/preferences/src/voice_try.rs): six seconds recorded from the
+  microphone the service listens to (`State::microphone`, not its own
+  cleaned-up source) with `olo_system::recording::Recording` (the
+  PulseAudio protocol's record stream, mono 48 kHz float, in memory
+  only), then put through each setting worth comparing on a worker
+  (`variants`: as set, each other noise level, the level the other way,
+  the other mode; `olo_voice::trial`, after a short untimed one: a
+  process's first chain sets up what the rest share, a 27 ms first
+  frame against 0.4), each listed as it's done: the delay it adds, its
+  time a 10 ms frame (median and worst), what noise suppression and
+  levelling did (`Stage::change_db`) and what ran it
+  (`accelerated_by`). Played with `recording::Player`, the original or
+  the chosen setting's sound, switching at the same place (one stream,
+  the take chosen by an atomic; 60 ms ahead at most, so a switch is
+  heard at once), with a live spectrum of both (`olo_voice::spectrum`,
+  under 40 µs a call). "Use This Setting" saves it. Echo cancellation
+  isn't tried: a recording has no speakers' sound beside it. Tested in
+  a `tools/dev/pw-sandbox` (`recording::tests`, whose "talk" sink the
+  "mic" source hears: two tones played, switched halfway, recorded
+  back). Measured: 292 µs a frame while playing (the whole window
+  drawn each frame was 1.8 ms), 252 µs while recording, nothing idle.
 - **Running it**: olo-session starts it in a real session (`REAL_SHELL`)
   and restarts it if it exits; an upgrade installs the new `olo-voice`
   and sends SIGURG, on which it starts again as the new version (the

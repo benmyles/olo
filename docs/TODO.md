@@ -72,6 +72,15 @@ of Finished; a new one goes where its priority puts it.
   compiles shaders), handing events to the main loop; measure before
   and after. Also live counts from the plugin (contacts judged, palms
   left out, its own time a frame), which it doesn't report today.
+  *Measured* (2026-11-03, Ben's session, read over IPC: `Request::Frames`):
+  1222 reports in the last minute, 27 µs typically, 210 µs at the 99th
+  percentile, the longest 96 ms. So no thread of its own: the 99th is a
+  twentieth of the line. Left: what held the main thread 96 ms that once
+  (`timings` while it happens), and the live counts. Those can't come
+  from the plugin (libinput gives it only a log, to app_server's
+  stderr), so app_server would run the same model (`olo_palm`, which
+  the Lua agrees with) on the pad's slots while Activity Monitor's
+  Touchpad section is open, costing nothing otherwise.
 
 - **The best baseline palm model there is** (Ben, 2026-11-02): "try to
   optimize the baseline as much as you can -- and if it would be better
@@ -217,48 +226,6 @@ of Finished; a new one goes where its priority puts it.
     another was heard first).
   - Deskbar: the AirPods' levels from their broadcast while they're not
     connected (the service has them now).
-
-- **Sound ▸ Voice Processing: try it on your own voice** (Ben,
-  2026-11-02): "in the sound settings -> voice processing section, add
-  something where the user can test the settings by recording a short
-  sample and then we show in real time some kind of audio frequency
-  graph/visualization and what it's doing and then report the
-  processing delay stats/metrics and also of course let them play it
-  back to hear it (let them play it back both with and without the
-  processing applied so they can see and hear the difference)". So: a
-  Test button in the Voice Processing box records a few seconds from
-  the chosen microphone, raw and through `olo-voice`'s chain with the
-  settings as they are (both kept, in memory, never written out
-  unasked); while recording and playing, a live spectrogram (or
-  spectrum) of the raw and the processed side by side, with what each
-  stage is doing shown on it (echo removed, noise suppressed, level
-  turned up or down: the chain's own figures); then the delay it adds
-  (median, worst, per stage) and how hard it worked (its share of a
-  core, frames late); and Play Original and Play Processed to hear the
-  difference, switching between them at the same place. Drawn by the
-  kit (a chart any app could use), the work on threads of its own, as
-  fast as the live path; agents read the figures. Test with
-  `tools/dev/pw-sandbox`, never the person's own sound. Ben, again
-  (2026-11-03, for later): "prefs -> sound -> voice processing needs a
-  way for the user to test the settings by recording a sample and
-  hearing how it sounds on the different settings, and also seeing what
-  the added latency is for each test and how it was accelerated (simd
-  type or gpu etc)". So the one recording runs through more than the
-  settings in use: each setting worth comparing (each stage on and off,
-  its levels, the models there are) is a test of its own over the same
-  sample, listed with the latency it adds (median and worst, per stage)
-  and what ran it (the SIMD kind, NEON, AVX2, AVX-512, …, scalar, or the
-  GPU and its backend), each one played back at the same place to hear
-  them side by side, and the one that sounds best made the setting in
-  one click.
-  *Status* (2026-11-03): the chain measures each stage when asked (its
-  time a frame, the energy in and out: `Voice::measure`, `Measured`),
-  puts a recording through any settings at its own pace, lined up with
-  the original (`olo_voice::trial`), and says what runs it
-  (`accelerated_by`: NEON, AVX2 and FMA, AVX-512, SSE). Left: recording
-  and playing back (olo-system, switching between versions at the same
-  place), the spectrum view (the kit), and the window from Sound ▸
-  Voice Processing listing each setting tried.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
@@ -961,6 +928,29 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Sound ▸ Voice Processing: try it on your own voice**~~ (Ben,
+  2026-11-02 and 2026-11-03): record a short sample, see "in real time
+  some kind of audio frequency graph/visualization and what it's
+  doing", the processing delay, play it back with and without, and
+  "hearing how it sounds on the different settings … the added latency
+  … and how it was accelerated (simd type or gpu etc)". *Done*
+  (2026-11-03): Try It… in the Voice Processing box records six seconds
+  from the microphone, tries each setting worth comparing on it (as
+  set, each other noise level, the level the other way, the other
+  mode), each listed as it's done with the delay it adds, its time a
+  10 ms frame (median and worst), what noise suppression and levelling
+  did, and what ran it (NEON here; AVX2/AVX-512/SSE on x86; no GPU:
+  a frame is shorter than a GPU round trip); plays the original or the
+  chosen setting's sound, switching at the same place, with a live
+  spectrum of both (the kit's new `Spectrum`); "Use This Setting" saves
+  it. Recording and playing in olo-system (`recording`), tested end to
+  end in a PipeWire sandbox. Found on the way: `RadioButton` sat a
+  device pixel off a button or label beside it at 1.25× and 1.75×
+  (`RadioButton::height`), and every group box's inset was measured
+  unrounded by the review (false overflows at those scales). Measured:
+  292 µs a frame while playing (1.8 ms before the live part was a view
+  of its own), 252 µs recording, nothing idle.
 
 - ~~**A palm resting low on the pad, a shirt against it, and the trainer
   asking one thing at a time**~~ (Ben, 2026-11-03): "the palm tracking

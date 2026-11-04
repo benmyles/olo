@@ -7243,6 +7243,7 @@ dependencies = [
  "olo-tg",
  "olo-theme",
  "olo-ui",
+ "olo-voice",
  "olo-xdg",
  "qrcode",
  "rustls",

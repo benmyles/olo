@@ -119,6 +119,55 @@ pub fn accelerated_by() -> String {
     }
 }
 
+/// The window [`spectrum`] looks at: 2048 samples, 43 ms.
+pub const SPECTRUM_WINDOW: usize = 2048;
+/// The lowest and highest frequencies [`spectrum`] gives, Hz.
+pub const SPECTRUM_LOW: f32 = 60.0;
+pub const SPECTRUM_HIGH: f32 = 16_000.0;
+
+/// The level in each of `bands` bands from [`SPECTRUM_LOW`] to
+/// [`SPECTRUM_HIGH`], spaced evenly in log frequency (as hearing goes), of
+/// the last [`SPECTRUM_WINDOW`] samples of `x` (48 kHz; fewer: what there
+/// is): dB, a full-scale sine reading 0, through a Hann window. For a live
+/// view of what the chain does (Preferences ▸ Sound ▸ Voice Processing ▸
+/// Try It): under 40 µs a call (`a_spectrum_finds_a_tone`).
+pub fn spectrum(x: &[f32], bands: usize) -> Vec<f32> {
+    use std::cell::RefCell;
+    thread_local! {
+        static FFT: RefCell<Option<(std::sync::Arc<dyn realfft::RealToComplex<f32>>, Vec<f32>, Vec<realfft::num_complex::Complex32>, Vec<f32>)>> = const { RefCell::new(None) };
+    }
+    const N: usize = SPECTRUM_WINDOW;
+    FFT.with(|cell| {
+        let mut cell = cell.borrow_mut();
+        let (fft, input, output, window) = cell.get_or_insert_with(|| {
+            let fft = realfft::RealFftPlanner::<f32>::new().plan_fft_forward(N);
+            let (input, output) = (fft.make_input_vec(), fft.make_output_vec());
+            let window = (0..N).map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / N as f32).cos()).collect();
+            (fft, input, output, window)
+        });
+        let tail = &x[x.len().saturating_sub(N)..];
+        input.fill(0.0);
+        let at = N - tail.len();
+        for (i, v) in tail.iter().enumerate() {
+            input[at + i] = v * window[at + i];
+        }
+        let _ = fft.process(input, output);
+        // A full-scale sine through the window peaks at N/4 in its bin.
+        let full = (N as f32 / 4.0).powi(2);
+        let hz_per_bin = RATE as f32 / N as f32;
+        let ratio = (SPECTRUM_HIGH / SPECTRUM_LOW).powf(1.0 / bands.max(1) as f32);
+        (0..bands)
+            .map(|b| {
+                let (lo, hi) = (SPECTRUM_LOW * ratio.powi(b as i32), SPECTRUM_LOW * ratio.powi(b as i32 + 1));
+                let (from, to) = ((lo / hz_per_bin).round() as usize, ((hi / hz_per_bin).round() as usize).max((lo / hz_per_bin).round() as usize + 1));
+                let bins = &output[from.min(output.len() - 1)..to.min(output.len())];
+                let power = bins.iter().map(|c| c.norm_sqr()).fold(0.0f32, f32::max);
+                (10.0 * (power / full).max(1e-12).log10()).max(-120.0)
+            })
+            .collect()
+    })
+}
+
 /// A recording put through the chain with some settings, at its own pace
 /// ([`trial`]).
 #[derive(Debug, Clone)]
@@ -333,6 +382,29 @@ mod tests {
 
     /// A trial says what each stage did, and what comes out lines up with
     /// what went in.
+    #[test]
+    fn a_spectrum_finds_a_tone() {
+        let tone = |hz: f32, amp: f32| (0..4800).map(|i| amp * (std::f32::consts::TAU * hz * i as f32 / RATE as f32).sin()).collect::<Vec<f32>>();
+        let bands = 48;
+        let s = spectrum(&tone(1000.0, 1.0), bands);
+        let loudest = (0..bands).max_by(|a, b| s[*a].total_cmp(&s[*b])).unwrap();
+        let ratio = (SPECTRUM_HIGH / SPECTRUM_LOW).powf(1.0 / bands as f32);
+        let (lo, hi) = (SPECTRUM_LOW * ratio.powi(loudest as i32), SPECTRUM_LOW * ratio.powi(loudest as i32 + 1));
+        assert!((lo..hi).contains(&1000.0), "{lo}..{hi}");
+        // Full scale reads about 0 dB; 20 dB down, 20 dB less.
+        assert!(s[loudest].abs() < 1.5, "{}", s[loudest]);
+        let quiet = spectrum(&tone(1000.0, 0.1), bands);
+        assert!((s[loudest] - quiet[loudest] - 20.0).abs() < 0.5);
+        // Far from it, far down; silence at the floor.
+        assert!(s[0] < -60.0 && s[bands - 1] < -60.0, "{s:?}");
+        assert!(spectrum(&[0.0; 100], bands).iter().all(|v| *v <= -119.0));
+        let t = std::time::Instant::now();
+        for _ in 0..1000 {
+            std::hint::black_box(spectrum(&tone(500.0, 0.5), bands));
+        }
+        eprintln!("spectrum: {:.1} µs a call", t.elapsed().as_secs_f64() * 1e6 / 1000.0);
+    }
+
     #[test]
     fn a_trial_measures_each_stage() {
         let input = sample(3.0);
