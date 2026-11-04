@@ -1039,9 +1039,10 @@ of Finished; a new one goes where its priority puts it.
   lightweight then just do it after each new sample is collected." On
   the CPU's SIMD (never the NVIDIA GPU), measured per keystroke.
 
-- **Olo Suggestions: install just and uv** (Ben, 2026-11-04): "add
-  installing just (for justfiles) to olo suggestions", then "add
-  installing uv to olo suggestions".
+- **Olo Suggestions: install just, uv and mise** (Ben, 2026-11-04):
+  "add installing just (for justfiles) to olo suggestions", then "add
+  installing uv to olo suggestions", then "add installing mise to olo
+  suggestions".
 
 - **Olo Suggestions: worktrunk, and a notification for each new
   suggestion** (Ben, 2026-11-04): "add to olo suggestions the
