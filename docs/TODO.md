@@ -143,8 +143,12 @@ of Finished; a new one goes where its priority puts it.
     with its speed and acceleration, and scrolls while its middle button
     is held, as a ThinkPad's does. Left: try it on the stick.
   - Battery charge thresholds: Preferences ▸ Power's charge limit.
+  - Thunderbolt 5: boltd runs, both domains ask first ("user") with
+    the IOMMU guarding memory, so boltd lets devices in itself; Olo
+    Doctor finds one plugged in and left waiting and allows it (Allow
+    It: the kernel's `authorized`, root). Left: try with a dock.
   - Left, not started: the IR camera (face sign-in), the proximity
-    sensor, Thunderbolt 5.
+    sensor.
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in

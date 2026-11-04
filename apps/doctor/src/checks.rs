@@ -423,6 +423,7 @@ pub fn scan(roots: &Roots) -> Report {
     idle_gpu(roots, &gpus, &mut r);
     gpu_driver(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
+    thunderbolt(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     r
@@ -1034,6 +1035,46 @@ fn soundwire_part(mfg: &str, part: &str) -> Option<&'static str> {
     })
 }
 
+/// Thunderbolt devices plugged in but not let in: on a computer whose
+/// Thunderbolt asks first (security "user" or "secure"), a dock or a
+/// drive does nothing until it's allowed. boltd allows those it knows
+/// (and, with the IOMMU guarding memory, new ones), so one waiting is one
+/// it didn't: allowed here (the kernel's `authorized`, root).
+fn thunderbolt(roots: &Roots, r: &mut Report) {
+    let dir = roots.fs.join("sys/bus/thunderbolt/devices");
+    let Ok(entries) = std::fs::read_dir(&dir) else { return };
+    let mut waiting = Vec::new();
+    let mut allowed = 0;
+    for e in entries.flatten() {
+        let d = e.path();
+        let name = e.file_name().to_string_lossy().into_owned();
+        // (Devices, not domains, the hosts ("0-0") or their ports.)
+        if name.starts_with("domain") || name.ends_with("-0") || name.contains(':') || !d.join("authorized").exists() {
+            continue;
+        }
+        let what = [read(&d.join("vendor_name")), read(&d.join("device_name"))].into_iter().flatten().map(|s| s.trim().to_owned()).collect::<Vec<_>>().join(" ");
+        match read(&d.join("authorized")).as_deref().map(str::trim) {
+            Some("0") => waiting.push((name, if what.is_empty() { "A Thunderbolt device".into() } else { what })),
+            _ => allowed += 1,
+        }
+    }
+    if waiting.is_empty() {
+        if allowed > 0 {
+            r.fine.push(Fine { title: "Thunderbolt devices are let in".into(), detail: format!("{allowed} connected, each allowed.") });
+        }
+        return;
+    }
+    let names: Vec<String> = waiting.iter().map(|(_, w)| w.clone()).collect();
+    let steps = waiting.iter().map(|(n, _)| Step::WriteSysfs { path: PathBuf::from("/sys/bus/thunderbolt/devices").join(n).join("authorized"), value: "1".into() }).collect();
+    r.findings.push(Finding {
+        id: format!("thunderbolt:{}", waiting.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(",")),
+        severity: Severity::Problem,
+        title: format!("{} is plugged in but not allowed", names.join(", ")),
+        detail: "This computer's Thunderbolt lets a device in only once it's allowed, and it hasn't been: until then a dock, a display or a drive on it does nothing. Allow it if you know it.".into(),
+        fix: Some(Fix { label: "Allow It".into(), root: true, steps }),
+    });
+}
+
 /// The built-in sound chips found, but no sound card made of them: the
 /// kernel's driver (Intel's SOF) doesn't know how this computer wires
 /// them (a new laptop's SoundWire codecs).
@@ -1340,6 +1381,36 @@ mod tests {
     /// A ThinkPad P1 Gen 9: Intel graphics it started on, an NVIDIA card
     /// nouveau couldn't start, kept awake, and SoundWire sound chips with
     /// no card made of them.
+    #[test]
+    fn a_thunderbolt_dock_waiting_is_allowed() {
+        let (fs, roots) = machine("thunderbolt");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let tb = "sys/bus/thunderbolt/devices";
+        // The host (allowed, not a device to allow), a dock waiting.
+        w(&format!("{tb}/domain0/security"), "user\n");
+        w(&format!("{tb}/0-0/authorized"), "1\n");
+        w(&format!("{tb}/0-1/authorized"), "0\n");
+        w(&format!("{tb}/0-1/vendor_name"), "Lenovo\n");
+        w(&format!("{tb}/0-1/device_name"), "ThinkPad Thunderbolt 4 Dock\n");
+        let mut r = Report::default();
+        thunderbolt(&roots, &mut r);
+        let f = r.find("thunderbolt:0-1").expect("the dock");
+        assert_eq!(f.title, "Lenovo ThinkPad Thunderbolt 4 Dock is plugged in but not allowed");
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root);
+        assert_eq!(fix.steps, vec![Step::WriteSysfs { path: "/sys/bus/thunderbolt/devices/0-1/authorized".into(), value: "1".into() }]);
+        // Allowed: fine.
+        w(&format!("{tb}/0-1/authorized"), "1\n");
+        let mut r = Report::default();
+        thunderbolt(&roots, &mut r);
+        assert!(r.findings.is_empty());
+        assert_eq!(r.fine[0].title, "Thunderbolt devices are let in");
+    }
+
     #[test]
     fn thinkpad_graphics_and_sound() {
         let (fs, roots) = machine("thinkpad");
