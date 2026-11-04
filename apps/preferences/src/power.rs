@@ -35,6 +35,9 @@ pub struct State {
     /// The power modes: None while being read, then the daemon's (None:
     /// there is none).
     modes: Modes_,
+    /// The battery's charge limit (UPower's), when it has one: read on a
+    /// thread as the panel opens and after each change.
+    limit: Arc<Mutex<Option<battery::ChargeLimit>>>,
 }
 
 type Modes_ = Arc<Mutex<Option<Option<Modes>>>>;
@@ -53,8 +56,25 @@ impl State {
                 proxy.send(Msg::Redraw);
             });
         }
-        State { battery: poll(olo_ui::proxy(cx)), modes }
+        let limit: Arc<Mutex<Option<battery::ChargeLimit>>> = Default::default();
+        read_limit(&limit, olo_ui::proxy(cx));
+        State { battery: poll(olo_ui::proxy(cx)), modes, limit }
     }
+}
+
+/// Read the battery's charge limit (UPower's), on a thread.
+fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_ui::Proxy) {
+    // Tests (the layout lint): a ThinkPad's.
+    if cfg!(test) {
+        *into.lock().unwrap() = Some(battery::ChargeLimit { enabled: false, start: 75, end: 80, path: String::new() });
+        return;
+    }
+    let into = into.clone();
+    std::thread::spawn(move || {
+        let now = battery::charge_limit();
+        *into.lock().unwrap() = now;
+        proxy.send(Msg::Redraw);
+    });
 }
 
 fn poll(proxy: olo_ui::Proxy) -> Shared {
@@ -205,7 +225,18 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_) {
 pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let battery = st.battery.lock().unwrap().clone();
     let modes = st.modes.lock().unwrap().clone();
-    power_mode(ui, modes, &st.modes);
+    // Two columns, so it fits a laptop's screen: the power mode and the
+    // battery, and when idle and caffeinated beside them.
+    let left = ui.collect(|ui| {
+        power_mode(ui, modes, &st.modes);
+        battery_box(ui, battery, st);
+    });
+    let right = ui.collect(|ui| idle_boxes(ui, power, server));
+    let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
+    ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
+}
+
+fn battery_box(ui: &mut Ui, battery: Option<Option<Battery>>, st: &State) {
     ui.bbox("Battery", |ui| match battery {
         None => ui.note("Reading…"),
         Some(None) => ui.note("This computer has no battery."),
@@ -221,9 +252,28 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
             if !facts.is_empty() {
                 ui.note(facts.join(" · "));
             }
+            // Charging stopped short, to spare a battery that's mostly
+            // plugged in (UPower's threshold: a ThinkPad's).
+            if let Some(l) = st.limit.lock().unwrap().clone() {
+                let (shared, proxy, it) = (st.limit.clone(), olo_ui::proxy(ui.cx), l.clone());
+                let toggle = move |on: bool, _: &mut olo_ui::gpui::Window, _: &mut olo_ui::gpui::App| {
+                    let (l, shared, proxy) = (it.clone(), shared.clone(), proxy.clone());
+                    std::thread::spawn(move || {
+                        if let Err(e) = battery::set_charge_limit(&l, on) {
+                            tracing::warn!("charge limit: {e}");
+                        }
+                        read_limit(&shared, proxy);
+                    });
+                };
+                let label = format!("Stop charging at {}% (and start again below {}%)", l.end, l.start);
+                ui.add(CheckBox::new(label, l.enabled).on_toggle(toggle));
+                ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("A battery kept full wears faster: for a computer that's mostly plugged in.").dim(true).wrap(true)));
+            }
         }
     });
+}
 
+fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
     let p = ui.s.power.clone();
     ui.bbox("When Idle", |ui| {
         const OFF: &str = "Turn the display off after:";

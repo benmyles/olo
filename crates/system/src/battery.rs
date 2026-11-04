@@ -198,7 +198,7 @@ pub struct ChargeLimit {
     pub start: u32,
     pub end: u32,
     /// UPower's object for the battery.
-    path: String,
+    pub path: String,
 }
 
 /// The system battery UPower can limit, if there is one.

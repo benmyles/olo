@@ -214,7 +214,9 @@ impl Panel {
             Panel::Notifications => (440, 700),
             // Its Watchdog tab's thresholds two by two, each a pair of sliders.
             Panel::Performance => (900, 560),
-            Panel::Power => (460, 424),
+            // Two columns: the power mode and the battery, when idle and
+            // caffeinated beside them.
+            Panel::Power => (880, 420),
             Panel::ScreenSaver => (500, 400),
             Panel::Security => (420, 416),
             Panel::Sound => (800, 466),

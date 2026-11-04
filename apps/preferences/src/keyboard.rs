@@ -85,7 +85,7 @@ fn watch_keyboards(proxy: olo_ui::Proxy) -> Arc<Mutex<Option<Vec<String>>>> {
         .spawn(move || {
             loop {
                 let events = Client::connect().ok().and_then(|c| c.into_events_of(&[EventKind::InputDevices]).ok());
-                let mut ask = || {
+                let ask = || {
                     let names = Client::connect().ok().and_then(|mut c| match c.request(&Request::Keyboards) {
                         Ok(Reply::Keyboards { names }) => Some(names),
                         _ => None,

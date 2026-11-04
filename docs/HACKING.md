@@ -4576,6 +4576,13 @@ why Performance is held back (on a lap, running hot). Setting it is
 polkit's `switch-profile`, allowed to the person at the computer.
 Performance has a button to Power, where people may look for it.
 
+**The battery's charge limit** (Preferences ▸ Power ▸ Battery, where the
+battery has one: `olo_system::battery::charge_limit`): UPower's charge
+threshold (`EnableChargeThreshold`, polkit's to the person at the
+computer): charging stops at its end (80 % on a ThinkPad) and starts
+again below its start (75 %). Power is two columns (the power mode and
+the battery; when idle and caffeinated), to fit 1280 × 800.
+
 app_server owns idleness: any input (or a synthetic event) is activity; a
 5 s tick turns the displays off (`settings.power.display_off_minutes`) and
 then asks logind to suspend (`sleep_minutes`). Caffeinated mode
