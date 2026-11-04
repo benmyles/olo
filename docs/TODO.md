@@ -15,6 +15,12 @@ of Finished; a new one goes where its priority puts it.
   whatever the native one is". Done so: each display composed by the GPU
   wired to it, no choice; Display's Graphics box says what each draws.
 
+- ~~**The tray's battery shows the power plugged in**~~ (Ben, 2026-11-04:
+  "the battery icon in the deskbar tray should change when the power is
+  plugged in"): it showed the bolt only while charging or full; plugged
+  in and held at a charge limit ("Not charging") looked unplugged. Now
+  `Battery::plugged_in`.
+
 - **A window that fits what it shows opens at its size, at once** (Ben,
   2026-11-04: "when the adaptive/auto-sizing windows open they tend to
   first open too small then update to be the right size -- that should

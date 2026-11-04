@@ -6813,6 +6813,7 @@ dependencies = [
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",
+ "olo-system",
  "olo-theme",
  "olo-ui",
  "olo-xdg",

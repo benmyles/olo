@@ -25,6 +25,8 @@ use olo_ui::{
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Battery {
     pub percent: u32,
+    /// On power from the wall (the bolt), charging or not.
+    pub plugged: bool,
     pub charging: bool,
 }
 
@@ -225,7 +227,9 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
         });
     }
     olo_system::battery::watch(move |b| {
-        let battery = b.map(|b| Battery { percent: b.percent, charging: b.charging() });
+        // (Plugged in shows so even when it isn't charging: full, or held
+        // at a charge limit.)
+        let battery = b.map(|b| Battery { percent: b.percent, plugged: b.plugged_in(), charging: b.state == olo_system::battery::State::Charging });
         publish(&on_battery, |s| s.battery = battery);
     });
     // The power mode, as the daemon's signals say (a ThinkPad's Fn keys,

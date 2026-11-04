@@ -37,6 +37,12 @@ impl Battery {
     pub fn charging(&self) -> bool {
         matches!(self.state, State::Charging | State::Full)
     }
+
+    /// On power from the wall: charging, full, or held at a charge limit
+    /// ("Not charging": a ThinkPad stopped at 80 %).
+    pub fn plugged_in(&self) -> bool {
+        matches!(self.state, State::Charging | State::Full | State::NotCharging)
+    }
 }
 
 fn read(path: &Path) -> Option<String> {

@@ -2100,8 +2100,13 @@ impl Deskbar {
         // power mode.
         if let Some(b) = st.battery {
             let mode = st.power_modes.as_ref().map(|m| format!(", {}", m.active.label())).unwrap_or_default();
-            let tip_text = format!("{}%{}{mode}. Right-click for the power mode.", b.percent, if b.charging { " — charging" } else { "" });
-            let (r, h) = tray_item(&mut d, "battery", tip_text, Box::new(move |window, cx, r| status::draw_battery(window, r, &theme::palette(cx), b.percent, b.charging)));
+            let power = match (b.plugged, b.charging) {
+                (true, true) => " — charging",
+                (true, false) => " — plugged in",
+                _ => "",
+            };
+            let tip_text = format!("{}%{power}{mode}. Right-click for the power mode.", b.percent);
+            let (r, h) = tray_item(&mut d, "battery", tip_text, Box::new(move |window, cx, r| status::draw_battery(window, r, &theme::palette(cx), b.percent, b.plugged)));
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(
                 h.on_any_button(move |e, window, cx| match button(e) {

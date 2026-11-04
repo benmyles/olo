@@ -31,9 +31,6 @@ pub struct Probe {
     pub prefix: String,
     pub name: String,
     pub driver: String,
-    /// Its render node ("renderD128"), for who uses it.
-    pub render: Option<String>,
-    pub card: String,
 }
 
 fn read(p: impl AsRef<Path>) -> String {
@@ -72,11 +69,9 @@ pub fn find() -> Vec<Probe> {
         } else {
             continue;
         };
-        let render = std::fs::read_dir(device.join("drm")).into_iter().flatten().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.starts_with("renderD"));
         let boot = read(device.join("boot_vga")).trim() == "1";
         let name = name_of(&device, &kind, &driver);
-        let card = card.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        found.push((boot, Probe { device, kind, prefix: String::new(), name, driver, render, card }));
+        found.push((boot, Probe { device, kind, prefix: String::new(), name, driver }));
     }
     found.sort_by_key(|(boot, _)| !*boot);
     found
@@ -103,36 +98,11 @@ fn name_of(device: &Path, kind: &Kind, driver: &str) -> String {
     match kind {
         Kind::Agx if !compatible.is_empty() => compatible,
         Kind::Agx => driver.to_owned(),
-        _ => pci_name(device).map_or_else(|| format!("{maker} GPU"), |model| if model.starts_with(maker) { model } else { format!("{maker} {model}") }),
-    }
-}
-
-/// A PCI device's model as the PCI ID database names it (hwdata's
-/// pci.ids): the marketing name in its brackets where it has one
-/// ("GB206GLM [RTX PRO 2000 Blackwell Generation Laptop GPU]": the
-/// latter).
-fn pci_name(device: &Path) -> Option<String> {
-    let id = |f: &str| read(device.join(f)).trim().trim_start_matches("0x").to_lowercase();
-    let (vendor, product) = (id("vendor"), id("device"));
-    let db = ["/usr/share/hwdata/pci.ids", "/usr/share/misc/pci.ids", "/usr/share/pci.ids"].iter().map(read).find(|t| !t.is_empty())?;
-    let mut in_vendor = false;
-    for line in db.lines() {
-        if !line.starts_with('\t') && !line.starts_with('#') && !line.is_empty() {
-            in_vendor = line.starts_with(&vendor);
-        } else if in_vendor
-            && let Some(rest) = line.strip_prefix('\t')
-            && !rest.starts_with('\t')
-            && rest.starts_with(&product)
-        {
-            let model = rest[product.len()..].trim();
-            let model = match (model.find('['), model.rfind(']')) {
-                (Some(a), Some(b)) if b > a => &model[a + 1..b],
-                _ => model,
-            };
-            return Some(model.to_owned());
+        _ => {
+            let id = |f: &str| u16::from_str_radix(read(device.join(f)).trim().trim_start_matches("0x"), 16).unwrap_or(0);
+            olo_system::gpus::pci_name(id("vendor"), id("device")).map_or_else(|| format!("{maker} GPU"), |model| if model.starts_with(maker) { model } else { format!("{maker} {model}") })
         }
     }
-    None
 }
 
 /// NVIDIA's library, loaded once (None without NVIDIA's driver).
@@ -229,7 +199,7 @@ mod tests {
     #[ignore]
     fn live() {
         for g in super::find() {
-            eprintln!("{} {} ({}) {:?} {:?} asleep={}", g.prefix, g.name, g.driver, g.kind, g.render, super::asleep(&g.device));
+            eprintln!("{} {} ({}) {:?} asleep={}", g.prefix, g.name, g.driver, g.kind, super::asleep(&g.device));
         }
     }
 }
