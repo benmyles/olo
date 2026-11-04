@@ -1083,6 +1083,14 @@ of Finished; a new one goes where its priority puts it.
   caller): worktrunk's worktree path set to the same place. Each
   suggestion notified once, ever (kept by its id).
 
+- **Tracker: ⌘N opens a new Tracker window** (Ben, 2026-11-04): "in
+  tracker, pressing super+n should open a new tracker window". ⌘N is
+  New Folder now (apps/tracker/src/folder.rs, `background_menu`): it
+  becomes File ▸ New Window (a window on the folder it's pressed in, or
+  Home from the desktop, as Finder's), and New Folder moves to ⇧⌘N, as
+  Finder has them; the shortcut help, the palette and HACKING's Tracker
+  section told.
+
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
   version of slack where it integrates deeply with everything olo".
