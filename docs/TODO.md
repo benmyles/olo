@@ -26,6 +26,24 @@ of Finished; a new one goes where its priority puts it.
   never leaving a tile under its least, and the look found; the seed
   passing at 1×, 1.5×, 1.75× and 2×.
 
+- **Backup: everything, and onto another machine** (Ben, 2026-11-03,
+  soon: he sets up his ThinkPad by exporting from this Mac and
+  importing there): "do an audit of the import/export backup feature
+  and make sure everything from all the preferences / relevant olo apps
+  is covered and included -- including passwords -- and that none of
+  it assumes it's imported on the exact same machine (e.g. the same
+  macbook and user)". So: list what every Preferences pane and Olo app
+  keeps (settings, layouts, Passwords' vault, accounts, Integrations,
+  keyboard and touchpad settings, Terminal's profiles, Deskbar,
+  Tracker, the palm model, …) against what the export takes, and add
+  what's missing; nothing in it tied to this machine (paths under this
+  user's home, display and input device names, Apple-only hardware,
+  aarch64), what can't carry over (a device's own pairing, a key sealed
+  to this machine's TPM or keyring) left out or put in again on import,
+  and said so; tested by exporting from one sandbox and importing into
+  another with a different user, home and displays (and an x86 one when
+  the ThinkPad is here), every pane and app then checked.
+
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
   dark mode): "so the training modal/flow needs work: for one i can't
