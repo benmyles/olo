@@ -58,11 +58,26 @@ of Finished; a new one goes where its priority puts it.
   again, was anchored on the new target's edge, 13 px off); it follows
   from where the drag put it as the drag ends, and stops following as
   a drag of it begins. Seeds 1–7 and 10–12 pass 120 steps, 8 with
-  `--reloads` too. *Next*, both there before these changes: seed 13
-  with reloads at step 19 (a drag of 4's right edge, 1 and 2 over 1 by
-  124 px in 6–9 looks of 347, around 860 ms), and seed 9 with reloads
-  now and then at step 46 (settled, then moved: 4, 5 and 6 to the
-  full width a moment after a drag).
+  `--reloads` too. *Next*, both there before these changes and both
+  around a reload: seed 13 with reloads at step 19, and seed 9 with
+  reloads now and then at step 46 (settled, then moved: 4, 5 and 6 to
+  the full width a moment after a drag). *Found* for seed 13 (rounds'
+  log, 2026-11-04): not the drag. Window 1, a Terminal tab, came back
+  from the reload only then, during the drag, and was put back where it
+  was before the reload, at its saved size (`restore_placement`: x 1131,
+  577 wide, asked at its first commit by `claim_placement`), though its
+  tile's room (a `Kept` for it in the tree rebuilt after the restart)
+  had moved with the drag; 5 ms later the layout put it in its tile
+  (x 1091, 453 wide). One frame over its neighbour, out past the tiling
+  area. The fix: a window coming back to an auto-tiled display whose
+  tree keeps room for it asks its tile's size as it is now at its first
+  commit and shows in that room, as a new window takes its tile
+  (`auto_claim`), its saved place used only when there's no room kept.
+  Seed 9's step 46 looks the same family: room held for a window not
+  back yet (`Kept`, `RESTORING`) let go a moment after a drag, the
+  tiles growing into it as the fuzzer watches for stillness; to see in
+  the rounds' log, and either the room let go before the fuzzer looks
+  or the fuzzer told that it's coming.
 
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in
