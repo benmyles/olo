@@ -1482,6 +1482,25 @@ of Finished; a new one goes where its priority puts it.
     dmabufs (CUDA's external memory) rather than copied, and falling back
     mid-recording.
 
+- **Activity Monitor: several processes chosen, one action on all**
+  (Ben, 2026-11-04, for later): "in activity monitor i should be able
+  to multi-select processes and take action on them all at once via
+  right clicking". Processes ▸ the table chooses several rows the usual
+  way (Shift-click a range, Ctrl-click one more, Ctrl+A all those the
+  filter shows, Shift+arrows), and the row menu (`processes.rs`
+  `row_menu`, now for one pid), right-clicked on any chosen row, acts on
+  every chosen one: Quit, Force Quit… (one alert naming how many and
+  which: "Force quit 12 processes (chrome ×11, olo-fuzz)?"), Send
+  Signal, Priority (checked where all agree, a dash where they differ),
+  Copy Process IDs / Command Lines (one a line). Inspect opens the
+  first; Show Program in Tracker the distinct programs. The buttons
+  below (Inspect, Quit, Force Quit…) and the Process menu act on the
+  chosen set too; a row that leaves the list (quit, filtered out) leaves
+  the set, so an action never reaches a process that isn't shown
+  chosen. Rows with a tree open (Tree) choose their children with them
+  when the parent is chosen collapsed. Agents get the same: the
+  table's chosen rows readable, and the actions taking several pids.
+
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
