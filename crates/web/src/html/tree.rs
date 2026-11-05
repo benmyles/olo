@@ -15,6 +15,12 @@ use std::{
 };
 mod foreign;
 mod tables;
+mod templates;
+
+// The common insertion path checks one cached byte. Update these only
+// when entering/leaving a table fallback or changing the template stack.
+const FOSTER_INSERTION: u8 = 1;
+const TEMPLATE_INSERTION: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuirksMode {
@@ -123,6 +129,7 @@ enum Insertion {
     TableBody,
     Row,
     Cell,
+    Template,
 }
 #[derive(Clone, Copy)]
 enum Scope {
@@ -144,13 +151,14 @@ struct Builder<'a> {
     stack: Vec<NodeId>,
     formatting: Vec<Option<Formatting<'a>>>,
     selected_content: Vec<NodeId>,
+    template_modes: Vec<Insertion>,
     head: Option<NodeId>,
     form: Option<NodeId>,
     mode: Insertion,
     original_mode: Insertion,
     frameset_ok: bool,
     ignore_lf: bool,
-    foster_parenting: bool,
+    insertion_flags: u8,
     foreign_seen: bool,
     pending_table_text: Cow<'a, str>,
     quirks: QuirksMode,
@@ -271,13 +279,14 @@ impl<'a> Builder<'a> {
             stack: Vec::new(),
             formatting: Vec::new(),
             selected_content: Vec::new(),
+            template_modes: Vec::new(),
             head: None,
             form: None,
             mode: Insertion::Initial,
             original_mode: Insertion::Initial,
             frameset_ok: true,
             ignore_lf: false,
-            foster_parenting: false,
+            insertion_flags: 0,
             foreign_seen: false,
             pending_table_text: Cow::Borrowed(""),
             quirks: QuirksMode::NoQuirks,
@@ -317,8 +326,8 @@ impl<'a> Builder<'a> {
     fn insert(&mut self, tag: &mut Tag<'a>) -> Result<NodeId> {
         let node = self.create(tag)?;
         let current = self.stack.last().copied().unwrap_or(self.document.root());
-        if self.foster_parenting {
-            self.insert_fostered_node(current, node)?;
+        if self.insertion_flags != 0 {
+            self.insert_adjusted_node(current, node)?;
         } else {
             self.document.append_child(current, node)?;
         }
@@ -330,8 +339,8 @@ impl<'a> Builder<'a> {
             return Ok(());
         }
         let parent = self.current();
-        if self.foster_parenting {
-            return self.insert_fostered_text(parent, text);
+        if self.insertion_flags != 0 {
+            return self.insert_adjusted_text(parent, text);
         }
         if let Some(last) = self.document.last_child(parent)?
             && self.document.node_type(last)? == NodeType::Text
@@ -360,6 +369,7 @@ impl<'a> Builder<'a> {
             _ => None,
         };
         if let Some(node) = node {
+            let parent = if self.template_modes.is_empty() { parent } else { self.document.template_contents(parent)?.unwrap_or(parent) };
             self.document.append_child(parent, node)?;
             Ok(true)
         } else {
@@ -598,7 +608,7 @@ impl<'a> Builder<'a> {
         if tokenizer.allows_cdata() && self.dispatch_foreign(&mut token)? {
             return Ok(());
         }
-        for _ in 0..64 {
+        for _ in 0..self.options.stack_limit.saturating_add(64) {
             self.check_cancelled()?;
             // Character runs can cross an insertion-mode boundary. Handle
             // their leading whitespace without splitting body text per word.
@@ -719,15 +729,17 @@ impl<'a> Builder<'a> {
                         again
                     }
                     Some(Token::StartTag(tag)) if tag.name == "head" => false,
-                    Some(Token::EndTag(tag)) if tag.name == "template" => return Err(ParseError::Unsupported("templates")),
+                    Some(Token::EndTag(tag)) if tag.name == "template" => self.in_head(&mut token, tokenizer)?,
                     Some(Token::EndTag(tag)) if !matches!(tag.name.as_ref(), "body" | "html" | "br") => false,
                     _ => {
                         self.insert(&mut synthetic("body"))?;
+                        self.frameset_ok = true;
                         self.mode = Insertion::Body;
                         true
                     }
                 },
                 Insertion::Body => self.in_body(&mut token, tokenizer)?,
+                Insertion::Template => self.in_template(&mut token, tokenizer)?,
                 Insertion::Text => match &mut token {
                     Some(Token::Text(text)) => {
                         self.insert_text(std::mem::replace(text, Cow::Borrowed("")))?;
@@ -801,7 +813,7 @@ impl<'a> Builder<'a> {
                     self.mode = Insertion::HeadNoscript;
                 }
                 "script" => self.start_text(tag, tokenizer, Mode::ScriptData("script".into()))?,
-                "template" => return Err(ParseError::Unsupported("templates")),
+                "template" => self.start_template(tag)?,
                 "head" => {}
                 _ => {
                     self.stack.pop();
@@ -814,7 +826,7 @@ impl<'a> Builder<'a> {
                     self.stack.pop();
                     self.mode = Insertion::AfterHead;
                 }
-                "template" => return Err(ParseError::Unsupported("templates")),
+                "template" => self.close_template(),
                 "body" | "html" | "br" => {
                     self.stack.pop();
                     self.mode = Insertion::AfterHead;
@@ -833,6 +845,7 @@ impl<'a> Builder<'a> {
 
     fn in_body(&mut self, token: &mut Option<Token<'a>>, tokenizer: &mut Tokenizer<'a>) -> Result<bool> {
         match token {
+            None if !self.template_modes.is_empty() => return self.in_template(token, tokenizer),
             None | Some(Token::Doctype(_)) => {}
             Some(Token::Text(text)) => {
                 let mut text = std::mem::replace(text, Cow::Borrowed(""));
@@ -851,11 +864,13 @@ impl<'a> Builder<'a> {
             Some(Token::StartTag(tag)) => {
                 let name = tag.name.as_ref();
                 if name == "html" {
-                    self.merge_attributes(self.stack[0], tag)?;
+                    if self.template_modes.is_empty() {
+                        self.merge_attributes(self.stack[0], tag)?;
+                    }
                 } else if head_name(name) {
                     return self.in_head(token, tokenizer);
                 } else if name == "body" {
-                    if self.stack.len() > 1 && self.is(self.stack[1], "body") {
+                    if self.template_modes.is_empty() && self.stack.len() > 1 && self.is(self.stack[1], "body") {
                         self.frameset_ok = false;
                         self.merge_attributes(self.stack[1], tag)?;
                     }
@@ -881,9 +896,12 @@ impl<'a> Builder<'a> {
                     self.ignore_lf = true;
                     self.frameset_ok = false;
                 } else if name == "form" {
-                    if self.form.is_none() {
+                    if self.form.is_none() || !self.template_modes.is_empty() {
                         self.close_p()?;
-                        self.form = Some(self.insert(tag)?);
+                        let form = self.insert(tag)?;
+                        if self.template_modes.is_empty() {
+                            self.form = Some(form);
+                        }
                     }
                 } else if matches!(name, "li" | "dd" | "dt") {
                     self.frameset_ok = false;
@@ -1018,9 +1036,11 @@ impl<'a> Builder<'a> {
                         return Ok(name == "html");
                     }
                 } else if name == "template" {
-                    return Err(ParseError::Unsupported("templates"));
+                    self.close_template();
                 } else if name == "form" {
-                    if let Some(node) = self.form.take()
+                    if !self.template_modes.is_empty() {
+                        self.close_scoped("form", Scope::Normal);
+                    } else if let Some(node) = self.form.take()
                         && self.node_in_scope(node)
                     {
                         self.implied("");

@@ -170,7 +170,8 @@ struct TextValue {
 enum Data {
     Vacant(Link),
     Document,
-    Fragment,
+    Fragment { host: Link },
+    Template { attributes: Link, contents: Link },
     Element { name: Atom, namespace: Namespace, attributes: Link },
     Text(TextValue),
     Comment(TextValue),
@@ -372,9 +373,12 @@ impl Document {
         Ok(())
     }
     fn can_allocate(&self) -> Result<()> {
-        if self.live_nodes >= self.limits.nodes || (self.free_nodes.is_none() && self.nodes.len() >= u32::MAX as usize - 1) {
+        self.can_allocate_count(1)
+    }
+    fn can_allocate_count(&self, count: usize) -> Result<()> {
+        if count > self.limits.nodes.saturating_sub(self.live_nodes) {
             Err(Error::NodeLimit)
-        } else if self.revision == u64::MAX {
+        } else if self.revision.checked_add(count as u64).is_none() {
             Err(Error::RevisionOverflow)
         } else {
             Ok(())
@@ -468,12 +472,42 @@ impl Document {
             return Err(Error::InvalidName);
         }
         let normalized = if namespace == Namespace::Html && name.bytes().any(|b| b.is_ascii_uppercase()) { Cow::Owned(name.to_ascii_lowercase()) } else { Cow::Borrowed(name) };
+        if namespace == Namespace::Html && normalized == "template" {
+            return self.create_template();
+        }
         let name = self.atom(&normalized)?;
         Ok(self.allocate(Data::Element { name, namespace, attributes: None }))
     }
     pub fn create_fragment(&mut self) -> Result<NodeId> {
         self.can_allocate()?;
-        Ok(self.allocate(Data::Fragment))
+        Ok(self.allocate(Data::Fragment { host: None }))
+    }
+    fn create_template(&mut self) -> Result<NodeId> {
+        // Host and content root are one bounded allocation. The special
+        // variant fits the existing node slot without a side table.
+        self.can_allocate_count(2)?;
+        let host = self.allocate(Data::Template { attributes: None, contents: None });
+        let fragment = self.allocate(Data::Fragment { host: Some(link(host.slot as usize)) });
+        let Data::Template { contents, .. } = &mut self.nodes[host.slot as usize].data else { unreachable!() };
+        *contents = Some(link(fragment.slot as usize));
+        Ok(host)
+    }
+    pub fn template_contents(&self, id: NodeId) -> Result<Option<NodeId>> {
+        Ok(match self.nodes[index(self.resolve(id)?)].data {
+            Data::Template { contents, .. } => contents.map(|at| self.handle(at)),
+            _ => None,
+        })
+    }
+    // Ownership traversal includes template content roots. Public DOM
+    // child/sibling APIs expose only the actual light-DOM relationships.
+    fn owned_first(&self, at: NonZeroU32) -> Link {
+        if let Data::Template { contents: Some(contents), .. } = self.nodes[index(at)].data { Some(contents) } else { self.nodes[index(at)].first }
+    }
+    fn owned_next(&self, at: NonZeroU32) -> Link {
+        if let Data::Fragment { host: Some(host) } = self.nodes[index(at)].data { self.nodes[index(host)].first } else { self.nodes[index(at)].next }
+    }
+    fn owned_parent(&self, at: NonZeroU32) -> Link {
+        if let Data::Fragment { host: Some(host) } = self.nodes[index(at)].data { Some(host) } else { self.nodes[index(at)].parent }
     }
     pub fn create_doctype<'a>(&mut self, name: &str, public_id: impl Into<Cow<'a, str>>, system_id: impl Into<Cow<'a, str>>) -> Result<NodeId> {
         self.can_allocate()?;
@@ -521,8 +555,8 @@ impl Document {
     pub fn node_type(&self, id: NodeId) -> Result<NodeType> {
         Ok(match self.nodes[index(self.resolve(id)?)].data {
             Data::Document => NodeType::Document,
-            Data::Fragment => NodeType::Fragment,
-            Data::Element { .. } => NodeType::Element,
+            Data::Fragment { .. } => NodeType::Fragment,
+            Data::Element { .. } | Data::Template { .. } => NodeType::Element,
             Data::Text(_) => NodeType::Text,
             Data::Comment(_) => NodeType::Comment,
             Data::ProcessingInstruction { .. } => NodeType::ProcessingInstruction,
@@ -532,6 +566,7 @@ impl Document {
     }
     pub fn name(&self, id: NodeId) -> Result<Option<&str>> {
         Ok(match self.nodes[index(self.resolve(id)?)].data {
+            Data::Template { .. } => Some("template"),
             Data::Element { name, .. } | Data::ProcessingInstruction { target: name, .. } => Some(self.names[index(name)].as_ref()),
             Data::Doctype(id) => Some(&self.names[index(self.doctypes.get(id).name)]),
             _ => None,
@@ -541,12 +576,14 @@ impl Document {
     pub(crate) fn element_name_and_namespace(&self, id: NodeId) -> Result<(&str, Namespace)> {
         let at = self.resolve(id)?;
         match self.nodes[index(at)].data {
+            Data::Template { .. } => Ok(("template", Namespace::Html)),
             Data::Element { name, namespace, .. } => Ok((&self.names[index(name)], namespace)),
             _ => Err(Error::Hierarchy),
         }
     }
     pub fn namespace(&self, id: NodeId) -> Result<Option<Namespace>> {
         Ok(match self.nodes[index(self.resolve(id)?)].data {
+            Data::Template { .. } => Some(Namespace::Html),
             Data::Element { namespace, .. } => Some(namespace),
             _ => None,
         })
@@ -672,12 +709,12 @@ impl Document {
 
     fn attribute_head(&self, at: NonZeroU32) -> Result<Link> {
         match self.nodes[index(at)].data {
-            Data::Element { attributes, .. } => Ok(attributes),
+            Data::Element { attributes, .. } | Data::Template { attributes, .. } => Ok(attributes),
             _ => Err(Error::Hierarchy),
         }
     }
     fn normalize_attribute<'n>(&self, at: NonZeroU32, name: &'n str) -> Cow<'n, str> {
-        if matches!(self.nodes[index(at)].data, Data::Element { namespace: Namespace::Html, .. }) && name.bytes().any(|b| b.is_ascii_uppercase()) {
+        if matches!(self.nodes[index(at)].data, Data::Element { namespace: Namespace::Html, .. } | Data::Template { .. }) && name.bytes().any(|b| b.is_ascii_uppercase()) {
             Cow::Owned(name.to_ascii_lowercase())
         } else {
             Cow::Borrowed(name)
@@ -750,7 +787,7 @@ impl Document {
         if let Some(last) = last {
             self.attributes.get_mut(last).next = Some(attr);
         } else {
-            let Data::Element { attributes, .. } = &mut self.nodes[index(at)].data else { unreachable!() };
+            let (Data::Element { attributes, .. } | Data::Template { attributes, .. }) = &mut self.nodes[index(at)].data else { unreachable!() };
             *attributes = Some(attr);
         }
         self.bump()?;
@@ -782,7 +819,7 @@ impl Document {
             if let Some(last) = last {
                 self.attributes.get_mut(last).next = Some(attr);
             } else {
-                let Data::Element { attributes, .. } = &mut self.nodes[index(node)].data else { unreachable!() };
+                let (Data::Element { attributes, .. } | Data::Template { attributes, .. }) = &mut self.nodes[index(node)].data else { unreachable!() };
                 *attributes = Some(attr);
             }
             last = Some(attr);
@@ -804,7 +841,7 @@ impl Document {
                 if let Some(previous) = previous {
                     self.attributes.get_mut(previous).next = a.next;
                 } else {
-                    let Data::Element { attributes, .. } = &mut self.nodes[index(at)].data else { unreachable!() };
+                    let (Data::Element { attributes, .. } | Data::Template { attributes, .. }) = &mut self.nodes[index(at)].data else { unreachable!() };
                     *attributes = a.next;
                 }
                 self.free_text(a.value);
@@ -850,7 +887,7 @@ impl Document {
         let parent = self.resolve(parent)?;
         let node = self.resolve(node)?;
         let before = before.map(|id| self.resolve(id)).transpose()?;
-        if !matches!(self.nodes[index(parent)].data, Data::Document | Data::Fragment | Data::Element { .. }) || matches!(self.nodes[index(node)].data, Data::Document) {
+        if !matches!(self.nodes[index(parent)].data, Data::Document | Data::Fragment { .. } | Data::Element { .. } | Data::Template { .. }) || matches!(self.nodes[index(node)].data, Data::Document) {
             return Err(Error::Hierarchy);
         }
         if before.is_some_and(|id| self.nodes[index(id)].parent != Some(parent)) {
@@ -866,12 +903,12 @@ impl Document {
             if depth > self.limits.depth {
                 return Err(Error::DepthLimit);
             }
-            ancestor = self.nodes[index(at)].parent;
+            ancestor = self.owned_parent(at);
         }
         if before == Some(node) || (self.nodes[index(node)].parent == Some(parent) && self.nodes[index(node)].next == before) {
             return Ok(false);
         }
-        let fragment = matches!(self.nodes[index(node)].data, Data::Fragment);
+        let fragment = matches!(self.nodes[index(node)].data, Data::Fragment { .. });
         let single = [node];
         let inserted: Cow<'_, [NonZeroU32]> = if fragment {
             Cow::Owned(self.children(self.handle(node))?.map(|id| link(id.slot as usize)).collect())
@@ -892,26 +929,26 @@ impl Document {
                 if depth + relative_depth > self.limits.depth {
                     return Err(Error::DepthLimit);
                 }
-                if let Some(child) = self.nodes[index(cursor)].first {
+                if let Some(child) = self.owned_first(cursor) {
                     cursor = child;
                     relative_depth += 1;
                     continue;
                 }
-                while cursor != root && self.nodes[index(cursor)].next.is_none() {
-                    cursor = self.nodes[index(cursor)].parent.unwrap();
+                while cursor != root && self.owned_next(cursor).is_none() {
+                    cursor = self.owned_parent(cursor).unwrap();
                     relative_depth -= 1;
                 }
                 if cursor == root {
                     break;
                 }
-                cursor = self.nodes[index(cursor)].next.unwrap();
+                cursor = self.owned_next(cursor).unwrap();
             }
         }
         if matches!(self.nodes[index(parent)].data, Data::Document) {
             let (mut element, mut doctype) = (false, false);
             let mut consider = |child: NonZeroU32| -> Result<()> {
                 match self.nodes[index(child)].data {
-                    Data::Element { .. } => {
+                    Data::Element { .. } | Data::Template { .. } => {
                         if element {
                             return Err(Error::Hierarchy);
                         }
@@ -923,7 +960,7 @@ impl Document {
                         }
                         doctype = true;
                     }
-                    Data::Text(_) | Data::Document | Data::Fragment => return Err(Error::Hierarchy),
+                    Data::Text(_) | Data::Document | Data::Fragment { .. } => return Err(Error::Hierarchy),
                     _ => {}
                 }
                 Ok(())
@@ -990,7 +1027,8 @@ impl Document {
             Data::Text(v) => Data::Text(self.copy_text(v)?),
             Data::Comment(v) => Data::Comment(self.copy_text(v)?),
             Data::ProcessingInstruction { target, data } => Data::ProcessingInstruction { target, data: self.copy_text(data)? },
-            Data::Fragment => Data::Fragment,
+            Data::Fragment { .. } => Data::Fragment { host: None },
+            Data::Template { .. } => return self.clone_template_shallow(id),
             Data::Doctype(id) => {
                 let (name, public, system) = {
                     let d = self.doctypes.get(id);
@@ -1009,7 +1047,16 @@ impl Document {
             Data::Document | Data::Vacant(_) => return Err(Error::Hierarchy),
         };
         let copied = self.allocate(data);
-        if let Data::Element { attributes, .. } = self.nodes[index(at)].data {
+        self.copy_attributes(at, copied)?;
+        Ok(copied)
+    }
+    fn clone_template_shallow(&mut self, id: NodeId) -> Result<NodeId> {
+        let copied = self.create_template()?;
+        self.copy_attributes(link(id.slot as usize), copied)?;
+        Ok(copied)
+    }
+    fn copy_attributes(&mut self, at: NonZeroU32, copied: NodeId) -> Result<()> {
+        if let Data::Element { attributes, .. } | Data::Template { attributes, .. } = self.nodes[index(at)].data {
             let result = (|| -> Result<()> {
                 let mut next = attributes;
                 let mut last = None;
@@ -1026,7 +1073,7 @@ impl Document {
                     if let Some(last) = last {
                         self.attributes.get_mut(last).next = Some(new);
                     } else {
-                        let Data::Element { attributes, .. } = &mut self.nodes[copied.slot as usize].data else { unreachable!() };
+                        let (Data::Element { attributes, .. } | Data::Template { attributes, .. }) = &mut self.nodes[copied.slot as usize].data else { unreachable!() };
                         *attributes = Some(new);
                     }
                     last = Some(new);
@@ -1039,7 +1086,7 @@ impl Document {
                 return Err(e);
             }
         }
-        Ok(copied)
+        Ok(())
     }
 
     /// Clone into this document, preserving source ranges and attribute
@@ -1055,7 +1102,7 @@ impl Document {
         }
         let root = self.clone_shallow(id)?;
         let result = (|| -> Result<()> {
-            let mut frames = vec![(self.first_child(id)?, root)];
+            let mut frames = vec![(self.owned_first(link(id.slot as usize)), root)];
             while let Some(frame) = frames.last_mut() {
                 if cancelled.is_some_and(|c| c.load(Ordering::Relaxed)) {
                     return Err(Error::Cancelled);
@@ -1064,14 +1111,19 @@ impl Document {
                     frames.pop();
                     continue;
                 };
-                frame.0 = self.next_sibling(child)?;
+                frame.0 = self.owned_next(child);
                 let parent = frame.1;
-                let copied = self.clone_shallow(child)?;
-                if let Err(e) = self.append_child(parent, copied) {
-                    self.destroy_subtree(copied)?;
-                    return Err(e);
-                }
-                frames.push((self.first_child(child)?, copied));
+                let copied = if matches!(self.nodes[index(child)].data, Data::Fragment { host: Some(_) }) {
+                    self.template_contents(parent)?.expect("cloned template's content root")
+                } else {
+                    let copied = self.clone_shallow(self.handle(child))?;
+                    if let Err(e) = self.append_child(parent, copied) {
+                        self.destroy_subtree(copied)?;
+                        return Err(e);
+                    }
+                    copied
+                };
+                frames.push((self.owned_first(child), copied));
             }
             Ok(())
         })();
@@ -1087,7 +1139,7 @@ impl Document {
     /// only once no host/JS/agent operation is retaining the subtree.
     pub fn destroy_subtree(&mut self, id: NodeId) -> Result<usize> {
         let root = self.resolve(id)?;
-        if matches!(self.nodes[index(root)].data, Data::Document) {
+        if matches!(self.nodes[index(root)].data, Data::Document | Data::Fragment { host: Some(_) }) {
             return Err(Error::Hierarchy);
         }
         self.bump()?;
@@ -1095,13 +1147,19 @@ impl Document {
         let mut cursor = root;
         let mut removed = 0;
         loop {
+            if let Data::Template { contents, .. } = &mut self.nodes[index(cursor)].data
+                && let Some(fragment) = contents.take()
+            {
+                cursor = fragment;
+                continue;
+            }
             if let Some(child) = self.nodes[index(cursor)].first.take() {
                 cursor = child;
                 continue;
             }
             let (next, parent) = {
                 let n = &self.nodes[index(cursor)];
-                (n.next, n.parent)
+                (n.next, self.owned_parent(cursor))
             };
             let data = std::mem::replace(&mut self.nodes[index(cursor)].data, Data::Vacant(None));
             match data {
@@ -1111,7 +1169,7 @@ impl Document {
                     self.free_text(d.system_id);
                 }
                 Data::Text(v) | Data::Comment(v) | Data::ProcessingInstruction { data: v, .. } => self.free_text(v),
-                Data::Element { attributes, .. } => {
+                Data::Element { attributes, .. } | Data::Template { attributes, .. } => {
                     let mut next = attributes;
                     while let Some(attr) = next {
                         let a = self.attributes.remove(attr);

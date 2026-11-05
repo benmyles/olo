@@ -21,7 +21,10 @@ mode selection. Initial `selectedcontent` contents are cloned from the
 selected option. Live selection state, events and mutation hooks remain.
 SVG/MathML document parsing includes namespace-sensitive scope/adoption,
 HTML/MathML integration points, self-closing foreign elements, CDATA and
-foreign spelling/attribute adjustments. Templates and context fragments
+foreign spelling/attribute adjustments. Template document parsing redirects
+insertions into owned content roots,
+tracks nested insertion modes, and unwinds unclosed templates at EOF.
+Context fragments, declarative shadow roots and template content patching
 still return explicit unsupported results; they cannot be compatibility passes.
 
 `dom::Document` is storage, not the complete web-facing DOM API. Nodes
@@ -36,8 +39,8 @@ origin/frame boundaries and secret masking around these primitives.
 ## Independent tree coverage
 
 Unmodified WPT fixtures and their license are in `crates/web/tests/wpt-tree`;
-NOTICE.md pins the source revision. Current coverage is **3,236/3,904
-static tree cases**, with **668 unsupported**, not passed. Both scripting
+NOTICE.md pins the source revision. Current coverage is **3,486/3,904
+static tree cases**, with **418 unsupported**, not passed. Both scripting
 flags run where the fixture calls for them. Parse-error diagnostics are
 not checked. A native evaluator always exits nonzero until every static
 tree case matches:
@@ -62,8 +65,8 @@ Neither set of counts establishes website rendering, JS or DOM API support.
 
 ## Reproducible release measurements
 
-Examples `tokenize_bench`, `dom_bench`, `append_bench`, `parse_bench`
-`table_bench` and `foreign_bench`
+Examples `tokenize_bench`, `dom_bench`, `append_bench`, `parse_bench`,
+`table_bench`, `foreign_bench` and `template_bench`
 emit JSON; run with `cargo run --release -p olo-web --example NAME`.
 Pin to the same CPU and alternate baseline/default runs. Raw samples,
 commands, machine and scope are recorded under `measurements/` and in
@@ -95,3 +98,13 @@ stored namespace. These are storage primitives: arbitrary XML namespace
 URIs, namespaced Web IDL setters and XML parsing remain unfinished.
 Tokenizer CDATA permission follows current-node changes; text and ignored
 tokens reuse it. Foreign dispatch is separate from HTML mode reprocessing.
+
+A template has a distinct content fragment exposed by `template_contents`.
+That fragment's DOM parent is null; ordinary children remain separate.
+A compact template variant and fragment host link keep node slots at
+40 bytes without a side table. Ownership-aware iterative cloning and
+reclamation include both content and ordinary children; pre-insertion
+cycle/depth checks include the host relationship. Owned content roots
+cannot be destroyed independently of their host. Both allocations are
+preflighted against node/revision quotas. Inert owner-document/realm
+semantics and web-facing template APIs remain unfinished.

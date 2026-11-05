@@ -10,7 +10,7 @@ impl<'a> Builder<'a> {
     // of ordinary text/element insertion. Release measurements caught
     // register spills and a larger stack frame when these paths merged.
     #[inline(never)]
-    pub(super) fn insert_fostered_text(&mut self, current: NodeId, text: Cow<'a, str>) -> Result<()> {
+    pub(super) fn insert_adjusted_text(&mut self, current: NodeId, text: Cow<'a, str>) -> Result<()> {
         let (parent, before) = self.insertion_location(current)?;
         let adjacent = if let Some(before) = before { self.document.previous_sibling(before)? } else { self.document.last_child(parent)? };
         if let Some(last) = adjacent
@@ -24,7 +24,7 @@ impl<'a> Builder<'a> {
         Ok(())
     }
     #[inline(never)]
-    pub(super) fn insert_fostered_node(&mut self, current: NodeId, node: NodeId) -> Result<()> {
+    pub(super) fn insert_adjusted_node(&mut self, current: NodeId, node: NodeId) -> Result<()> {
         let (parent, before) = self.insertion_location(current)?;
         self.document.insert_before(parent, node, before)?;
         Ok(())
@@ -32,10 +32,13 @@ impl<'a> Builder<'a> {
 
     #[inline]
     pub(super) fn insertion_location(&self, target: NodeId) -> Result<(NodeId, Option<NodeId>)> {
-        if !self.foster_parenting {
-            return Ok((target, None));
+        let (parent, before) = if self.insertion_flags & super::FOSTER_INSERTION != 0 { self.foster_insertion_location(target)? } else { (target, None) };
+        if !self.template_modes.is_empty()
+            && let Some(contents) = self.document.template_contents(parent)?
+        {
+            return Ok((contents, None));
         }
-        self.foster_insertion_location(target)
+        Ok((parent, before))
     }
 
     fn foster_insertion_location(&self, target: NodeId) -> Result<(NodeId, Option<NodeId>)> {
@@ -44,7 +47,7 @@ impl<'a> Builder<'a> {
         }
         let Some((at, &table)) = self.stack.iter().enumerate().rev().find(|(_, node)| self.is(**node, "table") || self.is(**node, "template")) else { return Ok((self.stack[0], None)) };
         if self.is(table, "template") {
-            return Err(ParseError::Unsupported("template insertion locations"));
+            return Ok((table, None));
         }
         if let Some(parent) = self.document.parent(table)? {
             return Ok((parent, Some(table)));
@@ -70,6 +73,7 @@ impl<'a> Builder<'a> {
                 "caption" => Insertion::Caption,
                 "colgroup" => Insertion::ColumnGroup,
                 "table" => Insertion::Table,
+                "template" => *self.template_modes.last().expect("template on stack has a mode"),
                 "head" => Insertion::Head,
                 "body" => Insertion::Body,
                 "frameset" => Insertion::Frameset,
@@ -88,10 +92,10 @@ impl<'a> Builder<'a> {
     }
 
     fn table_fallback(&mut self, token: &mut Option<Token<'a>>, tokenizer: &mut Tokenizer<'a>) -> Result<bool> {
-        let previous = self.foster_parenting;
-        self.foster_parenting = true;
+        let previous = self.insertion_flags & super::FOSTER_INSERTION;
+        self.insertion_flags |= super::FOSTER_INSERTION;
         let result = self.in_body(token, tokenizer);
-        self.foster_parenting = previous;
+        self.insertion_flags = (self.insertion_flags & !super::FOSTER_INSERTION) | previous;
         result
     }
 
@@ -148,8 +152,11 @@ impl<'a> Builder<'a> {
                     self.stack.pop();
                 }
                 "form" => {
-                    if self.form.is_none() {
-                        self.form = Some(self.insert(tag)?);
+                    if self.form.is_none() || !self.template_modes.is_empty() {
+                        let form = self.insert(tag)?;
+                        if self.template_modes.is_empty() {
+                            self.form = Some(form);
+                        }
                         self.stack.pop();
                     }
                 }

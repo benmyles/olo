@@ -364,3 +364,68 @@ fn a_cancelled_clone_does_not_allocate_or_mutate_the_document() {
     assert_eq!(doc.revision(), revision);
     assert_eq!(doc.memory().live_nodes, 2);
 }
+
+#[test]
+fn template_content_ownership_is_separate_from_children_and_clones_and_reclaims_both() {
+    let mut doc = Document::new(Arc::from(""), Limits::default()).unwrap();
+    let host = doc.create_element("TEMPLATE", Namespace::Html).unwrap();
+    let content = doc.template_contents(host).unwrap().unwrap();
+    assert_eq!(doc.node_type(host).unwrap(), NodeType::Element);
+    assert_eq!(doc.name(host).unwrap(), Some("template"));
+    assert_eq!(doc.parent(content).unwrap(), None);
+    assert_eq!(doc.children(host).unwrap().count(), 0);
+    doc.set_attribute(host, "DATA-ID", "original").unwrap();
+    assert_eq!(doc.attribute(host, "data-id").unwrap(), Some("original"));
+    let nested = doc.create_element("template", Namespace::Html).unwrap();
+    let nested_content = doc.template_contents(nested).unwrap().unwrap();
+    doc.append_child(content, nested).unwrap();
+    let text = doc.create_text(String::from("inside")).unwrap();
+    doc.append_child(nested_content, text).unwrap();
+    let light = doc.create_text(String::from("light")).unwrap();
+    doc.append_child(host, light).unwrap();
+    let revision = doc.revision();
+    assert_eq!(doc.append_child(nested_content, host), Err(Error::Cycle));
+    assert_eq!(doc.destroy_subtree(content), Err(Error::Hierarchy));
+    assert_eq!(doc.revision(), revision);
+    let clone = doc.clone_subtree(host).unwrap();
+    let clone_content = doc.template_contents(clone).unwrap().unwrap();
+    let clone_nested = doc.first_child(clone_content).unwrap().unwrap();
+    let clone_nested_content = doc.template_contents(clone_nested).unwrap().unwrap();
+    let clone_text = doc.first_child(clone_nested_content).unwrap().unwrap();
+    doc.append_value(clone_text, " changed").unwrap();
+    assert_eq!(doc.value(text).unwrap(), Some("inside"));
+    assert_eq!(doc.value(clone_text).unwrap(), Some("inside changed"));
+    assert_eq!(doc.value(doc.first_child(clone).unwrap().unwrap()).unwrap(), Some("light"));
+    assert_eq!(doc.attribute(clone, "data-id").unwrap(), Some("original"));
+    assert_eq!(doc.destroy_subtree(clone).unwrap(), 6);
+    assert_eq!(doc.node_type(clone_nested_content), Err(Error::StaleNode));
+    assert_eq!(doc.destroy_subtree(host).unwrap(), 6);
+    assert_eq!(doc.node_type(content), Err(Error::StaleNode));
+    assert_eq!((doc.memory().live_nodes, doc.memory().live_attributes, doc.memory().owned_text_bytes), (1, 0, 0));
+    assert_eq!(doc.memory().node_size, 40);
+}
+
+#[test]
+fn template_allocation_and_owned_depth_are_preflighted_and_failed_clones_release_content_roots() {
+    let mut doc = Document::new(Arc::from(""), Limits { nodes: 2, ..Limits::default() }).unwrap();
+    assert_eq!(doc.create_element("template", Namespace::Html), Err(Error::NodeLimit));
+    assert_eq!((doc.revision(), doc.memory().live_nodes), (0, 1));
+    let mut doc = Document::new(Arc::from(""), Limits { depth: 3, ..Limits::default() }).unwrap();
+    let host = doc.create_element("template", Namespace::Html).unwrap();
+    let content = doc.template_contents(host).unwrap().unwrap();
+    let text = doc.create_text("text").unwrap();
+    doc.append_child(content, text).unwrap();
+    let revision = doc.revision();
+    assert_eq!(doc.append_child(doc.root(), host), Err(Error::DepthLimit));
+    assert_eq!((doc.parent(host).unwrap(), doc.parent(text).unwrap(), doc.revision()), (None, Some(content), revision));
+    let mut doc = Document::new(Arc::from(""), Limits { nodes: 6, ..Limits::default() }).unwrap();
+    let host = doc.create_element("template", Namespace::Html).unwrap();
+    let content = doc.template_contents(host).unwrap().unwrap();
+    let text = doc.create_text("text").unwrap();
+    doc.append_child(content, text).unwrap();
+    assert_eq!(doc.clone_subtree(host), Err(Error::NodeLimit));
+    assert_eq!(doc.memory().live_nodes, 4);
+    assert_eq!(doc.value(text).unwrap(), Some("text"));
+    doc.destroy_subtree(host).unwrap();
+    assert_eq!(doc.memory().live_nodes, 1);
+}

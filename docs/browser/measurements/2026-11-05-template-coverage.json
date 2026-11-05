@@ -1,0 +1,15 @@
+{
+  "counts": {
+    "passed": 3486,
+    "unsupported": 418
+  },
+  "diagnostics_checked": false,
+  "scope": "Static HTML tree comparisons only. No error-code/location conformance, JavaScript execution, or website compatibility claim. Unsupported cases stay in the denominator.",
+  "total": 3904,
+  "source_revision": "d7bb5bb848fcd304c10669288a211dbafd106d90",
+  "full_tree_acceptance_exit": 1,
+  "unsupported_reasons": {
+    "fragment parsing": 412,
+    "JavaScript execution": 6
+  }
+}

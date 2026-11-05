@@ -132,11 +132,15 @@ pub fn dump(document: &Document, root: NodeId) -> String {
                 }
                 out.push_str(">\n");
             }
-            NodeType::Document | NodeType::Fragment => panic!("nested tree root"),
+            NodeType::Fragment => out.push_str(&format!("{prefix}content\n")),
+            NodeType::Document => panic!("nested document root"),
         }
         let mut children: Vec<_> = document.children(node).unwrap().map(|n| (n, depth + 1)).collect();
         children.reverse();
         stack.extend(children);
+        if let Some(content) = document.template_contents(node).unwrap() {
+            stack.push((content, depth + 1));
+        }
     }
     out.trim_end_matches('\n').into()
 }

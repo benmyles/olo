@@ -89,6 +89,7 @@ fn malformed_markup_does_not_panic_or_reprocess_forever() {
         "textarea",
         "frameset",
         "frame",
+        "template",
         "svg",
         "math",
         "foreignObject",
@@ -192,4 +193,21 @@ fn foreign_attributes_keep_expanded_identity_through_cloning_and_qualified_mutat
     document.destroy_subtree(cloned).unwrap();
     document.destroy_subtree(svg).unwrap();
     assert_eq!(document.memory().live_attributes, 0);
+}
+
+#[test]
+fn unclosed_templates_unwind_beyond_the_old_reprocessing_limit() {
+    use olo_web::html::{ParseOptions, parse};
+    use std::sync::Arc;
+    let input: Arc<str> = Arc::from(format!("<!doctype html>{}text", "<template>".repeat(128)));
+    let doc = parse(input, ParseOptions::default(), None).unwrap().document;
+    let mut node = doc.children(doc.root()).unwrap().find(|&n| doc.node_type(n).unwrap() == olo_web::dom::NodeType::Element && doc.name(n).unwrap() == Some("html")).unwrap();
+    node = doc.first_child(node).unwrap().unwrap(); // head
+    for _ in 0..128 {
+        node = doc.first_child(node).unwrap().unwrap();
+        assert_eq!(doc.name(node).unwrap(), Some("template"));
+        assert!(doc.first_child(node).unwrap().is_none());
+        node = doc.template_contents(node).unwrap().unwrap();
+    }
+    assert_eq!(doc.value(doc.first_child(node).unwrap().unwrap()).unwrap(), Some("text"));
 }

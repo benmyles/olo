@@ -438,3 +438,103 @@ no-op revisions, namespace-preserving updates/removal and reclamation.
 No visible UI changes or person's-session actions. Next: templates and
 context fragments. The browser goal remains active; shell, CSS/layout,
 JS, integrations, website capture and compatibility acceptance remain.
+
+
+## 2026-11-05 — template contents, document modes and measured ownership
+
+Added a compact template node variant and a fragment host link. Templates
+and their owned content roots still use **40-byte node slots**; no side
+hash table or per-node pointer was added. Content roots have null DOM
+parents, and actual template children remain separate. Both allocations
+are preflighted together against node/revision bounds. Iterative cloning
+and destruction include content roots and light-DOM children. Host-aware
+cycle/depth checks reject cycles through template contents; owned roots
+cannot be reclaimed independently. Node/text/attribute reclamation and
+clone-failure cleanup are tested. Web-facing owner-document/realm
+semantics remain open; storage ownership does not claim those APIs exist.
+
+Implemented nested template insertion modes, adjusted insertion locations
+(including fostered elements/text, comments, foreign content and adoption),
+form-pointer isolation, HTML/body attribute suppression in template
+contents, reset and EOF unwinding. A cached insertion flag keeps the
+ordinary insertion check to one byte; it changes only at template-stack
+and table-fallback transitions. The bounded reprocessing allowance now
+includes stack depth, so 128 unclosed templates unwind at EOF. Independent
+template cases exposed a missing frameset-ok reset when the parser creates
+an implicit body after a head template; added the standard's reset.
+Declarative shadow roots and template content patching are explicit
+unsupported results, pending their actual implementation.
+
+All **250** previously unsupported template document variants now match:
+**3,486/3,904 static tree variants**. **418 unsupported** remain: context
+fragments 412 and script execution 6. No tree mismatch/error/panic remains;
+the baseline protects every current match. Native `tree_eval` still exits
+**1**, verified; parse-error diagnostics are unchecked. Summary:
+`measurements/2026-11-05-template-coverage.json`. These counts establish
+neither website rendering nor JavaScript/browser compatibility.
+
+Release comparison against `b0adb567`, Core Ultra 7 356H, CPU 0, rustc
+1.99.1. Final common comparison: seven alternating pairs, reversed order
+on alternating pairs, 50 parse/drop iterations per sample:
+
+| Static workload | Before templates | Final templates |
+|---|---:|---:|
+| Article, 65,544 nodes | 5.815 ms | 5.993 ms |
+| 100,000 fragmented text tokens | 3.567 ms | 3.578 ms |
+| One 4,096-attribute tag | 0.593 ms | 0.594 ms |
+| Four formatting tags with 4,096 attributes each | 2.077 ms | 2.069 ms |
+
+Article **3.1% slower**, fragmented text **0.3% slower** in these samples;
+no zero-cost claim. Median first article parse **7.291/7.302 ms**.
+Common peak RSS **8,268–8,588 KiB** across builds. Intermediate runs
+showed a large article discrepancy (7.110 versus 5.992 ms) that did not
+recur in seven additional reversed-order pairs before the flag change
+(5.970 versus 5.997 ms); no cause is claimed. Intermediate fragmented text
+was 3.3% slower; combining template/foster checks into the cached flag
+reduced the final measured difference. All observations are retained.
+CPU clocks/load were not controlled; these samples do not establish
+statistical significance or a Chrome performance comparison.
+
+Three additional alternating pairs, ten iterations each, at 40,000 units:
+
+| Existing workload | Before templates | Final templates |
+|---|---:|---:|
+| Two-cell table rows | 12.844 ms | 13.231 ms |
+| Fostered table rows | 12.686 ms | 13.601 ms |
+| SVG icon groups | 29.844 ms | 30.563 ms |
+| MathML/HTML groups | 44.968 ms | 46.967 ms |
+| Fragmented HTML text after SVG | 1.410 ms | 1.471 ms |
+
+These retain the ownership-check costs, including the **7.2%** fostered
+row regression, for further profiling; no performance target is declared
+met. Table/foreign peak RSS across builds **19,240–19,424 /
+45,064–45,280 KiB**. Full raw before/after/intermediate observations and
+source hashes: `measurements/2026-11-05-template-common.json`.
+
+New `template_bench`, three runs of ten iterations, median parse/drop:
+
+| Workload | 10,000 templates | 20,000 | 40,000 |
+|---|---:|---:|---:|
+| Mixed HTML/SVG contents | 5.806 ms | 11.402 ms | 22.526 ms |
+| Implicit table row contents | 5.576 ms | 11.119 ms | 22.025 ms |
+| Fostered table text contents | 8.786 ms | 17.539 ms | 34.925 ms |
+
+At 40,000 templates: **240,005/280,005/320,005 nodes**, respectively;
+owned text **0/0/480,000 bytes**. Fostered discontiguous runs retain
+12 bytes per template. First complete parses **25.544/29.309/36.445 ms**;
+worker-only API. Peak benchmark RSS **29,588–29,756 KiB**. Unclosed nested
+templates at depths 32/64/128/256 measured **0.0077/0.0175/0.0503/0.1663
+ms**; ancestor preflight has quadratic cost in this bounded nesting
+stress, unlike the linear sibling workloads. Default ownership-depth
+bounds include content-root edges. Reproduce with
+`cargo build --release -p olo-web --example template_bench`, then
+`taskset -c 0 /usr/bin/time -v target/release/examples/template_bench 10`.
+Raw samples: `measurements/2026-11-05-templates.json`. No network, scripts,
+shadow DOM, content patching, rendering, UI or Chrome results are measured.
+
+Validation: release engine tests (17 DOM, four tokenizer, eight tree),
+counterfactual-parser tree tests, clippy and workspace release build.
+Malformed generation now includes templates; dedicated checks exercise
+owned content/light-DOM clones, cycles, quota atomicity, depth and failed
+clone cleanup. No visible UI changes or person's-session actions.
+Next: context fragments. The complete browser goal remains active.
