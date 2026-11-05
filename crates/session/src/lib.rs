@@ -204,6 +204,10 @@ struct Session {
     /// Programs an upgrade may have left on the old version: looked at
     /// 20 s after (asked again) and 90 s after (stopped).
     stale_check: Option<(Instant, u8)>,
+    /// Programs of ours left from sessions that have gone, asked to end
+    /// at the first look after an upgrade and killed at the second if they
+    /// hadn't (`sweep_leftovers`): pid and start time.
+    leftovers: Vec<(i32, u64)>,
     /// When to ask the programs still on an old version to re-execute,
     /// after app_server restarted for an upgrade (`NUDGE_AFTER_RELOAD`).
     nudge_at: Option<Instant>,
@@ -279,6 +283,7 @@ impl Session {
             rescue_next: false,
             shell: Vec::new(),
             stale_check: None,
+            leftovers: Vec::new(),
             nudge_at: None,
             binary: own_binary(),
             stopping: false,
@@ -358,6 +363,7 @@ impl Session {
             rescue_next: false,
             shell: r.shell,
             stale_check: r.stale.map(|(at, stage)| (Instant::now() - Duration::from_secs(now_secs().saturating_sub(at)), stage)),
+            leftovers: Vec::new(),
             nudge_at: None,
             binary: own_binary(),
             stopping: false,
@@ -636,6 +642,30 @@ impl Session {
         self.renew_proxy_if_upgraded();
     }
 
+    /// Programs of ours left from sessions that have gone (their display
+    /// no longer exists: `upgrade::leftovers`), looked for after each
+    /// upgrade: asked to end (SIGTERM) at the first look, killed at the
+    /// second if they're still there.
+    fn sweep_leftovers(&mut self, stage: u8, skip: &[i32]) {
+        if stage == 0 {
+            self.leftovers.clear();
+            for (pid, started, why) in upgrade::leftovers(&runtime_dir(), skip) {
+                log(format!("left from a session that has gone: {why}; asking it to end"));
+                // SAFETY: SIGTERM to our own program.
+                unsafe { libc::kill(pid, libc::SIGTERM) };
+                self.leftovers.push((pid, started));
+            }
+        } else {
+            for (pid, started) in std::mem::take(&mut self.leftovers) {
+                if upgrade::start_time(pid) == Some(started) {
+                    log(format!("pid {pid}, left from a session that has gone, didn't end; killing it"));
+                    // SAFETY: SIGKILL to our own program, the same process.
+                    unsafe { libc::kill(pid, libc::SIGKILL) };
+                }
+            }
+        }
+    }
+
     /// What an upgrade left on the old version (Ben, 2026-11-01): 20 s
     /// after the programs were asked to re-execute, those of this session
     /// still running a replaced binary are named and asked again; 90 s
@@ -646,10 +676,10 @@ impl Session {
     /// waiting out a screen share (`upgrade_waits_while`).
     fn check_stale(&mut self) {
         let Some((since, stage)) = self.stale_check else { return };
-        let Some(w) = &self.upgrades else {
+        if self.upgrades.is_none() {
             self.stale_check = None;
             return;
-        };
+        }
         let elapsed = since.elapsed();
         if (stage == 0 && elapsed < Duration::from_secs(20)) || (stage == 1 && elapsed < Duration::from_secs(90)) {
             return;
@@ -657,6 +687,8 @@ impl Session {
         let mut skip: Vec<i32> = vec![std::process::id() as i32, self.server.pid];
         skip.extend(self.proxy.as_ref().map(|p| p.2.pid));
         skip.extend(self.retired.iter().copied());
+        self.sweep_leftovers(stage, &skip);
+        let Some(w) = &self.upgrades else { return };
         let stale = w.stale(&skip, &self.display);
         if stale.is_empty() {
             if stage == 0 {

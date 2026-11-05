@@ -2317,7 +2317,13 @@ stopped: a service of the session's is restarted by it, an app starts
 as the new version when next opened. The proxies are never touched
 (a retired one serves the outside programs it had until they close),
 nor olo-portal (it may be waiting out a screen share,
-`upgrade_waits_while`), which is only named, nor a program of ours that
+`upgrade_waits_while`), which is only named. Programs of ours left
+from a session that has gone (their `WAYLAND_DISPLAY`'s socket no
+longer exists: a login before, a test session or Agent Screen stopped
+without them; `upgrade::leftovers`, none younger than 30 s, none with
+no display in their environment) are asked to end at the first look
+and killed at the second if they didn't (`sweep_leftovers`, by pid and
+start time). Nor is stopped a program of ours that
 another program started (`upgrade::started_by_another`: its parent is
 neither ours, the session's service manager nor init): a coding agent's
 `olo-terminal --mcp`, a browser's messaging host, a command run from a
@@ -2409,7 +2415,41 @@ for a 3-second `sleep`.
   `client.rs`: a dialog's modality, a surface's alpha or content type, a
   virtual keyboard's keymap) are replayed after a restart. Objects the
   restart ends get their end events (data sources are cancelled, drm
-  leases finish, tablets are removed). Set `OLO_WLPROXY_DEBUG=1` for
+  leases finish, tablets are removed). What a restart must not do to a
+  program (each one ended Chrome, Slack, the GNOME portal and every GTK
+  and Qt program at upgrades, 2026-11-04 and -05):
+  - A touch (`wl_touch`) waits for the new seat to say it has touch
+    (`waiting_touch`, made again in `seat_capabilities`): a new
+    app_server's seat gets its touch screen only as libinput finds it,
+    seconds after it starts, and Smithay ended the connection of a
+    program asking before ("missing touch capability"). A program told
+    the seat has none lets its touch go and asks again when it does.
+    Smithay (ours) also gives an inert pointer, keyboard or touch to a
+    request without the capability rather than ending the connection.
+  - A surface whose destroy is waiting in the queue isn't made again,
+    nor anything made from it; a fractional scale whose surface the
+    program let go (destroyed, its destroy waiting, its id another's)
+    hears nothing more (`surface_gone`); a surface shown nowhere yet (no
+    role, never committed, never a cursor or drag icon) gets its scale
+    only when it is (`held`, `release_held`); a scale the program was
+    already told isn't said again (`told_again`); and the replay commits
+    only surfaces the program committed. GTK keeps a removed tablet's
+    cursor surface's `wp_fractional_scale_v1` while freeing what its
+    events land on, and told the tablet went (it comes again from the
+    next app_server), it crashed on the next app_server's scale
+    (`pointer_surface_fractional_scale_preferred_scale_cb`), however late
+    it read (Chrome's GTK sat 25 s in a call to the accessibility bus).
+  `tools/dev/outside-check` runs GNOME Text Editor (GTK 4), Slack
+  (Electron), Chrome (olo-chrome, a profile of its own) and a Qt 6
+  window (`OLO_QT_PYTHON`, a Python with PySide6) in a session under
+  olo-session at 1.5×, with a touch screen that comes 2.5 s after each
+  app_server starts and a pen tablet (`OLO_HEADLESS_TOUCH=MS`,
+  `OLO_HEADLESS_TABLET=1` for any headless session), restarts app_server
+  N times and checks each is running with its window (before the fixes
+  all four died at the first; after, all four through five). Run it
+  outside a coding agent's sandbox: Chromium's own can't start inside
+  one. The proxy's CPU for 704 keys typed into GTK: 150–210 ms before,
+  160–200 after. Set `OLO_WLPROXY_DEBUG=1` for
   the session (`tsession` passes it on) to log every replayed request. Set
   `OLO_NO_WAYLAND_PROXY=1` to have app_server take `wayland-N` itself.
   If the proxy keeps crashing, the session does that on its own.

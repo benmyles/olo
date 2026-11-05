@@ -396,6 +396,31 @@ pub fn run_headless(size_arg: Option<&str>) {
         }
     }
 
+    // A touch screen on the seat (`OLO_HEADLESS_TOUCH`: "0" at once, or
+    // after that many ms, as libinput finds a real one seconds after
+    // app_server starts): programs then ask for touches (wl_touch), and an
+    // upgrade's replay of them is tried as on the ThinkPad.
+    if let Some(ms) = std::env::var("OLO_HEADLESS_TOUCH").ok().and_then(|v| v.parse::<u64>().ok()) {
+        let _ = event_loop.handle().insert_source(Timer::from_duration(Duration::from_millis(ms)), |_, _, state| {
+            if state.seat.get_touch().is_none() {
+                state.seat.add_touch();
+                info!("headless touch screen added");
+            }
+            TimeoutAction::Drop
+        });
+    }
+
+    // A pen tablet on the seat (`OLO_HEADLESS_TABLET`), as the ThinkPad's
+    // screen has: programs bind it and keep a cursor of their own for it,
+    // and an upgrade tells them it went (it comes again from the next
+    // app_server).
+    if std::env::var_os("OLO_HEADLESS_TABLET").is_some() {
+        use smithay::input::tablet::{TabletDescriptor, TabletSeatTrait as _};
+        let dh = state.display_handle.clone();
+        state.seat.tablet_seat().add_wp_tablet(&dh, &TabletDescriptor { name: "Headless Pen".into(), usb_id: None, syspath: None });
+        info!("headless pen tablet added");
+    }
+
     // Each screen draws at its mode's rate, on time (`frames_due`).
     schedule_frames(&mut state.backend_data, std::time::Instant::now());
 

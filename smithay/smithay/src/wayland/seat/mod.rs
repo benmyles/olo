@@ -258,7 +258,7 @@ where
         &self,
         state: &mut D,
         client: &wayland_server::Client,
-        seat: &WlSeat,
+        _seat: &WlSeat,
         request: wl_seat::Request,
         _dh: &DisplayHandle,
         data_init: &mut wayland_server::DataInit<'_, D>,
@@ -269,7 +269,19 @@ where
         match request {
             wl_seat::Request::GetPointer { id } => {
                 if !sent_capabilities.contains(wl_seat::Capability::Pointer) {
-                    seat.post_error(wl_seat::Error::MissingCapability, "missing pointer capability");
+                    // (Olo) An inert pointer rather than the protocol error,
+                    // which ends the client's connection: a client asking
+                    // as the capability came or went (olo-wlproxy replaying
+                    // on a new app_server) carries on.
+                    tracing::warn!("get_pointer without the pointer capability: an inert pointer");
+                    let client_scale = state.client_compositor_state(client).clone_client_scale();
+                    data_init.init(
+                        id,
+                        PointerUserData {
+                            arc: Weak::new(),
+                            client_scale,
+                        },
+                    );
                     return;
                 }
 
@@ -298,7 +310,12 @@ where
             }
             wl_seat::Request::GetKeyboard { id } => {
                 if !sent_capabilities.contains(wl_seat::Capability::Keyboard) {
-                    seat.post_error(wl_seat::Error::MissingCapability, "missing keyboard capability");
+                    // (Olo) Inert, as for the pointer.
+                    tracing::warn!("get_keyboard without the keyboard capability: an inert keyboard");
+                    let keyboard = data_init.init(id, KeyboardUserData { arc: Weak::new() });
+                    if keyboard.version() >= 4 {
+                        keyboard.repeat_info(0, 0);
+                    }
                     return;
                 }
 
@@ -330,7 +347,17 @@ where
             }
             wl_seat::Request::GetTouch { id } => {
                 if !sent_capabilities.contains(wl_seat::Capability::Touch) {
-                    seat.post_error(wl_seat::Error::MissingCapability, "missing touch capability");
+                    // (Olo) Inert, as for the pointer: the touch screen is
+                    // found by libinput seconds after app_server starts.
+                    tracing::warn!("get_touch without the touch capability: an inert touch");
+                    let client_scale = state.client_compositor_state(client).clone_client_scale();
+                    data_init.init(
+                        id,
+                        TouchUserData {
+                            arc: Weak::new(),
+                            client_scale,
+                        },
+                    );
                     return;
                 }
 

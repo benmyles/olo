@@ -29,28 +29,6 @@ of Finished; a new one goes where its priority puts it.
   which pictures have HDR. Measure: decode and upload time and memory
   of a 4K deep picture against the SDR one (the worker, the strips).
 
-- **Other programs survive Olo's upgrades** (Ben, 2026-11-05, after the
-  HDR wallpapers): "every time i upgrade my non-olo apps, e.g. slack and
-  chrome, crash or are no longer shown in olo. please fix so that they
-  relliably survive upgrades." Olo's own apps reconnect as app_server
-  reloads in place (`olo_ui::on_upgrade`); other Wayland programs
-  (Chrome, Slack (Electron), GTK, Qt) either crash or keep running with
-  their windows gone. Known so far: at the 2026-11-04 upgrade Chrome and
-  xdg-desktop-portal-gnome crashed in GTK 4's
-  `pointer_surface_fractional_scale_preferred_scale_cb` (a
-  fractional-scale event for a pointer surface GTK had let go of). Find
-  what each of them sees across a reload (the socket, the globals, the
-  events in their order, WAYLAND_DEBUG on a test session's copy of each),
-  for each failure (the crash, the windows not shown), and fix it at the
-  cause on our side, so the person's other programs and their windows
-  are exactly where they were after every upgrade: keep the clients'
-  connections through the reload if that's what it takes (hand the
-  listening socket and the client fds to the new app_server, with their
-  state), or whatever makes it reliable. A test that upgrades a test
-  session with Chrome, an Electron app, a GTK 4 and a Qt program open
-  (windows, popups, a fractional scale), many times over, and checks
-  each is alive with its windows shown.
-
 - **Terminal's suggestions see the session's recent commands and
   output, after a restore too** (Ben, 2026-11-05, after the items
   above): "the olo terminal autocomplete model should be able to also
@@ -1766,6 +1744,35 @@ of Finished; a new one goes where its priority puts it.
     what it can encode in Preferences; the frames as dmabufs (CUDA's
     external memory) rather than copied.
 
+- **StyledEdit: Markdown edited as it looks (and as source), code with
+  highlighting** (Ben, 2026-11-05, lower priority): "when opening a
+  markdown file StyledEdit should natively support the Markdown and be
+  more like Typora WYSIWYG editing, but also have an option to switch
+  back and forth between WYSIWYG mode and source mode and in source mode
+  it should be like a code editor with syntax highlighting and fixed
+  width font. also make it support code/source mode for all major
+  programming/scripting languages with syntax highlighting and fixed
+  width font." Now: Markdown comes in through Import… (`convert.rs`,
+  `from_markdown`) and goes out as Markdown, as a styled document, and
+  the editor has no highlighting. To do: a `.md` opened is a Markdown
+  document, edited as Typora does (headings, emphasis, lists, quotes,
+  links, pictures, tables, code blocks and inline code shown as they
+  look; the marks of the line being edited shown as typed) and saved as
+  Markdown again, keeping what the person wrote (their list markers,
+  emphasis characters, line breaks, front matter, HTML); a View toggle
+  (and a key, ⌘/ say) between that and Source, which shows the Markdown
+  itself in a code editor: the fixed-width font, syntax highlighting,
+  line numbers, the place kept across the switch. Source mode for every
+  major language as well (Rust, C, C++, Go, Python, JavaScript and
+  TypeScript, shell, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML,
+  CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, …), a file opened
+  by its type going straight to it: highlighting from a Rust grammar
+  library (tree-sitter's grammars, in process), colours from the
+  palette in light, dark and night, incremental as it's typed (a file
+  of 100,000 lines opens and scrolls at once: measured). In the kit
+  (the code editor is one any app could use: Terminal's, Viewer's text),
+  documented in HACKING.
+
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
@@ -1826,6 +1833,43 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Other programs survive Olo's upgrades**~~ (done 2026-11-05,
+  HACKING's olo-wlproxy notes: two causes, both at the proxy's replay
+  onto the new app_server. Every program that had asked for touches had
+  its connection ended: the new seat had no touch screen yet (libinput
+  finds it seconds later) and Smithay answered the replayed `get_touch`
+  with "missing touch capability" (Chrome, Slack, the GNOME portal on
+  both days); now a touch waits for the seat's touch, and Smithay gives
+  inert objects rather than ending a connection. And GTK crashed on a
+  tablet cursor's leaked fractional scale, its data freed when told the
+  tablet went (Chrome and xdg-desktop-portal-gnome, 2026-11-04); now a
+  surface the program let go, or never showed, isn't told its scale.
+  `tools/dev/outside-check`: GTK 4, Slack, Chrome and Qt 6 through five
+  app_server restarts at 1.5× with a late touch screen and a pen tablet,
+  each with its window; before, all four died at the first. Also, as
+  Ben asked: each upgrade ends programs of ours left from sessions that
+  have gone, `sweep_leftovers`) (Ben, 2026-11-05, after the
+  HDR wallpapers): "every time i upgrade my non-olo apps, e.g. slack and
+  chrome, crash or are no longer shown in olo. please fix so that they
+  relliably survive upgrades." Olo's own apps reconnect as app_server
+  reloads in place (`olo_ui::on_upgrade`); other Wayland programs
+  (Chrome, Slack (Electron), GTK, Qt) either crash or keep running with
+  their windows gone. Known so far: at the 2026-11-04 upgrade Chrome and
+  xdg-desktop-portal-gnome crashed in GTK 4's
+  `pointer_surface_fractional_scale_preferred_scale_cb` (a
+  fractional-scale event for a pointer surface GTK had let go of). Find
+  what each of them sees across a reload (the socket, the globals, the
+  events in their order, WAYLAND_DEBUG on a test session's copy of each),
+  for each failure (the crash, the windows not shown), and fix it at the
+  cause on our side, so the person's other programs and their windows
+  are exactly where they were after every upgrade: keep the clients'
+  connections through the reload if that's what it takes (hand the
+  listening socket and the client fds to the new app_server, with their
+  state), or whatever makes it reliable. A test that upgrades a test
+  session with Chrome, an Electron app, a GTK 4 and a Qt program open
+  (windows, popups, a fractional scale), many times over, and checks
+  each is alive with its windows shown.
 
 - ~~**Agents can't set their Terminal tab's title**~~ (done
   2026-11-05, HACKING's "Coding agents' tab titles": three causes.
