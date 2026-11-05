@@ -31,6 +31,16 @@ of Finished; a new one goes where its priority puts it.
   memory steady (162 MB) while hidden. Try next with what the crash
   report says, else: behind other windows rather than minimized, on
   another workspace, across a lock or the display sleeping.
+  *Likely found* (2026-11-05): the Viewer crashed headless with two
+  videos open (a panic in GPUI's atlas: `flush_initializations` indexing
+  an empty slot). A video makes a texture's picture a frame and lets the
+  last go; the app's windows share one atlas (a menu, as Deskbar's is
+  clicked, is a window too), so a texture made and freed before the
+  next frame left its initialization and upload queued, and the frame
+  panicked on the empty slot (or wrote a stale picture into the texture
+  that took it). Fixed in GPUI (`BladeAtlas::remove`), with a test on
+  the GPU that fails without it. Crash reports now name such a panic
+  (crates/crash), so if Ben's happens again it says where.
 
 - **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
   screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is

@@ -157,6 +157,12 @@ What Olo changed, so far:
   configure is acknowledged (a scale sent to a new surface asked for a
   frame early: a protocol error that ended the program). The command
   palette opens in 28 ms (egui's: 47).
+  A texture let go before the next frame (a video's picture replaced,
+  with the windows sharing the atlas: one window's frame flushing what
+  another let go) leaves nothing queued for it: its initialization and
+  uploads were left behind, and the frame indexed its empty slot and
+  panicked, or wrote a stale picture into the texture that took the slot
+  (`BladeAtlas::remove`; `a_texture_let_go_before_its_frame`, on the GPU).
 - Background threads start when there's work and none is free, and
   leave after 10 s without any (upstream kept one per core).
 - A window's first frame is drawn once, for the display it opens on.

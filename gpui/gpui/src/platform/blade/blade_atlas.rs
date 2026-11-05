@@ -104,6 +104,15 @@ impl PlatformAtlas for BladeAtlas {
         if let Some(mut texture) = texture_slot.take() {
             texture.decrement_ref_count();
             if texture.is_unreferenced() {
+                // Olo: nothing still to do to it at the next frame. A
+                // texture made and let go before a frame (a video's
+                // picture replaced, in an atlas the app's windows share)
+                // left its initialization and upload queued: the frame
+                // then indexed its empty slot and panicked (the Viewer
+                // crashed playing two videos, 2026-11-05), or wrote into
+                // the texture that took its slot meanwhile.
+                lock.initializations.retain(|i| *i != id);
+                lock.uploads.retain(|u| u.id != id);
                 lock.storage[id.kind]
                     .free_list
                     .push(texture.id.index as usize);
@@ -374,5 +383,89 @@ impl From<etagere::Rectangle> for Bounds<DevicePixels> {
             origin: rectangle.min.into(),
             size: rectangle.size().into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ImageId, RenderImageParams};
+
+    /// A picture's texture made and let go before a frame (as a video
+    /// does, a picture a frame): nothing is left to do to it, the frame
+    /// doesn't panic on its empty slot, and a texture that takes its slot
+    /// gets only its own picture. Needs a GPU (skipped without one).
+    #[test]
+    fn a_texture_let_go_before_its_frame() {
+        let Ok(gpu) = (unsafe {
+            gpu::Context::init(gpu::ContextDesc {
+                presentation: false,
+                ..Default::default()
+            })
+        }) else {
+            eprintln!("no GPU here: nothing to try");
+            return;
+        };
+        let gpu = Arc::new(gpu);
+        let atlas = BladeAtlas::new(&gpu);
+        let key = |n| {
+            AtlasKey::Image(RenderImageParams {
+                image_id: ImageId(n),
+                frame_index: 0,
+                deep: false,
+            })
+        };
+        let bytes = vec![255u8; 2048 * 2048 * 4];
+        let big = Size {
+            width: DevicePixels(2048),
+            height: DevicePixels(2048),
+        };
+        let small = Size {
+            width: DevicePixels(16),
+            height: DevicePixels(16),
+        };
+        let mut encoder = gpu.create_command_encoder(gpu::CommandEncoderDesc {
+            name: "test",
+            buffer_count: 1,
+        });
+        let mut frame = |atlas: &BladeAtlas| {
+            encoder.start();
+            atlas.before_frame(&mut encoder);
+            let sync = gpu.submit(&mut encoder);
+            let _ = gpu.wait_for(&sync, 2000);
+        };
+        // Made and let go: its slot empty at the frame.
+        atlas
+            .get_or_insert_with(&key(1), &mut || Ok(Some((big, Cow::Borrowed(&bytes[..])))))
+            .unwrap();
+        atlas.remove(&key(1));
+        {
+            let state = atlas.0.lock();
+            assert!(
+                state.initializations.is_empty() && state.uploads.is_empty(),
+                "nothing left to do to it"
+            );
+        }
+        frame(&atlas);
+        // Made, let go, and another taking its slot before the frame: only
+        // the other's picture uploaded.
+        atlas
+            .get_or_insert_with(&key(2), &mut || Ok(Some((big, Cow::Borrowed(&bytes[..])))))
+            .unwrap();
+        atlas.remove(&key(2));
+        let tile = atlas
+            .get_or_insert_with(&key(3), &mut || {
+                Ok(Some((small, Cow::Borrowed(&bytes[..16 * 16 * 4]))))
+            })
+            .unwrap()
+            .unwrap();
+        {
+            let state = atlas.0.lock();
+            assert_eq!(state.uploads.len(), 1);
+            assert_eq!(state.uploads[0].id, tile.texture_id);
+            assert_eq!(state.uploads[0].bounds.size, small);
+        }
+        frame(&atlas);
+        gpu.destroy_command_encoder(&mut encoder);
     }
 }
