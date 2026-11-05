@@ -112,3 +112,66 @@ release build and every-program crash-installation test pass.
 Next: compact mutable DOM and original HTML tree construction, with
 independent tree fixtures. Browser shell/layout/V8 and actual website
 compatibility remain unimplemented/unmeasured. The full goal stays active.
+
+## 2026-11-04 — compact document storage
+
+Added `olo_web::dom`, separate from HTML tree construction and Web IDL.
+Nodes occupy 40-byte arena slots, with u32 links and document-scoped
+generational IDs. A removed/reused slot or a previous document's ID cannot
+silently address a different live node. The stored types cover documents,
+fragments, HTML/SVG/MathML elements, text, comments, processing instructions
+and doctypes. Attributes retain insertion order and HTML case behavior.
+This is storage, not a claim of a complete standards DOM implementation.
+
+Unchanged character/attribute data references ranges in one shared source;
+decoded owned strings transfer into the document without a second copy.
+Names are interned. Arenas and owned text are reclaimed/reused explicitly;
+detachment preserves nodes retained by a future JS wrapper, destruction is
+only for unreachable subtrees. Iterative destruction avoids a recursive
+drop stack. Limits cover source, nodes, attributes, names, owned text and
+tree depth. Fragment insertion validates the whole operation before
+relinking; document children, doctype ordering, cycles and parent/reference
+ownership are checked. Identical value/attribute/reordering operations
+leave the mutation revision unchanged. Debug output omits source and
+character data so a diagnostic cannot dump session tokens/form secrets.
+
+Eleven release tests cover ownership, stale handles, fragments, failed
+mutation atomicity, doctypes, limits, source/owned text and insertion order,
+decoded buffer transfer, secret-free Debug, iterative deep/wide deletion
+and 20,000 reparentings against a separate parent-list model. The baseline
+configuration has ten tests (buffer transfer is deliberately absent there).
+These are storage tests; independent WPT/HTML tree comparisons remain.
+Release engine tests and clippy pass. Full workspace release build passes.
+
+Synthetic release storage comparison on the same CPU (CPU 0), three
+alternating runs, 50,000 paragraphs, 100,002 live nodes, 50,000 attributes
+and 4,250,000 source bytes. The `baseline-storage` feature reproduces the
+initial second text copy and single-insertion heap allocation, with the
+same tree semantics. Default builds eliminate both allocations:
+
+| Case | Baseline median | Default median |
+|---|---:|---:|
+| Source-backed build | 6.589 ms | 6.393 ms |
+| Owned decoded-text build | 8.177 ms | 7.729 ms |
+| Reorder 1,000 paragraphs (source case) | 13.18 µs | 11.52 µs |
+| Destroy 100,001 nodes (source case) | 0.607 ms | 0.672 ms |
+| Identical value write (source case) | 4.48 ns | 4.46 ns |
+
+Default source-backed run RSS: 14,496–14,532 KiB; owned-input runs:
+17,840–18,024 KiB, including the original source and benchmark handle
+vector. Node reservation: 5,242,880 bytes; attribute reservation:
+1,048,576 bytes; source-backed owned text: zero. After destruction:
+one document node, zero live attributes, zero owned text. Retained arena
+capacity is reused, not a per-cycle growth. CPU clocks/load are not
+controlled; the small timing differences are not broad performance claims.
+
+Reproduce: `cargo build --release -p olo-web --example dom_bench` (add
+`--features baseline-storage` for the baseline), then
+`taskset -c 0 /usr/bin/time -v target/release/examples/dom_bench 50000`
+(add `--owned` for decoded strings). Raw paired runs and commands are in
+`measurements/2026-11-04-dom.json`. No network, CSS, layout, JavaScript,
+frames or Chrome comparison is involved. Parsing/building will run on a
+worker in the future shell. There are no visible changes to journal yet.
+
+Next: HTML tree construction, adjacent text handling and independent tree
+fixtures. No functional browser or website pass exists yet; goal active.

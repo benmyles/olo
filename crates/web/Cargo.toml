@@ -8,6 +8,9 @@ license.workspace = true
 [features]
 # Measurement baseline, same token semantics without memchr's SIMD scans.
 scalar-scans = []
+# Reproduce the initial text-copy/per-insertion-allocation costs in the
+# storage benchmark. Same semantics; never enabled in normal builds.
+baseline-storage = []
 
 [dependencies]
 memchr = "2"

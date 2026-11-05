@@ -5,7 +5,7 @@ JavaScript; embedding Blink, WebKit, Servo, or a system browser as the
 engine does not meet the objective. The installed browser remains
 available while this one is developed. Nothing here changes defaults.
 
-**Status: HTML tokenizer implemented; no shell/layout/JS yet. No website compatibility or rendering
+**Status: HTML tokenizer and compact DOM storage implemented; no shell/layout/JS yet. No website compatibility or rendering
 pass has been established.** The 99% target is an acceptance criterion,
 not a current capability. Passing 100 selected sites alone cannot establish
 compatibility with 99% of the web.

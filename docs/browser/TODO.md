@@ -12,7 +12,12 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Complete HTML tokenizer conformance (initial token implementation
   matches 7,042 html5lib cases; four UTF-16 cases unsupported; parse-error
   diagnostics and streaming byte-input interface remain).
-- [ ] Implement complete HTML tree construction and compact mutable DOM.
+- [x] Compact mutable document storage, source-backed text, stable scoped
+  handles, bounded arenas, atomic tree validation, iterative reclamation
+  and release storage measurements.
+- [ ] Implement complete HTML tree construction and web-facing DOM semantics
+  (Web IDL, namespaced attributes, adoption, mutation observers, ranges,
+  event dispatch, shadow DOM, GC rooting and amortized text appends).
 - [ ] Add network/encoding/cache/cookies with security and memory bounds.
 - [ ] Implement CSS tokenizer/parser, selectors, cascade, media queries,
   custom properties and style invalidation.
@@ -40,6 +45,6 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: establish an evaluation runner which cannot silently turn missing
-observations into passes; implement DOM/tree construction and complete
-tokenizer diagnostics/input handling.
+Next: connect tokenizer to original HTML tree construction and independent
+tree fixtures; complete tokenizer diagnostics/input handling. Evaluation
+capture/replay and executable site journeys remain open.
