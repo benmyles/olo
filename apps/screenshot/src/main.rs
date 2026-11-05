@@ -13,6 +13,7 @@
 mod capture;
 mod recording;
 mod region;
+mod sound;
 
 use std::{
     path::{Path, PathBuf},
@@ -58,6 +59,9 @@ enum Msg {
     /// A recording asked for from the window started (it goes on by
     /// itself: we're done), or why not.
     Recording(Result<(), String>),
+    /// The sound recordings take, as the settings have it
+    /// (`ScreenRecordingSettings::sound`).
+    Sound(String),
 }
 
 /// What the window's Record… records.
@@ -102,6 +106,9 @@ struct Screenshot {
     holding: bool,
     /// The window's keys (Return saves) when no field has them.
     focus: gpui::FocusHandle,
+    /// The sound a recording takes ("computer", "microphone", "both",
+    /// "none"), for Record…'s ticks.
+    sound: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -220,7 +227,44 @@ impl Screenshot {
             folders,
             holding: false,
             focus: cx.focus_handle(),
+            sound: "computer".into(),
         }
+    }
+
+    /// What Record…'s ticks show, read off the UI thread.
+    fn read_sound(cx: &mut Context<Self>) {
+        let proxy = olo_ui::proxy(cx);
+        std::thread::spawn(move || {
+            if let Some(s) = olo_ui::settings::current() {
+                proxy.send(Msg::Sound(s.screen_recording.sound));
+            }
+        });
+    }
+
+    /// Record…'s tick for the computer's sound or the microphone turned
+    /// over: kept in the settings (off the UI thread).
+    fn toggle_sound(&mut self, microphone: bool) {
+        let (mut computer, mut mic) = sound_parts(&self.sound);
+        if microphone {
+            mic = !mic;
+        } else {
+            computer = !computer;
+        }
+        self.sound = match (computer, mic) {
+            (true, true) => "both",
+            (true, false) => "computer",
+            (false, true) => "microphone",
+            (false, false) => "none",
+        }
+        .into();
+        let sound = self.sound.clone();
+        std::thread::spawn(move || {
+            let Some(mut settings) = olo_ui::settings::current() else { return };
+            settings.screen_recording.sound = sound;
+            if let Ok(mut c) = olo_protocol::Client::connect() {
+                let _ = c.request(&olo_protocol::Request::SetSettings { settings });
+            }
+        });
     }
 
     fn name_text(&self, cx: &App) -> String {
@@ -288,12 +332,28 @@ impl Screenshot {
                 let menu = if g.paused { menu.item("Resume Recording", "resume") } else { menu.item("Pause Recording", "pause") };
                 menu.item("Stop Recording", "stop")
             }
-            None => Menu::new("Record").item("Record Screen", "screen").item("Record Active Window", "window").item("Record Region…", "region"),
+            None => {
+                let (computer, mic) = sound_parts(&self.sound);
+                Menu::new("Record")
+                    .item("Record Screen", "screen")
+                    .item("Record Active Window", "window")
+                    .item("Record Region…", "region")
+                    .separator()
+                    .item("Record the Computer's Sound", "sound-computer")
+                    .checked(computer)
+                    .item("Record the Microphone", "sound-microphone")
+                    .checked(mic)
+            }
         }
     }
 
     fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let what = match command {
+            "sound-computer" | "sound-microphone" => {
+                self.toggle_sound(command == "sound-microphone");
+                cx.notify();
+                return;
+            }
             "screen" => Record::Screen,
             "window" => Record::Window,
             "region" => Record::Region,
@@ -533,6 +593,7 @@ impl Screenshot {
                 self.open_main(cx);
                 self.show_error(format!("Couldn't start recording.\n\n{e}"), cx);
             }
+            Msg::Sound(s) => self.sound = s,
         }
         cx.notify();
     }
@@ -760,7 +821,11 @@ fn main() -> std::process::ExitCode {
     std::thread::spawn(capture::sweep);
     olo_ui::run(APP_ID, |cx| {
         instance::listen(APP_ID, olo_ui::proxy(cx));
-        let app = cx.new(|cx| Screenshot::new(Settings::load(), cx));
+        let app = cx.new(|cx| {
+            let s = Screenshot::new(Settings::load(), cx);
+            Screenshot::read_sound(cx);
+            s
+        });
         let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok());
         app.update(cx, |s, cx| match restored {
             Some(Saved { png: Some(png), name }) if png.is_file() => {
@@ -793,4 +858,14 @@ fn main() -> std::process::ExitCode {
         .detach();
     });
     std::process::ExitCode::SUCCESS
+}
+
+/// The computer's sound and the microphone, as a sound setting has them.
+fn sound_parts(sound: &str) -> (bool, bool) {
+    match sound {
+        "both" => (true, true),
+        "microphone" => (false, true),
+        "none" => (false, false),
+        _ => (true, false),
+    }
 }

@@ -1515,7 +1515,9 @@ of Finished; a new one goes where its priority puts it.
   `video-frame` (what a video shows at a time, to check it; the Viewer's
   seek into a still stretch fixed on the way: it showed the next change).
   The recorder no longer wakes on a timer (a still or paused recording:
-  only NVIDIA's driver threads wake). *Left*: sound, CleanShot X's
+  only NVIDIA's driver threads wake). *Sound* (2026-11-05): the
+  computer's and the microphone's, either or both (Record…'s ticks,
+  `--sound`), AAC beside the video. *Left*: CleanShot X's
   polish (pointer drawn larger and smoothed, clicks and keys shown, zoom
   following the action, a background and frame, a webcam bubble), a
   countdown (Screenshot's Delay), the trimming editor, GIF, and the GPU

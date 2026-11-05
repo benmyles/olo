@@ -25,11 +25,12 @@ use std::{
 
 use nvenc_sys as nv;
 
-/// A library opened at run time, closed when dropped.
-struct Lib(*mut c_void);
+/// A library opened at run time, closed when dropped (NVIDIA's here,
+/// libfdk-aac's in `aac`).
+pub(crate) struct Lib(*mut c_void);
 
 impl Lib {
-    fn open(name: &str) -> Result<Lib, String> {
+    pub(crate) fn open(name: &str) -> Result<Lib, String> {
         let c = CString::new(name).map_err(|e| e.to_string())?;
         // SAFETY: dlopen with a NUL-ended name.
         let h = unsafe { libc::dlopen(c.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
@@ -46,7 +47,7 @@ impl Lib {
     ///
     /// # Safety
     /// `T` must be the function's real type.
-    unsafe fn get<T: Copy>(&self, name: &str) -> Result<T, String> {
+    pub(crate) unsafe fn get<T: Copy>(&self, name: &str) -> Result<T, String> {
         let c = CString::new(name).map_err(|e| e.to_string())?;
         // SAFETY: dlsym on our handle.
         let p = unsafe { libc::dlsym(self.0, c.as_ptr()) };

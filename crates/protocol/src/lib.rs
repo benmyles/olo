@@ -1462,11 +1462,14 @@ pub struct ScreenRecordingSettings {
     /// "auto" (the most powerful there is: an NVIDIA GPU's encoder
     /// where it opens, else the processor), "nvidia" or "cpu".
     pub encoder: String,
+    /// The sound recorded with the screen: "computer" (what it plays),
+    /// "microphone", "both" or "none".
+    pub sound: String,
 }
 
 impl Default for ScreenRecordingSettings {
     fn default() -> Self {
-        ScreenRecordingSettings { encoder: "auto".into() }
+        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into() }
     }
 }
 

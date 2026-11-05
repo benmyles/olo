@@ -5936,6 +5936,27 @@ Screens' Export Video uses too).
   isn't one of its values set first, or filled by the driver). The JSON
   says which encoded it (`encoder`). A window that changes size is cut
   or shown on black at the size it began.
+- **Sound** (`sound.rs`, `--sound computer|microphone|both|none`, else
+  `Settings::screen_recording.sound`, the computer's by default; Record…'s
+  ticks in Screenshot, "Record the Computer's Sound" and "Record the
+  Microphone", set it): what the computer plays (the default output's
+  monitor, `olo_system::recording::COMPUTER`) and the microphone,
+  recorded over the sound server's native protocol
+  (`recording::Capture`, float stereo at 48 kHz, a piece every 40 ms on
+  the client's thread), mixed on a thread of its own woken by each piece
+  (a stream a second behind, or not yet started, filled with silence;
+  each stream's first sound lined up with the video's start), encoded
+  as AAC-LC at 160 kbit/s by libfdk-aac (`olo_video::aac`, opened at run
+  time as NVENC is: Fedora's `fdk-aac-free`), its access units handed to
+  the encoder worker, which writes them into the MP4 beside the pictures
+  (`Mp4::with_sound`, `add_sound`: a second track, `mp4a` with its
+  `esds`, an edit list cutting the encoder's priming). Paused, the sound
+  is dropped too. No sound server or no encoder: the video without
+  sound, the JSON saying why (`sound` null, `sound_note`). Checked
+  headless with `olo-fakesound`, whose record streams play 440 Hz from
+  the microphone and 660 Hz from the monitor: both tones in the file,
+  decoded by symphonia as the Viewer does, the sound as long as the
+  video (3.008 s for 3.001; paused 2 of 6 s, 4.01 for 4.0).
 - **A region** is cut from each frame of its display as it comes (the
   display copied whole into a buffer kept for the next, then the rows
   of the part), so the encoder sees only the part: 400 × 300 points at

@@ -5,8 +5,11 @@
 //! 32767). Samples are consumed in real time, so positions and latency
 //! behave as with a real server.
 //!
-//! Record streams hear a steady 440 Hz tone (RMS about 5700), and the
-//! server has one speaker and one microphone, both called "Fake".
+//! Record streams hear a steady tone, 16-bit or float: 440 Hz from the
+//! microphone, 660 Hz from the speaker's monitor (`@DEFAULT_MONITOR@`,
+//! what the computer plays), each at about a quarter of full scale (RMS
+//! about 5700 of 32767), and the server has one speaker and one
+//! microphone, both called "Fake".
 //! `FAKESOUND_AIRPODS=AA:BB:CC:DD:EE:FF` adds a pair of AirPods as
 //! PipeWire shows them (a Bluetooth output playing AAC at music quality,
 //! the default, and their card with its profiles), for Preferences ▸
@@ -46,6 +49,8 @@ struct Stream {
     reported: Instant,
     /// A record stream, and where its tone has got to (in samples).
     record: Option<u64>,
+    /// Its tone's pitch.
+    hz: f64,
 }
 
 struct Client {
@@ -149,6 +154,7 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                     heard: (0, 0.0, 0),
                     reported: Instant::now(),
                     record: None,
+                    hz: 0.0,
                 },
             );
             let reply = protocol::CreatePlaybackStreamReply {
@@ -197,7 +203,9 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                 *n += 1;
                 *n
             };
-            eprintln!("fakesound: record {channel}: {:?} {} Hz × {}", p.sample_spec.format, p.sample_spec.sample_rate, p.sample_spec.channels);
+            let source = p.source_name.as_ref().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let monitor = source.contains("MONITOR") || source.ends_with(".monitor");
+            eprintln!("fakesound: record {channel} from {source}: {:?} {} Hz × {}", p.sample_spec.format, p.sample_spec.sample_rate, p.sample_spec.channels);
             c.streams.insert(
                 channel,
                 Stream {
@@ -212,6 +220,7 @@ fn command(id: u32, c: &mut Client, seq: u32, cmd: Command, next_channel: &Mutex
                     heard: (0, 0.0, 0),
                     reported: Instant::now(),
                     record: Some(0),
+                    hz: if monitor { 660.0 } else { 440.0 },
                 },
             );
             let reply = protocol::CreateRecordStreamReply {
@@ -314,13 +323,18 @@ fn tick(c: &mut Client) {
         let frame = s.spec.format.bytes_per_sample() * s.spec.channels as usize;
         let per_tick = (s.spec.sample_rate as usize * frame) as u128 * TICK.as_millis() / 1000;
         if let Some(t) = &mut s.record {
-            if !s.corked && s.spec.format == protocol::SampleFormat::S16Le {
+            let float = s.spec.format == protocol::SampleFormat::Float32Le;
+            if !s.corked && (float || s.spec.format == protocol::SampleFormat::S16Le) {
                 let frames = per_tick as usize / frame.max(1);
                 let mut block = Vec::with_capacity(frames * frame);
                 for _ in 0..frames {
-                    let x = (*t as f64 * 440.0 * std::f64::consts::TAU / s.spec.sample_rate as f64).sin() * 8000.0;
+                    let x = (*t as f64 * s.hz * std::f64::consts::TAU / s.spec.sample_rate as f64).sin() * 8000.0;
                     for _ in 0..s.spec.channels {
-                        block.extend_from_slice(&(x as i16).to_le_bytes());
+                        if float {
+                            block.extend_from_slice(&((x / 32768.0) as f32).to_le_bytes());
+                        } else {
+                            block.extend_from_slice(&(x as i16).to_le_bytes());
+                        }
                     }
                     *t += 1;
                 }

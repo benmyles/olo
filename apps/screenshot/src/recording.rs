@@ -12,12 +12,19 @@
 //! ```text
 //! olo-screenshot --record [--window ID] [--display NAME] [--region [X,Y,W,H]]
 //!                [--seconds N] [--fps N] [--no-pointer]
-//!                [--encoder auto|cpu|nvidia] [--to PATH]
+//!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
+//!                [--to PATH]
 //! olo-screenshot --stop          the recording on this display, finished
 //! olo-screenshot --pause         nothing recorded till --resume
 //! olo-screenshot --resume
 //! olo-screenshot --recording     whether one is going, as JSON
 //! ```
+//!
+//! `--sound` records what the computer plays, the microphone, both or
+//! neither (`sound.rs`: AAC beside the video), as asked, else as the
+//! settings say (the computer's, by default). With no sound server or no
+//! AAC encoder, the video is made without, and says so (`sound` null,
+//! `sound_note` why).
 //!
 //! `--region X,Y,W,H` records that part of the display (points from its
 //! top left, as windows' frames are given); `--region` alone has it
@@ -124,6 +131,11 @@ pub struct Made {
     pub height: u32,
     /// What encoded it ("NVIDIA's GPU (NVENC)").
     pub encoder: String,
+    /// The sound in it ("computer", "microphone", "both"), if any.
+    pub sound: Option<String>,
+    /// Why there's none, when some was asked for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sound_note: Option<String>,
 }
 
 /// `--record`: record until told to stop; what it made printed. Exit 0
@@ -207,6 +219,14 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         olo_protocol::Reply::Settings { settings } => Some(settings.screen_recording.encoder),
         _ => None,
     });
+    let settings = olo_protocol::Client::connect().ok().and_then(|mut c| match c.request(&olo_protocol::Request::GetSettings).ok()? {
+        olo_protocol::Reply::Settings { settings } => Some(settings.screen_recording),
+        _ => None,
+    });
+    let sound = match option(args, "--sound").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.sound.clone())) {
+        Some(s) => crate::sound::Which::parse(&s).ok_or("--sound is computer, microphone, both or none")?,
+        None => crate::sound::Which::Computer,
+    };
     let choice = match chosen.as_deref() {
         Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu or nvidia")?,
         None => olo_video::Choice::Auto,
@@ -245,7 +265,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false };
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
-    let result = record_into(&mut capture, &path, fps, seconds, choice, crop, &g, woken.as_raw_fd());
+    let result = record_into(&mut capture, &path, fps, seconds, choice, crop, sound, &g, woken.as_raw_fd());
     let _ = std::fs::remove_file(going_path());
     WAKE.store(-1, Ordering::SeqCst);
     drop(waker);
@@ -253,8 +273,30 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64>, choice: olo_video::Choice, crop: Option<[u32; 4]>, going: &Going, woken: i32) -> Result<Made, String> {
+fn record_into(
+    capture: &mut Capture,
+    path: &Path,
+    fps: u32,
+    seconds: Option<f64>,
+    choice: olo_video::Choice,
+    crop: Option<[u32; 4]>,
+    which: crate::sound::Which,
+    going: &Going,
+    woken: i32,
+) -> Result<Made, String> {
     let start = Instant::now();
+    // The sound from now, if any asked for and there's a way.
+    let (sound, sound_note) = match which {
+        crate::sound::Which::Nothing => (None, None),
+        w => match crate::sound::Sound::start(w, start, &PAUSED) {
+            Ok(s) => (Some(s), None),
+            Err(e) => {
+                eprintln!("olo-screenshot: recording without sound: {e}");
+                (None, Some(e))
+            }
+        },
+    };
+    let sound_track = sound.as_ref().map(|s| (s.track().clone(), s.units()));
     let fd = capture.fd()?;
     let every = Duration::from_secs_f64(1.0 / f64::from(fps));
     // The encoder's: one picture waiting at most (a newer takes its place).
@@ -265,7 +307,7 @@ fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64
     let part = path.with_extension("mp4.part");
     let worker = {
         let (slot, ended, end, part) = (slot.clone(), ended.clone(), end.clone(), part.clone());
-        std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &end, &part, fps, choice)).map_err(|e| e.to_string())?
+        std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &end, &part, fps, choice, sound_track)).map_err(|e| e.to_string())?
     };
     let mut asked_at: Option<Instant> = None;
     // Time paused, left out of the video; and since when, if it is now.
@@ -354,6 +396,11 @@ fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64
         }
     })();
     let total = recorded(paused_for, paused_at);
+    // The sound's last, encoded and handed over before the file is.
+    let sounded = sound.as_ref().map(|_| which.name().to_owned());
+    if let Some(s) = sound {
+        s.finish();
+    }
     end.store(total.as_millis() as u64, Ordering::SeqCst);
     ended.store(true, Ordering::SeqCst);
     slot.1.notify_one();
@@ -362,7 +409,7 @@ fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64
     let (frames, (width, height), encoder) = made?;
     // The file finished by the worker, then put where it goes.
     std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(Made { path: path.to_path_buf(), seconds: (total.as_millis() as f64 / 1000.0), frames, width, height, encoder: encoder.to_owned() })
+    Ok(Made { path: path.to_path_buf(), seconds: (total.as_millis() as f64 / 1000.0), frames, width, height, encoder: encoder.to_owned(), sound: sounded, sound_note })
 }
 
 /// Wait until `fd` has something to read, a signal came (`woken`, the
@@ -391,7 +438,18 @@ fn encode(
     part: &Path,
     fps: u32,
     choice: olo_video::Choice,
+    sound: Option<SoundIn>,
 ) -> Result<(usize, (u32, u32), &'static str), String> {
+    // The sound's access units so far, into the file beside the pictures.
+    let add_sound = |mp4: &mut olo_video::Mp4| -> Result<(), String> {
+        if let Some((_, units)) = &sound {
+            let got = std::mem::take(&mut *units.lock().unwrap_or_else(|e| e.into_inner()));
+            for au in got {
+                mp4.add_sound(&au).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    };
     let (m, cv) = slot;
     // Milliseconds: durations as they came.
     let mut video: Option<(olo_video::Encoder, olo_video::Mp4, Vec<u8>)> = None;
@@ -414,7 +472,10 @@ fn encode(
         if video.is_none() {
             let (vw, vh) = olo_video::even(w.width, w.height);
             let enc = olo_video::Encoder::new(vw, vh, fps, choice)?;
-            let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
+            let mut mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
+            if let Some((track, _)) = &sound {
+                mp4.with_sound(track, olo_system::recording::RATE, crate::sound::BITRATE);
+            }
             video = Some((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]));
         }
         let (enc, mp4, canvas) = video.as_mut().unwrap();
@@ -427,6 +488,7 @@ fn encode(
             let ms = w.at.saturating_sub(at).as_millis().max(1) as u32;
             mp4.add(&b, k, ms).map_err(|e| e.to_string())?;
             frames += 1;
+            add_sound(mp4)?;
         }
         held = Some((bits, key, w.at));
     }
@@ -436,10 +498,14 @@ fn encode(
         mp4.add(&b, k, ms).map_err(|e| e.to_string())?;
         frames += 1;
     }
+    add_sound(&mut mp4)?;
     let made = mp4.size();
     mp4.finish().map_err(|e| e.to_string())?;
     Ok((frames, made, enc.name()))
 }
+
+/// The sound's description, and its access units as they come.
+type SoundIn = (olo_video::aac::Track, Arc<Mutex<Vec<Vec<u8>>>>);
 
 /// `w`'s picture into `canvas` (`vw` × `vh`, BGRA): cut, or padded black.
 fn fit(w: &Waiting, canvas: &mut [u8], vw: u32, vh: u32) {

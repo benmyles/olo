@@ -4,6 +4,7 @@
 //! comes, with its own duration, the index at the end), for the screen
 //! recorder (olo-screenshot) and Agent Screens' Export Video.
 
+pub mod aac;
 pub mod nvenc;
 
 use std::{
@@ -223,6 +224,21 @@ pub struct Mp4 {
     at: u64,
     /// Where `mdat`'s 64-bit size goes.
     mdat_size_at: u64,
+    /// A sound track (AAC), if there is one.
+    audio: Option<Audio>,
+}
+
+/// An MP4's sound track: AAC access units of `aac::FRAME` samples each.
+struct Audio {
+    /// AudioSpecificConfig.
+    config: Vec<u8>,
+    rate: u32,
+    channels: u32,
+    /// The encoder's priming, cut by an edit list.
+    delay: u32,
+    bitrate: u32,
+    offsets: Vec<u64>,
+    sizes: Vec<u32>,
 }
 
 impl Mp4 {
@@ -239,7 +255,21 @@ impl Mp4 {
         file.write_all(b"mdat")?;
         file.write_all(&0u64.to_be_bytes())?;
         let at = mdat_size_at + 8;
-        Ok(Mp4 { file, width, height, timescale: timescale.max(1), sps: None, pps: None, offsets: Vec::new(), sizes: Vec::new(), durations: Vec::new(), keys: Vec::new(), at, mdat_size_at })
+        Ok(Mp4 {
+            file,
+            width,
+            height,
+            timescale: timescale.max(1),
+            sps: None,
+            pps: None,
+            offsets: Vec::new(),
+            sizes: Vec::new(),
+            durations: Vec::new(),
+            keys: Vec::new(),
+            at,
+            mdat_size_at,
+            audio: None,
+        })
     }
 
     /// The video's size.
@@ -284,6 +314,22 @@ impl Mp4 {
         Ok(())
     }
 
+    /// A sound track too, of the access units of the encoder `track`
+    /// describes (`add_sound`).
+    pub fn with_sound(&mut self, track: &aac::Track, rate: u32, bitrate: u32) {
+        self.audio = Some(Audio { config: track.config.clone(), rate, channels: track.channels, delay: track.delay, bitrate, offsets: Vec::new(), sizes: Vec::new() });
+    }
+
+    /// One AAC access unit (`aac::FRAME` samples) of the sound track.
+    pub fn add_sound(&mut self, au: &[u8]) -> std::io::Result<()> {
+        let Some(a) = self.audio.as_mut() else { return Ok(()) };
+        self.file.write_all(au)?;
+        a.offsets.push(self.at);
+        a.sizes.push(au.len() as u32);
+        self.at += au.len() as u64;
+        Ok(())
+    }
+
     /// The last sample shown `duration` ticks longer (a still screen: its
     /// last picture held to the end).
     pub fn extend_last(&mut self, duration: u32) {
@@ -301,9 +347,19 @@ impl Mp4 {
         let u32b = |v: u32| v.to_be_bytes().to_vec();
         let u16b = |v: u16| v.to_be_bytes().to_vec();
         let matrix: Vec<u8> = [0x10000u32, 0, 0, 0, 0x10000, 0, 0, 0, 0x4000_0000].iter().flat_map(|v| v.to_be_bytes()).collect();
-        let mvhd = full(b"mvhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(duration), u32b(0x10000), u16b(0x100), vec![0; 10], matrix.clone(), vec![0; 24], u32b(2)].concat());
-        let tkhd =
-            full(b"tkhd", 3, &[u32b(0), u32b(0), u32b(1), u32b(0), u32b(duration), vec![0; 8], u16b(0), u16b(0), u16b(0), u16b(0), matrix, u32b(self.width << 16), u32b(self.height << 16)].concat());
+        // The sound's length, its priming cut, in the movie's ticks.
+        let sound = self.audio.as_ref().filter(|a| !a.sizes.is_empty()).map(|a| {
+            let samples = (a.sizes.len() as u64 * aac::FRAME as u64).saturating_sub(u64::from(a.delay));
+            (samples * u64::from(self.timescale) / u64::from(a.rate.max(1))).min(u64::from(u32::MAX)) as u32
+        });
+        let movie = duration.max(sound.unwrap_or(0));
+        let next_track = if sound.is_some() { 3 } else { 2 };
+        let mvhd = full(b"mvhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(movie), u32b(0x10000), u16b(0x100), vec![0; 10], matrix.clone(), vec![0; 24], u32b(next_track)].concat());
+        let tkhd = full(
+            b"tkhd",
+            3,
+            &[u32b(0), u32b(0), u32b(1), u32b(0), u32b(duration), vec![0; 8], u16b(0), u16b(0), u16b(0), u16b(0), matrix.clone(), u32b(self.width << 16), u32b(self.height << 16)].concat(),
+        );
         let mdhd = full(b"mdhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(duration), u16b(0x55c4), u16b(0)].concat());
         let hdlr = full(b"hdlr", 0, &[u32b(0), b"vide".to_vec(), vec![0; 12], b"Olo video\0".to_vec()].concat());
         let avcc = bx(b"avcC", &[vec![1, sps[1], sps[2], sps[3], 0xff, 0xe1], u16b(sps.len() as u16), sps.clone(), vec![1], u16b(pps.len() as u16), pps.clone()].concat());
@@ -334,7 +390,11 @@ impl Mp4 {
         let minf = bx(b"minf", &[vmhd, dinf, stbl].concat());
         let mdia = bx(b"mdia", &[mdhd, hdlr, minf].concat());
         let trak = bx(b"trak", &[tkhd, mdia].concat());
-        let moov = bx(b"moov", &[mvhd, trak].concat());
+        let sound_trak = match (&self.audio, sound) {
+            (Some(a), Some(length)) => sound_track(a, length, &matrix),
+            _ => Vec::new(),
+        };
+        let moov = bx(b"moov", &[mvhd, trak, sound_trak].concat());
         self.file.write_all(&moov)?;
         // `mdat`'s size: its header (16) and every sample.
         let mdat_size = self.at - (self.mdat_size_at - 8);
@@ -343,6 +403,41 @@ impl Mp4 {
         file.write_all(&mdat_size.to_be_bytes())?;
         file.sync_all()
     }
+}
+
+/// The sound track's `trak`: AAC in `mp4a`, its priming cut by an edit
+/// list, `length` long in the movie's ticks.
+fn sound_track(a: &Audio, length: u32, matrix: &[u8]) -> Vec<u8> {
+    let u32b = |v: u32| v.to_be_bytes().to_vec();
+    let u16b = |v: u16| v.to_be_bytes().to_vec();
+    let n = a.sizes.len() as u32;
+    let media = n.saturating_mul(aac::FRAME as u32);
+    let tkhd = full(b"tkhd", 3, &[u32b(0), u32b(0), u32b(2), u32b(0), u32b(length), vec![0; 8], u16b(0), u16b(1), u16b(0x0100), u16b(0), matrix.to_vec(), u32b(0), u32b(0)].concat());
+    // Played from after the encoder's priming.
+    let elst = full(b"elst", 0, &[u32b(1), u32b(length), u32b(a.delay), u16b(1), u16b(0)].concat());
+    let edts = bx(b"edts", &elst);
+    let mdhd = full(b"mdhd", 0, &[u32b(0), u32b(0), u32b(a.rate), u32b(media), u16b(0x55c4), u16b(0)].concat());
+    let hdlr = full(b"hdlr", 0, &[u32b(0), b"soun".to_vec(), vec![0; 12], b"Olo sound\0".to_vec()].concat());
+    // The decoder's configuration: an ES descriptor holding a decoder
+    // config descriptor (MPEG-4 audio, an audio stream) holding the
+    // AudioSpecificConfig, and the sync layer's.
+    let desc = |tag: u8, body: Vec<u8>| [vec![tag, body.len() as u8], body].concat();
+    let dsi = desc(0x05, a.config.clone());
+    let dcd = desc(0x04, [vec![0x40, 0x15, 0, 0x18, 0], u32b(a.bitrate), u32b(a.bitrate), dsi].concat());
+    let es = desc(0x03, [u16b(2), vec![0], dcd, desc(0x06, vec![0x02])].concat());
+    let esds = full(b"esds", 0, &es);
+    let mp4a = bx(b"mp4a", &[vec![0; 6], u16b(1), vec![0; 8], u16b(a.channels as u16), u16b(16), u16b(0), u16b(0), u32b(a.rate << 16), esds].concat());
+    let stsd = full(b"stsd", 0, &[u32b(1), mp4a].concat());
+    let stts = full(b"stts", 0, &[u32b(1), u32b(n), u32b(aac::FRAME as u32)].concat());
+    let stsc = full(b"stsc", 0, &[u32b(1), u32b(1), u32b(1), u32b(1)].concat());
+    let stsz = full(b"stsz", 0, &[u32b(0), u32b(n), a.sizes.iter().flat_map(|s| s.to_be_bytes()).collect()].concat());
+    let co64 = full(b"co64", 0, &[u32b(n), a.offsets.iter().flat_map(|o| o.to_be_bytes()).collect()].concat());
+    let stbl = bx(b"stbl", &[stsd, stts, stsc, stsz, co64].concat());
+    let smhd = full(b"smhd", 0, &[0u8; 4]);
+    let dinf = bx(b"dinf", &full(b"dref", 0, &[u32b(1), full(b"url ", 1, &[])].concat()));
+    let minf = bx(b"minf", &[smhd, dinf, stbl].concat());
+    let mdia = bx(b"mdia", &[mdhd, hdlr, minf].concat());
+    bx(b"trak", &[tkhd, edts, mdia].concat())
 }
 
 fn bx(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
@@ -365,6 +460,53 @@ mod tests {
 
     /// A few pictures encoded and written, held for their durations: the
     /// file's boxes where they should be, its samples and times as given.
+    #[test]
+    fn an_mp4_with_sound() {
+        let Ok(mut aac) = aac::Aac::new(48_000, 2, 160_000) else { return eprintln!("no libfdk-aac here") };
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-video-sound-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("s.mp4");
+        let (w, h) = (64u32, 48u32);
+        let mut enc = H264::new(w, h, 30).unwrap();
+        let mut mp4 = Mp4::create(&path, w, h, 1000).unwrap();
+        mp4.with_sound(&aac.track(), 48_000, 160_000);
+        // Two seconds: a picture a second, a tone throughout.
+        let mut sent = 0usize;
+        for second in 0..2u8 {
+            let px: Vec<u8> = (0..(w * h)).flat_map(|p| [second * 100, (p % 255) as u8, 128, 255]).collect();
+            let (bits, key) = enc.encode(&px, w as usize * 4, Order::Bgra).unwrap();
+            mp4.add(&bits, key, 1000).unwrap();
+            while sent < (second as usize + 1) * 48_000 {
+                let frame: Vec<i16> = (0..aac::FRAME)
+                    .flat_map(|i| {
+                        let v = (((sent + i) as f32 / 48_000.0 * 440.0 * std::f32::consts::TAU).sin() * 8000.0) as i16;
+                        [v, v]
+                    })
+                    .collect();
+                sent += aac::FRAME;
+                for au in aac.encode(&frame).unwrap() {
+                    mp4.add_sound(&au).unwrap();
+                }
+            }
+        }
+        for au in aac.flush().unwrap() {
+            mp4.add_sound(&au).unwrap();
+        }
+        mp4.finish().unwrap();
+        // Read back: a video track and an AAC one, about as long.
+        let f = std::fs::File::open(&path).unwrap();
+        let size = f.metadata().unwrap().len();
+        let r = mp4::Mp4Reader::read_header(std::io::BufReader::new(f), size).unwrap();
+        assert_eq!(r.tracks().len(), 2);
+        let sound = r.tracks().values().find(|t| t.track_type().ok() == Some(mp4::TrackType::Audio)).expect("a sound track");
+        assert_eq!(sound.media_type().unwrap(), mp4::MediaType::AAC);
+        assert_eq!(sound.sample_freq_index().unwrap().freq(), 48_000);
+        assert_eq!(sound.channel_config().unwrap(), mp4::ChannelConfig::Stereo);
+        let secs = sound.duration().as_secs_f64();
+        assert!((1.9..2.2).contains(&secs), "{secs} s of sound");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn an_mp4_written_as_it_goes() {
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-video-test-{}", std::process::id()));
