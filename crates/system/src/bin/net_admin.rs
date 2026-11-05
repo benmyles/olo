@@ -18,7 +18,7 @@
 //!   (checked: comments and entries only), in place, if it's still `was`.
 //! - `{"shape": {"interface": "enp3s0", "shaping": Shaping}}`: the link
 //!   shaped (`olo_system::shaping`), or Olo's shaping taken away.
-//! - `{"profile": {"profile": PATH, "ipv4": Ipv4, "device": PATH}}`: a
+//! - `{"profile": {"profile": PATH, "ipv4": Addressing, "device": PATH}}`: a
 //!   connection's IPv4 settings, and its link given them (for an account
 //!   NetworkManager doesn't let change system connections itself).
 //!
@@ -30,7 +30,7 @@ use std::io::{BufRead, Write};
 use olo_system::{
     hosts::HostsFile,
     netconf::{self, NetConf},
-    network::{self, Ipv4},
+    network::{self, Addressing},
     shaping::{self, Shaping},
 };
 use serde::Deserialize;
@@ -41,7 +41,7 @@ enum Request {
     Conf(NetConf),
     Hosts { text: String, was: String },
     Shape { interface: String, shaping: Shaping },
-    Profile { profile: String, ipv4: Ipv4, device: Option<String> },
+    Profile { profile: String, ipv4: Addressing, device: Option<String> },
 }
 
 fn conf(c: &NetConf) -> Result<(), String> {
@@ -86,8 +86,8 @@ fn shape(interface: &str, s: &Shaping) -> Result<(), String> {
     r.map_err(|e| format!("{interface}: {e}"))
 }
 
-fn profile(path: &str, ipv4: &Ipv4, device: Option<&str>) -> Result<(), String> {
-    network::update_profile(path, |s| network::set_ipv4_in(s, ipv4)).map_err(|e| e.to_string())?;
+fn profile(path: &str, ipv4: &Addressing, device: Option<&str>) -> Result<(), String> {
+    network::update_profile(path, |s| network::set_addressing_in(s, ipv4)).map_err(|e| e.to_string())?;
     if let Some(d) = device {
         network::reapply(d).map_err(|e| format!("the link didn't take it: {e}"))?;
     }
