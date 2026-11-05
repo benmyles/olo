@@ -26,6 +26,7 @@ olo-xdg = { path = "crates/xdg" }
 olo-system = { path = "crates/system" }
 olo-onepassword = { path = "crates/onepassword" }
 olo-keychain = { path = "crates/keychain" }
+olo-fido = { path = "crates/fido" }
 olo-screensavers = { path = "crates/screensavers" }
 olo-hvif = { path = "crates/hvif" }
 olo-emoji = { path = "crates/emoji" }
