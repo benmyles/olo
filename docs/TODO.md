@@ -7,49 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Terminal's suggestions see the session's recent commands and
-  output, after a restore too** (Ben, 2026-11-05, after the items
-  above): "the olo terminal autocomplete model should be able to also
-  receive like the last n commands (maybe 10 idk whatever makes sense)
-  in the session the user wrote (and if it's a restored session after
-  e.g. a restart it should still see it from the captured scrollback)
-  and also the recent output so that it can take all that into account
-  when determining the completion prediction too". What it has now
-  (`crates/complete`): the daemon keeps each shell's last 8 commands in
-  memory (`index::Session`, keyed by brush's process id), and the
-  model sees them only as "after the last command", "two after", "uses
-  in this shell" and "in the last ten"; nothing of the output. A shell
-  restored after a restart or an upgrade (Terminal's scrollback brought
-  back, `replay.rs`) is a new process, so it starts with none. To do:
-  Suggest carries (or the daemon keeps per tab, not per process) the
-  session's last commands (about 10, measured: what helps most without
-  slowing a suggestion past its budget) and a digest of the recent
-  output (the last command's status and lines: an error naming a file,
-  a path, a branch, a test that failed, `git status`'s files), and a
-  restored tab's are taken from its saved scrollback (Terminal knows
-  each command's line and output from its prompt marks); the model gets
-  features from them (a candidate naming a word in the recent output,
-  repeating a command that just failed after an edit, the next step of
-  a sequence run before), trained from the history as it was typed
-  (the output kept for training only as those features, never stored
-  raw). Measure accepted-suggestion rate before and after (Activity
-  Monitor ▸ AI's numbers), and latency per suggestion (it's per key).
-  Ben's example (2026-11-05, a tab restored after a restart): the
-  scrollback ends with `claude --dangerously-skip-permissions` printing
-  "Resume this session with: claude --dangerously-skip-permissions
-  --resume 00000000-…", then `claude --allow-dangerously-skip-permissions
-  --dangerously-skip-permissions --resume 00000000-…` run, then
-  "Restored from Nov 5, 2026, 9:15 AM", `cd ~/src/notes`,
-  and `cl` typed: it suggested `claude --help|grep allow`; "here i would
-  expect the model's prediction to be that claude command to resume
-  with the session id etc". So the candidates can't come only from the
-  history index (`Index::candidates`): a command the output names (a
-  line that is a command, "Resume … with:", "run `…`", `git push
-  --set-upstream origin …`), and the last command of the restored
-  session (rerun as it was), are candidates too, scored with the rest.
-  Keep this as a test: that scrollback restored, `cl` typed, the resume
-  command suggested.
-
 - **Olo Doctor: programs' temporary files on disk, not in /tmp**
   (Ben, 2026-11-05, after the items above): "have olo doctor check what
   the env vars are for telling processes what temp dir path to use and
@@ -1741,6 +1698,58 @@ of Finished; a new one goes where its priority puts it.
   nobody uses); `cargo build --timings` to see where the time goes.
   Numbers in HACKING.
 
+- **Ethernet beside Wi-Fi: Deskbar, and Preferences ▸ Network in full**
+  (Ben, 2026-11-05, for later): "in addition to the wifi icon that is
+  shown in the deskbar tray, when ethernet is connected it should also
+  show an ethernet icon. on both of them right-clicking the icon should
+  also show some stats/metrics and have a link to open the relevant
+  preferences. also, if both are connected at once the one that is the
+  default route/link should be shown as "stronger" or in some way active
+  vs the other one. and in preferences -> network it should also have
+  full support for managing ethernet links as well as wifi and have the
+  ability to choose/change the priority/preference of each link like you
+  can in macos so e.g. by default you'd want ethernet highest priority,
+  then wifi but if the user wanted to change they could. also have other
+  common network settings in here like the ability to set custom dns
+  servers, a tab to manage custom host entries, a tab to enable/disable
+  and configure shaping, and whatever else might be useful to have." To
+  do: an Ethernet icon in Deskbar's tray while a wired link is up (icons
+  per ICONS.md); the one carrying the default route drawn as the active
+  one (the other dimmer, or marked); right-click on either: its stats
+  (address, gateway, DNS, speed or signal and rate, bytes in and out,
+  live) and "Network Preferences…". Preferences ▸ Network: wired links
+  managed as Wi-Fi is (DHCP or manual addresses, IPv6, MTU, 802.1X), the
+  services' order as macOS's Set Service Order (Ethernet, then Wi-Fi by
+  default, dragged to change: route metrics through NetworkManager's
+  D-Bus API, natively), DNS servers and search domains of the person's
+  own (per link and for all), a Hosts tab (entries of their own, kept in
+  /etc/hosts through polkit), a Shaping tab (bandwidth and latency
+  limits per link, on and off: the kernel's traffic control over netlink,
+  in Rust), and what else a network panel wants (proxies, VPNs listed
+  and switched, a hotspot). Agents read and change all of it through
+  IPC as the person does.
+
+- **Passwords is the SSH agent, on by default** (Ben, 2026-11-05): "build
+  and enable by default ssh agent support in olo passwords so that the
+  ssh keys in it are available for use automatically". Passwords keeps
+  1Password items and fields of the SSH Key kind (`ItemFieldType::SshKey`,
+  `onepassword::types`) and shows them; nothing serves them to ssh. To do:
+  an agent speaking the SSH agent protocol (draft-miller-ssh-agent: list
+  identities, sign, with RSA SHA-2, Ed25519 and ECDSA keys; in Rust, the
+  `ssh-agent-lib`/`ssh-key` crates or our own, in process, no `ssh-agent`)
+  on a socket in the runtime dir, `SSH_AUTH_SOCK` set for the whole
+  session (olo-session's environment, systemd's user manager's, so
+  Terminal's shells, git and editors use it), on by default with a
+  setting in Passwords (and in Preferences) to turn it off. Each use
+  asks as 1Password's agent does: which program (its process and
+  command line) wants which key, approved by the person (Touch ID's
+  equivalent here: the password, a security key or face, per the
+  YubiKey and face items above), remembered for that program for a
+  while; keys locked with Passwords lock. `ssh -T git@github.com` and a
+  `git push` from Terminal work with a key from Passwords, tested
+  headless with a fixture vault and an `sshd` of the test's own on a
+  local port (or a Rust SSH server in-process).
+
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a
   markdown file StyledEdit should natively support the Markdown and be
@@ -1830,6 +1839,57 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal's suggestions see the session's recent commands and
+  output, after a restore too**~~ (done 2026-11-05, HACKING's brush
+  suggestions: a shell's session is its Terminal shell id, a restored
+  tab's carrying on the old one's last ten commands; olo-termd keeps each
+  shell's last 80 lines as text and olo-complete puts the latest command
+  they name that fits first: Ben's restored tab, `cl`, his `claude …
+  --resume` (a test), and headless, a printed command as brush's hint.
+  2 µs a suggestion as before. Left as the model's job, not done: features
+  of the output in the model itself (it would need retraining). The
+  installed brush comes up to date through Olo Suggestions) (Ben, 2026-11-05, after the items
+  above): "the olo terminal autocomplete model should be able to also
+  receive like the last n commands (maybe 10 idk whatever makes sense)
+  in the session the user wrote (and if it's a restored session after
+  e.g. a restart it should still see it from the captured scrollback)
+  and also the recent output so that it can take all that into account
+  when determining the completion prediction too". What it has now
+  (`crates/complete`): the daemon keeps each shell's last 8 commands in
+  memory (`index::Session`, keyed by brush's process id), and the
+  model sees them only as "after the last command", "two after", "uses
+  in this shell" and "in the last ten"; nothing of the output. A shell
+  restored after a restart or an upgrade (Terminal's scrollback brought
+  back, `replay.rs`) is a new process, so it starts with none. To do:
+  Suggest carries (or the daemon keeps per tab, not per process) the
+  session's last commands (about 10, measured: what helps most without
+  slowing a suggestion past its budget) and a digest of the recent
+  output (the last command's status and lines: an error naming a file,
+  a path, a branch, a test that failed, `git status`'s files), and a
+  restored tab's are taken from its saved scrollback (Terminal knows
+  each command's line and output from its prompt marks); the model gets
+  features from them (a candidate naming a word in the recent output,
+  repeating a command that just failed after an edit, the next step of
+  a sequence run before), trained from the history as it was typed
+  (the output kept for training only as those features, never stored
+  raw). Measure accepted-suggestion rate before and after (Activity
+  Monitor ▸ AI's numbers), and latency per suggestion (it's per key).
+  Ben's example (2026-11-05, a tab restored after a restart): the
+  scrollback ends with `claude --dangerously-skip-permissions` printing
+  "Resume this session with: claude --dangerously-skip-permissions
+  --resume 00000000-…", then `claude --allow-dangerously-skip-permissions
+  --dangerously-skip-permissions --resume 00000000-…` run, then
+  "Restored from Nov 5, 2026, 9:15 AM", `cd ~/src/notes`,
+  and `cl` typed: it suggested `claude --help|grep allow`; "here i would
+  expect the model's prediction to be that claude command to resume
+  with the session id etc". So the candidates can't come only from the
+  history index (`Index::candidates`): a command the output names (a
+  line that is a command, "Resume … with:", "run `…`", `git push
+  --set-upstream origin …`), and the last command of the restored
+  session (rerun as it was), are candidates too, scored with the rest.
+  Keep this as a test: that scrollback restored, `cl` typed, the resume
+  command suggested.
 
 - ~~**HDR versions of the wallpapers, shown in HDR**~~ (done 2026-11-05,
   HACKING's Backgrounds: a gain map beside each of the pack's 56

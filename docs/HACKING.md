@@ -7169,7 +7169,7 @@ ones it knows.
     `$XDG_RUNTIME_DIR/olo-complete.sock` (`OLO_COMPLETE_SOCKET` instead,
     for tests: a test session shares the runtime folder with the
     person's), JSON lines, one request a connection (`protocol::Request`:
-    suggest, ran, ended, accepted, stats, learn, reload). `learn` is the
+    suggest, ran, ended, accepted, continues, stats, learn, reload). `learn` is the
     first fine-tune, from the hand-written weights over everything; a
     minute after the first new command a quick one from the current
     weights over the newest, on its own thread (the model locked only to
@@ -7200,8 +7200,34 @@ ones it knows.
     once a second while the section shows, nothing otherwise; its
     latency is graphed (`ai.p50`, `ai.p95`). `OLO_ACTIVITY_DEMO_AI`
     shows `protocol::demo_stats` to look at headless.
+  - The session and the screen (Ben, 2026-11-05): in Olo's Terminal a
+    shell's session is its shell id, not its process (olo-termd sets
+    `OLO_SHELL_ID`, and `OLO_SHELL_RESTORED` with the id of the shell a
+    restored tab's stands in for; brush reads both as it starts, before
+    it takes the environment into its variables, `protocol::shell_id`,
+    and says `continues` once, `Index::continue_session`), so a tab's
+    last ten commands (`SESSION_LAST`) carry on across a restart, from
+    the record if the daemon started again too. olo-termd writes each
+    shell's last 80 lines as text (`protocol::tail_path`, in the runtime
+    folder, wrapped rows joined, `tail_text`) 300 ms after its output
+    stops (`TAIL_AFTER`: nothing while idle), a restored tab's
+    scrollback among them, and removes it as the shell or olo-termd
+    ends. The daemon reads it when the file changed (`named`, cached by
+    its time) for the commands it names (`output::commands`: what was
+    run at a prompt, a line or backquoted text starting with a program
+    the person runs: "Resume this session with:" and the command after
+    it, `git push --set-upstream origin topic`, "run `cargo fix`"; the
+    prompt being typed at left out), and the latest one that fits what's
+    typed comes first, ahead of the model's
+    (`output::tests::bens_restored_tab_suggests_the_resume`: Ben's
+    restored tab, `cl` typed, his `claude … --resume 00000000-…`). Tried
+    headless: a command printed by `printf`, `git l` typed in brush, the
+    hint `og --oneline -3`. The installed `/usr/local/bin/brush` is Olo
+    Suggestions' copy, brought up to date by its "Update brush".
   - Measured (M2 Max, release, 640 commands): a suggestion 1 µs in the
-    daemon, 2 µs at p95 (26 µs round trip from a client); the first
+    daemon, 2 µs at p95 (26 µs round trip from a client); with a shell's
+    tail (ThinkPad, 2026-11-05) 2 µs at the median, 3 at p95, as without
+    one, and 40 µs once each time its tail changed; the first
     fine-tune 5 to 11 ms, a quick one about 2 ms; idle 0% of a core, 0
     wakeups a second; while Activity Monitor's AI shows, one a second
     in the daemon and 3 in Activity Monitor's poller (0.1% of a core).

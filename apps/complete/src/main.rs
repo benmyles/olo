@@ -27,6 +27,7 @@ use olo_complete::{
     history::{self, Entry},
     index::{Context, Index},
     kernels::{Cpu, Weights},
+    output,
     protocol::{self, Reply, Request, Settings, Stats},
     train::{self, Backend, CpuBackend, Example, Plan, Tuned},
 };
@@ -79,6 +80,10 @@ struct Daemon {
     learn: Condvar,
     settings: Mutex<Settings>,
     counters: Mutex<Counters>,
+    /// Each shell's recent text's commands (`output::commands`), read
+    /// again only when olo-termd has written it since: by session, when
+    /// read, what it named.
+    tails: Mutex<std::collections::HashMap<u64, (std::time::SystemTime, Vec<String>)>>,
 }
 
 fn record_path() -> PathBuf {
@@ -141,15 +146,45 @@ impl Daemon {
             learn: Condvar::new(),
             settings: Mutex::new(settings),
             counters: Mutex::new(counters),
+            tails: Mutex::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// The commands shell `session`'s recent text names (olo-termd's
+    /// tail of it; none for a shell outside Olo's Terminal).
+    fn named(&self, session: u64, ix: &Index) -> Vec<String> {
+        let Some(path) = protocol::tail_path(session) else { return Vec::new() };
+        let Ok(stamp) = std::fs::metadata(&path).and_then(|m| m.modified()) else { return Vec::new() };
+        let mut tails = self.tails.lock().unwrap();
+        if let Some((at, found)) = tails.get(&session)
+            && *at == stamp
+        {
+            return found.clone();
+        }
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        let found = output::commands(&text, &|w| ix.knows_program(w));
+        if tails.len() > 64 {
+            tails.clear();
+        }
+        tails.insert(session, (stamp, found.clone()));
+        found
     }
 
     fn suggest(&self, line: &str, cwd: Option<&str>, session: u64) -> Reply {
         let t0 = Instant::now();
         let m = self.model.lock().unwrap();
         let cx = Context { line, cwd, session, at: history::now() };
-        let candidates = olo_complete::suggest(&m.ix, &mut CpuBackend(Cpu::Simd), &m.weights, &cx, 5);
+        let mut candidates = olo_complete::suggest(&m.ix, &mut CpuBackend(Cpu::Simd), &m.weights, &cx, 5);
+        // What the shell's screen names last that fits (a command run just
+        // before, one a program printed to run) comes first: the moment's
+        // context over the history's.
+        let named = self.named(session, &m.ix);
         drop(m);
+        if let Some(c) = output::latest_for(&named, line) {
+            candidates.retain(|x| x != c);
+            candidates.insert(0, c.to_owned());
+            candidates.truncate(5);
+        }
         let rest = candidates.first().and_then(|c| c.strip_prefix(line)).unwrap_or("").to_owned();
         if !rest.is_empty() {
             self.counters.lock().unwrap().offered += 1;
@@ -298,6 +333,10 @@ fn serve(d: &Arc<Daemon>, stream: UnixStream) -> bool {
         }
         Request::Ended { session, status } => {
             d.model.lock().unwrap().ix.ended(session, status);
+            Reply::Ok
+        }
+        Request::Continues { session, from } => {
+            d.model.lock().unwrap().ix.continue_session(session, from);
             Reply::Ok
         }
         Request::Accepted { whole, .. } => {

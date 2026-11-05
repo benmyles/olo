@@ -10,6 +10,9 @@ use crate::history::{Entry, local_time};
 
 /// How many numbers the model sees of each candidate.
 pub const F: usize = 16;
+/// How many of a shell's commands are kept for what comes next (Ben,
+/// 2026-11-05: "the last n commands (maybe 10 ...)").
+pub const SESSION_LAST: usize = 10;
 /// How many candidates are scored for a line, at most.
 pub const MAX_CANDIDATES: usize = 32;
 /// What each feature is, for the person (Activity Monitor) and the tests.
@@ -66,6 +69,9 @@ pub struct Index {
     follows: HashMap<(u32, u32), u32>,
     follows2: HashMap<(u32, u32), u32>,
     sessions: HashMap<u64, Session>,
+    /// The programs run (each command's first word), to know a command
+    /// named in a terminal's output (`output::commands`).
+    programs: std::collections::HashSet<String>,
     /// The person's last commands, any shell (most recent last).
     recent: Vec<u32>,
     /// Commands seen, in all.
@@ -126,6 +132,9 @@ impl Index {
                 self.ids.insert(e.command.clone(), id);
                 self.commands.push(e.command.clone());
                 self.stats.push(Stats::default());
+                if let Some(program) = e.command.split_whitespace().next() {
+                    self.programs.insert(program.to_owned());
+                }
                 id
             }
         };
@@ -160,7 +169,7 @@ impl Index {
             *self.follows2.entry((before2, id)).or_insert(0) += 1;
         }
         session.last.push(id);
-        if session.last.len() > 8 {
+        if session.last.len() > SESSION_LAST {
             session.last.remove(0);
         }
         *session.counts.entry(id).or_insert(0) += 1;
@@ -168,6 +177,29 @@ impl Index {
         if self.recent.len() > 10 {
             self.recent.remove(0);
         }
+    }
+
+    /// Shell `session` carries on shell `from`: a Terminal tab restored
+    /// after a restart (its shell new, `OLO_SHELL_RESTORED`). Its commands
+    /// so far are the old one's, if it has none of its own yet.
+    pub fn continue_session(&mut self, session: u64, from: u64) {
+        if session == from || self.sessions.get(&session).is_some_and(|s| !s.last.is_empty()) {
+            return;
+        }
+        if let Some(old) = self.sessions.get(&from).cloned() {
+            self.sessions.insert(session, old);
+        }
+    }
+
+    /// `word` is a program the person has run.
+    pub fn knows_program(&self, word: &str) -> bool {
+        self.programs.contains(word)
+    }
+
+    /// Shell `session`'s commands so far, oldest first (at most
+    /// `SESSION_LAST`).
+    pub fn session_commands(&self, session: u64) -> Vec<&str> {
+        self.sessions.get(&session).map_or_else(Vec::new, |s| s.last.iter().map(|&id| self.command(id)).collect())
     }
 
     /// How the last command ended, told as the next prompt comes (it
@@ -271,6 +303,27 @@ mod tests {
         assert_eq!(c, ["git status", "git push"]);
         // Not what's typed whole, nor nothing typed.
         assert!(ix.candidates("ls").is_empty() && ix.candidates("  ").is_empty());
+    }
+
+    #[test]
+    fn a_restored_shell_carries_on_the_old_ones_commands() {
+        let mut ix = Index::new();
+        for (i, c) in ["cd src", "cargo build", "claude --resume 9ee4"].iter().enumerate() {
+            ix.add(&Entry { at: i as i64 + 1, ..e(c, "/src", 7) });
+        }
+        ix.continue_session(8, 7);
+        assert_eq!(ix.session_commands(8), ["cd src", "cargo build", "claude --resume 9ee4"]);
+        // One with commands of its own already keeps them.
+        ix.add(&e("ls", "/src", 9));
+        ix.continue_session(9, 7);
+        assert_eq!(ix.session_commands(9), ["ls"]);
+        assert!(ix.knows_program("claude") && !ix.knows_program("--resume"));
+        // Ten kept, the oldest let go.
+        for i in 0..12 {
+            ix.add(&e(&format!("echo {i}"), "/src", 10));
+        }
+        assert_eq!(ix.session_commands(10).len(), SESSION_LAST);
+        assert_eq!(ix.session_commands(10)[0], "echo 2");
     }
 
     #[test]

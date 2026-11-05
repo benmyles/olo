@@ -20,6 +20,7 @@
 pub mod history;
 pub mod index;
 pub mod kernels;
+pub mod output;
 pub mod protocol;
 pub mod train;
 

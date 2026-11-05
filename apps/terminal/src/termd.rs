@@ -321,13 +321,23 @@ fn spawn_reader(
         .spawn(move || {
             let mut feeder = io::Feeder::default();
             let mut buf = vec![0u8; 256 * 1024];
+            // Its recent text for olo-complete, written once output has
+            // stopped a moment (`TAIL_AFTER`): when, if it's due.
+            let mut tail_due = Some(Instant::now() + TAIL_AFTER);
             loop {
-                let timeout_ms = feeder.deadline().map(|d| d.saturating_duration_since(Instant::now()).as_millis() as i32).unwrap_or(-1);
+                let due = [feeder.deadline(), tail_due].into_iter().flatten().min();
+                let timeout_ms = due.map(|d| d.saturating_duration_since(Instant::now()).as_millis() as i32).unwrap_or(-1);
                 let mut pfd = libc::pollfd { fd: file.as_raw_fd(), events: libc::POLLIN, revents: 0 };
                 // SAFETY: polling one valid fd.
                 let r = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
                 if r == 0 {
-                    feeder.flush(&mut *term.lock());
+                    if feeder.deadline().is_some_and(|d| d <= Instant::now()) {
+                        feeder.flush(&mut *term.lock());
+                    }
+                    if tail_due.is_some_and(|d| d <= Instant::now()) {
+                        tail_due = None;
+                        write_tail(id, &term.lock());
+                    }
                     continue;
                 }
                 if r < 0 {
@@ -364,6 +374,7 @@ fn spawn_reader(
                     }
                 };
                 output.fetch_add(1, Ordering::Relaxed);
+                tail_due = Some(Instant::now() + TAIL_AFTER);
                 if !PRINTED.swap(true, Ordering::AcqRel) {
                     let _ = events.send(Ev::Printed);
                 }
@@ -384,9 +395,66 @@ fn spawn_reader(
             if let Some(o) = attached.lock().unwrap().as_ref() {
                 o.send(Frame::json(wire::EXITED, id, &code));
             }
+            if let Some(p) = olo_complete::protocol::tail_path(id) {
+                let _ = std::fs::remove_file(p);
+            }
             let _ = events.send(Ev::Exited(id));
         })
         .expect("reader thread");
+}
+
+/// How long after a shell's last output its recent text is written.
+const TAIL_AFTER: Duration = Duration::from_millis(300);
+
+/// Shell `id`'s last lines as text (`TAIL_LINES`, rows a line wrapped
+/// over joined again), where olo-complete reads them
+/// (`protocol::tail_path`): what its commands printed, and a restored
+/// tab's old commands, for its suggestions.
+fn write_tail(id: u64, term: &Term<Listener>) {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let Some(path) = olo_complete::protocol::tail_path(id) else { return };
+    let text = tail_text(term.grid(), TAIL_LINES);
+    let new = path.with_extension("tail.new");
+    let wrote = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&new).and_then(|mut f| f.write_all(text.as_bytes()));
+    if wrote.and_then(|_| std::fs::rename(&new, &path)).is_err() {
+        let _ = std::fs::remove_file(&new);
+    }
+}
+
+/// How many of a shell's last lines olo-complete is given.
+const TAIL_LINES: usize = olo_complete::output::LINES;
+
+/// The last `n` lines of `grid` (scrollback, then the screen down to its
+/// last line with anything on it), wrapped rows joined.
+fn tail_text(grid: &alacritty_terminal::grid::Grid<alacritty_terminal::term::cell::Cell>, n: usize) -> String {
+    use alacritty_terminal::{
+        grid::Dimensions as _,
+        index::{Column, Line},
+        term::cell::Flags,
+    };
+    let (top, rows, cols) = (-(grid.history_size() as i32), grid.screen_lines() as i32, grid.columns());
+    let mut lines: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for l in top..rows {
+        let row = &grid[Line(l)];
+        for c in 0..cols {
+            let cell = &row[Column(c)];
+            if !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+                current.push(cell.c);
+            }
+        }
+        if !row[Column(cols - 1)].flags.contains(Flags::WRAPLINE) {
+            lines.push(std::mem::take(&mut current).trim_end().to_owned());
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current.trim_end().to_owned());
+    }
+    while lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
+    let from = lines.len().saturating_sub(n);
+    lines[from..].join("\n")
 }
 
 /// Input for a shell goes out in order without holding anyone up, even
@@ -521,7 +589,14 @@ fn handle(st: &St, conn: u64, f: Frame) {
                 lines.extend_from_slice(format!("\x1b[2mRestored from {when}\x1b[0m\r\n").as_bytes());
                 lines
             });
-            match pty::Pty::spawn(spawn.command.as_deref(), cwd.as_deref(), window_size(spawn.grid), &s.env) {
+            // Its id (olo-complete's session for it: its recent text is kept
+            // under it, `write_tail`), and the shell it stands in for.
+            let mut env = s.env.clone();
+            env.push((olo_complete::protocol::SHELL_ID_ENV.to_owned(), format!("{:x}", f.id)));
+            if let Some(from) = spawn.restore {
+                env.push((olo_complete::protocol::SHELL_RESTORED_ENV.to_owned(), format!("{from:x}")));
+            }
+            match pty::Pty::spawn(spawn.command.as_deref(), cwd.as_deref(), window_size(spawn.grid), &env) {
                 Ok(p) => {
                     new_shell(&mut s, f.id, p, spawn.grid, before.as_deref(), None);
                     attach(&mut s, conn, f.id, spawn.grid);
@@ -927,6 +1002,13 @@ fn run(st: St, events: mpsc::Receiver<Ev>, mut listener: UnixListener, lock: Fil
                         scope.spawn(move || keep(id, term, shared));
                     }
                 });
+                // Their recent text for olo-complete goes with them (a
+                // restored tab's shell writes its own).
+                for &id in s.shells.keys() {
+                    if let Some(p) = olo_complete::protocol::tail_path(id) {
+                        let _ = std::fs::remove_file(p);
+                    }
+                }
                 let deadline = Instant::now() + Duration::from_millis(200);
                 while s.clients.values().any(|c| c.outbox.backlog.load(Ordering::Acquire) > 0) && Instant::now() < deadline {
                     std::thread::sleep(Duration::from_millis(5));
@@ -1106,4 +1188,28 @@ fn main() {
     }
     watch(events_tx);
     run(st, events, listener, lock);
+}
+
+#[cfg(test)]
+mod tests {
+    use alacritty_terminal::{
+        event::VoidListener,
+        term::{Config, Term},
+        vte::ansi::Processor,
+    };
+
+    #[test]
+    fn the_tail_joins_wrapped_lines_and_keeps_the_last() {
+        let size = super::Size { cols: 30, rows: 6 };
+        let mut t = Term::new(Config::default(), &size, VoidListener);
+        let mut parser: Processor = Processor::new();
+        let mut feed = |t: &mut Term<VoidListener>, s: &str| parser.advance(t, s.as_bytes());
+        for i in 0..10 {
+            feed(&mut t, &format!("line {i}\r\n"));
+        }
+        // A command longer than the screen is wide, wrapped over three rows.
+        feed(&mut t, "me@box:~/x$ claude --dangerously-skip-permissions --resume 00000000\r\nme@box:~/x$ cl");
+        let text = super::tail_text(t.grid(), 3);
+        assert_eq!(text, "line 9\nme@box:~/x$ claude --dangerously-skip-permissions --resume 00000000\nme@box:~/x$ cl");
+    }
 }

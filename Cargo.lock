@@ -7719,6 +7719,7 @@ dependencies = [
  "git2",
  "image",
  "libc",
+ "olo-complete",
  "olo-crash",
  "olo-fido",
  "olo-kit-base",

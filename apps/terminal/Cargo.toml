@@ -34,6 +34,8 @@ olo-protocol.workspace = true
 olo-system.workspace = true
 olo-fido.workspace = true
 olo-sync.workspace = true
+# Its shells' ids and recent text for olo-complete's suggestions.
+olo-complete.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 toml_edit = "0.25"
