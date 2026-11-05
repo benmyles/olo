@@ -1,0 +1,40 @@
+# Browser TODO
+
+Keep this file and JOURNAL.md current with each milestone. A checked
+item means implemented and verified; a partial implementation stays open.
+
+- [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
+- [x] Record architecture, acceptance criteria and honest compatibility gates.
+- [ ] Build a reproducible 100-site corpus with explicit provenance,
+  journeys, independent baselines and fail-closed reporting.
+- [ ] Hand-write HTML tokenizer; validate against independent tokenizer tests.
+- [ ] Implement complete HTML tree construction and compact mutable DOM.
+- [ ] Add network/encoding/cache/cookies with security and memory bounds.
+- [ ] Implement CSS tokenizer/parser, selectors, cascade, media queries,
+  custom properties and style invalidation.
+- [ ] Implement block/inline, text shaping/bidi, flex/grid/table layout,
+  positioning, fragmentation and incremental layout.
+- [ ] Retained GPU painting, clipping, compositing, scrolling, images,
+  SVG, canvas, fonts, video and audio; measure each on release builds.
+- [ ] Native browser shell, tabs/navigation/find/history/bookmarks/downloads.
+- [ ] Structured DOM snapshots and versioned agent actions; input/focus/IME.
+- [ ] V8 integration, Web IDL bindings, GC rooting, event loop, modules,
+  timers, promises, Fetch, workers, storage and required web APIs.
+- [ ] Dark/night page adaptation and author color-scheme support.
+- [ ] Tracker/file panels/printing/clipboard/notifications/permissions.
+- [ ] Passwords autofill/save and passkeys with origin-bound mediation.
+- [ ] Isolated/sandboxed renderer processes; cancellation and crash recovery.
+- [ ] Restore windows/tabs on app_server restart and in-place upgrade.
+- [ ] WPT integration and hostile-input/fuzz coverage; independent DOM,
+  layout and visual differentials.
+- [ ] Capture pinned Chrome baselines and execute every corpus journey;
+  all scales/themes and scale changes; no missing/blocked case counted passed.
+- [ ] Release performance comparisons, memory/idle/latency/scroll/GPU;
+  numbers and raw evidence in journal and commit messages.
+- [ ] Full workspace release build; layout lint; headless reviews and visual
+  journal; reload testing; commit and push each working milestone.
+- [ ] Demonstrate >=99% compatibility on a defined independent sample,
+  with sample size, uncertainty, scope and exclusions reported.
+
+Next: implement and measure the tokenizer and establish an evaluation
+runner which cannot silently turn missing observations into passes.
