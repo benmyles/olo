@@ -1,0 +1,333 @@
+{
+  "scope": "Native numeric grammar/type/raw-coordinate ports with explicit representative host units. No upstream JS/CSSOM/page/style/layout execution or complete property conformance.",
+  "base_commit": "be4080e3e3a86805bd906a708da67a9d36d2c6e6",
+  "total": 1586,
+  "counts": {
+    "passed": 1572,
+    "unsupported": 14
+  },
+  "fixture_manifest_sha256": "a2796c98bb69ecde75d797b8d077085ac260f8cc410b70b2215685ca426f980c",
+  "full_report_sha256": "0001c5c799b327a26083aaebafa92bbb2f8b2d34ad8d4896046e5b34e91dca9e",
+  "commands": [
+    "/usr/bin/python3 crates/web/tests/numeric-fixtures/extract.py",
+    "cargo run --release -p olo-web --example math_eval -- /var/tmp/math.json"
+  ],
+  "extraction_reproduces_exact_bytes": true,
+  "evaluator_exit_code": 1,
+  "unexpected_mismatches_errors_panics": 0,
+  "per_file_counts": {
+    "acos-asin-atan-atan2-computed.html": {
+      "passed": 50,
+      "unsupported": 2
+    },
+    "acos-asin-atan-atan2-invalid.html": {
+      "passed": 63
+    },
+    "calc-invalid-parsing.html": {
+      "unsupported": 1,
+      "passed": 5
+    },
+    "clamp-length-computed.html": {
+      "passed": 24
+    },
+    "exp-log-compute.html": {
+      "passed": 59
+    },
+    "exp-log-invalid.html": {
+      "passed": 48
+    },
+    "hypot-pow-sqrt-computed.html": {
+      "passed": 126,
+      "unsupported": 1
+    },
+    "hypot-pow-sqrt-invalid.html": {
+      "passed": 49
+    },
+    "minmax-angle-computed.html": {
+      "passed": 32
+    },
+    "minmax-length-percent-computed.html": {
+      "passed": 50
+    },
+    "minmax-number-computed.html": {
+      "passed": 14
+    },
+    "minmax-number-invalid.html": {
+      "passed": 48
+    },
+    "minmax-time-computed.html": {
+      "passed": 24
+    },
+    "progress-computed.html": {
+      "passed": 31,
+      "unsupported": 5
+    },
+    "progress-invalid.html": {
+      "passed": 35
+    },
+    "round-mod-rem-computed.html": {
+      "passed": 243
+    },
+    "round-mod-rem-invalid.html": {
+      "passed": 108
+    },
+    "signed-zero.html": {
+      "passed": 162
+    },
+    "signs-abs-computed.html": {
+      "passed": 239
+    },
+    "signs-abs-invalid.html": {
+      "passed": 53
+    },
+    "sin-cos-tan-computed.html": {
+      "passed": 32
+    },
+    "sin-cos-tan-invalid.html": {
+      "passed": 42
+    },
+    "typed_arithmetic.html": {
+      "passed": 35,
+      "unsupported": 5
+    }
+  },
+  "non_passes": [
+    {
+      "context": {
+        "em": 16.0,
+        "rem": 16.0,
+        "sibling_count": 2,
+        "sibling_index": 1,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": "calc(tan(atan2(round(up,1px,100%),round(up,1px,100%)))*1px)",
+      "file": "acos-asin-atan-atan2-computed.html",
+      "helper": "test_math_computed",
+      "input": "calc(tan(atan2(round(up,1px,100%),round(up,1px,100%)))*1px)",
+      "line": 53,
+      "mode": "computed_serialization",
+      "offset": 3104,
+      "options": {
+        "type": "length"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: specified/computed serialization assertion"
+    },
+    {
+      "context": {
+        "em": 16.0,
+        "rem": 16.0,
+        "sibling_count": 2,
+        "sibling_index": 1,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": "calc(1px * pow(tan(atan2(50%, 1px)), 1))",
+      "file": "acos-asin-atan-atan2-computed.html",
+      "helper": "test_math_computed",
+      "input": "calc(1px * pow(tan(atan2(50%, 1px)), 1))",
+      "line": 55,
+      "mode": "computed_serialization",
+      "offset": 3286,
+      "options": {
+        "type": "length"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: specified/computed serialization assertion"
+    },
+    {
+      "context": {
+        "em": 16.0,
+        "rem": 16.0,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": null,
+      "file": "calc-invalid-parsing.html",
+      "helper": "test_invalid_value",
+      "input": "rotate(calc((0.25turn error)))",
+      "line": 8,
+      "mode": "invalid",
+      "offset": 306,
+      "options": {
+        "prop": "transform"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: nonnumeric function/property wrapper"
+    },
+    {
+      "context": {
+        "em": 16.0,
+        "rem": 16.0,
+        "sibling_count": 4,
+        "sibling_index": 4,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": "calc(pow(tan(atan2(round(up,1px,100%),round(up,1px,100%))),2)*1px)",
+      "file": "hypot-pow-sqrt-computed.html",
+      "helper": "test_math_computed",
+      "input": "calc(pow(tan(atan2(round(up,1px,100%),round(up,1px,100%))),2)*1px)",
+      "line": 63,
+      "mode": "computed_serialization",
+      "offset": 2764,
+      "options": {
+        "type": "length"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: specified/computed serialization assertion"
+    },
+    {
+      "context": {
+        "em": 10.0,
+        "rem": 10.0,
+        "sibling_count": 1,
+        "sibling_index": 1,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": "scale(1)",
+      "file": "progress-computed.html",
+      "helper": "test_math_used",
+      "input": "scale(progress(50em, 10rem, 110em))",
+      "line": 36,
+      "mode": "computed",
+      "offset": 1244,
+      "options": {
+        "approx": 0.1,
+        "prop": "transform",
+        "type": "number"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: nonnumeric function/property wrapper"
+    },
+    {
+      "context": {
+        "em": 10.0,
+        "rem": 10.0,
+        "sibling_count": 1,
+        "sibling_index": 1,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": "scale(1)",
+      "file": "progress-computed.html",
+      "helper": "test_math_used",
+      "input": "scale(progress(1000em, 10rem, 110em))",
+      "line": 37,
+      "mode": "computed",
+      "offset": 1358,
+      "options": {
+        "approx": 0.1,
+        "prop": "transform",
+        "type": "number"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: nonnumeric function/property wrapper"
+    },
+    {
+      "context": {
+        "em": 10.0,
+        "rem": 10.0,
+        "sibling_count": 1,
+        "sibling_index": 1,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": "scale(0)",
+      "file": "progress-computed.html",
+      "helper": "test_math_used",
+      "input": "scale(progress(0em, 0rem, 0em))",
+      "line": 38,
+      "mode": "computed",
+      "offset": 1474,
+      "options": {
+        "prop": "transform",
+        "type": "number"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: nonnumeric function/property wrapper"
+    },
+    {
+      "context": {
+        "em": 10.0,
+        "rem": 10.0,
+        "sibling_count": 1,
+        "sibling_index": 1,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": "scale(0)",
+      "file": "progress-computed.html",
+      "helper": "test_math_used",
+      "input": "scale(progress(sign(1em - 1rem) * 1ex, 0rem, 0em))",
+      "line": 39,
+      "mode": "computed",
+      "offset": 1572,
+      "options": {
+        "prop": "transform",
+        "type": "number"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: nonnumeric function/property wrapper"
+    },
+    {
+      "context": {
+        "em": 10.0,
+        "rem": 10.0,
+        "sibling_count": 1,
+        "sibling_index": 1,
+        "width": 100.0
+      },
+      "environment": {},
+      "expected": "rotate3d(2, 2, 2, 2deg)",
+      "file": "progress-computed.html",
+      "helper": "test_math_used",
+      "input": "rotate3d(progress(21em, 1rem, 11em), progress(21em, 1rem, 11em), progress(21em, 1rem, 11em), calc(progress(11em, 1rem, 11em) * 2deg))",
+      "line": 54,
+      "mode": "computed",
+      "offset": 2926,
+      "options": {
+        "prop": "transform"
+      },
+      "outcome": "unsupported",
+      "reason": "Unsupported: nonnumeric function/property wrapper"
+    },
+    {
+      "file": "typed_arithmetic.html",
+      "helper": "testComputedValueGreaterOrLowerThan",
+      "line": 82,
+      "outcome": "unsupported",
+      "reason": "property limit/serialization helper not ported"
+    },
+    {
+      "file": "typed_arithmetic.html",
+      "helper": "testComputedValueGreaterOrLowerThan",
+      "line": 83,
+      "outcome": "unsupported",
+      "reason": "property limit/serialization helper not ported"
+    },
+    {
+      "file": "typed_arithmetic.html",
+      "helper": "testComputedValueGreaterOrLowerThan",
+      "line": 84,
+      "outcome": "unsupported",
+      "reason": "property limit/serialization helper not ported"
+    },
+    {
+      "file": "typed_arithmetic.html",
+      "helper": "testComputedValueGreaterOrLowerThan",
+      "line": 85,
+      "outcome": "unsupported",
+      "reason": "property limit/serialization helper not ported"
+    },
+    {
+      "file": "typed_arithmetic.html",
+      "helper": "testComputedValueGreaterOrLowerThan",
+      "line": 94,
+      "outcome": "unsupported",
+      "reason": "property limit/serialization helper not ported"
+    }
+  ]
+}

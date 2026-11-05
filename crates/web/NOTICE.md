@@ -79,3 +79,12 @@ The three licenses are included. Its README, SOURCE.json and local
 literal-only extractor describe the numeric native ports, reviewed
 current-spec clamping, selections and explicit non-passes. No upstream
 Python/JS library, CSSOM or WPT page is executed by these comparisons.
+
+`tests/numeric-fixtures` imports 23 unmodified CSS Values WPT resources
+and the unmodified numeric-testcommon.js helper from the same pinned WPT
+revision above, under its included BSD-3-Clause license. SOURCE.json pins
+all bytes; README.md documents literal native ports, explicit representative
+host environments, helper expansion, numeric reference decoding and
+unported cases. No upstream JS/CSSOM/page engine executes in the tests.
+Production typed arithmetic is original Rust based on CSS Values 4/5
+and the Typed OM numeric type rules, not an embedded third-party CSS engine.

@@ -26,6 +26,10 @@ baseline-selector-nth = []
 baseline-color-f64 = []
 # Reproduce scalar batches and repacking of already converted colors.
 baseline-color-conversion = []
+# Same numeric grammar/IEEE semantics without constant-subtree folding.
+baseline-math-folding = []
+# Operator-order control without combining canonical constant sum terms.
+baseline-math-sums = []
 
 [dependencies]
 memchr = "2"

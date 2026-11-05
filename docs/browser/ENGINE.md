@@ -468,3 +468,82 @@ cancellation/resumption and 10,000 deterministic malformed values. Primary
 references consulted 2026-11-05: [CSS Color 4](https://www.w3.org/TR/2026/CRD-css-color-4-20261103/),
 [CSS Color 5](https://drafts.csswg.org/css-color-5/),
 [CSS Values 4 precision](https://drafts.csswg.org/css-values-4/#range).
+
+
+## Typed numeric calculations
+
+`css::math::Value::parse(Components, Options, Limits, cancellation)` and
+`compile(Component, …)` validate numeric values and math functions on a
+worker. They consume borrowed syntax and retain no source strings.
+Dimension algebra tracks seven integer exponents and a percentage hint in
+an eight-byte type. Compatible absolute units canonicalize to px, deg, s,
+Hz, dppx and fr; invalid dimensions remain invalid even when arithmetic
+could eliminate them. Percentages resolve only according to the supplied
+calculation context. Number/percentage mixing stays invalid; unitless zero
+does not silently become a length inside calculations. Type exponents are
+limited to [-127,127], nesting to a hard maximum of 128, with configurable
+work, emitter storage and resolution-stack quotas.
+
+The original grammar covers calc, min/max/clamp (including none bounds),
+round/mod/rem, trigonometric/inverse functions, pow/sqrt/hypot/log/exp,
+abs/sign, IEEE constants, progress/no-clamp and tree-counting functions.
+Unknown syntax, known unsupported extensions, substitution requirements,
+resource limits and unavailable context remain distinct errors. Media/
+container progress, calc-size, device-pixel line-width rounding and
+arbitrary substitution remain unfinished. Numeric type/property/cascade/
+CSSOM integration is not implemented by these APIs.
+
+Static subexpressions fold after type checking. Canonical constant sum
+terms combine while contextual terms and meaningful zero values remain.
+Zero coefficients of nonpercentage relative units need no environment;
+percentage zero remains contextual where its basis/sign matters. Math
+values occupy 16 bytes on the measured build. Static results retain no
+additional heap allocation; dynamic values share a flat, 16-byte-instruction
+postfix program. There is no recursively owned expression tree. Compilation
+may spill its small temporary instruction buffer for complex inputs.
+
+`resolve_raw(&Context, …)` returns a typed f64 quantity; `resolve_with`
+reuses a caller-owned Scratch. Raw IEEE NaN, infinities and signed zero
+remain inside calculations. `Quantity::materialize(min,max)` censors/clamps
+only at the top-level/property boundary; callers supply valid bounds.
+Font/root-font, viewport, container and percentage factors come from an
+explicit stable host snapshot; missing data returns ContextUnavailable.
+Physical unit factors are finite and nonnegative, with unsigned zero;
+percentage bases can be negative. `Context::tree_count` receives a typed
+request and must enforce stylesheet/element tree scopes and shadow
+boundaries before returning a count. No DOM is automatically traversed.
+Unit/tree dependency bits support future style invalidation. Real property,
+style/layout hosts and live invalidation are still future work.
+
+Independent numeric evidence: 1,581 literal native WPT ports and five
+inventoried unported helper forms, **1,586 cases: 1,572 passes and 14 explicit
+non-passes**. These test numeric grammar/types and raw coordinates in
+explicit representative contexts. They do not execute JS, CSSOM or layout.
+The fixture README describes original helper expansion, literal context
+changes, static element models, independent canonical reference decoding,
+tolerances and scope. Hashes reject fixture edits, and extraction reproduces
+the derived data. Remaining non-passes are nonnumeric wrappers, serialization
+and property-limit drivers. All seven native groups cover live context,
+unit/type rules, IEEE edge cases, private Debug/source lifetime, limits,
+cancellation, 10,000 nested inputs, 5,000-term flat evaluation and 10,000
+malformed values. Math is not yet connected to the color parser; its earlier
+215 non-passes remain unchanged.
+
+```sh
+cargo test --release -p olo-web --test math
+cargo run --release -p olo-web --example math_eval -- /var/tmp/math.json
+# Exits 1 until all imported native cases are supported.
+cargo build --release -p olo-web --example math_bench
+taskset -c 0 /usr/bin/time -v target/release/examples/math_bench 20
+```
+
+`baseline-math-folding` retains operations instead of folding static
+subtrees/zero unit coefficients. `baseline-math-sums` retains operator order
+without canonical sum-term combination. All supported corpus results pass
+in both controls. Sum reassociation follows CSS simplification and is not
+a promise of bitwise equivalence to ordered IEEE arithmetic for arbitrary
+extreme inputs. Raw measurements, first-call latencies, compiler/source/
+binary identities and allocation-capacity accounting are in
+`measurements/2026-11-05-math.json`. These controls include compiler/layout
+effects; the measurements do not establish uniform speedups, UI latency,
+GPU performance, browser memory or website compatibility.

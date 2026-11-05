@@ -1,0 +1,1835 @@
+{
+  "scope": "Original typed CSS math compilation from prebuilt syntax and raw numeric CPU resolution only. No property/cascade/CSSOM/layout/renderer/JS/network/UI/browser or Chrome performance evidence.",
+  "base_commit": "be4080e3e3a86805bd906a708da67a9d36d2c6e6",
+  "controls": {
+    "folding": "baseline-math-folding disables static-subtree/zero-relative-unit folding and sum normalization",
+    "sums": "baseline-math-sums preserves operator-order sums; static folding remains enabled",
+    "default": "type-checked static folding, canonical constant sums and bounded contextual programs"
+  },
+  "method": "Three sequential CPU-0 runs per mode, order folding/sums/default then reversed then original; 2000 compiles and 20000 reused-scratch resolutions per case per run. Throughput figures are each run mean; summary takes median of three run means. First-call samples recorded independently. No concurrent checks started by this session during samples. Other load, clocks and thermals uncontrolled. Controls are counterfactual builds of these sources, not prior production revisions.",
+  "memory_accounting": "Value/Vec capacities + unique Program headers/Arc reference counts + emitted instruction capacities; excludes allocator metadata, transient compiler spill and reusable resolution Scratch. RSS includes entire synthetic process and allocator retention. Static pool contains 10000 separately compiled values, not cloned Arcs.",
+  "caveats": [
+    "Prebuilt CSS Syntax excludes lexical/source cost.",
+    "Short unresolved workloads show mixed throughput; no uniform speedup claim.",
+    "Canonical sum reassociation follows CSS Values 4 and can differ from ordered IEEE arithmetic at extreme magnitudes.",
+    "SIMD/GPU not introduced in this module; scalar type checking and folding avoid repeated work.",
+    "Scope of imported conformance evidence is documented separately in numeric-fixtures/README.md."
+  ],
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "uname": "Linux 7.2.15-300.fc45.x86_64 x86_64 GNU/Linux",
+  "cpu": {
+    "lscpu": [
+      {
+        "field": "Architecture:",
+        "data": "x86_64"
+      },
+      {
+        "field": "CPU op-mode(s):",
+        "data": "32-bit, 64-bit"
+      },
+      {
+        "field": "Address sizes:",
+        "data": "46 bits physical, 48 bits virtual"
+      },
+      {
+        "field": "Byte Order:",
+        "data": "Little Endian"
+      },
+      {
+        "field": "CPU(s):",
+        "data": "16"
+      },
+      {
+        "field": "On-line CPU(s) list:",
+        "data": "0-15"
+      },
+      {
+        "field": "Vendor ID:",
+        "data": "GenuineIntel"
+      },
+      {
+        "field": "Model name:",
+        "data": "Intel(R) Core(TM) Ultra 7 356H"
+      },
+      {
+        "field": "CPU family:",
+        "data": "6"
+      },
+      {
+        "field": "Model:",
+        "data": "204"
+      },
+      {
+        "field": "Thread(s) per core:",
+        "data": "1"
+      },
+      {
+        "field": "Core(s) per socket:",
+        "data": "16"
+      },
+      {
+        "field": "Socket(s):",
+        "data": "1"
+      },
+      {
+        "field": "Stepping:",
+        "data": "2"
+      },
+      {
+        "field": "Microcode version:",
+        "data": "0x11b"
+      },
+      {
+        "field": "CPU(s) scaling MHz:",
+        "data": "56%"
+      },
+      {
+        "field": "CPU max MHz:",
+        "data": "4700.0000"
+      },
+      {
+        "field": "CPU min MHz:",
+        "data": "400.0000"
+      },
+      {
+        "field": "BogoMIPS:",
+        "data": "7372.80"
+      },
+      {
+        "field": "Flags:",
+        "data": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdt_a rdseed adx smap clflushopt clwb intel_pt sha_ni xsaveopt xsavec xgetbv1 xsaves split_lock_detect user_shstk avx_vnni lass fred lam wbnoinvd dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp hwp_pkg_req hfi vnmi umip pku ospke waitpkg gfni vaes vpclmulqdq rdpid bus_lock_detect movdiri movdir64b fsrm md_clear serialize arch_lbr ibt flush_l1d arch_capabilities"
+      },
+      {
+        "field": "Virtualization:",
+        "data": "VT-x"
+      },
+      {
+        "field": "L1d cache:",
+        "data": "576 KiB (16 instances)"
+      },
+      {
+        "field": "L1i cache:",
+        "data": "1 MiB (16 instances)"
+      },
+      {
+        "field": "L2 cache:",
+        "data": "24 MiB (7 instances)"
+      },
+      {
+        "field": "L3 cache:",
+        "data": "18 MiB (1 instance)"
+      },
+      {
+        "field": "NUMA node(s):",
+        "data": "1"
+      },
+      {
+        "field": "NUMA node0 CPU(s):",
+        "data": "0-15"
+      },
+      {
+        "field": "Vulnerability Gather data sampling:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Ghostwrite:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Indirect target selection:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Itlb multihit:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability L1tf:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Mds:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Meltdown:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Mmio stale data:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Old microcode:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Reg file data sampling:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Retbleed:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Spec rstack overflow:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Spec store bypass:",
+        "data": "Mitigation; Speculative Store Bypass disabled via prctl"
+      },
+      {
+        "field": "Vulnerability Spectre v1:",
+        "data": "Mitigation; usercopy/swapgs barriers and __user pointer sanitization"
+      },
+      {
+        "field": "Vulnerability Spectre v2:",
+        "data": "Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS Not affected; BHI BHI_DIS_S"
+      },
+      {
+        "field": "Vulnerability Srbds:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Tsa:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Tsx async abort:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Vmscape:",
+        "data": "Not affected"
+      }
+    ]
+  },
+  "commands": [
+    "cargo test --release -p olo-web",
+    "cargo test --release -p olo-web --test math --features baseline-math-folding",
+    "cargo test --release -p olo-web --test math --features baseline-math-sums",
+    "cargo build --release --workspace",
+    "cargo build --release -p olo-web --example math_bench [--features baseline-math-folding|baseline-math-sums]",
+    "cp --reflink=always target/release/examples/math_bench /var/tmp/olo-browser-research/numeric/math-MODE",
+    "/usr/bin/time -v taskset -c 0 /var/tmp/olo-browser-research/numeric/math-MODE 20"
+  ],
+  "source_sha256": {
+    "Cargo.lock": "17ff0dd9e5fe7a3b8c82877b6b0717bc52a4a00f0d56148bc5d1ad2a16e5bfd0",
+    "crates/web/Cargo.toml": "ee68d25d2985f617b88745b2b4a3bf65e1f0d0102efc3bf1496197f8b6ec20a9",
+    "crates/web/src/css/mod.rs": "a311ec7514b08f58e144d31afed1a0dcd02dac2a4ef662179f428cd4b95c8679",
+    "crates/web/examples/math_bench.rs": "e854a1fd9a19b7e78f2bcec649f8557c5b01e7cf9e95811b8ca0ff09ba129f4b",
+    "crates/web/examples/math_eval.rs": "53e0c884da2eba56f1773e94c2d3936def02f2165c7e38e20029daf96926a8a7",
+    "crates/web/tests/math.rs": "506064cdba7c510c19864920eb8b8d2e7774d1714000289cbba6f25d6dd81b4f",
+    "crates/web/tests/support/math_fixtures.rs": "db2866264c5234d0c6d82c550d95a5c2be5b26fbd679c02fa16dbb27f0153647",
+    "crates/web/src/css/math/mod.rs": "70d70a314b7e62eceb75954b2bf30a2ef192ca1d40fa5a9103ce00fe2e93ba0e",
+    "crates/web/src/css/math/ops.rs": "3efa991a803cf1e970c28939b34a4a881ebba050f53a1c453b7b1ac4f5c12a7b",
+    "crates/web/src/css/math/parse.rs": "f2c72eddfbda884f258d1a2f09235b672eca46a9b9b92f4148c3201fa3d9263a",
+    "crates/web/src/css/math/units.rs": "9bf28bc5cc1bb7df96d0735d852c9ffcb191b6b9e9ac2b4bbe4ea948b9b42110"
+  },
+  "binary_sha256": {
+    "folding": "9da26ea5fe50233b1221422d9d51d4f7480ab9a40dc1f47908c8607fdf914c31",
+    "sums": "0324334cd75292343eb6144d0230e3215cc5c0dc9487329272379d8e47d23756",
+    "default": "1009ee88d34f0da9a89acfb2c19e968168ca06f163c687248d875c50605e76b8"
+  },
+  "checks": {
+    "engine_release_tests": {
+      "sha256": "0650bf0a9a37d089ca7c48a44a3ab1a0ea85a92e0a5f0d5c1f4be3076fc62dc5",
+      "final_lines": [
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s",
+        "",
+        "   Doc-tests olo_web",
+        "",
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "folding_control_tests": {
+      "sha256": "4de409e62c76fcdcf8d85c2786111fa9c913a088b9a24299caf9df9ba25e6f60",
+      "final_lines": [
+        "test relative_units_are_deferred_and_dependency_bits_follow_the_expression ... ok",
+        "test type_algebra_percentage_policy_and_absolute_unit_conversion ... ok",
+        "test limits_cancellation_depth_flat_storage_and_private_debug ... ok",
+        "test deterministic_hostile_numeric_grammar_fuzz ... ok",
+        "test independent_pinned_numeric_ports ... ok",
+        "",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        ""
+      ]
+    },
+    "sum_control_tests": {
+      "sha256": "c605aca4a3653daffef34400e0b88137586f0a6dec7c0e09ecbf8193d28f52ac",
+      "final_lines": [
+        "test relative_units_are_deferred_and_dependency_bits_follow_the_expression ... ok",
+        "test type_algebra_percentage_policy_and_absolute_unit_conversion ... ok",
+        "test limits_cancellation_depth_flat_storage_and_private_debug ... ok",
+        "test deterministic_hostile_numeric_grammar_fuzz ... ok",
+        "test independent_pinned_numeric_ports ... ok",
+        "",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        ""
+      ]
+    },
+    "default_strict_clippy": {
+      "sha256": "0f1c257ad1cf69016dca0c92a9d59e97e9ebd7623f514abd6db3af4cd1ed15cd",
+      "final_lines": [
+        "warning: profiles for the non root package will be ignored, specify profiles at the workspace root:",
+        "package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml",
+        "workspace: /home/ben/worktrees/olo/browser/Cargo.toml",
+        "    Checking olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 1.11s"
+      ]
+    },
+    "all_features_strict_clippy": {
+      "sha256": "5780fce63793170c5b2303854a7fb2c6ec7782473e69e70a73d62e44df13ccb2",
+      "final_lines": [
+        "warning: profiles for the non root package will be ignored, specify profiles at the workspace root:",
+        "package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml",
+        "workspace: /home/ben/worktrees/olo/browser/Cargo.toml",
+        "    Checking olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 1.02s"
+      ]
+    },
+    "workspace_release_build": {
+      "sha256": "f39d5b2436d3977123d9202945f2c18852b051dd707a15b1ae422442208d0ae2",
+      "final_lines": [
+        "1940 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {",
+        "     |            ^^^^^^^^^^^^^^",
+        "",
+        "warning: `gpui` (lib) generated 7 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)",
+        "   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 2.09s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    },
+    "package_format": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "final_lines": []
+    }
+  },
+  "summary": {
+    "folding": {
+      "maximum_rss_kib_samples": [
+        4932,
+        4776,
+        4688
+      ],
+      "value_size": 16,
+      "ten_thousand_separately_compiled_static_values_reserved_bytes": 1600000,
+      "cases": [
+        {
+          "source": "12px",
+          "source_bytes": 4,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.03725049999999999,
+          "resolve_us": 0.0025035500000000002,
+          "first_compile_us": 1.2810000000000001,
+          "first_resolve_us": 0.101
+        },
+        {
+          "source": "0em",
+          "source_bytes": 3,
+          "instructions": 1,
+          "accounted_reserved_bytes": 128,
+          "stack": 1,
+          "compile_us": 0.07649349999999999,
+          "resolve_us": 0.00489715,
+          "first_compile_us": 0.561,
+          "first_resolve_us": 0.16299999999999998
+        },
+        {
+          "source": "calc(1 + 2 * 3)",
+          "source_bytes": 15,
+          "instructions": 5,
+          "accounted_reserved_bytes": 144,
+          "stack": 3,
+          "compile_us": 0.127136,
+          "resolve_us": 0.0182907,
+          "first_compile_us": 1.232,
+          "first_resolve_us": 0.13799999999999998
+        },
+        {
+          "source": "clamp(12px, 2em + 1vw, 50px)",
+          "source_bytes": 28,
+          "instructions": 7,
+          "accounted_reserved_bytes": 176,
+          "stack": 3,
+          "compile_us": 0.1882935,
+          "resolve_us": 0.02571605,
+          "first_compile_us": 1.136,
+          "first_resolve_us": 0.175
+        },
+        {
+          "source": "calc(50% - 1em + 2px)",
+          "source_bytes": 21,
+          "instructions": 5,
+          "accounted_reserved_bytes": 144,
+          "stack": 2,
+          "compile_us": 0.1522115,
+          "resolve_us": 0.01867425,
+          "first_compile_us": 0.5770000000000001,
+          "first_resolve_us": 0.13799999999999998
+        },
+        {
+          "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+          "source_bytes": 34,
+          "instructions": 8,
+          "accounted_reserved_bytes": 192,
+          "stack": 3,
+          "compile_us": 0.18981949999999997,
+          "resolve_us": 0.027105100000000003,
+          "first_compile_us": 0.587,
+          "first_resolve_us": 0.21
+        },
+        {
+          "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+          "source_bytes": 35,
+          "instructions": 11,
+          "accounted_reserved_bytes": 240,
+          "stack": 3,
+          "compile_us": 0.224891,
+          "resolve_us": 0.03668745,
+          "first_compile_us": 0.958,
+          "first_resolve_us": 3.8349999999999995
+        },
+        {
+          "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+          "source_bytes": 1430,
+          "instructions": 511,
+          "accounted_reserved_bytes": 8256,
+          "stack": 2,
+          "compile_us": 7.5264035,
+          "resolve_us": 1.45959065,
+          "first_compile_us": 10.745,
+          "first_resolve_us": 1.7999999999999998
+        },
+        {
+          "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+          "source_bytes": 6009,
+          "instructions": 2001,
+          "accounted_reserved_bytes": 32832,
+          "stack": 2,
+          "compile_us": 27.3056135,
+          "resolve_us": 5.8108244000000004,
+          "first_compile_us": 37.271,
+          "first_resolve_us": 5.142
+        }
+      ]
+    },
+    "sums": {
+      "maximum_rss_kib_samples": [
+        3256,
+        3300,
+        3244
+      ],
+      "value_size": 16,
+      "ten_thousand_separately_compiled_static_values_reserved_bytes": 160000,
+      "cases": [
+        {
+          "source": "12px",
+          "source_bytes": 4,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.031722,
+          "resolve_us": 0.0022872500000000002,
+          "first_compile_us": 1.5719999999999998,
+          "first_resolve_us": 0.14100000000000001
+        },
+        {
+          "source": "0em",
+          "source_bytes": 3,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.029603,
+          "resolve_us": 0.002393,
+          "first_compile_us": 0.13,
+          "first_resolve_us": 0.016
+        },
+        {
+          "source": "calc(1 + 2 * 3)",
+          "source_bytes": 15,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.0887675,
+          "resolve_us": 0.0023377,
+          "first_compile_us": 1.327,
+          "first_resolve_us": 0.037
+        },
+        {
+          "source": "clamp(12px, 2em + 1vw, 50px)",
+          "source_bytes": 28,
+          "instructions": 7,
+          "accounted_reserved_bytes": 176,
+          "stack": 3,
+          "compile_us": 0.2102785,
+          "resolve_us": 0.025719549999999997,
+          "first_compile_us": 1.7510000000000001,
+          "first_resolve_us": 0.27899999999999997
+        },
+        {
+          "source": "calc(50% - 1em + 2px)",
+          "source_bytes": 21,
+          "instructions": 5,
+          "accounted_reserved_bytes": 144,
+          "stack": 2,
+          "compile_us": 0.1476895,
+          "resolve_us": 0.018113149999999998,
+          "first_compile_us": 0.618,
+          "first_resolve_us": 0.11499999999999999
+        },
+        {
+          "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+          "source_bytes": 34,
+          "instructions": 8,
+          "accounted_reserved_bytes": 192,
+          "stack": 3,
+          "compile_us": 0.1949355,
+          "resolve_us": 0.025777249999999998,
+          "first_compile_us": 0.802,
+          "first_resolve_us": 0.191
+        },
+        {
+          "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+          "source_bytes": 35,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.19840549999999998,
+          "resolve_us": 0.00239975,
+          "first_compile_us": 4.781,
+          "first_resolve_us": 0.026000000000000002
+        },
+        {
+          "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+          "source_bytes": 1430,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 7.705827,
+          "resolve_us": 0.0022794,
+          "first_compile_us": 7.854,
+          "first_resolve_us": 0.031
+        },
+        {
+          "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+          "source_bytes": 6009,
+          "instructions": 2001,
+          "accounted_reserved_bytes": 32832,
+          "stack": 2,
+          "compile_us": 27.697122,
+          "resolve_us": 5.6134091999999995,
+          "first_compile_us": 30.816,
+          "first_resolve_us": 5.631
+        }
+      ]
+    },
+    "default": {
+      "maximum_rss_kib_samples": [
+        3252,
+        3212,
+        3284
+      ],
+      "value_size": 16,
+      "ten_thousand_separately_compiled_static_values_reserved_bytes": 160000,
+      "cases": [
+        {
+          "source": "12px",
+          "source_bytes": 4,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.032378500000000004,
+          "resolve_us": 0.0027831,
+          "first_compile_us": 1.668,
+          "first_resolve_us": 0.067
+        },
+        {
+          "source": "0em",
+          "source_bytes": 3,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.0295215,
+          "resolve_us": 0.0024514,
+          "first_compile_us": 0.13699999999999998,
+          "first_resolve_us": 0.015
+        },
+        {
+          "source": "calc(1 + 2 * 3)",
+          "source_bytes": 15,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.088551,
+          "resolve_us": 0.0025106,
+          "first_compile_us": 0.8360000000000001,
+          "first_resolve_us": 0.041
+        },
+        {
+          "source": "clamp(12px, 2em + 1vw, 50px)",
+          "source_bytes": 28,
+          "instructions": 7,
+          "accounted_reserved_bytes": 176,
+          "stack": 3,
+          "compile_us": 0.201652,
+          "resolve_us": 0.023716249999999998,
+          "first_compile_us": 1.5919999999999999,
+          "first_resolve_us": 0.258
+        },
+        {
+          "source": "calc(50% - 1em + 2px)",
+          "source_bytes": 21,
+          "instructions": 5,
+          "accounted_reserved_bytes": 144,
+          "stack": 2,
+          "compile_us": 0.163068,
+          "resolve_us": 0.01870335,
+          "first_compile_us": 0.6880000000000001,
+          "first_resolve_us": 0.13
+        },
+        {
+          "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+          "source_bytes": 34,
+          "instructions": 8,
+          "accounted_reserved_bytes": 192,
+          "stack": 3,
+          "compile_us": 0.20382650000000002,
+          "resolve_us": 0.025510799999999997,
+          "first_compile_us": 0.978,
+          "first_resolve_us": 0.206
+        },
+        {
+          "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+          "source_bytes": 35,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 0.2165005,
+          "resolve_us": 0.0023978000000000003,
+          "first_compile_us": 5.544,
+          "first_resolve_us": 0.044
+        },
+        {
+          "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+          "source_bytes": 1430,
+          "instructions": 0,
+          "accounted_reserved_bytes": 0,
+          "stack": 0,
+          "compile_us": 8.1251525,
+          "resolve_us": 0.00241655,
+          "first_compile_us": 8.132,
+          "first_resolve_us": 0.04
+        },
+        {
+          "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+          "source_bytes": 6009,
+          "instructions": 3,
+          "accounted_reserved_bytes": 128,
+          "stack": 2,
+          "compile_us": 25.4410835,
+          "resolve_us": 0.010623049999999998,
+          "first_compile_us": 26.711,
+          "first_resolve_us": 0.13799999999999998
+        }
+      ]
+    }
+  },
+  "runs": [
+    {
+      "mode": "folding",
+      "run": 0,
+      "benchmark": {
+        "baseline_math_folding": true,
+        "baseline_math_sums": false,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.03725049999999999,
+            "first_compile_us": 1.2810000000000001,
+            "first_resolve_us": 0.101,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0023523000000000003,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 128,
+            "compile_us": 0.07649349999999999,
+            "first_compile_us": 0.561,
+            "first_resolve_us": 0.211,
+            "instruction_size": 16,
+            "instructions": 1,
+            "resolve_us": 0.0055845,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 1
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.1336945,
+            "first_compile_us": 1.1,
+            "first_resolve_us": 0.13799999999999998,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.0191495,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.19711199999999998,
+            "first_compile_us": 1.136,
+            "first_resolve_us": 0.175,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.024946,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.16702,
+            "first_compile_us": 0.611,
+            "first_resolve_us": 0.13799999999999998,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.01867425,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.2021815,
+            "first_compile_us": 0.7999999999999999,
+            "first_resolve_us": 0.222,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.02735075,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 240,
+            "compile_us": 0.22924049999999999,
+            "first_compile_us": 1.18,
+            "first_resolve_us": 3.8349999999999995,
+            "instruction_size": 16,
+            "instructions": 11,
+            "resolve_us": 0.03668745,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 8256,
+            "compile_us": 12.298672,
+            "first_compile_us": 10.745,
+            "first_resolve_us": 1.7999999999999998,
+            "instruction_size": 16,
+            "instructions": 511,
+            "resolve_us": 1.3961758,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 32832,
+            "compile_us": 28.184234,
+            "first_compile_us": 37.271,
+            "first_resolve_us": 5.142,
+            "instruction_size": 16,
+            "instructions": 2001,
+            "resolve_us": 5.8108244000000004,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 1600000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-folding 20\"\n\tUser time (seconds): 0.22\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 94%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.23\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 4932\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 683\n\tVoluntary context switches: 2\n\tInvoluntary context switches: 34\n\tSwaps: 0\n\tFile system inputs: 4160\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "sums",
+      "run": 0,
+      "benchmark": {
+        "baseline_math_folding": false,
+        "baseline_math_sums": true,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.03418,
+            "first_compile_us": 0.761,
+            "first_resolve_us": 0.059,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0022872500000000002,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.033399,
+            "first_compile_us": 0.15,
+            "first_resolve_us": 0.018,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.002393,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.0956795,
+            "first_compile_us": 0.889,
+            "first_resolve_us": 0.03,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0023377,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.2102785,
+            "first_compile_us": 1.442,
+            "first_resolve_us": 0.28500000000000003,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.025719549999999997,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.15906499999999998,
+            "first_compile_us": 0.55,
+            "first_resolve_us": 0.131,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.0191764,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.198215,
+            "first_compile_us": 0.802,
+            "first_resolve_us": 0.191,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.03107095,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.19840549999999998,
+            "first_compile_us": 4.781,
+            "first_resolve_us": 0.043000000000000003,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.002527,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 9.346350999999999,
+            "first_compile_us": 9.201,
+            "first_resolve_us": 0.3,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.002186,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 32832,
+            "compile_us": 27.8218765,
+            "first_compile_us": 32.026,
+            "first_resolve_us": 5.631,
+            "instruction_size": 16,
+            "instructions": 2001,
+            "resolve_us": 5.47178115,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 160000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-sums 20\"\n\tUser time (seconds): 0.18\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.19\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3256\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 285\n\tVoluntary context switches: 3\n\tInvoluntary context switches: 4\n\tSwaps: 0\n\tFile system inputs: 4160\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "default",
+      "run": 0,
+      "benchmark": {
+        "baseline_math_folding": false,
+        "baseline_math_sums": false,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.034949,
+            "first_compile_us": 1.7630000000000001,
+            "first_resolve_us": 0.062,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0023834,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.0321315,
+            "first_compile_us": 0.12100000000000001,
+            "first_resolve_us": 0.017,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00228195,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.092777,
+            "first_compile_us": 0.8360000000000001,
+            "first_resolve_us": 0.041,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00232595,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.201652,
+            "first_compile_us": 1.534,
+            "first_resolve_us": 0.258,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.0254644,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.16309549999999998,
+            "first_compile_us": 0.7250000000000001,
+            "first_resolve_us": 0.12200000000000001,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.0187587,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.20382650000000002,
+            "first_compile_us": 1.105,
+            "first_resolve_us": 0.18,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.025570850000000003,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.2165005,
+            "first_compile_us": 6.136,
+            "first_resolve_us": 0.044,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0021956,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 9.04932,
+            "first_compile_us": 9.25,
+            "first_resolve_us": 0.16899999999999998,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00218175,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 128,
+            "compile_us": 25.636272500000004,
+            "first_compile_us": 34.801,
+            "first_resolve_us": 0.13799999999999998,
+            "instruction_size": 16,
+            "instructions": 3,
+            "resolve_us": 0.01076905,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 160000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-default 20\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 86%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.08\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3252\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 282\n\tVoluntary context switches: 3\n\tInvoluntary context switches: 3\n\tSwaps: 0\n\tFile system inputs: 4480\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "default",
+      "run": 1,
+      "benchmark": {
+        "baseline_math_folding": false,
+        "baseline_math_sums": false,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.032378500000000004,
+            "first_compile_us": 0.859,
+            "first_resolve_us": 0.067,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0027831,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.0295215,
+            "first_compile_us": 0.13699999999999998,
+            "first_resolve_us": 0.013000000000000001,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0024514,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.083473,
+            "first_compile_us": 0.795,
+            "first_resolve_us": 0.038000000000000006,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0025988,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.2013035,
+            "first_compile_us": 1.5919999999999999,
+            "first_resolve_us": 0.255,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.02279165,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.1505835,
+            "first_compile_us": 0.622,
+            "first_resolve_us": 0.13,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.01870335,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.201606,
+            "first_compile_us": 0.9490000000000001,
+            "first_resolve_us": 0.206,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.024538,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.24900450000000002,
+            "first_compile_us": 4.4830000000000005,
+            "first_resolve_us": 0.023,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0023978000000000003,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 7.8805245,
+            "first_compile_us": 8.132,
+            "first_resolve_us": 0.019000000000000003,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0025058500000000004,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 128,
+            "compile_us": 25.262639500000002,
+            "first_compile_us": 26.711,
+            "first_resolve_us": 0.193,
+            "instruction_size": 16,
+            "instructions": 3,
+            "resolve_us": 0.010623049999999998,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 160000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-default 20\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 100%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3212\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 283\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 2\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "sums",
+      "run": 1,
+      "benchmark": {
+        "baseline_math_folding": false,
+        "baseline_math_sums": true,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.0296295,
+            "first_compile_us": 1.7770000000000001,
+            "first_resolve_us": 0.14100000000000001,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00245885,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.029603,
+            "first_compile_us": 0.123,
+            "first_resolve_us": 0.016,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0024507,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.0887675,
+            "first_compile_us": 1.327,
+            "first_resolve_us": 0.04,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00259715,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.2140435,
+            "first_compile_us": 1.7510000000000001,
+            "first_resolve_us": 0.24,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.02599665,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.1476895,
+            "first_compile_us": 0.6719999999999999,
+            "first_resolve_us": 0.111,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.018113149999999998,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.19472299999999998,
+            "first_compile_us": 0.781,
+            "first_resolve_us": 0.188,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.0246075,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.194109,
+            "first_compile_us": 3.727,
+            "first_resolve_us": 0.022,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00239975,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 7.649873500000001,
+            "first_compile_us": 7.808999999999999,
+            "first_resolve_us": 0.015,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0025069,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 32832,
+            "compile_us": 27.569170000000003,
+            "first_compile_us": 30.816,
+            "first_resolve_us": 8.051,
+            "instruction_size": 16,
+            "instructions": 2001,
+            "resolve_us": 5.6134091999999995,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 160000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-sums 20\"\n\tUser time (seconds): 0.18\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.18\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3300\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 286\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 5\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "folding",
+      "run": 1,
+      "benchmark": {
+        "baseline_math_folding": true,
+        "baseline_math_sums": false,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.037326,
+            "first_compile_us": 1.546,
+            "first_resolve_us": 0.158,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0026780000000000003,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 128,
+            "compile_us": 0.07864449999999999,
+            "first_compile_us": 0.645,
+            "first_resolve_us": 0.16299999999999998,
+            "instruction_size": 16,
+            "instructions": 1,
+            "resolve_us": 0.00489715,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 1
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.127136,
+            "first_compile_us": 1.6580000000000001,
+            "first_resolve_us": 0.153,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.0168639,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.1882935,
+            "first_compile_us": 1.186,
+            "first_resolve_us": 0.19999999999999998,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.02571605,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.1522115,
+            "first_compile_us": 0.5770000000000001,
+            "first_resolve_us": 0.14,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.01797135,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.1798915,
+            "first_compile_us": 0.587,
+            "first_resolve_us": 0.21,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.027105100000000003,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 240,
+            "compile_us": 0.22441799999999998,
+            "first_compile_us": 0.958,
+            "first_resolve_us": 4.5329999999999995,
+            "instruction_size": 16,
+            "instructions": 11,
+            "resolve_us": 0.03977855,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 8256,
+            "compile_us": 7.5264035,
+            "first_compile_us": 10.5,
+            "first_resolve_us": 1.9489999999999998,
+            "instruction_size": 16,
+            "instructions": 511,
+            "resolve_us": 1.45959065,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 32832,
+            "compile_us": 27.3056135,
+            "first_compile_us": 38.637,
+            "first_resolve_us": 6.503,
+            "instruction_size": 16,
+            "instructions": 2001,
+            "resolve_us": 6.7698772,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 1600000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-folding 20\"\n\tUser time (seconds): 0.22\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 93%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.24\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 4776\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 682\n\tVoluntary context switches: 2\n\tInvoluntary context switches: 51\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "folding",
+      "run": 2,
+      "benchmark": {
+        "baseline_math_folding": true,
+        "baseline_math_sums": false,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.029776,
+            "first_compile_us": 0.918,
+            "first_resolve_us": 0.062,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0025035500000000002,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 128,
+            "compile_us": 0.0655355,
+            "first_compile_us": 0.381,
+            "first_resolve_us": 0.109,
+            "instruction_size": 16,
+            "instructions": 1,
+            "resolve_us": 0.0042861999999999996,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 1
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.123671,
+            "first_compile_us": 1.232,
+            "first_resolve_us": 0.126,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.0182907,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.17812350000000002,
+            "first_compile_us": 1.052,
+            "first_resolve_us": 0.151,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.02574805,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.141982,
+            "first_compile_us": 0.511,
+            "first_resolve_us": 0.095,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.019031,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.18981949999999997,
+            "first_compile_us": 0.5710000000000001,
+            "first_resolve_us": 0.162,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.025300700000000002,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 240,
+            "compile_us": 0.224891,
+            "first_compile_us": 0.853,
+            "first_resolve_us": 2.306,
+            "instruction_size": 16,
+            "instructions": 11,
+            "resolve_us": 0.0359777,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 8256,
+            "compile_us": 7.3984380000000005,
+            "first_compile_us": 10.931,
+            "first_resolve_us": 1.4529999999999998,
+            "instruction_size": 16,
+            "instructions": 511,
+            "resolve_us": 1.4627119,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 32832,
+            "compile_us": 26.964858500000002,
+            "first_compile_us": 35.898,
+            "first_resolve_us": 5.013,
+            "instruction_size": 16,
+            "instructions": 2001,
+            "resolve_us": 5.5947645999999995,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 1600000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-folding 20\"\n\tUser time (seconds): 0.21\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.21\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 4688\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 680\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 2\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "sums",
+      "run": 2,
+      "benchmark": {
+        "baseline_math_folding": false,
+        "baseline_math_sums": true,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.031722,
+            "first_compile_us": 1.5719999999999998,
+            "first_resolve_us": 0.309,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00218405,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.025292000000000002,
+            "first_compile_us": 0.13,
+            "first_resolve_us": 0.013000000000000001,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0021805,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.080956,
+            "first_compile_us": 2.32,
+            "first_resolve_us": 0.037,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0021811,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.19685399999999997,
+            "first_compile_us": 2.317,
+            "first_resolve_us": 0.27899999999999997,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.02544885,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.1450545,
+            "first_compile_us": 0.618,
+            "first_resolve_us": 0.11499999999999999,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.0178441,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.1949355,
+            "first_compile_us": 1.1909999999999998,
+            "first_resolve_us": 0.38799999999999996,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.025777249999999998,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.21867950000000003,
+            "first_compile_us": 7.057,
+            "first_resolve_us": 0.026000000000000002,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0022294500000000004,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 7.705827,
+            "first_compile_us": 7.854,
+            "first_resolve_us": 0.031,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0022794,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 32832,
+            "compile_us": 27.697122,
+            "first_compile_us": 30.294,
+            "first_resolve_us": 5.127,
+            "instruction_size": 16,
+            "instructions": 2001,
+            "resolve_us": 5.8652771,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 160000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-sums 20\"\n\tUser time (seconds): 0.19\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.19\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3244\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 287\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 4\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "default",
+      "run": 2,
+      "benchmark": {
+        "baseline_math_folding": false,
+        "baseline_math_sums": false,
+        "cases": [
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.031307,
+            "first_compile_us": 1.668,
+            "first_resolve_us": 0.145,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00286415,
+            "result": 12.0,
+            "source": "12px",
+            "source_bytes": 4,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.028416500000000004,
+            "first_compile_us": 0.14700000000000002,
+            "first_resolve_us": 0.015,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0025073,
+            "result": 0.0,
+            "source": "0em",
+            "source_bytes": 3,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.088551,
+            "first_compile_us": 1.354,
+            "first_resolve_us": 0.043000000000000003,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.0025106,
+            "result": 7.0,
+            "source": "calc(1 + 2 * 3)",
+            "source_bytes": 15,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 176,
+            "compile_us": 0.2074295,
+            "first_compile_us": 1.671,
+            "first_resolve_us": 0.266,
+            "instruction_size": 16,
+            "instructions": 7,
+            "resolve_us": 0.023716249999999998,
+            "result": 44.0,
+            "source": "clamp(12px, 2em + 1vw, 50px)",
+            "source_bytes": 28,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 144,
+            "compile_us": 0.163068,
+            "first_compile_us": 0.6880000000000001,
+            "first_resolve_us": 0.136,
+            "instruction_size": 16,
+            "instructions": 5,
+            "resolve_us": 0.01687215,
+            "result": 486.0,
+            "source": "calc(50% - 1em + 2px)",
+            "source_bytes": 21,
+            "stack": 2
+          },
+          {
+            "accounted_reserved_bytes": 192,
+            "compile_us": 0.20426600000000003,
+            "first_compile_us": 0.978,
+            "first_resolve_us": 0.26399999999999996,
+            "instruction_size": 16,
+            "instructions": 8,
+            "resolve_us": 0.025510799999999997,
+            "result": 0.6,
+            "source": "calc(0.5 + sign(1em - 10px) * 0.1)",
+            "source_bytes": 34,
+            "stack": 3
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 0.2125015,
+            "first_compile_us": 5.544,
+            "first_resolve_us": 0.044,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00250655,
+            "result": 6.0,
+            "source": "calc(sin(pi / 6) * 2 + hypot(3, 4))",
+            "source_bytes": 35,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 0,
+            "compile_us": 8.1251525,
+            "first_compile_us": 8.049,
+            "first_resolve_us": 0.04,
+            "instruction_size": 16,
+            "instructions": 0,
+            "resolve_us": 0.00241655,
+            "result": 0.0,
+            "source": "min(0px,1px,2px,3px,4px,5px,6px,7px,8px,9px,10px,1\u2026 (1430 bytes)",
+            "source_bytes": 1430,
+            "stack": 0
+          },
+          {
+            "accounted_reserved_bytes": 128,
+            "compile_us": 25.4410835,
+            "first_compile_us": 24.529,
+            "first_resolve_us": 0.09699999999999999,
+            "instruction_size": 16,
+            "instructions": 3,
+            "resolve_us": 0.01001965,
+            "result": 1016.0,
+            "source": "calc(1em + 1px + 1px + 1px + 1px + 1px + 1px + 1px\u2026 (6009 bytes)",
+            "source_bytes": 6009,
+            "stack": 2
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed math from prebuilt CSS components and raw CPU resolution; no CSSOM/style/layout/UI/JS/network or Chrome comparison",
+        "ten_thousand_separately_compiled_static_values_reserved_bytes": 160000,
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/numeric/math-default 20\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3284\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 280\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 2\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ]
+}

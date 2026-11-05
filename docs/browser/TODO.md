@@ -56,6 +56,11 @@ item means implemented and verified; a partial implementation stays open.
   remain unimplemented.
 - [ ] Implement CSS property grammars, cascade, media queries,
   custom properties and style invalidation.
+- [x] Core typed numeric compilation/resolution: dimension algebra, flat
+  programs, bounded work/stack/depth, host-unit/tree dependencies, constant
+  simplification and independent numeric ports (1,572/1,586; 14 non-passes).
+- [ ] Integrate contextual math with colors and property/style/layout hosts;
+  complete remaining math contexts, substitution and CSSOM behavior.
 - [x] Original typed absolute CSS colors, deferred current/system/light-dark
   context, missing components, explicit colorimetric conversion, bounded
   allocation-free SIMD worker and measured compact storage. 12,703 native

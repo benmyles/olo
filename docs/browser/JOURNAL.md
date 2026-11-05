@@ -1132,3 +1132,93 @@ output and exact before/after identities are retained in
 `measurements/2026-11-05-color-relative-guard.json`; the initial color
 milestone remains independently rebuildable at `4f0cf03b`. Default and
 all-feature strict release clippy pass. Full goal remains active.
+
+## 2026-11-05 — original typed CSS numeric math
+
+Added `css::math`, a reusable original numeric compiler and bounded CPU
+resolver. Seven dimension exponents and a percentage hint occupy eight
+bytes; compiled values occupy 16. Absolute units canonicalize, compatible
+types combine, and relative fonts/viewport/container/percentage/tree counts
+come from explicit host snapshots. No production environment is guessed.
+Numeric percentages cannot silently combine with numbers; dimensions are
+checked before folding. Raw NaN, infinity and signed zero remain inside
+calculations until the property boundary materializes them.
+
+The grammar covers calc, comparisons/clamp, rounding/mod/rem, trig/inverse,
+power/log/exp/hypot, abs/sign, constants, progress/no-clamp and scoped
+host-provided sibling counts. Compilation and resolution check work,
+instruction, stack, nesting and cancellation limits. Programs own a flat
+postfix arena; reused Scratch avoids repeated stack allocation. Sources
+are not retained and Debug does not expose them. Static subexpressions,
+zero physical-unit coefficients and canonical constant sum terms fold
+after type validation. Percentage zero remains contextual. Host physical
+factors reject negative values, including negative zero, so folding does
+not depend on an unenforced signed-zero assumption. Percentage factors
+can remain negative, including signed zero.
+
+Pinned 23 WPT resources and their helper before evaluation; extraction
+ports literal assertions, loop templates and recorded context changes.
+The native adapter independently decodes canonical numeric references and
+uses explicit representative font/viewport contexts, not layout. It is
+not a CSSOM, JS or property/cascade test. Extraction reproduces exact bytes
+and every manifest hash matches. **1,586 inventoried cases: 1,572 pass,
+14 non-passes**, with no mismatch/error/panic. Remaining cases are six
+nonnumeric wrappers, three serialization assertions and five property-limit
+helper forms. The evaluator deliberately exits 1 until all are supported.
+The same supported counts pass with both optimization controls. Full
+property syntax/ranges, substitution, media/container progress, calc-size,
+line-width rounding and style/layout hosts remain open. Math has not yet
+been connected to colors; the earlier color corpus is unchanged.
+
+Measured release builds on Core Ultra 7 356H, CPU 0: three alternating
+sequential runs per mode, 2,000 compiles and 20,000 reused-scratch resolves
+per prebuilt value per run. Figures below are medians of three run means;
+clocks, thermals and other load are uncontrolled. Controls use the same
+sources with folding disabled or sums left in operator order; they are
+counterfactual controls, not an earlier production implementation.
+
+- Static `calc(1 + 2 * 3)`, no-fold control → default: compilation
+  **0.127 → 0.089 µs**, resolution **0.0183 → 0.0025 µs**, extra retained
+  arena **144 → 0 bytes**. A pool of 10,000 separately compiled static
+  values uses **1,600,000 → 160,000 accounted reserved bytes**.
+- 256-argument constant min: compile **7.526 → 8.125 µs** (a cost), resolve
+  **1.460 → 0.0024 µs**, extra arena **8,256 → 0 bytes**.
+- 1,000-term mixed sum, uncombined-sum control → default: compile
+  **27.697 → 25.441 µs**, resolve **5.6134 → 0.0106 µs**, instructions
+  **2,001 → 3**, extra arena **32,832 → 128 bytes**. Canonical sum
+  reassociation follows CSS simplification, with no general promise of
+  bitwise equality to ordered extreme IEEE arithmetic.
+- Short unresolved expressions have mixed results: percentage/font sum
+  **0.0181 → 0.0187 µs**, clamp **0.0257 → 0.0237 µs**, sign expression
+  **0.0258 → 0.0255 µs** versus the sum control. No uniform speedup claim.
+- Default first-compile medians across cases **0.137–26.711 µs**; largest
+  sampled first compile **34.801 µs**. First-resolve medians **0.015–0.258 µs**;
+  largest sampled **0.266 µs**. Synthetic worker latencies only.
+- Whole benchmark peak RSS: default **3,212–3,284 KiB**, no-fold control
+  **4,688–4,932 KiB**, uncombined-sum control **3,244–3,300 KiB**.
+  Includes allocator retention; not browser/page memory. Storage accounting
+  excludes allocator metadata, compilation spill and reusable Scratch.
+
+Raw samples, first-call latency, storage, commands and exact source/binary
+identities: `measurements/2026-11-05-math.json`; per-file results and all
+remaining cases: `measurements/2026-11-05-math-coverage.json`. This module
+introduces no SIMD/GPU, timers, idle work or GUI; its optimization removes
+repeated arithmetic and retained instructions. No website/per-frame
+performance claims follow from it.
+
+All **73 engine release tests** pass, including seven numeric groups:
+independent cases, type/unit algebra, live environment/dependencies, raw
+IEEE behavior, scoped host hooks, hostile depth/flat limits/cancellation
+and 10,000 malformed values. Both controls pass all seven math groups.
+Default/all-feature strict release clippy and package formatting pass.
+A workspace-wide formatting check also encounters existing vendored
+missing modules/format differences; those files are untouched. Full
+`cargo build --release --workspace` passes (2.09 s; existing GPUI warnings
+and proc-macro-error2 future-compatibility notice). No user session changes
+or GUI launches; no visible change to screenshot-journal yet.
+
+Full browser goal remains active. Website evidence is still **0/3,000
+cases, 0/100 sites**; no usable browser exists. Next: connect math to color
+channels with explicit live context and retained-memory measurements,
+then property/style compilation. Layout, painting, networking, V8, native
+shell, Olo integrations and real website eval journeys remain required.
