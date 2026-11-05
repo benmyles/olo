@@ -910,6 +910,8 @@ impl Deskbar {
                 }
             }
             // Stop Sharing: olo-portal ends the session (and tells the app).
+            // Stop Recording: the recorder finishes the file and says so.
+            Some(("record", "stop")) => spawn("olo-screenshot --stop"),
             Some(("share", "all")) => {
                 for s in &self.status.sharing {
                     spawn(&format!("olo-portal --stop {}", s.session));
@@ -1783,6 +1785,7 @@ impl Deskbar {
 
         // ---- tray: the date and time, then the status icons
         let st = self.status.clone();
+        let clock = self.clock.clone();
         let mut apps: Vec<sni::Item> = self.tray_apps.iter().filter(|i| i.status != sni::Status::Passive).cloned().collect();
         // Untitled (Electron's): named by their program, as its row is.
         for it in apps.iter_mut().filter(|i| i.title.is_empty() && !i.program.is_empty()) {
@@ -1997,6 +2000,24 @@ impl Deskbar {
                 h.on_any_button(move |e, _, cx| {
                     if button(e) == MouseButton::Left {
                         m.update(cx, |d, cx| d.ask_upgrade(cx));
+                    }
+                })
+                .into_any_element(),
+            );
+        }
+        // A recording of this display going: since when, and Stop.
+        if let Some(rec) = st.recording.clone() {
+            let since = status::time_of_day(rec.started, &clock);
+            let what = if rec.what == "display" { "the screen".to_owned() } else { format!("a window ({})", rec.what.trim_start_matches("window ")) };
+            let tip_text = format!("Recording {what} since {since}. Click to stop.");
+            let (r, h) = tray_item(&mut d, "recording", tip_text, Box::new(|window, cx, r| status::draw_recording(window, r, &theme::palette(cx))));
+            let (m, v) = (model.clone(), view.clone());
+            let menu = Menu::new("").item(format!("Recording {what} since {since}"), "").enabled(false).item("Stop Recording", "record:stop");
+            d.hits.push(
+                h.on_any_button(move |e, window, cx| {
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                        let mm = m.clone();
+                        open_menu(window, cx, &v, "tray:recording", r, menu.clone(), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
                     }
                 })
                 .into_any_element(),

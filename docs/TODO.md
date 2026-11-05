@@ -1197,10 +1197,11 @@ of Finished; a new one goes where its priority puts it.
   it goes, `--stop`, `--seconds`), `olo-screen record-video` and
   `stop-video` on an Agent Screen, 4K checked (played back in the
   Viewer); `olo_video` shared with Agent Screens' Export Video; the
-  skill says how. *Left*: the app's own window and shortcut (Record
-  Screen / Window / Region in Screenshot, the region picker shared, a
-  Deskbar tray item while recording with Stop, a notification when
-  saved), sound, CleanShot X's polish (pointer drawn larger and smoothed,
+  skill says how; ⌘⇧6 records the screen or stops (Ctrl+Alt+Print
+  with the Windows and BeOS profiles), Deskbar's tray showing a record
+  light with Stop Recording while it goes, a notification with Show in
+  Tracker when saved. *Left*: Record Window and Record Region in
+  Screenshot's window (the region picker shared), sound, CleanShot X's polish (pointer drawn larger and smoothed,
   clicks and keys shown, zoom following the action, a background and
   frame, a webcam bubble, pause), the trimming editor, GIF, and the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at

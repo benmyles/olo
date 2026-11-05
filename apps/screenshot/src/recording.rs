@@ -37,7 +37,7 @@ use std::{
 };
 
 use olo_capture::{Capture, Source};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// Asked to stop (SIGINT, SIGTERM: `--stop`).
 static STOP: AtomicBool = AtomicBool::new(false);
@@ -46,33 +46,10 @@ extern "C" fn on_stop(_: libc::c_int) {
     STOP.store(true, Ordering::SeqCst);
 }
 
-/// What's going on a display, as kept in the runtime folder.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Going {
-    pub pid: u32,
-    pub path: PathBuf,
-    /// Seconds since the epoch.
-    pub started: u64,
-    /// What's recorded: "display" or "window N".
-    pub what: String,
-}
-
-fn display() -> String {
-    std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-0".into())
-}
+use olo_protocol::recording::{Going, going};
 
 fn going_path() -> PathBuf {
-    let run = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
-    let display = display();
-    // (A display given as a path: its file's name.)
-    let display = Path::new(&display).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(display);
-    run.join(format!("olo-recording-{display}.json"))
-}
-
-/// The recording going on this display, if one is (its process alive).
-pub fn going() -> Option<Going> {
-    let g: Going = serde_json::from_slice(&std::fs::read(going_path()).ok()?).ok()?;
-    Path::new(&format!("/proc/{}", g.pid)).exists().then_some(g)
+    olo_protocol::recording::path_for(&olo_protocol::recording::this_display())
 }
 
 fn option<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -298,6 +275,54 @@ fn fit(w: &Waiting, canvas: &mut [u8], vw: u32, vh: u32) {
             out[copy..].fill(0);
         } else {
             out.fill(0);
+        }
+    }
+}
+
+/// `--toggle-record` (the desktop's shortcut): a recording of the screen
+/// started, told of when saved, or the one going finished.
+pub fn toggle(args: &[String]) -> i32 {
+    if going().is_some() {
+        return stop();
+    }
+    match record(args) {
+        Ok(made) => {
+            tell(&made);
+            println!("{}", serde_json::to_string_pretty(&made).unwrap_or_default());
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: the recording failed: {e}");
+            1
+        }
+    }
+}
+
+/// A notification that the recording was saved, with Show in Tracker
+/// (a person's recording; an agent's is said on its command line).
+fn tell(made: &Made) {
+    use olo_ui::notify::{Note, NoteEvent, Notifier};
+    let (tx, rx) = std::sync::mpsc::channel();
+    let notes = Notifier::with_events("Screenshot", "olo-screenshot", move |e| {
+        let _ = tx.send(e);
+    });
+    let name = made.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let secs = made.seconds.round() as u64;
+    let long = if secs >= 60 { format!("{} min {} s", secs / 60, secs % 60) } else { format!("{secs} s") };
+    notes.show(
+        None,
+        Note::new("Screen recording saved").body(format!("{name}\n{long}, {} × {}", made.width, made.height)).icon("screenshot").action("default", "Show").action("show", "Show in Tracker"),
+    );
+    // Waited for here (nothing polled): a click shows it, else it goes.
+    let path = made.path.clone();
+    while let Ok(e) = rx.recv_timeout(Duration::from_secs(60)) {
+        match e {
+            NoteEvent::Action { .. } => {
+                let _ = olo_ui::tracker::open(&path);
+                return;
+            }
+            NoteEvent::Closed { .. } => return,
+            NoteEvent::Replied { .. } => {}
         }
     }
 }

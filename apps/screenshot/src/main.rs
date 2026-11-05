@@ -607,6 +607,9 @@ fn main() -> std::process::ExitCode {
     if args.iter().any(|a| a == "--stop") {
         std::process::exit(recording::stop());
     }
+    if args.iter().any(|a| a == "--toggle-record") {
+        std::process::exit(recording::toggle(&args));
+    }
     if args.iter().any(|a| a == "--recording") {
         std::process::exit(recording::status());
     }

@@ -61,6 +61,8 @@ pub struct Status {
     pub agent_screens: usize,
     /// Screens apps are sharing (olo-portal's).
     pub sharing: Vec<olo_protocol::sharing::Share>,
+    /// A recording of this display going (olo-screenshot's recorder).
+    pub recording: Option<olo_protocol::recording::Going>,
     /// The supervisor (Preferences ▸ Performance), if it is installed.
     pub supervisor: Option<Supervisor>,
     /// AirPods connected (olo-airpods' state).
@@ -249,10 +251,13 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     let pods = olo_protocol::airpods::AirPodsState::path();
     let voice = olo_protocol::voice::Settings::path();
     let doctor = olo_protocol::doctor::DoctorFound::path();
+    let display = olo_protocol::recording::this_display();
+    let recording = olo_protocol::recording::path_for(&display);
     let installed = olo_xdg::find_program("olo-supervisor").is_some();
     let read = {
         let (notes, screens, upgrades, sharing, shared) = (notes.clone(), screens.clone(), upgrades.clone(), sharing.clone(), shared.clone());
         let (perf, supervising, pods, voice, doctor) = (perf.clone(), supervising.clone(), pods.clone(), voice.clone(), doctor.clone());
+        let (recording, display) = (recording.clone(), display.clone());
         move |changed: &[PathBuf]| {
             let all = changed.is_empty();
             // The screens' folder also has viewers' frames going through
@@ -264,9 +269,13 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             let airpods = (all || changed.contains(&pods)).then(|| olo_protocol::airpods::AirPodsState::load().connected().cloned());
             let voice_settings = (all || changed.contains(&voice)).then(olo_protocol::voice::Settings::load);
             let found = (all || changed.contains(&doctor)).then(olo_protocol::doctor::DoctorFound::load);
+            let recorded = (all || changed.contains(&recording)).then(|| olo_protocol::recording::going_on(&display));
             let supervisor =
                 (installed && (all || changed.contains(&perf) || changed.contains(&supervising))).then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
             publish(&shared, |s| {
+                if let Some(r) = recorded {
+                    s.recording = r;
+                }
                 if let Some(a) = airpods {
                     s.airpods = a;
                 }
@@ -298,7 +307,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     read(&[]);
     let read = Arc::new(read);
     let on_change = read.clone();
-    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor], move |changed| on_change(changed)) {
+    if let Some(w) = olo_ui::watch::watch([notes, screens, upgrades, sharing, perf, supervising, pods, voice, doctor, recording], move |changed| on_change(changed)) {
         // Deskbar's for as long as it runs.
         std::mem::forget(w);
     }
@@ -314,7 +323,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 // before reading: `read` takes it again to publish.
                 let again = {
                     let g = counted.lock().unwrap();
-                    g.0.agent_screens > 0 || !g.0.sharing.is_empty()
+                    g.0.agent_screens > 0 || !g.0.sharing.is_empty() || g.0.recording.is_some()
                 };
                 if again {
                     read(&[]);
@@ -702,6 +711,16 @@ pub fn draw_sharing(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
     let at = (f32::from(at.x), f32::from(at.y));
     disc(window, at, 3.4, c(p.panel_background));
     disc(window, at, 2.5, c(p.failure));
+}
+
+/// A recording going: a red dot in a ring, as a camera's record light.
+pub fn draw_recording(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
+    let at = style::snap_centred(window, r.center(), 2.0, 2.0).center();
+    let at = (f32::from(at.x), f32::from(at.y));
+    let size = f32::from(r.size.width.min(r.size.height));
+    disc(window, at, size * 0.42, c(p.failure));
+    disc(window, at, size * 0.34, c(p.panel_background));
+    disc(window, at, size * 0.26, c(p.failure));
 }
 
 /// A box's outline in hairlines on device pixels (its edges inside it).

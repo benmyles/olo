@@ -5618,6 +5618,16 @@ Screens' Export Video uses too).
   `$XDG_RUNTIME_DIR/olo-recording-<display>.json`
   (`olo-screenshot --recording` says it), so an Agent Screen's and the
   person's don't meet.
+- **For people**: ⌘⇧6 (Ctrl+Alt+Print with the Windows and BeOS
+  profiles; `Shortcut::ScreenRecording`, "Record the screen, or stop")
+  runs `olo-screenshot --toggle-record`: a recording of the screen
+  starts, or the one going finishes. While it records, Deskbar's tray
+  has a red record light (`status::draw_recording`, from the recording's
+  file in the runtime folder, by inotify:
+  `olo_protocol::recording`), its tip and menu saying since when, with
+  Stop Recording (`olo-screenshot --stop`). Finished from the shortcut,
+  it tells in a notification ("Screen recording saved", its name, length
+  and size) with Show in Tracker, the file selected in its folder.
 - **For agents**, on their screen: `olo-screen record-video NAME
   [--seconds N] [--fps N] [--window ID] [--no-pointer] [--to PATH]`
   starts it on the screen's display and prints the path at once;

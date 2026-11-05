@@ -3130,5 +3130,11 @@
   "title": "A screen recording, played back in the Viewer",
   "caption": "olo-screenshot --record made it (frames only as the screen changed, H.264 into an MP4 written as it goes); Agent Screens record theirs with olo-screen record-video, at 4K too.",
   "image": "2026-11-04/182948-a-screen-recording-played-back-in-the-viewer.png"
+ },
+ {
+  "time": "2026-11-04T18:46:21",
+  "title": "Screen recording from a shortcut: Deskbar's record light, then the notification",
+  "caption": "Shift-Cmd-6 records the screen; Deskbar's tray shows a red record light with Stop Recording while it goes; finished, a notification says it was saved, with Show in Tracker.",
+  "image": "2026-11-04/184621-screen-recording-from-a-shortcut-deskbar-s-recor.png"
  }
 ]

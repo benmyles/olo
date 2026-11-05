@@ -301,6 +301,8 @@ pub enum Shortcut {
     ScreenshotRegion,
     ScreenshotWindow,
     ScreenshotApp,
+    /// A recording of the screen started, or the one going finished.
+    ScreenRecording,
     /// Twitcher, held: every workspace's applications (Mac ⌘Tab,
     /// Windows Alt+Tab, BeOS Ctrl+Tab), back with Shift, chosen when the
     /// keys held are let go.
@@ -613,6 +615,7 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::ScreenshotRegion, "screenshot-region", SCREENSHOTS, "Screenshot of an area", &["Shift+Cmd+4"], &["Shift+Cmd+S", "Print"], &["Ctrl+Print"]),
     s(Shortcut::ScreenshotWindow, "screenshot-window", SCREENSHOTS, "Screenshot of the window", &["Alt+Print"], &["Alt+Print"], &["Alt+Print"]),
     s(Shortcut::ScreenshotApp, "screenshot-app", SCREENSHOTS, "Screenshot app", &["Shift+Cmd+5"], &["Shift+Cmd+R"], &["Print"]),
+    s(Shortcut::ScreenRecording, "screen-recording", SCREENSHOTS, "Record the screen, or stop", &["Shift+Cmd+6"], &["Ctrl+Alt+Print"], &["Ctrl+Alt+Print"]),
 ];
 
 /// The shortcut with this id.

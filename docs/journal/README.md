@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Screen recording from a shortcut: Deskbar's record light, then the notification
+
+*18:46* — Shift-Cmd-6 records the screen; Deskbar's tray shows a red record light with Stop Recording while it goes; finished, a notification says it was saved, with Show in Tracker.
+
+![Screen recording from a shortcut: Deskbar's record light, then the notification](2026-11-04/184621-screen-recording-from-a-shortcut-deskbar-s-recor.png)
+
 ### A screen recording, played back in the Viewer
 
 *18:29* — olo-screenshot --record made it (frames only as the screen changed, H.264 into an MP4 written as it goes); Agent Screens record theirs with olo-screen record-video, at 4K too.

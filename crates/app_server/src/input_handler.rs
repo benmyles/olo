@@ -330,6 +330,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 None => self.spawn_program("olo-screenshot", &["--silent", "--window"]),
             },
             S::ScreenshotRegion => self.spawn_program("olo-screenshot", &["--region"]),
+            // Started, or the one going finished (olo-screenshot knows).
+            S::ScreenRecording => self.spawn_program("olo-screenshot", &["--toggle-record"]),
             S::ScreenshotApp => {
                 let open = self.all_windows().into_iter().find(|w| w.app_id() == "olo.screenshot");
                 match open {

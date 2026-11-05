@@ -22,6 +22,7 @@ pub mod mice;
 pub mod notifications;
 pub mod panels;
 pub mod performance;
+pub mod recording;
 pub mod rescue;
 pub mod sharing;
 pub mod shortcuts;
