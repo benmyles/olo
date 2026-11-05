@@ -17,7 +17,8 @@ item means implemented and verified; a partial implementation stays open.
   and release storage measurements.
 - [ ] Implement complete HTML tree construction and web-facing DOM semantics
   (Web IDL, namespaced attributes, adoption, mutation observers, ranges,
-  event dispatch, shadow DOM, GC rooting and amortized text appends).
+  event dispatch, shadow DOM and GC rooting). Amortized adjacent-text
+  appends and source-range merging are implemented and measured.
 - [ ] Add network/encoding/cache/cookies with security and memory bounds.
 - [ ] Implement CSS tokenizer/parser, selectors, cascade, media queries,
   custom properties and style invalidation.

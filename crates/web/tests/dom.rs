@@ -289,3 +289,42 @@ fn debug_output_does_not_dump_page_source_or_character_data() {
     let debug = format!("{doc:?}");
     assert!(!debug.contains("private-source-token") && !debug.contains("private-field-value"));
 }
+
+#[test]
+fn adjacent_text_coalesces_source_ranges_then_grows_with_bounded_capacity() {
+    let source: Arc<str> = Arc::from("one🙂two");
+    let mut doc = Document::new(source.clone(), Limits::default()).unwrap();
+    let node = doc.create_text(&source[..3]).unwrap();
+    doc.append_value(node, &source[3..7]).unwrap();
+    doc.append_value(node, &source[7..]).unwrap();
+    assert_eq!(doc.value(node), Ok(Some(source.as_ref())));
+    assert_eq!(doc.memory().owned_text_bytes, 0);
+    for _ in 0..100_000 {
+        doc.append_value(node, "🙂").unwrap();
+    }
+    assert_eq!(doc.value(node).unwrap().unwrap().len(), source.len() + 400_000);
+    assert!(doc.memory().owned_text_bytes >= source.len() + 400_000 && doc.memory().owned_text_bytes < 2 * (source.len() + 400_000));
+    let revision = doc.revision();
+    assert!(!doc.append_value(node, "").unwrap());
+    assert_eq!(doc.revision(), revision);
+    doc.set_value(node, &source[..3]).unwrap();
+    assert_eq!(doc.memory().owned_text_bytes, 0);
+    doc.append_value(node, " tail").unwrap();
+    doc.destroy_subtree(node).unwrap();
+    assert_eq!(doc.memory().owned_text_bytes, 0);
+}
+
+#[test]
+fn failed_append_keeps_value_and_reserved_bytes_and_revision_unchanged() {
+    let mut doc = Document::new(Arc::from(""), Limits { owned_text_bytes: 8, ..Limits::default() }).unwrap();
+    let node = doc.create_text("1234").unwrap();
+    doc.append_value(node, "56").unwrap();
+    assert_eq!(doc.memory().owned_text_bytes, 8);
+    let revision = doc.revision();
+    assert_eq!(doc.append_value(node, "789"), Err(Error::TextLimit));
+    assert_eq!(doc.value(node), Ok(Some("123456")));
+    assert_eq!(doc.memory().owned_text_bytes, 8);
+    assert_eq!(doc.revision(), revision);
+    doc.set_value(node, "abcd").unwrap();
+    assert_eq!(doc.memory().owned_text_bytes, 4);
+}

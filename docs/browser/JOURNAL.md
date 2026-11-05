@@ -175,3 +175,35 @@ worker in the future shell. There are no visible changes to journal yet.
 
 Next: HTML tree construction, adjacent text handling and independent tree
 fixtures. No functional browser or website pass exists yet; goal active.
+
+## 2026-11-04 — adjacent character data
+
+Revalidated the worktree at `d1c7288e`; the preceding goal turn made
+verified progress (four pushed commits, tests and release measurements).
+The maintained tree fixtures now live in WPT, not html5lib-tests. Pinned
+WPT revision `d7bb5bb848fcd304c10669288a211dbafd106d90` under /var/tmp
+for the next tree-construction implementation.
+
+Added bounded, amortized character-data appends. Adjacent ranges of the
+same source merge with no copy. Noncontiguous/decoded text promotes to a
+growing buffer; its reserved capacity is charged to the owned-text quota.
+Unchanged/empty appends do not advance the revision. Failed appends preserve
+the old value, revision and quota; replacing/destroying text releases its
+buffer. Ordinary boxed text retains its compact representation. Node slots
+remain 40 bytes. Invalid '<' text tokens now borrow their actual source
+range, enabling source merging. Token semantics are unchanged.
+
+Release tests: 13 DOM tests and the existing tokenizer suite pass;
+clippy passes. The new tests include 100,000 Unicode appends, source-range
+merging, quota failure atomicity and reclamation. No UI or idle work added.
+
+Synthetic baseline reconstructs the full value for every append through
+the existing read/set API. Default uses `append_value`. Three runs on CPU
+0 (Core Ultra 7 356H), appending a four-byte character; median times:
+10,000 appends **3.323 / 0.063 ms**, 20,000 **116.336 / 0.115 ms**,
+40,000 **1,031.322 / 0.232 ms** (baseline/default). Growing-buffer capacity
+is counted, not hidden. This is a character-data algorithm comparison,
+not a page-load/UI/Chrome claim. Reproduce with `cargo build --release
+-p olo-web --example append_bench` then `taskset -c 0
+target/release/examples/append_bench`. Raw runs:
+`measurements/2026-11-04-appends.json`. Next: original HTML tree builder.

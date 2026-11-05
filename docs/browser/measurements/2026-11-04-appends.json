@@ -1,0 +1,134 @@
+{
+  "command": "taskset -c 0 target/release/examples/append_bench",
+  "runs": [
+    {
+      "samples": [
+        {
+          "appends": 10000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 3.323296,
+          "retained_text_capacity_bytes": 40000
+        },
+        {
+          "appends": 10000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.057318999999999995,
+          "retained_text_capacity_bytes": 65536
+        },
+        {
+          "appends": 20000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 116.077288,
+          "retained_text_capacity_bytes": 80000
+        },
+        {
+          "appends": 20000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.11780700000000001,
+          "retained_text_capacity_bytes": 131072
+        },
+        {
+          "appends": 40000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 1031.321456,
+          "retained_text_capacity_bytes": 160000
+        },
+        {
+          "appends": 40000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.24740199999999998,
+          "retained_text_capacity_bytes": 262144
+        }
+      ],
+      "scope": "Synthetic character data only, no parser/UI/Chrome comparison",
+      "repeat": 0,
+      "cpu": 0
+    },
+    {
+      "samples": [
+        {
+          "appends": 10000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 3.343563,
+          "retained_text_capacity_bytes": 40000
+        },
+        {
+          "appends": 10000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.066966,
+          "retained_text_capacity_bytes": 65536
+        },
+        {
+          "appends": 20000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 130.897941,
+          "retained_text_capacity_bytes": 80000
+        },
+        {
+          "appends": 20000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.113818,
+          "retained_text_capacity_bytes": 131072
+        },
+        {
+          "appends": 40000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 1030.445534,
+          "retained_text_capacity_bytes": 160000
+        },
+        {
+          "appends": 40000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.225515,
+          "retained_text_capacity_bytes": 262144
+        }
+      ],
+      "scope": "Synthetic character data only, no parser/UI/Chrome comparison",
+      "repeat": 1,
+      "cpu": 0
+    },
+    {
+      "samples": [
+        {
+          "appends": 10000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 3.307739,
+          "retained_text_capacity_bytes": 40000
+        },
+        {
+          "appends": 10000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.062857,
+          "retained_text_capacity_bytes": 65536
+        },
+        {
+          "appends": 20000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 116.33595700000001,
+          "retained_text_capacity_bytes": 80000
+        },
+        {
+          "appends": 20000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.114566,
+          "retained_text_capacity_bytes": 131072
+        },
+        {
+          "appends": 40000,
+          "baseline_reconstruction": true,
+          "elapsed_ms": 1031.581938,
+          "retained_text_capacity_bytes": 160000
+        },
+        {
+          "appends": 40000,
+          "baseline_reconstruction": false,
+          "elapsed_ms": 0.231684,
+          "retained_text_capacity_bytes": 262144
+        }
+      ],
+      "scope": "Synthetic character data only, no parser/UI/Chrome comparison",
+      "repeat": 2,
+      "cpu": 0
+    }
+  ]
+}

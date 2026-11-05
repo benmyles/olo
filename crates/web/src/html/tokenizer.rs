@@ -208,7 +208,7 @@ impl<'a> Tokenizer<'a> {
             }
             // An invalid tag opener is text, reconsume everything after '<'.
             self.pos += 1;
-            return Ok(Some(Token::Text(Cow::Borrowed("<"))));
+            return Ok(Some(Token::Text(Cow::Borrowed(&self.input[start..self.pos]))));
         }
     }
 

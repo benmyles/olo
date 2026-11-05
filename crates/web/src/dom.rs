@@ -106,7 +106,8 @@ impl std::error::Error for Error {}
 pub type Result<T> = std::result::Result<T, Error>;
 
 // Two u32s: a range in the original UTF-8 source, or an owned-string
-// pool index when len is MAX. Text tokens without escapes keep no copy.
+// pool index when len is MAX (boxed) or MAX-1 (amortized append buffer).
+// Text tokens without escapes keep no copy.
 #[derive(Clone, Copy, Debug)]
 struct TextValue {
     start: u32,
@@ -228,6 +229,7 @@ pub struct Document {
     attributes: Pool<Attribute>,
     doctypes: Pool<DoctypeData>,
     owned: Pool<Box<str>>,
+    growing: Pool<String>,
     owned_bytes: usize,
     names: Vec<Arc<str>>,
     atoms: HashMap<Arc<str>, Atom>,
@@ -245,7 +247,7 @@ impl std::fmt::Debug for Document {
 
 impl Document {
     pub fn new(source: Arc<str>, limits: Limits) -> Result<Self> {
-        if source.len() > limits.source_bytes || source.len() >= u32::MAX as usize {
+        if source.len() > limits.source_bytes || source.len() >= (u32::MAX - 1) as usize {
             return Err(Error::TextLimit);
         }
         if limits.nodes == 0 || limits.nodes >= u32::MAX as usize {
@@ -265,6 +267,7 @@ impl Document {
             attributes: Pool::default(),
             doctypes: Pool::default(),
             owned: Pool::default(),
+            growing: Pool::default(),
             owned_bytes: 0,
             names: Vec::new(),
             atoms: HashMap::new(),
@@ -294,7 +297,7 @@ impl Document {
             live_attributes: self.attributes.live,
             attribute_reserved_bytes: self.attributes.slots.capacity() * std::mem::size_of::<Option<Attribute>>(),
             owned_text_bytes: self.owned_bytes,
-            owned_text_slots: self.owned.slots.len(),
+            owned_text_slots: self.owned.slots.len() + self.growing.slots.len(),
             interned_name_bytes: self.name_bytes,
         }
     }
@@ -357,10 +360,22 @@ impl Document {
         Ok(id)
     }
     fn text(&self, value: TextValue) -> &str {
-        if value.len == u32::MAX { self.owned.get(NonZeroU32::new(value.start).unwrap()) } else { &self.source[value.start as usize..(value.start + value.len) as usize] }
+        if value.len == u32::MAX {
+            self.owned.get(NonZeroU32::new(value.start).unwrap())
+        } else if value.len == u32::MAX - 1 {
+            self.growing.get(NonZeroU32::new(value.start).unwrap())
+        } else {
+            &self.source[value.start as usize..(value.start + value.len) as usize]
+        }
     }
     fn owned_len(&self, value: TextValue) -> usize {
-        if value.len == u32::MAX { self.text(value).len() } else { 0 }
+        if value.len == u32::MAX {
+            self.text(value).len()
+        } else if value.len == u32::MAX - 1 {
+            self.growing.get(NonZeroU32::new(value.start).unwrap()).capacity()
+        } else {
+            0
+        }
     }
     fn store_text(&mut self, text: Cow<'_, str>, credit: usize) -> Result<TextValue> {
         if text.is_empty() {
@@ -387,6 +402,8 @@ impl Document {
     fn free_text(&mut self, value: TextValue) {
         if value.len == u32::MAX {
             self.owned_bytes -= self.owned.remove(NonZeroU32::new(value.start).unwrap()).len();
+        } else if value.len == u32::MAX - 1 {
+            self.owned_bytes -= self.growing.remove(NonZeroU32::new(value.start).unwrap()).capacity();
         }
     }
 
@@ -520,6 +537,77 @@ impl Document {
         }
         self.bump()?;
         Ok(true)
+    }
+
+    /// Adjacent source slices merge without copying. Other text promotes
+    /// once to a reusable String and grows geometrically. The quota counts
+    /// capacity, including spare capacity, rather than just visible bytes.
+    pub fn append_value<'a>(&mut self, id: NodeId, text: impl Into<Cow<'a, str>>) -> Result<bool> {
+        let text = text.into();
+        let at = self.resolve(id)?;
+        let old = match self.nodes[index(at)].data {
+            Data::Text(v) | Data::Comment(v) | Data::ProcessingInstruction { data: v, .. } => v,
+            _ => return Err(Error::Hierarchy),
+        };
+        if text.is_empty() {
+            return Ok(false);
+        }
+        if self.revision == u64::MAX {
+            return Err(Error::RevisionOverflow);
+        }
+        if self.text(old).is_empty() {
+            return self.set_value(id, text);
+        }
+        if old.len < u32::MAX - 1 {
+            let end = old.start as usize + old.len as usize;
+            if self.source.get(end..).is_some_and(|rest| text.as_ptr() == rest.as_ptr() && text.len() <= rest.len()) {
+                self.replace_character_value(at, TextValue { start: old.start, len: old.len + text.len() as u32 });
+                self.bump()?;
+                return Ok(true);
+            }
+        }
+        let required = self.text(old).len().checked_add(text.len()).ok_or(Error::TextLimit)?;
+        let cost = self.owned_len(old);
+        let available = self.limits.owned_text_bytes.saturating_sub(self.owned_bytes - cost);
+        if required > available {
+            return Err(Error::TextLimit);
+        }
+        if old.len == u32::MAX - 1 {
+            let value = self.growing.get_mut(NonZeroU32::new(old.start).unwrap());
+            if value.capacity() >= required {
+                value.push_str(&text);
+                self.bump()?;
+                return Ok(true);
+            }
+        }
+        let desired = required.max(self.text(old).len().saturating_mul(2)).min(available);
+        let mut value = if old.len == u32::MAX {
+            self.owned_bytes -= cost;
+            self.owned.remove(NonZeroU32::new(old.start).unwrap()).into_string()
+        } else if old.len == u32::MAX - 1 {
+            self.owned_bytes -= cost;
+            self.growing.remove(NonZeroU32::new(old.start).unwrap())
+        } else {
+            let mut value = String::with_capacity(desired);
+            value.push_str(self.text(old));
+            value
+        };
+        if desired > value.capacity() {
+            value.reserve_exact(desired - value.len());
+        }
+        value.push_str(&text);
+        self.owned_bytes += value.capacity();
+        let slot = self.growing.insert(value);
+        self.replace_character_value(at, TextValue { start: slot.get(), len: u32::MAX - 1 });
+        self.bump()?;
+        Ok(true)
+    }
+
+    fn replace_character_value(&mut self, at: NonZeroU32, value: TextValue) {
+        match &mut self.nodes[index(at)].data {
+            Data::Text(v) | Data::Comment(v) | Data::ProcessingInstruction { data: v, .. } => *v = value,
+            _ => unreachable!(),
+        }
     }
 
     fn attribute_head(&self, at: NonZeroU32) -> Result<Link> {
