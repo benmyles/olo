@@ -23,14 +23,19 @@ signal, not the sRGB picture screenshots are. Then checks, within a code:
                         pictures (`RenderImage::deep`) at their own
                         1,000 cd/m² (192) and 100 (130).
 
+  Screenshots and recordings of it (sRGB, what they are): SDR's
+                        white and the 1,000 cd/m² picture white (255),
+                        the 100 cd/m² one as SDR shows it (186), not PQ's
+                        codes read as sRGB's.
+
   With --clip, an HDR video (PQ or HLG): Viewer plays it, on the HDR
                         display drawing in HDR10, its highlights past
                         SDR's white (more than 148); not compared with
                         a value (what a clip holds is its own).
 
 Build first: `cargo build --release -p app_server --bin olo-app-server
---example color_probe` and `cargo build --release -p olo-ui --example
-hdr_probe`. Exits 1 on a mismatch.
+--example color_probe`, `cargo build --release -p olo-ui --example
+hdr_probe` and `cargo build --release -p olo-screenshot -p olo-screen`. Exits 1 on a mismatch.
 """
 
 import json
@@ -140,6 +145,37 @@ def main():
             for i, (what, want) in enumerate([("its sRGB white at SDR's 203 cd/m²", 148), ("an HDR10 picture at its own 1,000 cd/m²", 192), ("an HDR10 picture at 100 cd/m²", 130)]):
                 at = (int((c["x"] + c["width"] * (i + 0.5) / 3) * scale), int((c["y"] + c["height"] / 2) * scale))
                 near(img.getpixel(at)[:3], (want,) * 3, what)
+
+            # What a screenshot and a recording of this HDR screen get: SDR
+            # pictures (sRGB), SDR's white as white, the 1,000 cd/m²
+            # picture past it (white), 100 cd/m² as SDR shows it (186), not
+            # PQ's codes taken for sRGB's (148, 192, 130).
+            print("Screenshots and recordings of the HDR screen (sRGB):")
+            spots = lambda img, scale, ox=0, oy=0: [img.getpixel((int((c["x"] - ox + c["width"] * (i + 0.5) / 3) * scale), int((c["y"] - oy + c["height"] / 2) * scale)))[:3] for i in range(3)]
+            wants = [("SDR's white", 255), ("the 1,000 cd/m² picture", 255), ("the 100 cd/m² picture", 186)]
+            srgb_img = shot("gpui-srgb", False)
+            for (what, want), got in zip(wants, spots(srgb_img, srgb_img.size[0] / 1280 * 2)):
+                near(got, (want,) * 3, f"a screenshot: {what}")
+            rec = os.path.join(OUT, "window.mp4")
+            out = ts("run", NAME, os.path.join(ROOT, "target/release/olo-screenshot"), "--record", "--seconds", "1.5", "--encoder", "cpu", "--window", str(w["id"]), "--to", rec).stdout.strip()
+            pid = int(out.split()[-1]) if out else 0
+            while pid and os.path.exists(f"/proc/{pid}"):
+                time.sleep(0.3)
+            frame = os.path.join(OUT, "window.png")
+            subprocess.run([os.path.join(ROOT, "target/release/olo-screen"), "video-frame", rec, frame, "--at", "1.0"], capture_output=True)
+            if os.path.exists(frame):
+                from PIL import Image
+
+                fimg = Image.open(frame).convert("RGB")
+                # (H.264's rounding: within two codes.)
+                for (what, want), got in zip(wants, spots(fimg, fimg.size[0] / c["width"], c["x"], c["y"])):
+                    ok = all(abs(g - want) <= 2 for g in got)
+                    print(f"  {'ok ' if ok else 'BAD'} a window's recording: {what}: {got} (want {(want,) * 3})")
+                    if not ok:
+                        failures.append(f"recording: {what}")
+            else:
+                print("  BAD the window's recording didn't come")
+                failures.append("the window's recording")
 
         if "--clip" in sys.argv:
             clip = sys.argv[sys.argv.index("--clip") + 1]

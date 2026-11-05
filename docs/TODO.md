@@ -490,9 +490,21 @@ of Finished; a new one goes where its priority puts it.
     shown as HDR on a display whose HDR is on (Viewer's window in HDR10,
     its pictures PQ's in half floats; checked on a pretend HDR screen by
     `tools/dev/hdr-check`, with a real file too: Chromium's HDR10 test
-    clip, its HDR said only in its stream) (2026-11-05). Left: the
-    panel's HDR, after Ben's restart; and a real HDR grading (phone
-    footage) looked at.
+    clip, its HDR said only in its stream) (2026-11-05). Screenshots
+    and recordings of an HDR screen are right SDR pictures (SDR's white
+    and HDR highlights white, 100 cd/m² as SDR shows it, not PQ's codes
+    read as sRGB's: `tools/dev/hdr-check` checks a screenshot and a
+    window's recording, 2026-11-05). Checked on the machine (2026-11-05,
+    read only): wide colour is on for the OLED (its DisplayID primaries,
+    Accurate) and the Studio Display (P3, Accurate), the Dell plain;
+    `xe.enable_dpcd_backlight=3` is in the boot entries (written
+    2026-11-04 12:32), /etc/kernel/cmdline and GRUB's defaults, but the
+    kernel running started before (2026-11-04 00:35) and the driver's
+    parameter can't change till it starts again (read only in sysfs),
+    so app_server says the panel's HDR waits on a restart. Left: the
+    panel's HDR, after Ben's restart (Preferences ▸ Display ▸ Colour ▸
+    HDR, then `hdr-check`'s values looked at on the panel); and a real
+    HDR grading (phone footage, Ben's) looked at.
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole
