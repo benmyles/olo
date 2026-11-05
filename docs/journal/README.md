@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Olo Doctor: temporary files on disk
+
+*12:26* — Doctor finds programs keeping their temporary files in memory (/tmp a tmpfs, TMPDIR unset) and offers to keep them in /var/tmp: an environment.d file of Olo's and the running session's environment.
+
+![Olo Doctor: temporary files on disk](2026-11-05/122649-olo-doctor-temporary-files-on-disk.png)
+
 ### HDR wallpapers: what shines (tinted red)
 
 *12:09* — The gain maps wallpaper-hdr made, shown as a red tint where each picture goes above SDR's white in HDR: the sun's glow and LEDs, the moon, glints, the neon grid, speculars; the large blue and yellow surfaces and the skies stay at SDR's white.

@@ -7026,6 +7026,17 @@ scan made for the sudo user). What it looks for:
   when PackageKit has updates for them (`DRIVER_PACKAGES`: the kernel,
   linux-firmware, alsa-sof, Cirrus and Intel audio firmware, GPU and
   Wi-Fi firmware), else said plainly that there isn't one yet.
+- **Temporary files in memory** (`temp_files`, Ben 2026-11-05): /tmp a
+  tmpfs (`olo_system::env::in_memory`, statfs) and the session's
+  `TMPDIR` (systemd's user manager's, `env::manager_environment`, else
+  Doctor's own) unset or in memory too. The fix (not root) writes
+  `~/.config/environment.d/60-olo-tmpdir.conf` (`TMPDIR`, `TMP`, `TEMP` =
+  /var/tmp; removing it undoes it), which the user manager reads at each
+  login, and sets them in the running manager and D-Bus activation
+  (`Step::SetSessionEnvironment`) for what starts from now on;
+  olo-session takes them from that file as it starts, before any thread
+  (`take_tmpdir`), so Deskbar's apps and Terminal's shells have them.
+  Programs already running keep theirs until they start again.
 
 Drivers and firmware come through PackageKit (`olo_system::packages`,
 its D-Bus API: resolve, refresh, install, update, install a package

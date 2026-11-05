@@ -7,27 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Olo Doctor: programs' temporary files on disk, not in /tmp**
-  (Ben, 2026-11-05, after the items above): "have olo doctor check what
-  the env vars are for telling processes what temp dir path to use and
-  if they're not present or not set to /var/tmp then have it provide
-  that as a fix. /tmp is often in memory and not a good place for apps
-  to use as temp". Doctor reads the session's environment (and
-  systemd's user manager's, `systemctl --user show-environment`'s
-  D-Bus equivalent) for `TMPDIR`, and `TMP`/`TEMP` that some programs
-  read instead; when /tmp is a tmpfs (RAM: Fedora's default) and they
-  are unset or point there, it offers the fix: set them to /var/tmp for
-  everything the person runs from now on (an `environment.d` file of
-  Olo's in ~/.config, which systemd's user manager and olo-session
-  read, so apps started from Deskbar, Terminal's shells and user
-  services all get it; programs already running keep theirs until they
-  restart, which it says). Natively, no shelling out; undoable (the
-  file taken away). Look first at what breaks: a program that puts its
-  sockets in $TMPDIR (they work on disk too), and what systemd-tmpfiles
-  ages out of /var/tmp (30 days there, not at boot) against what /tmp
-  dropped at each restart; `XDG_RUNTIME_DIR` stays in RAM as it should.
-  A test with a session whose TMPDIR is unset, then set by the fix.
-
 - **Terminal tells coding agents to keep scratch in /var/tmp** (Ben,
   2026-11-05, after the items above): "the olo terminal claude/codex
   integration should also inject instructions to those coding harnesses
@@ -1839,6 +1818,34 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Olo Doctor: programs' temporary files on disk, not in /tmp**~~
+  (done 2026-11-05, HACKING's Olo Doctor: "Temporary files take memory"
+  while /tmp is a tmpfs and the session's TMPDIR is unset or in memory;
+  "Keep Temporary Files on Disk" writes an environment.d file of Olo's
+  and sets TMPDIR, TMP and TEMP in the running user manager; olo-session
+  takes them as it starts. Tested: the check's four cases, the file read;
+  the finding reviewed headless at 2×, 1.5×, 1×. Sockets in $TMPDIR work
+  on disk; /var/tmp is aged by systemd-tmpfiles after 30 days)
+  (Ben, 2026-11-05, after the items above): "have olo doctor check what
+  the env vars are for telling processes what temp dir path to use and
+  if they're not present or not set to /var/tmp then have it provide
+  that as a fix. /tmp is often in memory and not a good place for apps
+  to use as temp". Doctor reads the session's environment (and
+  systemd's user manager's, `systemctl --user show-environment`'s
+  D-Bus equivalent) for `TMPDIR`, and `TMP`/`TEMP` that some programs
+  read instead; when /tmp is a tmpfs (RAM: Fedora's default) and they
+  are unset or point there, it offers the fix: set them to /var/tmp for
+  everything the person runs from now on (an `environment.d` file of
+  Olo's in ~/.config, which systemd's user manager and olo-session
+  read, so apps started from Deskbar, Terminal's shells and user
+  services all get it; programs already running keep theirs until they
+  restart, which it says). Natively, no shelling out; undoable (the
+  file taken away). Look first at what breaks: a program that puts its
+  sockets in $TMPDIR (they work on disk too), and what systemd-tmpfiles
+  ages out of /var/tmp (30 days there, not at boot) against what /tmp
+  dropped at each restart; `XDG_RUNTIME_DIR` stays in RAM as it should.
+  A test with a session whose TMPDIR is unset, then set by the fix.
 
 - ~~**Terminal's suggestions see the session's recent commands and
   output, after a restore too**~~ (done 2026-11-05, HACKING's brush

@@ -191,6 +191,28 @@ pub struct Roots {
     /// The names of the packages with an update waiting (None: no
     /// PackageKit).
     pub updates: Box<dyn Fn() -> Option<Vec<String>> + Send + Sync>,
+    /// Where the session's programs keep temporary files (`temp_files`).
+    pub temp: TempFiles,
+}
+
+/// Where temporary files go: /tmp's file system, and the session's
+/// `TMPDIR` (systemd's user manager's, else ours) and whether it's in
+/// memory too; the user's config folder (for the fix's file).
+#[derive(Debug, Clone, Default)]
+pub struct TempFiles {
+    pub tmp_in_memory: bool,
+    pub tmpdir: Option<String>,
+    pub tmpdir_in_memory: bool,
+    pub config: PathBuf,
+}
+
+impl TempFiles {
+    fn real() -> TempFiles {
+        let manager = olo_system::env::manager_environment().unwrap_or_default();
+        let tmpdir = manager.iter().find(|(k, _)| k == "TMPDIR").map(|(_, v)| v.clone()).or_else(|| std::env::var("TMPDIR").ok()).filter(|d| !d.is_empty());
+        let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
+        TempFiles { tmp_in_memory: olo_system::env::in_memory(Path::new("/tmp")), tmpdir_in_memory: tmpdir.as_deref().is_some_and(|d| olo_system::env::in_memory(Path::new(d))), tmpdir, config }
+    }
 }
 
 /// PackageKit's answers, for [`Roots::real`].
@@ -221,7 +243,7 @@ impl Roots {
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
         let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
-        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods, packages: Box::new(real_packages), updates: Box::new(real_updates) }
+        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods, packages: Box::new(real_packages), updates: Box::new(real_updates), temp: TempFiles::real() }
     }
 }
 
@@ -437,7 +459,55 @@ pub fn scan(roots: &Roots) -> Report {
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
+    temp_files(roots, &mut r);
     r
+}
+
+/// Programs' temporary files on disk, not in memory (Ben, 2026-11-05:
+/// "have olo doctor check what the env vars are for telling processes what
+/// temp dir path to use and if they're not present or not set to /var/tmp
+/// then have it provide that as a fix"): with /tmp a tmpfs (Fedora's), a
+/// session whose `TMPDIR` is unset (so /tmp) or in memory too has every
+/// build directory, download and copy a program makes there take RAM.
+fn temp_files(roots: &Roots, r: &mut Report) {
+    let t = &roots.temp;
+    match &t.tmpdir {
+        Some(d) if !t.tmpdir_in_memory => {
+            r.fine.push(Fine { title: "Temporary files are kept on disk".into(), detail: format!("Programs keep them in {d} (TMPDIR), not in memory.") });
+            return;
+        }
+        None if !t.tmp_in_memory => {
+            r.fine.push(Fine { title: "Temporary files are kept on disk".into(), detail: "/tmp is on disk here.".into() });
+            return;
+        }
+        _ => {}
+    }
+    let file = t.config.join(olo_system::env::TMPDIR_FILE);
+    let vars: Vec<(String, String)> = olo_system::env::TMP_VARS.iter().map(|k| ((*k).to_owned(), olo_system::env::DISK_TMP.to_owned())).collect();
+    let content = format!(
+        "# Olo Doctor: programs' temporary files on disk ({}), not in memory.\n# Remove this file to undo (from the next login).\n{}",
+        olo_system::env::DISK_TMP,
+        vars.iter().map(|(k, v)| format!("{k}={v}\n")).collect::<String>()
+    );
+    let now = match &t.tmpdir {
+        Some(d) => format!("TMPDIR is {d}, in memory too"),
+        None => "TMPDIR isn't set, so they go to /tmp".into(),
+    };
+    r.findings.push(Finding {
+        id: "tmp:memory".into(),
+        severity: Severity::Advice,
+        title: "Temporary files take memory".into(),
+        detail: format!(
+            "/tmp is held in memory here, and programs keep their temporary files there ({now}): a build, a download, a copy of something big all take RAM until they're removed. The fix tells programs to use {disk} instead (TMPDIR, TMP and TEMP), on disk: for everything started from now on (programs already running keep theirs until they start again), and from each login after, through {file}. Removing that file undoes it.",
+            disk = olo_system::env::DISK_TMP,
+            file = file.display()
+        ),
+        fix: Some(Fix {
+            label: "Keep Temporary Files on Disk".into(),
+            root: false,
+            steps: vec![Step::WriteFile { path: file, content, mode: 0o644 }, Step::SetSessionEnvironment { vars }],
+        }),
+    });
 }
 
 fn remappers(roots: &Roots, procs: &[Proc], input_names: &[String], r: &mut Report) {
@@ -1461,7 +1531,8 @@ mod tests {
         });
         // SAFETY: getuid has no preconditions.
         let uid = unsafe { libc::getuid() };
-        let roots = Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None) };
+        let roots =
+            Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None), temp: TempFiles::default() };
         (fs, roots)
     }
 
@@ -1800,6 +1871,41 @@ mod tests {
         assert!(!same_healer(&built, &other));
         assert!(!same_healer(&built, &before));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn temporary_files_in_memory_are_moved_to_disk() {
+        let run = |tmp_in_memory: bool, tmpdir: Option<&str>, tmpdir_in_memory: bool| {
+            let mut r = Report::default();
+            let roots = Roots {
+                fs: PathBuf::from("/nonexistent"),
+                bin: PathBuf::new(),
+                uid: 1000,
+                scope: None,
+                units: Box::new(|_| Err("none".into())),
+                airpods: false,
+                packages: Box::new(|_| None),
+                updates: Box::new(|| None),
+                temp: TempFiles { tmp_in_memory, tmpdir: tmpdir.map(str::to_owned), tmpdir_in_memory, config: PathBuf::from("/home/me/.config") },
+            };
+            temp_files(&roots, &mut r);
+            r
+        };
+        // Fedora's /tmp in memory and no TMPDIR: the fix.
+        let r = run(true, None, false);
+        let f = r.find("tmp:memory").expect("found");
+        let fix = f.fix.as_ref().unwrap();
+        assert!(!fix.root);
+        let Step::WriteFile { path, content, .. } = &fix.steps[0] else { panic!("{:?}", fix.steps) };
+        assert_eq!(path, &PathBuf::from("/home/me/.config/environment.d/60-olo-tmpdir.conf"));
+        assert!(content.contains("TMPDIR=/var/tmp\nTMP=/var/tmp\nTEMP=/var/tmp\n"), "{content}");
+        assert_eq!(fix.steps[1], Step::SetSessionEnvironment { vars: ["TMPDIR", "TMP", "TEMP"].map(|k| (k.to_owned(), "/var/tmp".to_owned())).to_vec() });
+        // TMPDIR in memory too (the runtime folder): the same.
+        assert!(run(true, Some("/run/user/1000"), true).find("tmp:memory").is_some());
+        // On disk: fine.
+        let r = run(true, Some("/var/tmp"), false);
+        assert!(r.find("tmp:memory").is_none() && r.fine.iter().any(|f| f.detail.contains("/var/tmp")));
+        assert!(run(false, None, false).find("tmp:memory").is_none());
     }
 
     #[test]

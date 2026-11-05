@@ -110,12 +110,41 @@ pub fn run() {
         Some("quit") => signal_session(libc::SIGTERM),
         Some("-h" | "--help") => println!("{USAGE}"),
         _ => {
+            take_tmpdir();
             // The session runs the shell: above apps and background work
             // (olo_protocol::performance::tier; -5, the shell's).
             let _ = olo_system::priority::raise_self(-5);
             Session::start(args).run()
         }
     }
+}
+
+/// Where programs keep temporary files, from Olo Doctor's file for it
+/// (`olo_system::env::TMPDIR_FILE`, systemd's `environment.d` format: what
+/// the user manager reads too), for everything the session starts (apps
+/// from Deskbar, Terminal's shells), unless the login already set them.
+/// Read before any thread is started: the environment can be set safely
+/// only then.
+fn take_tmpdir() {
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
+    let Ok(text) = std::fs::read_to_string(config.join(olo_system::env::TMPDIR_FILE)) else { return };
+    for (key, value) in tmpdir_vars(&text) {
+        if std::env::var_os(&key).is_none() && std::path::Path::new(&value).is_dir() {
+            // SAFETY: at the start, before any thread (see above).
+            unsafe { std::env::set_var(&key, &value) };
+        }
+    }
+}
+
+/// The temporary-file variables an `environment.d` file sets.
+fn tmpdir_vars(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| l.split_once('='))
+        .filter(|(k, _)| olo_system::env::TMP_VARS.contains(&k.trim()))
+        .map(|(k, v)| (k.trim().to_owned(), v.trim().trim_matches('"').to_owned()))
+        .collect()
 }
 
 // ---- the control commands ---------------------------------------------------
@@ -1183,4 +1212,13 @@ fn export_environment() {
 /// Seconds since the epoch.
 fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+#[cfg(test)]
+mod tmpdir_tests {
+    #[test]
+    fn reads_doctors_file() {
+        let text = "# Olo Doctor: ...\n# Remove this file to undo.\nTMPDIR=/var/tmp\nTMP = /var/tmp\nTEMP=\"/var/tmp\"\nPATH=/nope\n";
+        assert_eq!(super::tmpdir_vars(text), [("TMPDIR", "/var/tmp"), ("TMP", "/var/tmp"), ("TEMP", "/var/tmp")].map(|(k, v)| (k.to_owned(), v.to_owned())));
+    }
 }

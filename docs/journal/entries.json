@@ -3286,5 +3286,11 @@
   "title": "HDR wallpapers: what shines (tinted red)",
   "caption": "The gain maps wallpaper-hdr made, shown as a red tint where each picture goes above SDR's white in HDR: the sun's glow and LEDs, the moon, glints, the neon grid, speculars; the large blue and yellow surfaces and the skies stay at SDR's white.",
   "image": "2026-11-05/120922-hdr-wallpapers-what-shines-tinted-red.png"
+ },
+ {
+  "time": "2026-11-05T12:26:49",
+  "title": "Olo Doctor: temporary files on disk",
+  "caption": "Doctor finds programs keeping their temporary files in memory (/tmp a tmpfs, TMPDIR unset) and offers to keep them in /var/tmp: an environment.d file of Olo's and the running session's environment.",
+  "image": "2026-11-05/122649-olo-doctor-temporary-files-on-disk.png"
  }
 ]

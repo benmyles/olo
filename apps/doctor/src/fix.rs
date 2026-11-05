@@ -35,6 +35,12 @@ pub enum Step {
     },
     /// Have NetworkManager read its configuration again.
     NetworkManagerReload,
+    /// Set variables in the session's environment for what starts from
+    /// now on: systemd's user manager's and D-Bus activation's
+    /// (`olo_system::env::update_activation_environment`).
+    SetSessionEnvironment {
+        vars: Vec<(String, String)>,
+    },
     /// Write a value to a sysfs attribute.
     WriteSysfs {
         path: PathBuf,
@@ -100,6 +106,7 @@ impl Step {
             Step::WriteFile { path, .. } => format!("Writing {}", path.display()),
             Step::CopyFile { to, .. } => format!("Installing {}", to.display()),
             Step::NetworkManagerReload => "Reloading NetworkManager's settings".into(),
+            Step::SetSessionEnvironment { vars } => format!("Setting {} for the session", vars.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(", ")),
             Step::WriteSysfs { path, value } => format!("Setting {} to {value}", path.display()),
             Step::RemoveFile { path } => format!("Removing {}", path.display()),
             Step::Unit { name, action } => {
@@ -168,6 +175,10 @@ impl Step {
             Step::WriteFile { path, content, mode } => write_file(path, content, *mode).map_err(failed),
             Step::CopyFile { from, to, mode } => std::fs::read(from).and_then(|bytes| write_bytes(to, &bytes, *mode)).map_err(failed),
             Step::NetworkManagerReload => olo_system::network::reload().map_err(|e| format!("{}: {e}", self.describe())),
+            Step::SetSessionEnvironment { vars } => {
+                let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                olo_system::env::update_activation_environment(&pairs).map_err(|e| format!("{}: {e}", self.describe()))
+            }
             Step::WriteSysfs { path, value } => std::fs::write(path, value).map_err(failed),
             Step::RemoveFile { path } => match std::fs::remove_file(path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(failed(e)),
