@@ -1928,6 +1928,13 @@ pub struct KeyboardSettings {
     /// key beside the space bar is ⌘ again (Ben's ThinkPad), while an
     /// Apple keyboard on the same computer is left as it is.
     pub swap_alt_super: Vec<String>,
+    /// Apple keyboards (by name, as `swap_alt_super`) whose top row types
+    /// F1–F12, its printed features (brightness, volume, …) with Fn held,
+    /// as macOS's "Use F1, F2, etc. keys as standard function keys".
+    pub fkeys_first: Vec<String>,
+    /// An Apple keyboard's Globe (Fn) key pressed and let go alone shows
+    /// the emoji picker, as on a Mac.
+    pub globe_emoji: bool,
     /// Num Lock is on when Olo starts (and is set so when this
     /// changes); the Num Lock key still toggles it.
     pub num_lock: bool,
@@ -2083,6 +2090,8 @@ impl Default for KeyboardSettings {
             profile: KeyboardProfile::default(),
             profiles: Vec::new(),
             swap_alt_super: Vec::new(),
+            fkeys_first: Vec::new(),
+            globe_emoji: true,
             num_lock: true,
             command_key: None,
             caps_lock_control: None,

@@ -126,6 +126,8 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "keyboard", tab: "Keyboard", group: "Keyboard Hints", name: "Press Control twice for keyboard hints", role: "CheckBox" },
     Setting { panel: "keyboard", tab: "Keyboard", group: "Keyboard Hints", name: "Double-press speed", role: "Slider" },
     Setting { panel: "keyboard", tab: "Keyboard", group: "Backlight", name: "Brightness", role: "Slider" },
+    Setting { panel: "keyboard", tab: "Keyboards", group: "Magic Keyboard with Touch ID and Numeric Keypad", name: "Use F1, F2, etc. as standard function keys", role: "CheckBox" },
+    Setting { panel: "keyboard", tab: "Keyboards", group: "Magic Keyboard with Touch ID and Numeric Keypad", name: "Press 🌐 alone to show emoji", role: "CheckBox" },
     Setting { panel: "keyboard", tab: "Keyboards", group: "Swap Alt and the Windows Key", name: "This Keyboard", role: "CheckBox" },
     Setting { panel: "keyboard", tab: "Shortcuts", group: "Keyboard Profile", name: "Profile", role: "ComboBox" },
     Setting { panel: "keyboard", tab: "Shortcuts", group: "Keyboard Profile", name: "Save As…", role: "Button" },

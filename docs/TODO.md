@@ -1022,9 +1022,13 @@ of Finished; a new one goes where its priority puts it.
     (`olo_protocol::keyboards`): a box with its picture, maker and model,
     keypad and connection, and why its Touch ID isn't used. Its own
     picture (2026-11-05: `keyboard-aluminium`, in Classic and every
-    theme). *Left*: its settings: the function row as F-keys or as media keys (hid_apple's
-    `fnmode`, or done in app_server's keymap so it needs no root), and
-    the Fn/Globe key.
+    theme). Its settings (2026-11-05): the top row as F-keys first or
+    its printed features first (app_server, per keyboard, no root), the
+    Globe key alone for emoji; its Mission Control and Spotlight keys
+    the overview and the palette; and its Do Not Disturb key, which the
+    kernel sends as KEY_SLEEP and logind took to suspend the computer,
+    Do Not Disturb (app_server holds `handle-suspend-key`). *Left*:
+    Ben's go with the keys themselves (nothing here can press them).
 
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable

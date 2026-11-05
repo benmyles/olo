@@ -52,6 +52,14 @@ pub mod keys {
     /// The notification centre key (a ThinkPad's F9): the notifications'
     /// history.
     pub const NOTIFICATION_CENTER: u32 = 444;
+    /// Mission Control (an Apple keyboard's F3): the overview.
+    pub const SCALE: u32 = 120;
+    /// Spotlight (an Apple keyboard's F4): the command palette.
+    pub const SEARCH: u32 = 217;
+    /// A sleep key (logind's to act on but for Olo's inhibitor, held so
+    /// a Magic Keyboard's Do Not Disturb key, which sends it, doesn't
+    /// suspend the computer): asleep, as logind would.
+    pub const SLEEP: u32 = 142;
 }
 
 enum Job {
@@ -273,6 +281,12 @@ struct Worker {
 }
 
 fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<crate::osd::Indicator>, found: calloop::channel::Sender<Vec<(String, f32)>>) {
+    // The sleep key is Olo's (power.rs `keys::SLEEP`): a Magic Keyboard's
+    // Do Not Disturb key sends it, and logind would suspend on it. Held
+    // for the session (let go if app_server goes).
+    let _sleep_key = olo_system::power::inhibit("handle-suspend-key", "Olo", "Olo handles the sleep key (a Magic Keyboard's Do Not Disturb sends it)", true)
+        .map_err(|e| warn!("can't take the sleep key from logind: {e}"))
+        .ok();
     let mut w = Worker { inhibitor: None, feedback, found, displays: Default::default(), warned: Default::default() };
     while let Ok(mut job) = rx.recv() {
         // Only the newest brightness matters (a held key repeats).
@@ -751,6 +765,15 @@ impl<B: Backend> AnvilState<B> {
             keys::RFKILL => |s| s.volume_key(Job::ToggleAirplane),
             keys::SWITCH_VIDEO_MODE => |s| s.spawn_program("olo-preferences", &["display"]),
             keys::NOTIFICATION_CENTER => |s| s.spawn_program("olo-notifications", &["--history"]),
+            keys::SCALE => |s| s.toggle_overview(),
+            keys::SEARCH => |s| s.spawn_program("olo-palette", &["--toggle"]),
+            keys::SLEEP => |s| {
+                if s.power.jobs.is_some() {
+                    s.power.send(Job::Suspend);
+                } else {
+                    info!("sleep key (simulated: not the session)");
+                }
+            },
             keys::KBD_UP => |s| s.step_keyboard(STEP),
             keys::KBD_DOWN => |s| s.step_keyboard(-STEP),
             keys::KBD_TOGGLE => |s| {
@@ -770,6 +793,25 @@ impl<B: Backend> AnvilState<B> {
             action(self);
         }
         true
+    }
+
+    /// Do Not Disturb on or off (a Magic Keyboard's key), as Deskbar's
+    /// menu does it: in the notifications' settings, which
+    /// olo-notifications follows; written off the loop.
+    pub fn toggle_do_not_disturb(&mut self) {
+        use olo_protocol::notifications::NotificationSettings;
+        let mut n = NotificationSettings::load();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        // (By hand, as Deskbar's menu: a schedule's quiet hours stay.)
+        let on = !(n.dnd && n.dnd_until.is_none_or(|t| now < t));
+        n.dnd = on;
+        n.dnd_until = None;
+        std::thread::spawn(move || {
+            if let Err(e) = n.save() {
+                warn!("can't keep Do Not Disturb: {e}");
+            }
+        });
+        self.show_indicator(crate::osd::Indicator::DoNotDisturb { on });
     }
 
     /// The brightness keys: the display under the pointer if we can set

@@ -122,6 +122,28 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             return KeyAction::None;
         }
+        // A Magic Keyboard: its top row (F-keys first, if chosen for it),
+        // its Do Not Disturb key, its Globe key alone (apple_keys.rs).
+        let key = if evt.device().usb_id().is_some_and(crate::apple_keys::is_magic_keyboard) {
+            let pressed = evt.state() == KeyState::Pressed;
+            if self.globe.feed(key, pressed, std::time::Instant::now()) && self.settings.keyboard.globe_emoji {
+                self.spawn_program("olo-emoji-picker", &["--toggle"]);
+            }
+            if key == crate::apple_keys::KEY_FN {
+                return KeyAction::None;
+            }
+            let fkeys = &self.settings.keyboard.fkeys_first;
+            let key = if !fkeys.is_empty() && fkeys.contains(&evt.device().name()) { crate::apple_keys::fkeys_first(key) } else { key };
+            if key == crate::apple_keys::KEY_SLEEP {
+                if pressed {
+                    self.toggle_do_not_disturb();
+                }
+                return KeyAction::None;
+            }
+            key
+        } else {
+            key
+        };
         // A keyboard whose Alt and Super change places (its own setting:
         // a PC keyboard's, not an Apple one's on the same computer).
         let swap = &self.settings.keyboard.swap_alt_super;

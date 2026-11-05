@@ -4280,7 +4280,21 @@ gets a box of its own above, with its picture, what it is (maker,
 model, keypad, how it connects) and what of it Olo can't use: the Magic
 Keyboard with Touch ID's sensor (A2520) is sealed to the Mac it's
 paired with (`TouchId::SealedToAMac`; TODO's "Keyboards we know" has
-how that was found). `OLO_KEYBOARDS_DEMO=1` lists the layout lint's
+how that was found). An Apple Magic Keyboard (2021 or 2024, `fn_row`)
+has its own there too: "Use F1, F2, etc. as standard function keys"
+(`KeyboardSettings::fkeys_first`, by its name: app_server turns its top
+row round, `apple_keys::fkeys_first`, from hid-apple's table, so it
+needs no root and no module parameter, which is the whole machine's)
+and "Press 🌐 alone to show emoji" (`globe_emoji`: KEY_FN pressed and
+let go alone, quickly). Its row's features: brightness and volume as
+any keyboard's, Mission Control (KEY_SCALE) the overview, Spotlight
+(KEY_SEARCH) the palette, dictation (KEY_MICMUTE) the microphone, and
+Do Not Disturb, which hid-apple sends as KEY_SLEEP: logind would
+suspend the computer on it (the keyboard is tagged `power-switch`), so
+app_server holds logind's `handle-suspend-key` for the session and
+makes a Magic Keyboard's Do Not Disturb (by hand, as Deskbar's menu,
+a moon on screen), any other keyboard's sleep key suspending as logind
+would have. `OLO_KEYBOARDS_DEMO=1` lists the layout lint's
 made-up keyboards (a laptop's and the A2520), to look at headless;
 `ui_lint_keyboards_tab` lints the tab with them.
 

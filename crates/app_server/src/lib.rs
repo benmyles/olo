@@ -30,6 +30,7 @@ pub mod udev;
 #[cfg(feature = "winit")]
 pub mod winit;
 
+pub mod apple_keys;
 pub mod approve;
 pub mod desktop;
 pub mod dmabuf_check;
