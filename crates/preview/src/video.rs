@@ -464,6 +464,9 @@ impl Video {
         let idle = if self.picture { Duration::from_millis(15) } else { Duration::from_millis(100) };
         let next = if c.since.is_some() || (c.show_next && !sh.eof) { Some(next.unwrap_or(idle)) } else { None };
         let hdr = sh.hdr;
+        // (A picture made here, the worker behind: its stream known HDR
+        // all the same.)
+        sh.stream_hdr |= due.as_ref().is_some_and(|f| matches!(&f.pic, Pic::Planes(p) if p.is_hdr()));
         drop(sh);
         drop(c);
         // Ready unless the worker fell behind.
@@ -1286,6 +1289,37 @@ mod tests {
         let Ok(crate::load::Update::Body(crate::load::Body::Media(m))) = media::video(&path, &Arc::new(std::sync::atomic::AtomicBool::new(false))) else { panic!("no facts") };
         assert!(m.playable && m.picture.is_some(), "{:?}", m.rows);
         assert!(m.note.starts_with("AV1 video, 640 × 360"), "{}", m.note);
+    }
+
+    /// HDR10 said only in the stream (its SPS's VUI; no `colr`):
+    /// `OLO_SAMPLES=dir` with Chromium's bear-1280x720-hevc-10bit-hdr10.mp4
+    /// (media/test/data: x265's HDR10 tags on its SDR bear, so its
+    /// pictures blow out as PQ, as tagged). Its facts say HDR, and its
+    /// pictures are wide (P3), and HDR10's when a window draws in it.
+    #[test]
+    #[ignore]
+    fn hdr10_in_the_stream() {
+        let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
+        let path = dir.join("bear-1280x720-hevc-10bit-hdr10.mp4");
+        let Ok(crate::load::Update::Body(crate::load::Body::Media(m))) = media::video(&path, &Arc::new(std::sync::atomic::AtomicBool::new(false))) else { panic!("no facts") };
+        let colour = m.rows.iter().find(|r| r.0 == "Colour").map(|r| r.1.as_str());
+        assert_eq!(colour, Some("HDR (PQ), BT.2020"), "{:?}", m.rows);
+        let input = Input::file(&path);
+        assert!(picture_at(&input, 1.0).unwrap().p3);
+        let video = Video::start_with(&input, 3.0, Options { playing: false, picture: true, sound: false, bgra: true });
+        video.draw_hdr(true);
+        let t0 = Instant::now();
+        let deep = loop {
+            if let (Some(p), _) = video.tick_picture() {
+                break p;
+            }
+            assert!(t0.elapsed() < Duration::from_secs(10), "no picture");
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        // (The first may have been made before the switch; either way
+        // the stream is known HDR now.)
+        assert!(video.is_hdr());
+        assert!(matches!(deep, Picture::Deep { .. } | Picture::Bgra { p3: true, .. }));
     }
 
     /// VP9 in MPEG-4 and 10-bit VP9 in WebM: `OLO_SAMPLES=dir` with

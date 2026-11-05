@@ -3061,7 +3061,15 @@ HDR10 (GPUI's, below) and the player makes its pictures HDR10's
 (`Video::draw_hdr`: `Frame::to_pq_half`, half floats of PQ in BT.2020,
 the stream's own PQ as it is, HLG and SDR converted): its highlights
 shine as mastered, its paper white at SDR's; where the window can't, P3
-or sRGB as above.
+or sRGB as above. (The preview tells its window when its video turns
+out HDR, `PreviewEvent::Gamut`, whichever picture showed first.) HEVC's
+colour is also read from its stream (the SPS's VUI, `hevc::colour_of`,
+through the vendored rust_h265's `stream_colour`), where the container
+says nothing: many files say HDR10 only there. `tools/dev/hdr-check
+--clip VIDEO` plays one in Viewer on the pretend HDR screen. Chromium's
+`bear-1280x720-hevc-10bit-hdr10.mp4` (its test data: x265's HDR10 tags
+on its SDR bear, so it blows out, as tagged) reads as HDR and reaches
+the display's 1,600 cd/m² there.
 
 The display hardware's own colour stages (the CRTC's degamma, CTM and
 gamma LUTs; Intel's per-plane pipelines, `COLOR_PIPELINE`) aren't used:

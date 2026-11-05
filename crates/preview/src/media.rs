@@ -158,7 +158,9 @@ fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
         fmt += &format!("; {a} audio");
     }
     m.rows.push(("Format".into(), fmt));
-    let colour = av1.as_ref().map(|a| a.colour).or(hevc.as_ref().map(|hv| hv.colour)).unwrap_or_default();
+    // (HEVC's as its stream says too, where the container doesn't.)
+    let colour =
+        av1.as_ref().map(|a| a.colour).or_else(|| hevc.as_ref().map(|hv| olo_images::hevc::config(&hv.record).map_or(hv.colour, |c| olo_images::hevc::colour_of(&c, hv.colour)))).unwrap_or_default();
     m.rows.extend(colour_row(&colour));
     m.note = format!("{codec} video, {w} × {h}");
     if let Some(a) = av1 {
@@ -282,6 +284,11 @@ fn mkv(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), Strin
     let Some((track, id, w, h, private, colour)) = video else {
         m.note = "Matroska file".into();
         return Ok(());
+    };
+    // (HEVC's as its stream says too, where the track doesn't.)
+    let colour = match private.as_deref().filter(|_| id == "V_MPEGH/ISO/HEVC").and_then(olo_images::hevc::config) {
+        Some(c) => olo_images::hevc::colour_of(&c, colour),
+        None => colour,
     };
     let codec = codec_name(&id);
     m.rows.push(("Size".into(), format!("{w} × {h}")));

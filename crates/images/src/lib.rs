@@ -631,6 +631,23 @@ pub mod hevc {
         pub peak: Option<f32>,
     }
 
+    /// The colour a track's container says (`container`), with what its
+    /// stream's own SPS says where the container says nothing: many files
+    /// say they're HDR10 only in the stream (its VUI), with no `colr`.
+    pub fn colour_of(config: &Config, container: Colour) -> Colour {
+        let Some(s) = config.sets.iter().find_map(|nal| rust_h265::stream_colour(nal)) else { return container };
+        let said = |v: u8| (v != 2 && v != 0).then_some(u32::from(v));
+        Colour {
+            primaries: container.primaries.or(said(s.primaries)),
+            transfer: container.transfer.or(said(s.transfer)),
+            // (The container's matrix and range, when it says the matrix;
+            // else the stream's.)
+            full_range: if container.matrix.is_some() { container.full_range } else { s.full_range },
+            matrix: container.matrix.or(said(s.matrix)),
+            peak: container.peak,
+        }
+    }
+
     /// Whether a sample (length-prefixed NAL units) holds a picture that
     /// starts the stream afresh (IRAP: BLA, IDR or CRA).
     pub fn is_keyframe(sample: &[u8], nal_len: u8) -> bool {
@@ -651,6 +668,7 @@ pub mod hevc {
         /// faster: pictures then come out a sample or two late).
         pub fn new(config: Config, colour: Colour, threads: usize) -> Decoder {
             let threads = if threads == 0 { std::thread::available_parallelism().map_or(1, |n| n.get()).min(4) } else { threads };
+            let colour = colour_of(&config, colour);
             Decoder { dec: start(&config, threads), config, colour, threads }
         }
 

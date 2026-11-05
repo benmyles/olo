@@ -490,8 +490,10 @@ of Finished; a new one goes where its priority puts it.
     too) drawn in Display P3 rather than clipped to sRGB, and HDR video
     shown as HDR on a display whose HDR is on (Viewer's window in HDR10,
     its pictures PQ's in half floats; checked on a pretend HDR screen by
-    `tools/dev/hdr-check`) (2026-11-05). Left: the panel's HDR, after
-    Ben's restart.
+    `tools/dev/hdr-check`, with a real file too: Chromium's HDR10 test
+    clip, its HDR said only in its stream) (2026-11-05). Left: the
+    panel's HDR, after Ben's restart; and a real HDR grading (phone
+    footage) looked at.
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole

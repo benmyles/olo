@@ -1,0 +1,6567 @@
+//! Top-level HEVC decoder.
+//!
+//! Phase 2c-6 scope: a `Decoder` that owns the active VPS/SPS/PPS, accepts
+//! NAL units one at a time, parses slice headers + drives the CU tree
+//! decode (which in turn calls intra prediction + IDCT + reconstruction),
+//! and emits a `Frame` for each completed picture.
+//!
+//! For Phase 2c-6 we only handle IDR I-slice pictures with one CU per CTU
+//! (= what `testdata/tiny_intra.h265` produces). Anything outside that
+//! subset is rejected via `Unsupported` from the underlying parsers.
+//!
+//! Phase 3c-1 extends this to independent multi-slice pictures: a picture
+//! can be split across several VCL NAL units where each slice segment
+//! carries its own slice header and covers a contiguous range of CTBs
+//! starting at `slice_segment_address`. The decoder lazily creates a
+//! `PictureState` on the first slice of the picture and finalizes the
+//! picture (deblock + SAO) when the CTB count reaches the picture total.
+
+use std::sync::Arc;
+
+use crate::cabac::{CabacContexts, CabacReader};
+use crate::cu_tree::{MvField, PictureState, RecycledBuffers};
+use crate::dpb::{
+    DecodedPicture, DecodedPictureBuffer, PictureReferenceStatus, ReferencePictureSets,
+    apply_ref_pic_list_modification, build_ref_pic_list_temp0, build_ref_pic_list_temp1,
+    resolve_ref_pics,
+};
+use crate::error::DecodeError;
+use crate::nal::{NalUnit, NalUnitType};
+use crate::pixel::{Pixel, PixelData};
+use crate::pps::{Pps, parse_pps};
+use crate::shared::SharedTable;
+use crate::slice::{SliceHeader, SliceType, parse_slice_segment_header};
+use crate::sps::{ShortTermRps, Sps, parse_sps};
+
+/// Reference picture lists L0 and L1 of one slice.
+type RefPicLists = (Vec<Arc<DecodedPicture>>, Vec<Arc<DecodedPicture>>);
+use crate::vps::{Vps, parse_vps};
+
+/// A reconstructed video frame in YUV420 planar layout.
+///
+/// Plane lengths are `width * height` for luma and `(width/2) * (height/2)`
+/// for each chroma plane. `pic_order_cnt` is the full (signed) POC
+/// computed per spec 8.3.1 — 0 for IDR pictures, and the MSB-extended LSB
+/// for non-IDR pictures.
+///
+/// Pixel data is stored in a `PixelData` enum that can be either 8-bit (`U8`)
+/// or 10/12-bit (`U16`). Use `bit_depth` to distinguish; call
+/// `y.as_u8()` / `y.as_u16()` to access the underlying slices.
+///
+/// Non-exhaustive: fields may be added in minor releases. Read fields
+/// directly or destructure with `..`.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct Frame {
+    /// Luma plane, `width * height` samples in raster order.
+    pub y: PixelData,
+    /// Cb plane. Half the luma width and height for 4:2:0, full size for
+    /// 4:4:4 (see `chroma_format_idc`).
+    pub u: PixelData,
+    /// Cr plane, the same size as `u`.
+    pub v: PixelData,
+    /// Luma width in samples, after cropping to the conformance window.
+    pub width: u32,
+    /// Luma height in samples, after cropping to the conformance window.
+    pub height: u32,
+    /// Picture order count: the picture's position in display order within
+    /// its coded video sequence. It restarts at every IDR or BLA picture.
+    pub pic_order_cnt: i32,
+    /// Bit depth of the luma samples: 8, 10, or 12. Chroma samples
+    /// normally have the same depth; a stream may code them at a different
+    /// one (BitDepthC), and they are stored at that depth.
+    pub bit_depth: u8,
+    /// `chroma_format_idc`: 1 = 4:2:0, 2 = 4:2:2, 3 = 4:4:4. Determines the
+    /// dimensions of the `u`/`v` planes relative to `width`/`height`
+    /// (`SubWidthC`/`SubHeightC`, spec table 6-1).
+    pub chroma_format_idc: u32,
+}
+
+/// Runtime-dispatched picture state that can hold either 8-bit or 16-bit pixels.
+// Pictures and picture state are shared with, or moved to, worker
+// threads; a non-`Send` field (an `Rc`, a `RefCell`) would break that, and
+// `Decoder: Send` is part of the public API.
+const _: () = {
+    const fn send<T: Send>() {}
+    const fn send_sync<T: Send + Sync>() {}
+    send::<Decoder>();
+    send::<PictureStateEnum>();
+    send_sync::<crate::dpb::DecodedPicture>();
+};
+
+enum PictureStateEnum {
+    U8(PictureState<u8>),
+    U16(PictureState<u16>),
+}
+
+/// Helper macro to dispatch on a `PictureStateEnum`, binding the inner
+/// `PictureState<P>` to `$state` and executing `$body` in a context where
+/// `P: Pixel` is known at compile time.
+macro_rules! with_picture_state {
+    ($pic:expr, |$state:ident| $body:expr) => {
+        match $pic {
+            &mut PictureStateEnum::U8(ref mut $state) => $body,
+            &mut PictureStateEnum::U16(ref mut $state) => $body,
+        }
+    };
+}
+
+/// In-flight picture state: the reconstruction buffers plus the bookkeeping
+/// needed to stitch multi-slice decode back together.
+struct PictureInProgress {
+    /// Where the picture decodes: on the calling thread, or on its own
+    /// thread (frame threading).
+    side: PictureSide,
+    /// Header of the most recently decoded slice segment. Phase 3c-1 uses
+    /// it for deblock/SAO finalization — in the common case all slices in a
+    /// picture share the same filter flags, which this approximation
+    /// matches.
+    last_slice_header: SliceHeader,
+    /// Phase 3c-4: header of the most recent *independent* slice segment
+    /// in this picture. A dependent slice segment inherits `slice_type`,
+    /// `slice_qp_y`, `slice_sao_*`, and the deblock filter fields from
+    /// this header; the parser leaves those fields at default values on
+    /// dependent slices and the decoder copies them in from here. For a
+    /// picture that doesn't use dependent slice segments this is simply a
+    /// copy of `last_slice_header` after every slice.
+    last_independent_slice_header: SliceHeader,
+    /// Total CTBs in the picture = `pic_width_in_ctbs * pic_height_in_ctbs`.
+    total_ctbs: u32,
+    /// Reference POC lists of each independent slice, keyed by its slice
+    /// address (the value `tab_slice_addr_rs` holds for its CTBs). Stored in
+    /// the decoded picture for temporal MV prediction by later pictures.
+    slice_ref_pocs: Vec<(i32, crate::dpb::SliceRefLists)>,
+}
+
+/// Tile scan derivation tables for a given (SPS, PPS) pair (spec 6.5.1).
+///
+/// `ctb_addr_rs_to_ts[rs]` = tile-scan address for a CTB at raster address
+/// `rs`. `ctb_addr_ts_to_rs[ts]` is the inverse. `tile_id[rs]` gives the
+/// 0-based tile index of the CTB at raster address `rs`.
+///
+/// Single-tile (`num_tile_columns = 1 && num_tile_rows = 1`) degenerates to
+/// identity tables and `tile_id` = 0 everywhere, preserving raster scan.
+/// The decode side of a picture in progress: its state and what its CTB
+/// decode carries from one slice segment to the next. With frame threading
+/// it lives on the picture's thread.
+struct PictureDecode {
+    state: PictureStateEnum,
+    /// CABAC context state at the end of the most recently decoded slice
+    /// segment, for a following dependent slice segment.
+    saved_cabac_state: Option<CabacContexts>,
+    /// WPP context state saved after the second CTB of the latest CTB row,
+    /// for a dependent slice segment that starts a row.
+    saved_wpp_cabac_state: Option<CabacContexts>,
+    /// Frame threading: decode WPP slices' CTB rows in parallel even though
+    /// the picture is filtered row by row (set for a picture that started
+    /// with no other picture in flight, such as a still image).
+    rows_in_parallel: bool,
+}
+
+impl PictureDecode {
+    /// The end of the picture's decode: grey out CTBs no slice decoded,
+    /// run the loop filters (with the flags of the picture's last slice
+    /// header `last_sh`, as before) and return the cropped frame.
+    fn finish(
+        &mut self,
+        sps: &Sps,
+        pps: &Pps,
+        last_sh: &SliceHeader,
+        threads: usize,
+    ) -> Result<Frame, DecodeError> {
+        with_picture_state!(&mut self.state, |state| fill_undecoded_ctbs(state));
+        with_picture_state!(&mut self.state, |state| {
+            // Per-slice: CUs of slices with deblocking disabled have no
+            // boundary strengths, so this only filters enabled slices.
+            if let Some(filter) = state.row_filter.take() {
+                // Frame threading: the rest of the rows (after the grey fill).
+                filter.finish(state);
+            } else {
+                crate::deblock::deblock_picture(state, sps, pps, last_sh, threads);
+                crate::sao::apply_sao_picture(state, sps, threads);
+            }
+            crop_frame(
+                state,
+                sps.pic_width_in_luma_samples,
+                sps.pic_height_in_luma_samples,
+                sps.cropped_width(),
+                sps.cropped_height(),
+                sps.conf_win_left_offset,
+                sps.conf_win_top_offset,
+                last_sh.poc,
+                sps.bit_depth_luma,
+            )
+        })
+    }
+}
+
+/// Where a picture in progress is decoded.
+enum PictureSide {
+    /// On the calling thread, slice by slice as `decode_nal` receives them.
+    Local(Box<PictureDecode>),
+    /// On its own thread (frame threading).
+    Thread(Box<PictureThread>),
+}
+
+/// The calling thread's handle on a picture decoding on its own thread.
+struct PictureThread {
+    /// Identifies the picture's pending frame in the output queue.
+    id: u64,
+    jobs: std::sync::mpsc::Sender<PictureMessage>,
+    handle: crate::parallel::TaskHandle<PictureResult>,
+    picture: Arc<DecodedPicture>,
+}
+
+enum PictureMessage {
+    Slice(Box<SliceJob>),
+    /// No more slices: finish the picture (loop filters, crop) with these
+    /// parameter sets and the picture's last slice header, as a sequential
+    /// decode does.
+    Finish {
+        sps: Arc<Sps>,
+        pps: Arc<Pps>,
+        last_sh: Box<SliceHeader>,
+    },
+}
+
+/// What a picture thread returns.
+struct PictureResult {
+    frame: Result<Frame, DecodeError>,
+    /// Errors from the picture's slice data, in slice order.
+    errors: Vec<DecodeError>,
+    /// The picture state, for recycling (its lent tables released).
+    state: PictureStateEnum,
+}
+
+/// A picture whose last slice has been handed to its thread.
+struct InFlight {
+    id: u64,
+    handle: crate::parallel::TaskHandle<PictureResult>,
+    /// PicOutputFlag: whether its frame is output.
+    output: bool,
+}
+
+/// The body of a picture thread: decode the slices it receives (the loop
+/// filters follow row by row, publishing final rows to the pictures that
+/// reference this one), then finish the picture and mark it complete.
+fn picture_thread(
+    mut decode: PictureDecode,
+    jobs: std::sync::mpsc::Receiver<PictureMessage>,
+    picture: Arc<DecodedPicture>,
+    threads: usize,
+) -> PictureResult {
+    // A picture that stops early (a panic, or the decoder dropped) must
+    // still release the pictures waiting on it.
+    struct CompleteOnDrop(Arc<DecodedPicture>);
+    impl Drop for CompleteOnDrop {
+        fn drop(&mut self) {
+            self.0.progress.set_complete();
+        }
+    }
+    let guard = CompleteOnDrop(picture);
+    let mut errors = Vec::new();
+    let mut finish = None;
+    for message in jobs {
+        match message {
+            PictureMessage::Slice(job) => {
+                // References are read as their rows become final (motion
+                // compensation and temporal MV prediction wait for the rows
+                // they need).
+                if let Err(e) = decode.decode_slice(&job, threads) {
+                    errors.push(e);
+                }
+            }
+            PictureMessage::Finish { sps, pps, last_sh } => {
+                finish = Some((sps, pps, last_sh));
+                break;
+            }
+        }
+    }
+    let frame = match finish {
+        Some((sps, pps, last_sh)) => decode.finish(&sps, &pps, &last_sh, threads),
+        None => Err(DecodeError::InvalidSyntax(
+            "picture abandoned before its end",
+        )),
+    };
+    // The views of the picture's planes end before it is marked complete
+    // (and others read it).
+    with_picture_state!(&mut decode.state, |s| s.release_lent());
+    drop(guard);
+    PictureResult {
+        frame,
+        errors,
+        state: decode.state,
+    }
+}
+
+/// Start decoding a new picture on its own thread: the picture enters the
+/// DPB now, owning its planes, motion field and slice map (the state keeps
+/// views of them), so later pictures can reference it while it decodes.
+#[allow(clippy::too_many_arguments)]
+fn start_picture_thread(
+    workers: &crate::parallel::ThreadPool,
+    dpb: &mut DecodedPictureBuffer,
+    pool: &mut PicturePool,
+    id: u64,
+    threads: usize,
+    mut state: PictureStateEnum,
+    poc: i32,
+    (sps, pps): (&Arc<Sps>, &Arc<Pps>),
+    rows_in_parallel: bool,
+) -> PictureThread {
+    fn in_progress<P: Pixel>(
+        st: &mut PictureState<P>,
+        poc: i32,
+        sps: &Arc<Sps>,
+        pps: &Arc<Pps>,
+    ) -> Arc<DecodedPicture> {
+        // SAFETY: the decoded picture owns the lent tables; the picture
+        // thread holds an `Arc` of it until after `release_lent` has
+        // dropped the state's views, and other pictures read it only once
+        // it is complete (they wait on its progress first).
+        let (planes, mvf, slice_addr) = unsafe { st.lend_shared() };
+        let picture = Arc::new(DecodedPicture::in_progress(
+            P::wrap_planes(planes),
+            mvf,
+            slice_addr,
+            (st.width, st.height),
+            poc,
+            (st.log2_min_pu_size, st.min_pu_width, st.log2_ctb_size),
+            (st.y_stride, st.uv_stride),
+            (st.chroma_shift_w, st.chroma_shift_h),
+        ));
+        let filter = crate::rowfilter::RowFilter::new(
+            st,
+            Arc::clone(&picture),
+            Arc::clone(sps),
+            Arc::clone(pps),
+        );
+        st.row_filter = Some(Box::new(filter));
+        picture
+    }
+    let picture = with_picture_state!(&mut state, |st| in_progress(st, poc, sps, pps));
+    picture.mark(PictureReferenceStatus::ShortTerm);
+    picture.set_output();
+    dpb.insert(Arc::clone(&picture));
+    for retired in dpb.cleanup_unused() {
+        pool.recycle_picture(retired);
+    }
+    let (jobs, receiver) = std::sync::mpsc::channel();
+    let decode = PictureDecode {
+        state,
+        saved_cabac_state: None,
+        saved_wpp_cabac_state: None,
+        rows_in_parallel,
+    };
+    let for_thread = Arc::clone(&picture);
+    let handle = workers.spawn(move || picture_thread(decode, receiver, for_thread, threads));
+    PictureThread {
+        id,
+        jobs,
+        handle,
+        picture,
+    }
+}
+
+/// One slice segment, parsed and set up by the calling thread, with
+/// everything its CTB decode needs, owned (frame threading runs the decode
+/// on the picture's thread).
+struct SliceJob {
+    rbsp: Vec<u8>,
+    epb_positions: Vec<u32>,
+    sh: SliceHeader,
+    sps: Arc<Sps>,
+    pps: Arc<Pps>,
+    tile_tables: Arc<TileScanTables>,
+    slice_params: crate::cu_tree::SliceParams,
+    /// The slice address CTBs record: that of the independent slice
+    /// segment (the segment's own when it is independent).
+    recorded_slice_addr: i32,
+    slice_start_ts: u32,
+    slice_starts_tile: bool,
+    tile_col_start: Vec<u32>,
+    /// The segment starts a QP prediction chain (spec 8.6.1).
+    segment_starts_qp_chain: bool,
+    /// RBSP byte offset of the slice data.
+    cabac_byte_offset: usize,
+    /// NAL-unit byte offset of the slice data (entry points count EPBs).
+    nal_slice_data_start: u32,
+}
+
+impl PictureDecode {
+    /// CTB decode of one slice segment (spec 7.3.8): CABAC set-up, then the
+    /// CTB loop, sequential or wavefront.
+    fn decode_slice(&mut self, job: &SliceJob, threads: usize) -> Result<(), DecodeError> {
+        let (sps, pps, sh) = (&*job.sps, &*job.pps, &job.sh);
+        let tile_tables = &*job.tile_tables;
+        let pic_width_in_ctbs_for_init = sps.pic_width_in_ctbs_y();
+        let wpp_for_init = pps.entropy_coding_sync_enabled_flag;
+        let slice_starts_tile = job.slice_starts_tile;
+        let tile_col_start = &job.tile_col_start;
+        let slice_start_ts = job.slice_start_ts;
+        let cabac_byte_offset = job.cabac_byte_offset;
+        let nal_slice_data_start = job.nal_slice_data_start;
+        let epb_positions: &[u32] = &job.epb_positions;
+        let recorded_slice_addr = job.recorded_slice_addr;
+        let pic_width_in_ctbs = sps.pic_width_in_ctbs_y();
+        let total_ctbs = pic_width_in_ctbs * sps.pic_height_in_ctbs_y();
+
+        let mut contexts = if sh.dependent_slice_segment_flag && slice_starts_tile {
+            // The first CTB of a tile always starts from initialised contexts
+            // (spec 9.3.1), even in a dependent slice segment.
+            CabacContexts::init(sh.slice_qp_y, sh.slice_type, sh.cabac_init_flag)
+        } else if sh.dependent_slice_segment_flag {
+            // Does the dependent slice's first CTB start a CTB row of its
+            // tile? Then WPP synchronises from the row above when the CTB
+            // above-right is available (same tile and slice), and
+            // initialises otherwise (spec 9.3.1).
+            let w = pic_width_in_ctbs_for_init;
+            let addr = sh.slice_segment_address;
+            let col = addr % w;
+            let on_row_start = col == tile_col_start[col as usize];
+            if wpp_for_init && on_row_start {
+                let parent_addr = job.recorded_slice_addr;
+                let tr_available = addr >= w && col + 1 < w && {
+                    let tr = (addr - w + 1) as usize;
+                    let tr_slice = match &self.state {
+                        PictureStateEnum::U8(st) => st.tab_slice_addr_rs[tr],
+                        PictureStateEnum::U16(st) => st.tab_slice_addr_rs[tr],
+                    };
+                    tile_tables.tile_id[tr] == tile_tables.tile_id[addr as usize]
+                        && tr_slice == parent_addr
+                };
+                if tr_available {
+                    self.saved_wpp_cabac_state
+                        .ok_or(DecodeError::InvalidSyntax(
+                            "dependent WPP slice at row start without a saved WPP context state",
+                        ))?
+                } else {
+                    CabacContexts::init(sh.slice_qp_y, sh.slice_type, sh.cabac_init_flag)
+                }
+            } else {
+                self.saved_cabac_state.ok_or(DecodeError::InvalidSyntax(
+                    "dependent slice segment without a saved CABAC state",
+                ))?
+            }
+        } else {
+            CabacContexts::init(sh.slice_qp_y, sh.slice_type, sh.cabac_init_flag)
+        };
+
+        with_picture_state!(&mut self.state, |state| {
+            state.first_qp_group = job.segment_starts_qp_chain;
+            if !sh.dependent_slice_segment_flag {
+                state.last_qp_y = sh.slice_qp_y;
+            }
+            // CuQpOffsetCb / Cr start at 0 in every slice segment.
+            state.cu_qp_offset_cb = 0;
+            state.cu_qp_offset_cr = 0;
+        });
+
+        let wpp = pps.entropy_coding_sync_enabled_flag;
+
+        let mut saved_state: Option<CabacContexts> = if sh.dependent_slice_segment_flag {
+            self.saved_wpp_cabac_state
+        } else {
+            None
+        };
+
+        let mut cabac = CabacReader::new(&job.rbsp, cabac_byte_offset)?;
+
+        let slice_ctx = crate::wavefront::SliceContext {
+            sps,
+            pps,
+            sh,
+            slice_params: &job.slice_params,
+            recorded_slice_addr,
+        };
+        let substreams = crate::wavefront::Substreams {
+            rbsp: &job.rbsp,
+            data_start: cabac_byte_offset,
+            nal_data_start: nal_slice_data_start,
+            epb_positions,
+            entry_point_offsets: &sh.entry_point_offsets,
+        };
+        let wavefront = threads > 1 && crate::wavefront::applies(sps, pps, sh, substreams.count());
+        type CtbLoopResult = Result<(u32, Option<CabacContexts>, CabacContexts), DecodeError>;
+        let ctb_loop_result: CtbLoopResult = with_picture_state!(&mut self.state, |state| {
+            // A picture filtered row by row (frame threading) decodes its CTB
+            // rows in order, the row filter following, so that the pictures
+            // referencing it can start early; unless it has none to overlap
+            // with (`rows_in_parallel`), when its rows decode in parallel
+            // and it is filtered at its end.
+            if wavefront && (state.row_filter.is_none() || self.rows_in_parallel) {
+                // CTB rows on several threads; same result as the loop below.
+                crate::wavefront::decode_rows(
+                    state,
+                    &slice_ctx,
+                    &substreams,
+                    slice_start_ts,
+                    contexts,
+                    saved_state,
+                    threads,
+                )
+            } else {
+                let mut more_data = true;
+                let mut ctb_addr_ts: u32 = slice_start_ts;
+                let mut substream_idx: u32 = 0;
+
+                while more_data && ctb_addr_ts < total_ctbs {
+                    let ctb_addr_rs = tile_tables.ctb_addr_ts_to_rs[ctb_addr_ts as usize];
+                    let col = ctb_addr_rs % pic_width_in_ctbs;
+                    let is_first_ctb_of_slice = ctb_addr_ts == slice_start_ts;
+
+                    let is_tile_start = if is_first_ctb_of_slice {
+                        false
+                    } else {
+                        let prev_ts = ctb_addr_ts - 1;
+                        let prev_rs = tile_tables.ctb_addr_ts_to_rs[prev_ts as usize];
+                        tile_tables.tile_id[ctb_addr_rs as usize]
+                            != tile_tables.tile_id[prev_rs as usize]
+                    };
+
+                    // First CTB of a CTB row within its tile.
+                    let is_row_start = col == tile_col_start[col as usize];
+                    let needs_wpp_reinit = wpp && is_row_start && !is_first_ctb_of_slice;
+
+                    if is_tile_start || needs_wpp_reinit {
+                        substream_idx += 1;
+                        let ep_idx = substream_idx as usize;
+                        if ep_idx == 0 || ep_idx > sh.entry_point_offsets.len() {
+                            return Err(DecodeError::InvalidSyntax(
+                                "slice missing entry_point_offset for substream",
+                            ));
+                        }
+                        let nal_offset_from_start = sh.entry_point_offsets[ep_idx - 1];
+                        // Saturating: a damaged offset fails in reinit_at.
+                        let nal_target = nal_slice_data_start.saturating_add(nal_offset_from_start);
+                        let epbs_in_data_prefix = epb_positions
+                            .iter()
+                            .filter(|&&p| p >= nal_slice_data_start && p < nal_target)
+                            .count() as u32;
+                        let rbsp_offset_from_start = nal_offset_from_start - epbs_in_data_prefix;
+                        let byte_offset = cabac_byte_offset + rbsp_offset_from_start as usize;
+                        cabac.reinit_at(byte_offset)?;
+
+                        // WPP synchronisation (spec 9.3.1): from the state saved
+                        // after the second CTB of the row above when the CTB
+                        // above-right is available (same tile and slice);
+                        // otherwise, and at every tile start, initialise.
+                        let tr_available = wpp
+                            && ctb_addr_rs >= pic_width_in_ctbs
+                            && col + 1 < pic_width_in_ctbs
+                            && {
+                                let tr = (ctb_addr_rs - pic_width_in_ctbs + 1) as usize;
+                                tile_tables.tile_id[tr] == tile_tables.tile_id[ctb_addr_rs as usize]
+                                    && state.tab_slice_addr_rs[tr] == recorded_slice_addr
+                            };
+                        if tr_available {
+                            contexts = *saved_state.as_ref().ok_or(DecodeError::InvalidSyntax(
+                                "WPP row start without a saved context state",
+                            ))?;
+                        } else {
+                            contexts = CabacContexts::init(
+                                sh.slice_qp_y,
+                                sh.slice_type,
+                                sh.cabac_init_flag,
+                            );
+                        }
+                        state.first_qp_group = true;
+                    }
+
+                    // A complete CTB row is not rewritten (with frame
+                    // threading it may be published and read by other
+                    // pictures' threads); the same rule for any thread count.
+                    if state.decoded_rows.frozen(ctb_addr_rs as usize) {
+                        return Err(DecodeError::InvalidSyntax(
+                            "slice segment overlaps CTB rows already decoded",
+                        ));
+                    }
+                    let result = crate::wavefront::decode_ctb(
+                        &mut cabac,
+                        &mut contexts,
+                        state,
+                        &slice_ctx,
+                        ctb_addr_rs,
+                        ctb_addr_ts,
+                    );
+                    // A failed CTB stays undecoded for the row filter: its row
+                    // is filtered at the picture's end, after the grey fill.
+                    if result.is_ok()
+                        && state.decoded_rows.mark(ctb_addr_rs as usize)
+                        && let Some(mut filter) = state.row_filter.take()
+                    {
+                        filter.rows_decoded(state);
+                        state.row_filter = Some(filter);
+                    }
+                    more_data = result?;
+                    ctb_addr_ts += 1;
+
+                    // Storage for WPP (spec 9.3.2.4): after the second CTB of a
+                    // CTB row within its tile.
+                    if wpp && col == tile_col_start[col as usize] + 1 {
+                        saved_state = Some(contexts);
+                    }
+                }
+
+                if more_data {
+                    return Err(DecodeError::InvalidSyntax(
+                        "slice did not end on terminate bin",
+                    ));
+                }
+
+                Ok((ctb_addr_ts, saved_state, contexts))
+            }
+        });
+
+        let (_, final_saved_state, final_contexts_state) = ctb_loop_result?;
+
+        self.saved_cabac_state = Some(final_contexts_state);
+        self.saved_wpp_cabac_state = final_saved_state;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TileScanTables {
+    /// Raster → tile-scan; converts `slice_segment_address` to the
+    /// tile-scan position decoding starts at.
+    ctb_addr_rs_to_ts: Vec<u32>,
+    ctb_addr_ts_to_rs: Vec<u32>,
+    tile_id: Vec<u32>,
+}
+
+impl TileScanTables {
+    /// Derive the scan tables from an SPS and a PPS whose
+    /// `resolve_tile_geometry` has already been called.
+    fn build(sps: &Sps, pps: &Pps) -> Self {
+        let pic_w_ctbs = sps.pic_width_in_ctbs_y() as usize;
+        let pic_h_ctbs = sps.pic_height_in_ctbs_y() as usize;
+        let total = pic_w_ctbs * pic_h_ctbs;
+
+        let mut rs_to_ts = vec![0u32; total];
+        let mut ts_to_rs = vec![0u32; total];
+        let mut tile_id = vec![0u32; total];
+
+        // Tile column / row boundaries in CTB coords (cumulative).
+        let n_cols = pps.num_tile_columns;
+        let n_rows = pps.num_tile_rows;
+        let mut col_bd = vec![0u32; n_cols + 1];
+        for i in 0..n_cols {
+            col_bd[i + 1] = col_bd[i] + pps.column_widths_in_ctbs[i];
+        }
+        let mut row_bd = vec![0u32; n_rows + 1];
+        for i in 0..n_rows {
+            row_bd[i + 1] = row_bd[i] + pps.row_heights_in_ctbs[i];
+        }
+
+        // Fill `ctb_addr_rs_to_ts` via the formula in FFmpeg's `setup_pps`
+        // (spec 6.5.1, HEVC reference decoder). For every raster address we
+        // locate its tile (tile_x, tile_y) and count how many CTBs precede
+        // it in tile-scan order.
+        #[allow(clippy::needless_range_loop)]
+        for ctb_addr_rs in 0..total {
+            let tb_x = (ctb_addr_rs % pic_w_ctbs) as u32;
+            let tb_y = (ctb_addr_rs / pic_w_ctbs) as u32;
+
+            let mut tile_x = 0usize;
+            for i in 0..n_cols {
+                if tb_x < col_bd[i + 1] {
+                    tile_x = i;
+                    break;
+                }
+            }
+            let mut tile_y = 0usize;
+            for i in 0..n_rows {
+                if tb_y < row_bd[i + 1] {
+                    tile_y = i;
+                    break;
+                }
+            }
+
+            // Count CTBs in all earlier tiles within the same tile row (tile_y)
+            // + all earlier tile rows.
+            let mut val: u32 = 0;
+            for i in 0..tile_x {
+                val += pps.row_heights_in_ctbs[tile_y] * pps.column_widths_in_ctbs[i];
+            }
+            for i in 0..tile_y {
+                val += (pic_w_ctbs as u32) * pps.row_heights_in_ctbs[i];
+            }
+            val += (tb_y - row_bd[tile_y]) * pps.column_widths_in_ctbs[tile_x]
+                + (tb_x - col_bd[tile_x]);
+
+            rs_to_ts[ctb_addr_rs] = val;
+            if (val as usize) < total {
+                ts_to_rs[val as usize] = ctb_addr_rs as u32;
+            }
+        }
+
+        // Tile id per CTB raster address. Flattening by tile-row then
+        // tile-column gives the standard tile ordering.
+        let mut cur_id: u32 = 0;
+        for j in 0..n_rows {
+            for i in 0..n_cols {
+                for y in row_bd[j]..row_bd[j + 1] {
+                    for x in col_bd[i]..col_bd[i + 1] {
+                        let rs = (y as usize) * pic_w_ctbs + x as usize;
+                        if rs < total {
+                            tile_id[rs] = cur_id;
+                        }
+                    }
+                }
+                cur_id += 1;
+            }
+        }
+
+        Self {
+            ctb_addr_rs_to_ts: rs_to_ts,
+            ctb_addr_ts_to_rs: ts_to_rs,
+            tile_id,
+        }
+    }
+}
+
+/// Resource limits applied before allocating storage for a decoded picture.
+#[derive(Clone, Copy, Debug)]
+pub struct DecodeLimits {
+    /// Maximum coded luma samples in one picture.
+    pub max_picture_pixels: u64,
+    /// Maximum estimated bytes needed for picture state and frame emission.
+    pub max_picture_memory_bytes: u64,
+}
+
+impl Default for DecodeLimits {
+    fn default() -> Self {
+        Self {
+            max_picture_pixels: 35_651_584,
+            max_picture_memory_bytes: 512 * 1024 * 1024,
+        }
+    }
+}
+
+/// Picture geometry that determines the min-TB Z-scan table: width,
+/// height, log2 CTB size, log2 min TB size.
+type ZscanKey = (u32, u32, u8, u8);
+
+/// Streaming HEVC decoder.
+///
+/// Feed NAL units in bitstream order with [`decode_nal`](Self::decode_nal).
+/// Parameter sets are stored as they arrive and activated by the slices
+/// that use them.
+///
+/// Frames come out in one of two orders:
+///
+/// - **Decoding order** (the default, [`Decoder::new`]): `decode_nal`
+///   returns each picture once it is decoded, and [`flush`](Self::flush)
+///   returns any picture still in progress at the end of the stream.
+/// - **Display order** ([`with_display_order`](Self::with_display_order)):
+///   the spec's output process releases frames, taken with
+///   [`next_output`](Self::next_output).
+///
+/// ```no_run
+/// use rust_h265::{Decoder, parse_annex_b};
+///
+/// let data = std::fs::read("input.h265")?;
+/// let mut decoder = Decoder::new();
+/// for nal in parse_annex_b(&data) {
+///     if let Some(frame) = decoder.decode_nal(&nal)? {
+///         // `frame` is in decoding order
+///     }
+/// }
+/// while let Some(frame) = decoder.flush() {
+///     // last picture, if any
+/// }
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
+/// # Errors and damaged streams
+///
+/// An error from `decode_nal` concerns that NAL unit only (with
+/// [`with_threads`](Self::with_threads) above 1, an error in a picture's
+/// slice data may also come from a later call, or from
+/// [`next_error`](Self::next_error)); keep feeding the stream. A picture that loses slices (failed or missing) is still
+/// finished when the next picture starts, with the CTBs no slice decoded
+/// filled mid-grey, and is output and used as a reference. A reference
+/// picture that is missing altogether is replaced by a mid-grey stand-in
+/// (spec 8.3.3). Pictures predicted from damaged ones show the damage until
+/// the next IRAP picture. A picture whose first slice segment is lost is
+/// dropped, as in FFmpeg.
+///
+/// `Decoder` is `Send`: it can be moved to another thread.
+#[derive(Default)]
+pub struct Decoder {
+    limits: DecodeLimits,
+    vps: Option<Vps>,
+    sps: Option<Arc<Sps>>,
+    pps: Option<Arc<Pps>>,
+    /// Phase 3c-2: cached tile-scan tables for the active (SPS, PPS) pair.
+    /// Rebuilt lazily on the first slice following a parameter-set change.
+    tile_tables: Option<Arc<TileScanTables>>,
+    /// The picture currently being assembled from one or more slice segments.
+    /// Phase 3c-1: created on the first slice segment, finalized and
+    /// returned as a `Frame` when all CTBs have been decoded.
+    current_picture: Option<PictureInProgress>,
+    /// Phase 3d-1: decoded picture buffer. Holds recently decoded pictures
+    /// for reference lookup. Not yet used for inter decoding (which is the
+    /// reason this infrastructure exists) — every picture currently
+    /// inserted is an IDR intra picture. Output happens immediately after
+    /// decoding; bumping for reorder is a future phase.
+    dpb: DecodedPictureBuffer,
+    /// Phase 3d-1: POC of the most recent decoded picture with
+    /// `temporal_id == 0` (and not a sub-layer non-reference or
+    /// RASL/RADL picture). Per spec 8.3.1 this is the "prevTid0Pic"
+    /// seed for computing a non-IDR picture's POC from its LSB. Updated
+    /// after every picture whose NAL type + temporal_id satisfy the
+    /// "tid0" condition, IRAP pictures included (an IDR stores 0, a
+    /// mid-stream CRA stores its real POC).
+    prev_tid0_poc: i32,
+    /// True once any picture has been decoded. Together with `after_eos`
+    /// this decides whether an IRAP picture starts a new coded video
+    /// sequence and so has NoRaslOutputFlag = 1 (spec 8.1.3): the first
+    /// picture in the bitstream, or the first picture after an EOS NAL.
+    /// IDR and BLA pictures always have NoRaslOutputFlag = 1 regardless.
+    seen_picture: bool,
+    /// True after an end-of-sequence NAL until the next picture starts.
+    after_eos: bool,
+    /// True while the RASL pictures associated with the most recent CRA
+    /// must be skipped because that CRA had NoRaslOutputFlag = 1 (spec
+    /// 8.1.3 / 8.3.2): their references precede the CRA and were never
+    /// decoded. Cleared at the next IRAP picture.
+    skip_rasl: bool,
+    /// Phase 3d-1: most recently derived reference picture sets for the
+    /// current picture. Populated by `derive_rps_from_slice_header`; no
+    /// consumer yet other than the decoder's own bookkeeping.
+    current_rps: ReferencePictureSets,
+    /// Phase 3d-2: RefPicList0 for the current P/B slice, built per spec
+    /// 8.3.2 after RPS marking. Empty for I slices. Consumed by Phase 3d-5
+    /// AMVP to populate `SliceParams::ref_pic_list_pocs`.
+    current_ref_list_l0: Vec<Arc<DecodedPicture>>,
+    /// Phase 3d-2: RefPicList1 for the current B slice. Empty for P and I
+    /// slices. Consumed by Phase 3d-5 AMVP.
+    current_ref_list_l1: Vec<Arc<DecodedPicture>>,
+
+    /// Parameter sets received so far, indexed by their IDs (up to 16 SPSs
+    /// and 64 PPSs). `sps` / `pps` hold the active pair, activated from
+    /// these tables at the first slice of each picture.
+    /// A set that failed to parse (e.g. it enables an unsupported coding
+    /// tool) is kept as its error, so slices using that ID report it
+    /// instead of decoding with an older set of the same ID.
+    sps_table: Vec<Option<Result<Sps, DecodeError>>>,
+    pps_table: Vec<Option<Result<Pps, DecodeError>>>,
+    /// IDs of the active SPS / PPS, and whether a parameter set arrived
+    /// since they were activated.
+    active_sps_id: Option<u32>,
+    active_pps_id: Option<u32>,
+    parameter_sets_changed: bool,
+
+    /// Min-TB Z-scan table shared by every picture with the same geometry,
+    /// keyed by (width, height, log2 CTB size, log2 min TB size). Building
+    /// it per picture was a measurable share of decode time.
+    zscan_cache: Option<(ZscanKey, Arc<Vec<i32>>)>,
+
+    /// Set by `with_display_order`: frames are released in output order by
+    /// the spec C.5.2 output process and taken with `next_output`, instead
+    /// of being returned by `decode_nal` in decoding order.
+    display_order: bool,
+    /// Set by `with_threads`: threads the picture-level passes may use (0
+    /// from `Default` means 1).
+    threads: usize,
+    /// Frame threading (`threads > 1`): pictures whose last slice has been
+    /// handed to their thread, oldest first.
+    in_flight: std::collections::VecDeque<InFlight>,
+    /// Errors from the slice data of pictures decoded on their own threads,
+    /// returned by later calls to `decode_nal`.
+    deferred_errors: std::collections::VecDeque<DecodeError>,
+    next_picture_id: u64,
+    /// Frame threading: the threads pictures decode on (created with the
+    /// first picture).
+    workers: Option<crate::parallel::ThreadPool>,
+    output_queue: crate::output::OutputQueue,
+    /// Decoding-order mode: frames ready but not yet returned. A call can
+    /// finish two pictures (an incomplete earlier one, then its own), and
+    /// `decode_nal` returns one frame per call.
+    pending_frames: std::collections::VecDeque<Frame>,
+    /// Buffers reused from earlier pictures.
+    pool: PicturePool,
+}
+
+/// Fill every CTB that no slice decoded (`tab_slice_addr_rs == -1`) with
+/// mid-grey, the value the spec uses for generated unavailable pictures
+/// (8.3.3.2). Such CTBs come from lost or failed slices; without this they
+/// would hold zeros, which show as saturated green and spread through
+/// motion compensation.
+fn fill_undecoded_ctbs<P: Pixel>(state: &mut crate::cu_tree::PictureState<P>) {
+    let ctb = 1usize << state.log2_ctb_size;
+    let (w, h) = (state.width as usize, state.height as usize);
+    let ctb_w = w.div_ceil(ctb);
+    let mid = |bd: u8| P::from_i32_clamped(1 << (bd - 1), bd);
+    let (mid_y, mid_c) = (mid(state.bit_depth), mid(state.bit_depth_c));
+    let (sw, sh) = (state.chroma_shift_w, state.chroma_shift_h);
+    for rs in 0..state.tab_slice_addr_rs.len() {
+        if state.tab_slice_addr_rs[rs] != -1 {
+            continue;
+        }
+        let (x0, y0) = ((rs % ctb_w) * ctb, (rs / ctb_w) * ctb);
+        let (x1, y1) = ((x0 + ctb).min(w), (y0 + ctb).min(h));
+        let ys = state.y_stride;
+        for y in y0..y1 {
+            state.y_plane[y * ys + x0..y * ys + x1].fill(mid_y);
+        }
+        if state.chroma_array_type != 0 {
+            let cs = state.uv_stride;
+            let (cx0, cx1) = (x0 >> sw, x1.div_ceil(1 << sw));
+            for y in (y0 >> sh)..y1.div_ceil(1 << sh) {
+                state.u_plane[y * cs + cx0..y * cs + cx1].fill(mid_c);
+                state.v_plane[y * cs + cx0..y * cs + cx1].fill(mid_c);
+            }
+        }
+    }
+}
+
+/// Min-TB Z-scan table for `sps`, shared through `cache` while the picture
+/// geometry stays the same.
+fn zscan_table(cache: &mut Option<(ZscanKey, Arc<Vec<i32>>)>, sps: &Sps) -> Arc<Vec<i32>> {
+    let key = (
+        sps.pic_width_in_luma_samples,
+        sps.pic_height_in_luma_samples,
+        sps.ctb_log2_size_y,
+        sps.min_tb_log2_size_y,
+    );
+    match cache {
+        Some((k, tab)) if *k == key => Arc::clone(tab),
+        _ => {
+            let tab = Arc::new(crate::cu_tree::build_min_tb_addr_zs(sps));
+            *cache = Some((key, Arc::clone(&tab)));
+            tab
+        }
+    }
+}
+
+/// Buffers kept from earlier pictures so that a new picture does not
+/// allocate (and fault in, and zero) its planes and tables from scratch.
+#[derive(Default)]
+struct PicturePool {
+    /// State of the last finished picture, per sample type.
+    state_u8: Option<PictureState<u8>>,
+    state_u16: Option<PictureState<u16>>,
+    /// Planes and motion fields of pictures that left the DPB.
+    planes_u8: Vec<([Vec<u8>; 3], Vec<MvField>)>,
+    planes_u16: Vec<([Vec<u16>; 3], Vec<MvField>)>,
+}
+
+/// Plane sets kept per sample type; about one picture leaves the DPB per
+/// picture decoded, so two is enough.
+const POOLED_PLANE_SETS: usize = 2;
+
+impl PicturePool {
+    /// A picture state for `sps`, built from pooled buffers when available.
+    fn new_state(&mut self, sps: &Sps, zscan: Arc<Vec<i32>>) -> PictureStateEnum {
+        if sps.needs_u16_samples() {
+            let (planes, mvf) = self
+                .planes_u16
+                .pop()
+                .map_or((None, None), |(p, m)| (Some(p), Some(m)));
+            let recycled = RecycledBuffers {
+                state: self.state_u16.take(),
+                planes,
+                mvf,
+            };
+            PictureStateEnum::U16(PictureState::new_recycled(sps, zscan, recycled))
+        } else {
+            let (planes, mvf) = self
+                .planes_u8
+                .pop()
+                .map_or((None, None), |(p, m)| (Some(p), Some(m)));
+            let recycled = RecycledBuffers {
+                state: self.state_u8.take(),
+                planes,
+                mvf,
+            };
+            PictureStateEnum::U8(PictureState::new_recycled(sps, zscan, recycled))
+        }
+    }
+
+    /// Keep a finished picture's state (its planes were moved out).
+    fn recycle_state(&mut self, state: PictureStateEnum) {
+        match state {
+            PictureStateEnum::U8(s) => self.state_u8 = Some(s),
+            PictureStateEnum::U16(s) => self.state_u16 = Some(s),
+        }
+    }
+
+    /// Take back the planes and motion field of a picture that left the
+    /// DPB, unless something else (a reference list) still holds it.
+    fn recycle_picture(&mut self, pic: Arc<DecodedPicture>) {
+        let Ok(pic) = Arc::try_unwrap(pic) else {
+            return;
+        };
+        let mvf = pic.tab_mvf.into_vec();
+        match pic.planes {
+            crate::dpb::PicturePlanes::U8(p) if self.planes_u8.len() < POOLED_PLANE_SETS => {
+                self.planes_u8.push((p.map(SharedTable::into_vec), mvf));
+            }
+            crate::dpb::PicturePlanes::U16(p) if self.planes_u16.len() < POOLED_PLANE_SETS => {
+                self.planes_u16.push((p.map(SharedTable::into_vec), mvf));
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Drop for Decoder {
+    /// Pictures still decoding end with the decoder: the current picture's
+    /// task sees its channel close, the others finish; then the worker
+    /// threads are joined.
+    fn drop(&mut self) {
+        self.current_picture = None;
+        for f in self.in_flight.drain(..) {
+            let _ = f.handle.join();
+        }
+        self.workers = None;
+    }
+}
+
+/// A fresh picture state with the sample type the SPS needs.
+fn new_picture_state(sps: &Sps, zscan: Arc<Vec<i32>>) -> PictureStateEnum {
+    if sps.needs_u16_samples() {
+        PictureStateEnum::U16(PictureState::<u16>::new_with_zscan(sps, zscan))
+    } else {
+        PictureStateEnum::U8(PictureState::<u8>::new_with_zscan(sps, zscan))
+    }
+}
+
+/// A mid-grey reference picture with POC `poc` and no motion (spec
+/// 8.3.3.2), standing in for a reference that is missing from the DPB.
+fn generated_reference<P: Pixel>(
+    state: &mut crate::cu_tree::PictureState<P>,
+    poc: i32,
+) -> Arc<DecodedPicture> {
+    fill_undecoded_ctbs(state);
+    let (width, height) = (state.width, state.height);
+    let (y_stride, uv_stride) = (state.y_stride, state.uv_stride);
+    let (chroma_shift_w, chroma_shift_h) = (state.chroma_shift_w, state.chroma_shift_h);
+    let (y, u, v, tab_mvf, log2_min_pu_size, min_pu_width, log2_ctb_size) =
+        state.take_planes_and_mvf();
+    let mut dp = DecodedPicture::new_with_mvf(
+        y,
+        u,
+        v,
+        width,
+        height,
+        poc,
+        tab_mvf,
+        log2_min_pu_size,
+        min_pu_width,
+        log2_ctb_size,
+        [Vec::new(), Vec::new()],
+    );
+    dp.y_stride = y_stride;
+    dp.uv_stride = uv_stride;
+    dp.chroma_shift_w = chroma_shift_w;
+    dp.chroma_shift_h = chroma_shift_h;
+    Arc::new(dp)
+}
+
+/// Crop a decoded picture's planes to the conformance window and build a Frame.
+/// The pixel planes may have CTU-aligned strides larger than `coded_w`, so we
+/// always use `state.y_stride` / `state.uv_stride` for row addressing.
+#[allow(clippy::too_many_arguments)]
+fn crop_frame<P: Pixel>(
+    state: &crate::cu_tree::PictureState<P>,
+    coded_w: u32,
+    coded_h: u32,
+    cropped_w: u32,
+    cropped_h: u32,
+    left_offset: u32, // in chroma sample units
+    top_offset: u32,  // in chroma sample units
+    poc: i32,
+    bit_depth: u8,
+) -> Result<Frame, DecodeError> {
+    // Conformance-window offsets are in chroma sample units; scale by
+    // SubWidthC/SubHeightC (`chroma_shift_*`) to reach luma coordinates.
+    let luma_left = left_offset
+        .checked_shl(state.chroma_shift_w)
+        .filter(|v| v >> state.chroma_shift_w == left_offset)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or(DecodeError::InvalidSyntax("invalid luma crop offset"))?;
+    let luma_top = top_offset
+        .checked_shl(state.chroma_shift_h)
+        .filter(|v| v >> state.chroma_shift_h == top_offset)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or(DecodeError::InvalidSyntax("invalid luma crop offset"))?;
+    let cw = usize::try_from(cropped_w)
+        .map_err(|_| DecodeError::InvalidSyntax("invalid cropped width"))?;
+    let ch = usize::try_from(cropped_h)
+        .map_err(|_| DecodeError::InvalidSyntax("invalid cropped height"))?;
+    let coded_w =
+        usize::try_from(coded_w).map_err(|_| DecodeError::InvalidSyntax("invalid coded width"))?;
+    let coded_h =
+        usize::try_from(coded_h).map_err(|_| DecodeError::InvalidSyntax("invalid coded height"))?;
+    if luma_left.checked_add(cw).is_none_or(|end| end > coded_w)
+        || luma_top.checked_add(ch).is_none_or(|end| end > coded_h)
+    {
+        return Err(DecodeError::InvalidSyntax(
+            "conformance window exceeds picture dimensions",
+        ));
+    }
+    let stride_y = state.y_stride;
+    let stride_uv = state.uv_stride;
+    let chroma_format_idc = state.chroma_array_type;
+
+    // Fast path: if the output dimensions match the stride (no padding, no
+    // conformance crop), we can do a simple row-copy or even clone.
+    let no_crop =
+        luma_left == 0 && luma_top == 0 && cw == stride_y && ch == state.y_plane.len() / stride_y;
+    if no_crop {
+        return Ok(Frame {
+            y: P::wrap_vec(state.y_plane[0..state.y_plane.len()].to_vec()),
+            u: P::wrap_vec(state.u_plane[0..state.u_plane.len()].to_vec()),
+            v: P::wrap_vec(state.v_plane[0..state.v_plane.len()].to_vec()),
+            width: cropped_w,
+            height: cropped_h,
+            pic_order_cnt: poc,
+            bit_depth,
+            chroma_format_idc,
+        });
+    }
+
+    let mut y = Vec::with_capacity(cw * ch);
+    for row in 0..ch {
+        let src_row = luma_top + row;
+        let start = src_row
+            .checked_mul(stride_y)
+            .and_then(|value| value.checked_add(luma_left))
+            .ok_or(DecodeError::InvalidSyntax("invalid luma crop range"))?;
+        let end = start
+            .checked_add(cw)
+            .ok_or(DecodeError::InvalidSyntax("invalid luma crop range"))?;
+        y.extend_from_slice(
+            state
+                .y_plane
+                .get_range(start..end)
+                .ok_or(DecodeError::InvalidSyntax("invalid luma crop range"))?,
+        );
+    }
+    let cw_c = cw >> state.chroma_shift_w;
+    let ch_c = ch >> state.chroma_shift_h;
+    let chroma_left = usize::try_from(left_offset)
+        .map_err(|_| DecodeError::InvalidSyntax("invalid chroma crop offset"))?;
+    let chroma_top = usize::try_from(top_offset)
+        .map_err(|_| DecodeError::InvalidSyntax("invalid chroma crop offset"))?;
+    let mut u = Vec::with_capacity(cw_c * ch_c);
+    let mut v = Vec::with_capacity(cw_c * ch_c);
+    for row in 0..ch_c {
+        let src_row = chroma_top + row;
+        let start = src_row
+            .checked_mul(stride_uv)
+            .and_then(|value| value.checked_add(chroma_left))
+            .ok_or(DecodeError::InvalidSyntax("invalid chroma crop range"))?;
+        let end = start
+            .checked_add(cw_c)
+            .ok_or(DecodeError::InvalidSyntax("invalid chroma crop range"))?;
+        u.extend_from_slice(
+            state
+                .u_plane
+                .get_range(start..end)
+                .ok_or(DecodeError::InvalidSyntax("invalid chroma crop range"))?,
+        );
+        v.extend_from_slice(
+            state
+                .v_plane
+                .get_range(start..end)
+                .ok_or(DecodeError::InvalidSyntax("invalid chroma crop range"))?,
+        );
+    }
+    Ok(Frame {
+        y: P::wrap_vec(y),
+        u: P::wrap_vec(u),
+        v: P::wrap_vec(v),
+        width: cropped_w,
+        height: cropped_h,
+        pic_order_cnt: poc,
+        bit_depth,
+        chroma_format_idc,
+    })
+}
+
+impl Decoder {
+    /// A decoder in decoding-order mode with the default
+    /// [`DecodeLimits`]: Level 6.2's maximum picture size and an estimated
+    /// 512 MB of state per picture.
+    ///
+    /// Most callers should chain [`with_display_order`](Self::with_display_order):
+    /// decoding order is the default only for compatibility.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A decoder in decoding-order mode with custom resource limits. An SPS
+    /// that exceeds them is rejected with [`DecodeError::ResourceLimit`].
+    pub fn with_limits(limits: DecodeLimits) -> Self {
+        let mut decoder = Self::default();
+        decoder.limits = limits;
+        decoder
+    }
+
+    /// Output frames in display order, as the spec's output process does
+    /// (C.5.2, "bumping"), instead of in decoding order. This is the
+    /// recommended mode: it handles reordering, `pic_output_flag` and
+    /// sequence boundaries that a caller sorting decoding-order frames by
+    /// POC would have to get right itself.
+    ///
+    /// In this mode `decode_nal` always returns `Ok(None)`. Take the frames
+    /// released so far with [`next_output`](Self::next_output) after each
+    /// call, and at the end of the stream call [`flush`](Self::flush) until
+    /// it returns `None`. The decoder applies the stream's reorder and DPB
+    /// size limits, and drops pictures the spec does not output: those with
+    /// `pic_output_flag = 0`, skipped RASL pictures, and pictures still
+    /// waiting when an IRAP picture with `NoOutputOfPriorPicsFlag = 1`
+    /// starts a new coded video sequence.
+    ///
+    /// ```no_run
+    /// # let data: Vec<u8> = Vec::new();
+    /// let mut dec = rust_h265::Decoder::new().with_display_order();
+    /// for nal in rust_h265::parse_annex_b(&data) {
+    ///     dec.decode_nal(&nal)?;
+    ///     while let Some(frame) = dec.next_output() {
+    ///         // display `frame`
+    ///     }
+    /// }
+    /// while let Some(frame) = dec.flush() {
+    ///     // display `frame`
+    /// }
+    /// # Ok::<(), rust_h265::DecodeError>(())
+    /// ```
+    pub fn with_display_order(mut self) -> Self {
+        self.display_order = true;
+        self
+    }
+
+    /// Use up to `threads` threads (at least 1; the default is 1).
+    ///
+    /// The frames, their order and every sample are identical for every
+    /// thread count; only the speed and the timing change:
+    ///
+    /// - Frame threading: each picture decodes on its own thread, up to
+    ///   `threads` at a time. A picture's loop filters run row by row as its
+    ///   CTB rows finish, so the pictures referencing it start right away:
+    ///   motion compensation and temporal MV prediction wait only for the
+    ///   rows they read. Works for every stream.
+    /// - With wavefront parallel processing (`entropy_coding_sync_enabled_flag`,
+    ///   on by default in x265), a picture with no other picture to overlap
+    ///   with (the first one, or a still image) decodes its CTB rows in
+    ///   parallel, each row two CTBs behind the one above.
+    ///
+    /// With more than one thread the decoder works ahead of the caller: a
+    /// frame comes out of a later `decode_nal` / [`next_output`](Self::next_output)
+    /// call than with one thread (and the rest from [`flush`](Self::flush)),
+    /// and an error in a picture's slice data is returned by a later
+    /// `decode_nal` call, or by [`next_error`](Self::next_error) after the
+    /// last one. Errors in NAL unit headers, slice headers and parameter
+    /// sets still come from the call that received them.
+    ///
+    /// [`std::thread::available_parallelism`] is a reasonable value; more
+    /// threads than the machine's performance cores rarely help.
+    ///
+    /// ```
+    /// let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    /// let decoder = rust_h265::Decoder::new().with_display_order().with_threads(threads);
+    /// # drop(decoder);
+    /// ```
+    pub fn with_threads(mut self, threads: usize) -> Self {
+        self.threads = threads.max(1);
+        self
+    }
+
+    /// Next frame released for display, in display-order mode (see
+    /// [`with_display_order`](Self::with_display_order)). Always `None` in
+    /// the default decoding-order mode. With
+    /// [`with_threads`](Self::with_threads) above 1 it is also `None` while
+    /// the next frame in display order is still decoding: keep calling
+    /// after each NAL unit, and [`flush`](Self::flush) at the end.
+    pub fn next_output(&mut self) -> Option<Frame> {
+        self.collect_pictures(false);
+        self.output_queue.pop()
+    }
+
+    /// The next error from a picture decoded on its own thread that no
+    /// `decode_nal` call has returned yet. With
+    /// [`with_threads`](Self::with_threads) above 1, errors in a picture's
+    /// slice data are found after the call that fed the slice;
+    /// `decode_nal` returns them on later calls, and this returns those
+    /// still waiting, for example after [`flush`](Self::flush). Always
+    /// `None` with one thread.
+    pub fn next_error(&mut self) -> Option<DecodeError> {
+        self.collect_pictures(false);
+        self.deferred_errors.pop_front()
+    }
+
+    fn validate_picture_limits(&self, sps: &Sps) -> Result<(), DecodeError> {
+        let pixels = u64::from(sps.pic_width_in_luma_samples)
+            .checked_mul(u64::from(sps.pic_height_in_luma_samples))
+            .ok_or(DecodeError::ResourceLimit("picture pixel count overflow"))?;
+        if pixels > self.limits.max_picture_pixels {
+            return Err(DecodeError::ResourceLimit("picture pixel count"));
+        }
+
+        let ctb_size = 1u64 << sps.ctb_log2_size_y;
+        let width = u64::from(sps.pic_width_in_luma_samples).div_ceil(ctb_size) * ctb_size;
+        let height = u64::from(sps.pic_height_in_luma_samples).div_ceil(ctb_size) * ctb_size;
+        let aligned_pixels = width.checked_mul(height).ok_or(DecodeError::ResourceLimit(
+            "picture memory estimate overflow",
+        ))?;
+        let pixel_bytes = if sps.needs_u16_samples() { 2 } else { 1 };
+        let plane_bytes =
+            aligned_pixels
+                .checked_mul(3 * pixel_bytes)
+                .ok_or(DecodeError::ResourceLimit(
+                    "picture memory estimate overflow",
+                ))?;
+        let min_pu_count = aligned_pixels >> 4;
+        let min_cb_count = aligned_pixels >> (2 * sps.min_cb_log2_size_y);
+        let min_tb_count = aligned_pixels >> (2 * sps.min_tb_log2_size_y);
+        let ctb_count = (width / ctb_size) * (height / ctb_size);
+        let table_bytes = min_pu_count
+            .checked_mul((std::mem::size_of::<MvField>() + 1) as u64)
+            .and_then(|n| n.checked_add(min_cb_count * 3))
+            .and_then(|n| n.checked_add(aligned_pixels / 8))
+            .and_then(|n| n.checked_add(min_tb_count * 5))
+            .and_then(|n| {
+                n.checked_add(
+                    ctb_count * (std::mem::size_of::<crate::sao::SaoParams>() as u64 + 18),
+                )
+            })
+            .ok_or(DecodeError::ResourceLimit(
+                "picture memory estimate overflow",
+            ))?;
+        let estimated_bytes =
+            plane_bytes
+                .checked_add(table_bytes)
+                .ok_or(DecodeError::ResourceLimit(
+                    "picture memory estimate overflow",
+                ))?;
+        if estimated_bytes > self.limits.max_picture_memory_bytes {
+            return Err(DecodeError::ResourceLimit("estimated picture memory"));
+        }
+        Ok(())
+    }
+
+    /// Feed one NAL unit. Returns `Ok(Some(frame))` when a picture has just
+    /// finished decoding, `Ok(None)` otherwise (e.g. parameter sets, SEI).
+    ///
+    /// At most one frame is returned per call. When a damaged picture is
+    /// finished at the start of the next one and that next picture also
+    /// completes in the same call, the later frame is returned by the next
+    /// call (or by `flush`), so frames stay in decoding order.
+    pub fn decode_nal(&mut self, nal: &NalUnit<'_>) -> Result<Option<Frame>, DecodeError> {
+        let result = self.decode_nal_inner(nal);
+        self.collect_pictures(false);
+        // An error from a picture decoded on its own thread (frame
+        // threading) comes out after this NAL unit's own error.
+        if result.is_ok()
+            && let Some(e) = self.deferred_errors.pop_front()
+        {
+            if let Ok(Some(frame)) = result {
+                self.pending_frames.push_back(frame);
+            }
+            return Err(e);
+        }
+        if self.pending_frames.is_empty() {
+            return result;
+        }
+        // Frames finished earlier go out first, keeping decoding order.
+        match result {
+            Ok(Some(frame)) => {
+                self.pending_frames.push_back(frame);
+                Ok(self.pending_frames.pop_front())
+            }
+            Ok(None) => Ok(self.pending_frames.pop_front()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn decode_nal_inner(&mut self, nal: &NalUnit<'_>) -> Result<Option<Frame>, DecodeError> {
+        // Spec 7.4.2.2: a decoder of the base layer ignores NAL units with
+        // nuh_layer_id > 0 (the layers of SHVC / MV-HEVC streams, such as
+        // the second view of stereo video), parameter sets included.
+        if nal.nuh_layer_id > 0 {
+            return Ok(None);
+        }
+        match nal.nal_unit_type {
+            NalUnitType::Vps => {
+                self.vps = Some(parse_vps(&nal.rbsp)?);
+                Ok(None)
+            }
+            NalUnitType::Sps => {
+                let parsed = parse_sps(&nal.rbsp).and_then(|sps| {
+                    self.validate_picture_limits(&sps)?;
+                    Ok(sps)
+                });
+                let id = match &parsed {
+                    Ok(sps) => Some(sps.sps_seq_parameter_set_id),
+                    Err(_) => crate::sps::peek_sps_id(&nal.rbsp),
+                };
+                let err = parsed.as_ref().err().cloned();
+                let id = match id {
+                    Some(id) if id <= 15 => id as usize,
+                    _ => {
+                        return Err(err.unwrap_or(DecodeError::InvalidSyntax(
+                            "sps_seq_parameter_set_id > 15",
+                        )));
+                    }
+                };
+                if self.sps_table.len() <= id {
+                    self.sps_table.resize(id + 1, None);
+                }
+                // A rejected SPS replaces any earlier one with its ID.
+                self.sps_table[id] = Some(parsed);
+                self.parameter_sets_changed = true;
+                err.map_or(Ok(None), Err)
+            }
+            NalUnitType::Pps => {
+                let parsed = parse_pps(&nal.rbsp);
+                let id = match &parsed {
+                    Ok(pps) => Some(pps.pps_pic_parameter_set_id),
+                    Err(_) => crate::pps::peek_pps_id(&nal.rbsp),
+                };
+                let err = parsed.as_ref().err().cloned();
+                let id = match id {
+                    Some(id) if id <= 63 => id as usize,
+                    _ => {
+                        return Err(err.unwrap_or(DecodeError::InvalidSyntax(
+                            "pps_pic_parameter_set_id > 63",
+                        )));
+                    }
+                };
+                if self.pps_table.len() <= id {
+                    self.pps_table.resize(id + 1, None);
+                }
+                // A rejected PPS replaces any earlier one with its ID.
+                self.pps_table[id] = Some(parsed);
+                self.parameter_sets_changed = true;
+                err.map_or(Ok(None), Err)
+            }
+            NalUnitType::Eos => {
+                // End of sequence: the next picture must be an IRAP and
+                // starts a new coded video sequence (NoRaslOutputFlag = 1).
+                let frame = self.end_picture()?;
+                self.after_eos = true;
+                Ok(frame)
+            }
+            // An access unit delimiter or end of bitstream also ends the
+            // picture before it, so its frame need not wait for the next
+            // picture.
+            NalUnitType::Aud | NalUnitType::Eob => self.end_picture(),
+            t if t.is_vcl() => self.decode_slice(nal, t),
+            _ => Ok(None),
+        }
+    }
+
+    /// End the stream: finish the picture in progress and return the frames
+    /// still waiting, one per call, until `None`. Call it at the end of
+    /// every stream.
+    ///
+    /// A picture ends when the next one starts, at an access unit
+    /// delimiter, end of sequence or end of bitstream NAL unit, or here: its
+    /// slices can arrive over several `decode_nal` calls, so the last
+    /// picture of a stream without such a NAL unit after it comes out of
+    /// `flush`. With [`with_threads`](Self::with_threads) above 1 this also
+    /// waits for the pictures still decoding.
+    ///
+    /// In display-order mode this ends the stream: every frame still
+    /// waiting is released, and each call returns the next one in display
+    /// order until `None`.
+    pub fn flush(&mut self) -> Option<Frame> {
+        // A picture still in progress at the end of the stream (its last
+        // slices lost or failed) is finished with its missing CTBs filled.
+        if let Some(pic) = self.current_picture.take()
+            && let Ok(Some(frame)) = self.finish_picture(pic)
+        {
+            self.pending_frames.push_back(frame);
+        }
+        // Frame threading: every picture still decoding finishes first.
+        self.collect_pictures(true);
+        if self.display_order {
+            self.output_queue.output_all();
+            return self.output_queue.pop();
+        }
+        self.pending_frames.pop_front()
+    }
+
+    /// End the picture in progress, if any (it is finished as it is, with
+    /// any CTBs no slice decoded filled mid-grey).
+    fn end_picture(&mut self) -> Result<Option<Frame>, DecodeError> {
+        match self.current_picture.take() {
+            Some(pic) => self.finish_picture(pic),
+            None => Ok(None),
+        }
+    }
+
+    fn decode_slice(
+        &mut self,
+        nal: &NalUnit<'_>,
+        nut: NalUnitType,
+    ) -> Result<Option<Frame>, DecodeError> {
+        // first_slice_segment_in_pic_flag is the slice header's first bit.
+        if nal.rbsp.first().is_some_and(|b| b & 0x80 != 0) {
+            // The previous picture never completed: slices were lost or
+            // failed to decode. Finish it as it is (with the parameter sets
+            // it was decoded with), so it can still be output and used as a
+            // reference, and start the new picture.
+            if let Some(pic) = self.current_picture.take()
+                && let Some(frame) = self.finish_picture(pic)?
+            {
+                self.pending_frames.push_back(frame);
+            }
+            self.activate_parameter_sets(nal, nut)?;
+        }
+
+        // Phase 3c-2: resolve PPS tile geometry and cache the tile-scan
+        // tables up front. We need `&mut self.pps` for `resolve_tile_geometry`
+        // but `&self.sps` for the inputs — take the SPS out of the option
+        // temporarily via a clone of the reference.
+        {
+            let sps = self
+                .sps
+                .as_ref()
+                .ok_or(DecodeError::InvalidSyntax("slice without active SPS"))?;
+            let pps = self
+                .pps
+                .as_mut()
+                .ok_or(DecodeError::InvalidSyntax("slice without active PPS"))?;
+            if pps.column_widths_in_ctbs.is_empty() {
+                // Resolved once per activation, before any slice of it is
+                // handed to a picture thread (otherwise this clones).
+                Arc::make_mut(pps).resolve_tile_geometry(sps)?;
+            }
+            if self.tile_tables.is_none() {
+                self.tile_tables = Some(Arc::new(TileScanTables::build(sps, pps)));
+            }
+        }
+
+        let sps = self.sps.as_ref().expect("sps present above");
+        let pps = self.pps.as_ref().expect("pps present above");
+        let tile_tables = self.tile_tables.as_ref().expect("tile tables built above");
+
+        let mut sh = parse_slice_segment_header(&nal.rbsp, nut, sps, pps)?;
+        sh.temporal_id = nal.temporal_id;
+
+        // Phase 3c-4: a dependent slice segment inherits the slice-header
+        // fields that the parser deliberately left at their defaults —
+        // slice_type, slice_qp_y, slice_sao_*, deblock override, ... —
+        // from the most recent independent slice segment in this picture.
+        // The entry_point_offsets / slice_segment_address / header_size_bits
+        // are independently signaled in the dependent slice's own header
+        // and must NOT be overwritten.
+        if sh.dependent_slice_segment_flag {
+            let pic = self
+                .current_picture
+                .as_ref()
+                .ok_or(DecodeError::InvalidSyntax(
+                    "dependent slice segment without an active picture",
+                ))?;
+            let parent = &pic.last_independent_slice_header;
+            sh.slice_type = parent.slice_type;
+            sh.pic_output_flag = parent.pic_output_flag;
+            sh.slice_pic_order_cnt_lsb = parent.slice_pic_order_cnt_lsb;
+            sh.slice_sao_luma_flag = parent.slice_sao_luma_flag;
+            sh.slice_sao_chroma_flag = parent.slice_sao_chroma_flag;
+            sh.slice_qp_delta = parent.slice_qp_delta;
+            sh.slice_qp_y = parent.slice_qp_y;
+            sh.slice_cb_qp_offset = parent.slice_cb_qp_offset;
+            sh.slice_cr_qp_offset = parent.slice_cr_qp_offset;
+            sh.cu_chroma_qp_offset_enabled_flag = parent.cu_chroma_qp_offset_enabled_flag;
+            sh.slice_deblocking_filter_disabled_flag = parent.slice_deblocking_filter_disabled_flag;
+            sh.slice_beta_offset_div2 = parent.slice_beta_offset_div2;
+            sh.slice_tc_offset_div2 = parent.slice_tc_offset_div2;
+            // Inherit inter bitstream fields too, since a dependent slice
+            // segment shares the logical slice of its parent.
+            sh.short_term_ref_pic_set_sps_flag = parent.short_term_ref_pic_set_sps_flag;
+            sh.short_term_ref_pic_set_idx = parent.short_term_ref_pic_set_idx;
+            sh.short_term_rps = parent.short_term_rps.clone();
+            sh.long_term_rps = parent.long_term_rps.clone();
+            sh.slice_temporal_mvp_enabled_flag = parent.slice_temporal_mvp_enabled_flag;
+            sh.num_ref_idx_l0_active_minus1 = parent.num_ref_idx_l0_active_minus1;
+            sh.num_ref_idx_l1_active_minus1 = parent.num_ref_idx_l1_active_minus1;
+            sh.mvd_l1_zero_flag = parent.mvd_l1_zero_flag;
+            sh.cabac_init_flag = parent.cabac_init_flag;
+            sh.collocated_from_l0_flag = parent.collocated_from_l0_flag;
+            sh.collocated_ref_idx = parent.collocated_ref_idx;
+            sh.max_num_merge_cand = parent.max_num_merge_cand;
+            sh.ref_pic_list_modification = parent.ref_pic_list_modification.clone();
+            sh.pred_weight_table = parent.pred_weight_table.clone();
+            sh.slice_loop_filter_across_slices_enabled_flag =
+                parent.slice_loop_filter_across_slices_enabled_flag;
+            sh.poc = parent.poc;
+        }
+
+        // Phase 3d-1: compute POC from the slice header's pic_order_cnt_lsb.
+        // IDR pictures always get POC = 0 (and the spec says prev_tid0_poc
+        // is reset too). For non-IDR pictures we use the `compute_poc`
+        // helper with the current `prev_tid0_poc` seed. Dependent slice
+        // segments inherit the POC from the parent independent segment
+        // (populated above) — we only compute it once per picture (on the
+        // first, independent slice).
+        let mut starts_new_sequence = false;
+        let mut irap_no_rasl_output = false;
+        if sh.first_slice_segment_in_pic_flag {
+            // Spec 8.1.3: an IRAP picture has NoRaslOutputFlag = 1 when it
+            // is IDR, BLA, the first picture in the bitstream, or the first
+            // picture after an EOS NAL. Such a picture starts a new coded
+            // video sequence: its POC MSB is 0 (8.3.1) and, for a CRA, the
+            // associated RASL pictures are not decoded (8.1.3).
+            let no_rasl_output_flag =
+                nut.is_irap() && (!nut.is_cra() || !self.seen_picture || self.after_eos);
+            // C.5.2.2: an IRAP with NoRaslOutputFlag = 1 other than the
+            // first picture ends output of the previous sequence.
+            starts_new_sequence = no_rasl_output_flag && self.seen_picture;
+            irap_no_rasl_output = no_rasl_output_flag;
+            if nut.is_irap() {
+                // RASL pictures are skipped after any IRAP with NoRaslOutputFlag
+                // = 1: a BLA always, a CRA that starts decoding (spec 8.1.3).
+                // IDR pictures have no associated RASL pictures.
+                self.skip_rasl = no_rasl_output_flag;
+            }
+            self.seen_picture = true;
+            self.after_eos = false;
+            if matches!(nut, NalUnitType::RaslN | NalUnitType::RaslR) && self.skip_rasl {
+                return Ok(None);
+            }
+            if nut.is_idr() {
+                sh.poc = 0;
+            } else {
+                sh.poc = Self::compute_poc(
+                    self.prev_tid0_poc,
+                    sh.slice_pic_order_cnt_lsb,
+                    sps.log2_max_pic_order_cnt_lsb,
+                    no_rasl_output_flag,
+                )
+                .ok_or(DecodeError::InvalidSyntax("PicOrderCntVal out of range"))?;
+            }
+        } else if matches!(nut, NalUnitType::RaslN | NalUnitType::RaslR) && self.skip_rasl {
+            // Remaining slice segments of a skipped RASL picture.
+            return Ok(None);
+        } else if !sh.dependent_slice_segment_flag {
+            // A non-first independent slice segment must have the same POC
+            // as the rest of the picture; just take it from the current
+            // picture in progress.
+            if let Some(pic) = self.current_picture.as_ref() {
+                sh.poc = pic.last_independent_slice_header.poc;
+            }
+        }
+
+        // Phase 3c-4: CABAC context setup.
+        //
+        // - Independent slice segment → fresh `CabacContexts::init` from
+        //   the slice QP and slice type, matching FFmpeg's `cabac_init_state`.
+        // - Dependent slice segment → restore the contexts as they were at
+        //   the end of the previous slice segment (after its last CTB's
+        //   `end_of_slice_flag = 1` terminate bin), matching FFmpeg's
+        //   behavior in `ff_hevc_cabac_init` which skips `cabac_init_state`
+        //   when `dependent_slice_segment_flag == 1`. Exception: if the
+        //   dependent slice's first CTB coincides with a WPP row start
+        //   and the picture is wider than 1 CTB, use the "end of previous
+        //   row's 2nd CTB" WPP save instead (spec 9.3.2.2 / FFmpeg
+        //   `load_states` path in `ff_hevc_cabac_init`). Single-column
+        //   pictures fall back to a fresh init for the row start, matching
+        //   the `ctb_width == 1` branch in FFmpeg.
+        //
+        // The CABAC byte stream is freshly opened on the new NAL's RBSP
+        // either way — the dependent slice has its own bitstream bytes,
+        // only the context state is inherited.
+        let pic_width_in_ctbs_for_init = sps.pic_width_in_ctbs_y();
+        let wpp_for_init = pps.entropy_coding_sync_enabled_flag;
+        let tiles_for_init = pps.tiles_enabled_flag;
+        // slice_segment_address is a CTB address in raster scan (spec
+        // 7.4.7.1); CTBs are decoded in tile scan, so convert it.
+        let slice_start_ts = *tile_tables
+            .ctb_addr_rs_to_ts
+            .get(sh.slice_segment_address as usize)
+            .ok_or(DecodeError::InvalidSyntax(
+                "slice_segment_address out of range",
+            ))?;
+        let tile_of_ts = |ts: u32| {
+            tile_tables
+                .ctb_addr_ts_to_rs
+                .get(ts as usize)
+                .and_then(|&rs| tile_tables.tile_id.get(rs as usize))
+                .copied()
+        };
+        let slice_starts_tile = tiles_for_init
+            && (slice_start_ts == 0
+                || tile_of_ts(slice_start_ts) != tile_of_ts(slice_start_ts - 1));
+        // First CTB column of the tile holding each picture column (0
+        // everywhere without tiles). With WPP, a CTB row of a tile is a
+        // substream and synchronises from the row above (spec 9.3.1).
+        let tile_col_start: Vec<u32> = {
+            let w = pic_width_in_ctbs_for_init as usize;
+            let mut starts = vec![0u32; w];
+            for c in 1..w {
+                starts[c] = if tile_tables.tile_id[c] != tile_tables.tile_id[c - 1] {
+                    c as u32
+                } else {
+                    starts[c - 1]
+                };
+            }
+            starts
+        };
+        let cabac_byte_offset = sh.header_size_bits / 8;
+        // Checked here, before a new picture starts, as the CTB decode
+        // opens its own reader.
+        CabacReader::new(&nal.rbsp, cabac_byte_offset)?;
+
+        // Spec 7.4.7.1: `entry_point_offset_minus1[i]` values are in NAL-unit
+        // byte-space (they count the emulation-prevention bytes 0x03 present
+        // in the raw NAL). To index into our RBSP (where EPBs have been
+        // stripped), we subtract the EPBs that fall inside each NAL-space
+        // target. Pre-compute the NAL-space position of the slice_segment_data
+        // start — this is the RBSP cabac_byte_offset plus the count of EPBs
+        // that fall inside the slice header.
+        let nal_slice_data_start = {
+            let mut nss = cabac_byte_offset as u32;
+            for &p in &nal.epb_positions {
+                if p < nss {
+                    nss += 1;
+                } else {
+                    break;
+                }
+            }
+            nss
+        };
+        let pic_width_in_ctbs = sps.pic_width_in_ctbs_y();
+        let pic_height_in_ctbs = sps.pic_height_in_ctbs_y();
+        let total_ctbs = pic_width_in_ctbs * pic_height_in_ctbs;
+
+        // Phase 3c-1: a first slice segment starts a new picture. Subsequent
+        // slice segments (`first_slice_segment_in_pic_flag = 0`) attach to
+        // the already-in-flight picture. `pic.ctbs_decoded` counts CTBs in
+        // tile-scan order (`slice_start_ts` above is the tile-scan position
+        // of the raster `slice_segment_address`).
+        if sh.first_slice_segment_in_pic_flag {
+            // Phase 3d-6: build the reference picture lists at picture start
+            // (before the CTB loop) so that motion compensation can access
+            // the reference frame pixel data. Previously these were built at
+            // picture completion (too late for MC).
+            // Reference picture set and marking (spec 8.3.2) once per
+            // picture, before decoding it, whatever the first slice's type:
+            // an intra first slice can be followed by P/B slices, and an
+            // intra picture's RPS still decides which pictures stay
+            // referenced. Lists are built per slice below.
+            {
+                let sps_for_rps = self.sps.as_ref().expect("sps present");
+                let sps_st_rps = sps_for_rps.st_ref_pic_sets.clone();
+                let log2_max_poc_lsb = sps_for_rps.log2_max_pic_order_cnt_lsb;
+                let mut rps =
+                    Self::derive_rps_from_slice_header_parts(&sh, &sps_st_rps, log2_max_poc_lsb)?;
+                if nut.is_irap() {
+                    // An IRAP picture predicts from nothing: its Curr sets
+                    // are empty (8.3.2), so no reference is generated for
+                    // them.
+                    rps.st_curr_before.clear();
+                    rps.st_curr_after.clear();
+                    rps.lt_curr.clear();
+                }
+                if irap_no_rasl_output {
+                    // 8.3.2: a picture starting a coded video sequence marks
+                    // every picture in the DPB unused; its RPS names only
+                    // pictures that will never be decoded (8.3.3), not
+                    // older pictures that happen to share a POC.
+                    self.dpb.unmark_all_references();
+                } else {
+                    Self::apply_rps_marking(&mut rps, &self.dpb, log2_max_poc_lsb);
+                }
+                self.current_rps = rps;
+
+                // Output process before decoding the picture (C.5.2.2).
+                if self.display_order {
+                    if starts_new_sequence {
+                        // A CRA here follows an EOS: NoOutputOfPriorPicsFlag
+                        // is 1 whatever the slice header says.
+                        let no_output = nut.is_cra() || sh.no_output_of_prior_pics_flag;
+                        self.output_queue.start_new_sequence(no_output);
+                    } else {
+                        let limits = crate::output::OutputLimits::from_sps(sps_for_rps);
+                        let refs: Vec<i32> = self
+                            .dpb
+                            .pictures()
+                            .iter()
+                            .filter(|p| p.is_reference())
+                            .map(|p| p.poc)
+                            .collect();
+                        self.output_queue
+                            .before_picture(&limits, refs.len(), |poc| refs.contains(&poc));
+                    }
+                }
+            }
+            Self::generate_missing_refs(
+                &self.current_rps,
+                &mut self.dpb,
+                &mut self.zscan_cache,
+                sps,
+            );
+
+            // Populate `tab_tile_id` on the fresh picture state so intra
+            // availability checks can see it.
+            let zscan = zscan_table(&mut self.zscan_cache, sps);
+            let mut ps_enum = self.pool.new_state(sps, zscan);
+            with_picture_state!(&mut ps_enum, |ps| {
+                let n = ps.tab_tile_id.len();
+                ps.tab_tile_id.copy_from_slice(&tile_tables.tile_id[..n]);
+                ps.filter_across_tiles = pps.loop_filter_across_tiles_enabled_flag;
+                // QP-prediction state (spec 8.6.1 / FFmpeg hevcdec.c:3066-3069):
+                // at the first independent segment of a picture, seed `qpy_pred`
+                // and `last_qp_y` from `slice_qp` and arm `first_qp_group` so the
+                // first QP group predicts from `slice_qp` (fallback when left /
+                // above neighbors are unavailable). When `cu_qp_delta_enabled_flag
+                // = 0` nothing else updates `last_qp_y`, so it correctly stays at
+                // `slice_qp` for every CU.
+                ps.qpy_pred = sh.slice_qp_y;
+                ps.last_qp_y = sh.slice_qp_y;
+                ps.first_qp_group = !sh.dependent_slice_segment_flag;
+            });
+            let side = if self.threads > 1 {
+                let id = self.next_picture_id;
+                self.next_picture_id += 1;
+                // `threads` pictures in flight plus the one receiving slices.
+                let workers = self.workers.get_or_insert_with(|| {
+                    crate::parallel::ThreadPool::new(self.threads + 1, "rust_h265 picture")
+                });
+                PictureSide::Thread(Box::new(start_picture_thread(
+                    workers,
+                    &mut self.dpb,
+                    &mut self.pool,
+                    id,
+                    self.threads,
+                    ps_enum,
+                    sh.poc,
+                    (sps, pps),
+                    self.in_flight.is_empty(),
+                )))
+            } else {
+                PictureSide::Local(Box::new(PictureDecode {
+                    state: ps_enum,
+                    saved_cabac_state: None,
+                    saved_wpp_cabac_state: None,
+                    rows_in_parallel: false,
+                }))
+            };
+            self.current_picture = Some(PictureInProgress {
+                side,
+                last_slice_header: sh.clone(),
+                last_independent_slice_header: sh.clone(),
+                total_ctbs,
+                slice_ref_pocs: Vec::new(),
+            });
+        } else {
+            let pic = self
+                .current_picture
+                .as_ref()
+                .ok_or(DecodeError::InvalidSyntax(
+                    "non-first slice segment without an active picture",
+                ))?;
+            if pic.total_ctbs != total_ctbs {
+                return Err(DecodeError::InvalidSyntax(
+                    "slice SPS dimensions changed within picture",
+                ));
+            }
+            // Allow non-contiguous slice segment addresses — the CTB loop
+            // starts at `sh.slice_segment_address` regardless. This handles
+            // streams where slices don't arrive in strict tile-scan order
+            // or where there are gaps between slice segments.
+        }
+
+        // Reference picture lists are per slice (spec 8.3.4): every
+        // independent slice segment builds its own from its header; a
+        // dependent segment keeps its parent's.
+        if !sh.dependent_slice_segment_flag {
+            self.current_ref_list_l0.clear();
+            self.current_ref_list_l1.clear();
+            if sh.slice_type != SliceType::I {
+                // With frame threading the picture is in the DPB already.
+                let current = match self.current_picture.as_ref().map(|p| &p.side) {
+                    Some(PictureSide::Thread(t)) => Some(&t.picture),
+                    _ => None,
+                };
+                let (l0, l1) =
+                    Self::build_ref_pic_lists(&self.current_rps, &self.dpb, &sh, current)?;
+                // The DPB is cleared when the picture geometry changes, and
+                // missing references are generated with the current SPS.
+                debug_assert!(l0.iter().chain(&l1).all(|p| {
+                    (p.width, p.height, p.log2_ctb_size)
+                        == (
+                            sps.pic_width_in_luma_samples,
+                            sps.pic_height_in_luma_samples,
+                            sps.ctb_log2_size_y,
+                        )
+                }));
+                self.current_ref_list_l0 = l0;
+                self.current_ref_list_l1 = l1;
+            }
+            let entry = (
+                sh.slice_segment_address as i32,
+                Self::slice_ref_lists(&self.current_ref_list_l0, &self.current_ref_list_l1),
+            );
+            if let Some(pic) = self.current_picture.as_mut() {
+                pic.slice_ref_pocs.push(entry);
+            }
+        }
+
+        // Borrow the in-flight picture mutably for the rest of decode.
+        let pic = self
+            .current_picture
+            .as_mut()
+            .expect("current_picture set above");
+
+        // QP-prediction state per slice segment (spec 8.6.1 / FFmpeg
+        // hevcdec.c:3066-3069). `first_qp_group` resets at every segment
+        // start — to true for independent segments (fallback to slice_qp),
+        // to false for dependent ones (inherit parent's `qpy_pred`).
+        // `last_qp_y` (FFmpeg: `lc->qp_y`) must be re-seeded to
+        // `slice_qp_y` at the start of every independent slice segment
+        // (FFmpeg `hls_decode_entry`: `lc->qp_y = s->sh.slice_qp_y`).
+        // A dependent segment that starts a tile, or a CTB row under WPP,
+        // also starts a new QP prediction chain: the first quantization group
+        // of a tile / WPP row predicts from SliceQpY (spec 8.6.1).
+        let segment_starts_qp_chain = !sh.dependent_slice_segment_flag
+            || slice_starts_tile
+            || (wpp_for_init
+                && sh
+                    .slice_segment_address
+                    .is_multiple_of(pic_width_in_ctbs_for_init));
+
+        // Phase 3c-3 (WPP): saved CABAC context state captured after the
+        // second CTB of each row, to be loaded at the start of the next row.
+        // Not used by tiles — tiles reinit from the slice QP at every tile
+        // boundary instead. Phase 3c-4: for dependent slices we seed this
+        // from the picture-level `saved_wpp_cabac_state` so that the
+        // first inner-row reinit inside the dependent slice can still find
+        // a state from the previous slice's row.
+
+        // Phase 3d-3/3d-5: construct SliceParams for the CU tree.
+        // Include POC information so the AMVP candidate list builder can
+        // check same-ref and compute MV scaling.
+        let ref_list_l0_pocs: Vec<i32> = self.current_ref_list_l0.iter().map(|p| p.poc).collect();
+        let ref_list_l1_pocs: Vec<i32> = self.current_ref_list_l1.iter().map(|p| p.poc).collect();
+        // Phase 3e: derive the collocated reference picture for temporal MVP.
+        let collocated_ref = if sh.slice_temporal_mvp_enabled_flag && sh.slice_type != SliceType::I
+        {
+            let col_list = if sh.collocated_from_l0_flag {
+                &self.current_ref_list_l0
+            } else {
+                &self.current_ref_list_l1
+            };
+            let col_idx = sh.collocated_ref_idx as usize;
+            col_list.get(col_idx).cloned()
+        } else {
+            None
+        };
+        let slice_params = crate::cu_tree::SliceParams {
+            slice_type: sh.slice_type,
+            max_num_merge_cand: sh.max_num_merge_cand,
+            num_ref_idx_l0_active: sh.num_ref_idx_l0_active_minus1 + 1,
+            num_ref_idx_l1_active: if sh.slice_type == SliceType::B {
+                sh.num_ref_idx_l1_active_minus1 + 1
+            } else {
+                0
+            },
+            mvd_l1_zero_flag: sh.mvd_l1_zero_flag,
+            log2_parallel_merge_level: (pps.log2_parallel_merge_level_minus2 + 2) as u8,
+            poc: sh.poc,
+            ref_pic_list_pocs: [ref_list_l0_pocs, ref_list_l1_pocs],
+            ref_pic_list_is_lt: Self::slice_ref_lists(
+                &self.current_ref_list_l0,
+                &self.current_ref_list_l1,
+            )
+            .is_long_term,
+            picture_slice_ref_lists: pic.slice_ref_pocs.clone(),
+            ref_frames_l0: self.current_ref_list_l0.clone(),
+            ref_frames_l1: self.current_ref_list_l1.clone(),
+            collocated_ref,
+            slice_temporal_mvp_enabled_flag: sh.slice_temporal_mvp_enabled_flag,
+            collocated_from_l0_flag: sh.collocated_from_l0_flag,
+            deblocking_disabled: sh.slice_deblocking_filter_disabled_flag,
+            slice_cb_qp_offset: sh.slice_cb_qp_offset,
+            slice_cr_qp_offset: sh.slice_cr_qp_offset,
+            cu_chroma_qp_offset_enabled_flag: sh.cu_chroma_qp_offset_enabled_flag,
+            weighted_pred_flag: (pps.weighted_pred_flag && sh.slice_type == SliceType::P)
+                || (pps.weighted_bipred_flag && sh.slice_type == SliceType::B),
+            pred_weight_table: sh.pred_weight_table.clone(),
+        };
+
+        // Pre-compute the recorded_slice_addr for use in the CTB loop.
+        let recorded_slice_addr = if sh.dependent_slice_segment_flag {
+            pic.last_independent_slice_header.slice_segment_address as i32
+        } else {
+            sh.slice_segment_address as i32
+        };
+
+        // The CTB loop, deblock, SAO, and DPB insertion all operate on a
+        // generic PictureState<P>. Dispatch once via the enum variant and
+        // execute the entire inner body monomorphized for the right P.
+
+        let job = SliceJob {
+            rbsp: nal.rbsp.to_vec(),
+            epb_positions: nal.epb_positions.clone(),
+            sps: Arc::clone(sps),
+            pps: Arc::clone(pps),
+            tile_tables: Arc::clone(tile_tables),
+            slice_params,
+            recorded_slice_addr,
+            slice_start_ts,
+            slice_starts_tile,
+            tile_col_start,
+            segment_starts_qp_chain,
+            cabac_byte_offset,
+            nal_slice_data_start,
+            sh: sh.clone(),
+        };
+        // The picture's latest slice header, and the one dependent segments
+        // inherit from, whether or not this segment's data decodes: with
+        // frame threading the data decodes later, on the picture's thread.
+        if !sh.dependent_slice_segment_flag {
+            pic.last_independent_slice_header = sh.clone();
+        }
+        pic.last_slice_header = sh;
+        // The picture ends when the next one starts (or at flush), with any
+        // thread count: a picture thread cannot tell the calling thread in
+        // time that its CTBs are complete, and a slice segment arriving
+        // after that is then handled the same way whatever the thread count
+        // (it may not rewrite complete CTB rows).
+        match &mut pic.side {
+            PictureSide::Local(decode) => decode.decode_slice(&job, self.threads)?,
+            PictureSide::Thread(t) => {
+                // A send fails only if the thread panicked, which joining
+                // it reports.
+                let _ = t.jobs.send(PictureMessage::Slice(Box::new(job)));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Spec 8.3.1: prevTid0Pic is simply the previous TemporalId-0 picture
+    /// that is not RASL/RADL/sub-layer non-reference. IRAP pictures qualify
+    /// like any other, so store their actual POC (a mid-stream CRA keeps a
+    /// non-zero POC; a BLA's POC is its LSB).
+    fn update_prev_tid0(&mut self, last_sh: &SliceHeader) {
+        let is_tid0 = last_sh.temporal_id == 0
+            && !matches!(
+                last_sh.nal_unit_type,
+                NalUnitType::TrailN
+                    | NalUnitType::TsaN
+                    | NalUnitType::StsaN
+                    | NalUnitType::RadlN
+                    | NalUnitType::RadlR
+                    | NalUnitType::RaslN
+                    | NalUnitType::RaslR
+            );
+        if is_tid0 {
+            self.prev_tid0_poc = last_sh.poc;
+        }
+    }
+
+    /// The calling thread's end of a picture decoding on its own thread:
+    /// hand it the finish, and do now what a sequential decode does after
+    /// the picture (prevTid0Pic, the output process, with its frame
+    /// pending until the thread delivers it). The picture is in the DPB
+    /// already.
+    fn finish_threaded_picture(
+        &mut self,
+        last_sh: SliceHeader,
+        slice_ref_pocs: Vec<(i32, crate::dpb::SliceRefLists)>,
+        thread: PictureThread,
+    ) -> Result<Option<Frame>, DecodeError> {
+        let sps = self
+            .sps
+            .clone()
+            .ok_or(DecodeError::InvalidSyntax("picture without active SPS"))?;
+        let pps = self
+            .pps
+            .clone()
+            .ok_or(DecodeError::InvalidSyntax("picture without active PPS"))?;
+        let _ = thread.picture.slice_ref_pic_list_pocs.set(slice_ref_pocs);
+        let limits = crate::output::OutputLimits::from_sps(&sps);
+        let _ = thread.jobs.send(PictureMessage::Finish {
+            sps,
+            pps,
+            last_sh: Box::new(last_sh.clone()),
+        });
+        self.update_prev_tid0(&last_sh);
+        let output = last_sh.pic_output_flag;
+        if self.display_order {
+            if output {
+                self.output_queue
+                    .after_picture_pending(&limits, thread.id, last_sh.poc);
+            } else {
+                self.output_queue.after_picture(&limits, None);
+            }
+        }
+        self.in_flight.push_back(InFlight {
+            id: thread.id,
+            handle: thread.handle,
+            output,
+        });
+        // At most `threads` pictures in flight: wait for the oldest.
+        while self.in_flight.len() > self.threads {
+            self.collect_picture();
+        }
+        Ok(None)
+    }
+
+    /// Join the oldest in-flight picture (waiting for it) and deliver its
+    /// frame and errors.
+    fn collect_picture(&mut self) {
+        let Some(f) = self.in_flight.pop_front() else {
+            return;
+        };
+        let result = match f.handle.join() {
+            Ok(r) => r,
+            Err(panic) => std::panic::resume_unwind(panic),
+        };
+        self.pool.recycle_state(result.state);
+        self.deferred_errors.extend(result.errors);
+        let frame = match result.frame {
+            Ok(frame) => Some(frame),
+            Err(e) => {
+                self.deferred_errors.push_back(e);
+                None
+            }
+        };
+        if !f.output {
+            return;
+        }
+        if self.display_order {
+            self.output_queue.resolve(f.id, frame);
+        } else if let Some(frame) = frame {
+            self.pending_frames.push_back(frame);
+        }
+    }
+
+    /// Collect the in-flight pictures that have finished, oldest first
+    /// (stopping at the first still decoding, to keep decoding order), or
+    /// all of them when `wait` is set.
+    fn collect_pictures(&mut self, wait: bool) {
+        while let Some(f) = self.in_flight.front_mut() {
+            if !wait && !f.handle.is_finished() {
+                break;
+            }
+            self.collect_picture();
+        }
+    }
+
+    /// Finish a picture: fill CTBs that were never decoded (slices lost or
+    /// failed), run the in-loop filters, store it in the DPB and hand the
+    /// frame to the output (decoding-order return value or display-order
+    /// queue).
+    fn finish_picture(&mut self, mut pic: PictureInProgress) -> Result<Option<Frame>, DecodeError> {
+        let mut decode = match pic.side {
+            PictureSide::Local(decode) => decode,
+            PictureSide::Thread(thread) => {
+                return self.finish_threaded_picture(
+                    pic.last_slice_header,
+                    pic.slice_ref_pocs,
+                    *thread,
+                );
+            }
+        };
+        let threads = self.threads.max(1);
+        let sps = self
+            .sps
+            .as_ref()
+            .ok_or(DecodeError::InvalidSyntax("picture without active SPS"))?;
+        let pps = self
+            .pps
+            .as_ref()
+            .ok_or(DecodeError::InvalidSyntax("picture without active PPS"))?;
+        let last_sh = &pic.last_slice_header;
+        let emitted_frame = decode.finish(sps, pps, last_sh, threads)?;
+        let last_sh_cloned = last_sh.clone();
+        let picture_poc = last_sh_cloned.poc;
+        let pic_width = sps.pic_width_in_luma_samples;
+        let pic_height = sps.pic_height_in_luma_samples;
+
+        // The borrows `sps` / `pps` / `tile_tables` / `last_sh` are no
+        // longer used beyond this point — NLL will release them here so
+        // we can take mutable borrows of `self.*` below.
+
+        self.update_prev_tid0(&last_sh_cloned);
+
+        // Insert the fresh picture into the DPB.
+        let ref_list_l0_pocs: Vec<i32> = self.current_ref_list_l0.iter().map(|p| p.poc).collect();
+        let ref_list_l1_pocs: Vec<i32> = self.current_ref_list_l1.iter().map(|p| p.poc).collect();
+
+        let decoded_pic = with_picture_state!(&mut decode.state, |state| {
+            // The planes keep the CTU-aligned stride and chroma geometry of
+            // the picture state; motion compensation reads them through
+            // these fields rather than assuming `stride == width`.
+            let (y_stride, uv_stride, chroma_shift_w, chroma_shift_h) = (
+                state.y_stride,
+                state.uv_stride,
+                state.chroma_shift_w,
+                state.chroma_shift_h,
+            );
+            let (y, u, v, tab_mvf, log2_min_pu_size, min_pu_width, log2_ctb_size) =
+                state.take_planes_and_mvf();
+            let mut dp = DecodedPicture::new_with_mvf(
+                y,
+                u,
+                v,
+                pic_width,
+                pic_height,
+                picture_poc,
+                tab_mvf,
+                log2_min_pu_size,
+                min_pu_width,
+                log2_ctb_size,
+                [ref_list_l0_pocs, ref_list_l1_pocs],
+            );
+            dp.y_stride = y_stride;
+            dp.uv_stride = uv_stride;
+            dp.chroma_shift_w = chroma_shift_w;
+            dp.chroma_shift_h = chroma_shift_h;
+            let _ = dp
+                .slice_ref_pic_list_pocs
+                .set(std::mem::take(&mut pic.slice_ref_pocs));
+            dp.ctb_slice_addr = std::mem::take(&mut state.tab_slice_addr_rs);
+            Arc::new(dp)
+        });
+        self.pool.recycle_state(decode.state);
+        decoded_pic.mark(PictureReferenceStatus::ShortTerm);
+        decoded_pic.set_output();
+        self.dpb.insert(decoded_pic);
+        for retired in self.dpb.cleanup_unused() {
+            self.pool.recycle_picture(retired);
+        }
+
+        // PicOutputFlag (spec 8.1.3): a picture with pic_output_flag = 0 is
+        // decoded and kept for reference but never output. (Skipped RASL
+        // pictures never reach this point.)
+        let frame = last_sh_cloned.pic_output_flag.then_some(emitted_frame);
+        if self.display_order {
+            // Output process once the picture is decoded (C.5.2.3).
+            let sps = self
+                .sps
+                .as_ref()
+                .expect("sps present for a decoded picture");
+            let limits = crate::output::OutputLimits::from_sps(sps);
+            self.output_queue.after_picture(&limits, frame);
+            Ok(None)
+        } else {
+            Ok(frame)
+        }
+    }
+
+    /// Spec 8.3.3: generate the reference pictures the current picture uses
+    /// (RefPicSetStCurrBefore, StCurrAfter, LtCurr) that are not in the
+    /// DPB. In a conformant stream this only happens after an error: the
+    /// reference was lost or failed to decode. The stand-in is mid-grey with
+    /// no motion, so the current picture still decodes, with errors where
+    /// it predicts from the missing picture.
+    fn generate_missing_refs(
+        rps: &ReferencePictureSets,
+        dpb: &mut DecodedPictureBuffer,
+        zscan_cache: &mut Option<(ZscanKey, Arc<Vec<i32>>)>,
+        sps: &Sps,
+    ) {
+        let mut missing: Vec<(i32, PictureReferenceStatus)> = Vec::new();
+        for &poc in rps.st_curr_before.iter().chain(&rps.st_curr_after) {
+            if dpb.find_st_ref(poc).is_none() {
+                missing.push((poc, PictureReferenceStatus::ShortTerm));
+            }
+        }
+        for &poc in &rps.lt_curr {
+            let present = dpb
+                .pictures()
+                .iter()
+                .any(|p| p.poc == poc && p.reference_status() == PictureReferenceStatus::LongTerm);
+            if !present {
+                missing.push((poc, PictureReferenceStatus::LongTerm));
+            }
+        }
+        // A POC named twice (a damaged RPS) is generated once.
+        missing.sort_unstable_by_key(|&(poc, _)| poc);
+        missing.dedup_by_key(|&mut (poc, _)| poc);
+        for (poc, status) in missing {
+            let zscan = zscan_table(zscan_cache, sps);
+            let mut state = new_picture_state(sps, zscan);
+            let pic = with_picture_state!(&mut state, |st| generated_reference(st, poc));
+            pic.mark(status);
+            // Never output.
+            pic.set_output();
+            dpb.insert(pic);
+        }
+        // At most 16 references plus 15 stand-ins, and the pictures not yet
+        // output or still decoding on their threads.
+        debug_assert!(dpb.len() <= 64, "DPB holds {} pictures", dpb.len());
+    }
+
+    /// Phase 3d-1: compute a picture's POC from `prev_tid0_poc`, the
+    /// slice header's `pic_order_cnt_lsb`, and the SPS's
+    /// `log2_max_pic_order_cnt_lsb`. Follows HEVC spec 8.3.1 + FFmpeg's
+    /// `ff_hevc_compute_poc2` in `ps.c`.
+    ///
+    /// For BLA pictures the POC MSB is explicitly reset to 0, matching
+    /// FFmpeg's behavior.
+    fn compute_poc(
+        prev_tid0_poc: i32,
+        slice_pic_order_cnt_lsb: u32,
+        log2_max_pic_order_cnt_lsb: u8,
+        irap_no_rasl_output: bool,
+    ) -> Option<i32> {
+        let max_poc_lsb = 1i32 << log2_max_pic_order_cnt_lsb;
+        let prev_poc_lsb = prev_tid0_poc.rem_euclid(max_poc_lsb);
+        let prev_poc_msb = prev_tid0_poc - prev_poc_lsb;
+        let cur_lsb = slice_pic_order_cnt_lsb as i32;
+        let mut poc_msb = if cur_lsb < prev_poc_lsb && (prev_poc_lsb - cur_lsb) >= max_poc_lsb / 2 {
+            prev_poc_msb.checked_add(max_poc_lsb)?
+        } else if cur_lsb > prev_poc_lsb && (cur_lsb - prev_poc_lsb) > max_poc_lsb / 2 {
+            prev_poc_msb.checked_sub(max_poc_lsb)?
+        } else {
+            prev_poc_msb
+        };
+        // Spec 8.3.1: an IRAP picture with NoRaslOutputFlag = 1 (BLA, or a
+        // CRA that starts a coded video sequence) has POC MSB = 0.
+        if irap_no_rasl_output {
+            poc_msb = 0;
+        }
+        // PicOrderCntVal is in the i32 range (8.3.1).
+        poc_msb.checked_add(cur_lsb)
+    }
+
+    /// Phase 3d-1: derive the reference picture sets for the current
+    /// picture from the slice header and the (cloned) SPS ST-RPS array.
+    /// This follows spec 8.3.2 but simplified — we don't yet track the
+    /// "follow" sets precisely or complain about missing refs, since no
+    /// actual decoding uses them yet. Good enough to have the POC lists
+    /// plumbed so Phase 3d-2 can pick them up.
+    ///
+    /// Takes an owned slice of SPS ST-RPSs rather than `&Sps` so the
+    /// caller can drop its immutable borrow of `self.sps` and mutably
+    /// touch `self.dpb` in the surrounding code. A real
+    /// spec-parity derivation would also consume the DPB to walk the
+    /// existing picture pool, but Phase 3d-1 only needs POC lists.
+    fn derive_rps_from_slice_header_parts(
+        sh: &SliceHeader,
+        sps_st_ref_pic_sets: &[ShortTermRps],
+        log2_max_pic_order_cnt_lsb: u8,
+    ) -> Result<ReferencePictureSets, DecodeError> {
+        let mut rps = ReferencePictureSets::default();
+
+        // IDR pictures never reference anything from the DPB.
+        if sh.nal_unit_type.is_idr() {
+            return Ok(rps);
+        }
+        // Reference POCs are in the i32 range too (8.3.1; FFmpeg rejects a
+        // long-term POC beyond it).
+        let out_of_range = || DecodeError::InvalidSyntax("reference POC out of range");
+
+        // Resolve the active short-term RPS.
+        let st_ref: Option<&ShortTermRps> = if sh.short_term_ref_pic_set_sps_flag {
+            sps_st_ref_pic_sets.get(sh.short_term_ref_pic_set_idx as usize)
+        } else {
+            sh.short_term_rps.as_ref()
+        };
+
+        if let Some(st) = st_ref {
+            // Short-term "before current" (negative deltas the current
+            // picture uses).
+            for (i, delta) in st.delta_poc_s0.iter().enumerate() {
+                let ref_poc = sh.poc.checked_add(*delta).ok_or_else(out_of_range)?;
+                if st.used_by_curr_pic_s0_flag.get(i).copied().unwrap_or(false) {
+                    rps.st_curr_before.push(ref_poc);
+                } else {
+                    rps.st_foll.push(ref_poc);
+                }
+            }
+            // Short-term "after current" (positive deltas the current
+            // picture uses).
+            for (i, delta) in st.delta_poc_s1.iter().enumerate() {
+                let ref_poc = sh.poc.checked_add(*delta).ok_or_else(out_of_range)?;
+                if st.used_by_curr_pic_s1_flag.get(i).copied().unwrap_or(false) {
+                    rps.st_curr_after.push(ref_poc);
+                } else {
+                    rps.st_foll.push(ref_poc);
+                }
+            }
+        }
+
+        // Long-term references per spec 8.3.2 / FFmpeg decode_lt_rps.
+        // When delta_poc_msb_present_flag is true, compute full POC:
+        //   PocLt = poc_lsb + cur_poc - delta * MaxPicOrderCntLsb - cur_poc_lsb
+        // When false, store just the POC LSB for LSB-based DPB matching.
+        let max_poc_lsb = 1i32 << log2_max_pic_order_cnt_lsb;
+        let cur_poc = sh.poc;
+        let cur_poc_lsb = sh.slice_pic_order_cnt_lsb as i32;
+        let num_lt_sps = sh.long_term_rps.num_long_term_sps;
+        let mut prev_delta_msb: i64 = 0;
+
+        for (i, poc_lsb) in sh.long_term_rps.poc_lsb_lt.iter().enumerate() {
+            let msb_present = sh
+                .long_term_rps
+                .delta_poc_msb_present_flag
+                .get(i)
+                .copied()
+                .unwrap_or(false);
+
+            let ref_poc = if msb_present {
+                // DeltaPocMsbCycleLt (spec 7.4.7.1 eq. 7-52) accumulates
+                // within the SPS entries and within the slice-coded ones,
+                // restarting at the first of each. As HM and FFmpeg
+                // (`if (i && i != nb_sps) delta += prev_delta_msb;`), only
+                // entries with an MSB carry the sum.
+                let raw_delta = sh
+                    .long_term_rps
+                    .delta_poc_msb_cycle_lt
+                    .get(i)
+                    .copied()
+                    .unwrap_or(0) as i64;
+                let delta = if i > 0 && i != num_lt_sps {
+                    raw_delta + prev_delta_msb
+                } else {
+                    raw_delta
+                };
+                prev_delta_msb = delta;
+                // FFmpeg: poc = rps->poc[i] + cur_poc - delta * max_poc_lsb - poc_lsb
+                i32::try_from(
+                    *poc_lsb as i64 + cur_poc as i64
+                        - delta * max_poc_lsb as i64
+                        - cur_poc_lsb as i64,
+                )
+                .map_err(|_| out_of_range())?
+            } else {
+                *poc_lsb as i32
+            };
+
+            let used = sh
+                .long_term_rps
+                .used_by_curr_pic_lt_flag
+                .get(i)
+                .copied()
+                .unwrap_or(false);
+            if used {
+                rps.lt_curr.push(ref_poc);
+            } else {
+                rps.lt_foll.push(ref_poc);
+            }
+            rps.lt_poc_msb_present.push(msb_present);
+        }
+
+        Ok(rps)
+    }
+
+    /// Phase 3d-2: build `RefPicList0` / `RefPicList1` for a P or B slice
+    /// per HEVC spec 8.3.2. Caller must ensure the slice is P or B (I
+    /// slices get empty lists).
+    ///
+    /// Returns `(L0, L1)` where L1 is empty for P slices. Each list has
+    /// exactly `num_ref_idx_l{0,1}_active_minus1 + 1` entries and every
+    /// entry points to a picture already in the DPB.
+    #[allow(clippy::type_complexity)]
+    /// Activate the PPS named by a picture's first slice header, and the SPS
+    /// it refers to (spec 7.4.2.4.2). Only does work when the IDs changed or
+    /// a parameter set arrived since the last activation.
+    fn activate_parameter_sets(
+        &mut self,
+        nal: &NalUnit<'_>,
+        nut: NalUnitType,
+    ) -> Result<(), DecodeError> {
+        // Slice header prefix: first_slice_segment_in_pic_flag,
+        // [no_output_of_prior_pics_flag for IRAP], slice_pic_parameter_set_id.
+        let mut r = crate::bitstream::BitstreamReader::new(&nal.rbsp);
+        r.read_bit()?;
+        if nut.is_irap() {
+            r.read_bit()?;
+        }
+        let pps_id = r.read_ue()?;
+        if !self.parameter_sets_changed && self.active_pps_id == Some(pps_id) {
+            return Ok(());
+        }
+        let pps = match self.pps_table.get(pps_id as usize).and_then(Option::as_ref) {
+            Some(Ok(pps)) => pps.clone(),
+            Some(Err(e)) => return Err(e.clone()),
+            None => return Err(DecodeError::InvalidSyntax("slice refers to a missing PPS")),
+        };
+        let sps_id = pps.pps_seq_parameter_set_id;
+        let sps = match self.sps_table.get(sps_id as usize).and_then(Option::as_ref) {
+            Some(Ok(sps)) => sps.clone(),
+            Some(Err(e)) => return Err(e.clone()),
+            None => return Err(DecodeError::InvalidSyntax("PPS refers to a missing SPS")),
+        };
+        // A change of picture format or geometry invalidates every picture
+        // in the DPB (as FFmpeg clears its references on an SPS change; in
+        // a conforming stream a new SPS starts a CVS anyway). References
+        // must share the sample type and chroma geometry of the pictures
+        // predicted from them (motion compensation reads them with the
+        // current picture's chroma subsampling), and temporal MV
+        // prediction indexes the collocated motion field and slice map
+        // with the current picture's coordinates and CTB size.
+        let format = |s: &Sps| {
+            (
+                (s.bit_depth_luma, s.bit_depth_chroma, s.chroma_format_idc),
+                (s.pic_width_in_luma_samples, s.pic_height_in_luma_samples),
+                (s.ctb_log2_size_y, s.min_cb_log2_size_y),
+            )
+        };
+        let old_format = self.sps.as_deref().map(format);
+        if old_format.is_some() && old_format != Some(format(&sps)) {
+            self.dpb.clear();
+            self.current_picture = None;
+        }
+        self.sps = Some(Arc::new(sps));
+        // A fresh PPS copy has no tile geometry resolved yet; it is derived
+        // for this SPS at the next slice, and the scan tables rebuilt.
+        self.pps = Some(Arc::new(pps));
+        self.tile_tables = None;
+        self.active_sps_id = Some(sps_id);
+        self.active_pps_id = Some(pps_id);
+        self.parameter_sets_changed = false;
+        Ok(())
+    }
+
+    /// POCs and long-term flags of the current slice's reference lists.
+    fn slice_ref_lists(
+        l0: &[Arc<DecodedPicture>],
+        l1: &[Arc<DecodedPicture>],
+    ) -> crate::dpb::SliceRefLists {
+        let pocs = |l: &[Arc<DecodedPicture>]| l.iter().map(|p| p.poc).collect::<Vec<i32>>();
+        let lt = |l: &[Arc<DecodedPicture>]| {
+            l.iter()
+                .map(|p| p.reference_status() == PictureReferenceStatus::LongTerm)
+                .collect::<Vec<bool>>()
+        };
+        crate::dpb::SliceRefLists {
+            pocs: [pocs(l0), pocs(l1)],
+            is_long_term: [lt(l0), lt(l1)],
+        }
+    }
+
+    fn build_ref_pic_lists(
+        rps: &ReferencePictureSets,
+        dpb: &DecodedPictureBuffer,
+        sh: &SliceHeader,
+        current: Option<&Arc<DecodedPicture>>,
+    ) -> Result<RefPicLists, DecodeError> {
+        let num_poc_total_curr = rps.num_poc_total_curr();
+        let active_l0 = sh.num_ref_idx_l0_active_minus1 as usize + 1;
+        let num_rps_curr_temp_list0 = active_l0.max(num_poc_total_curr);
+        let temp0 = build_ref_pic_list_temp0(rps, num_rps_curr_temp_list0);
+        let l0_pocs = apply_ref_pic_list_modification(
+            &temp0,
+            sh.ref_pic_list_modification
+                .ref_pic_list_modification_flag_l0,
+            &sh.ref_pic_list_modification.list_entry_l0,
+            active_l0,
+        )?;
+        let l0 = resolve_ref_pics(dpb, &l0_pocs, current)?;
+
+        let l1 = if sh.slice_type == SliceType::B {
+            let active_l1 = sh.num_ref_idx_l1_active_minus1 as usize + 1;
+            let num_rps_curr_temp_list1 = active_l1.max(num_poc_total_curr);
+            let temp1 = build_ref_pic_list_temp1(rps, num_rps_curr_temp_list1);
+            let l1_pocs = apply_ref_pic_list_modification(
+                &temp1,
+                sh.ref_pic_list_modification
+                    .ref_pic_list_modification_flag_l1,
+                &sh.ref_pic_list_modification.list_entry_l1,
+                active_l1,
+            )?;
+            resolve_ref_pics(dpb, &l1_pocs, current)?
+        } else {
+            Vec::new()
+        };
+
+        Ok((l0, l1))
+    }
+
+    /// Phase 3d-1: walk the RPS and mark each referenced picture in the DPB
+    /// (spec 8.3.2). Pictures referenced by the RPS become ShortTerm or
+    /// LongTerm; everything else is flipped to UnusedForReference.
+    ///
+    /// Iterates the RPS entries (not the DPB) so that missing-reference
+    /// cases are detected. Per spec, a missing reference should generate a
+    /// placeholder picture — we log a warning and skip, which is correct
+    /// for conformant streams.
+    pub(crate) fn apply_rps_marking(
+        rps: &mut ReferencePictureSets,
+        dpb: &DecodedPictureBuffer,
+        log2_max_pic_order_cnt_lsb: u8,
+    ) {
+        let max_poc_lsb = 1i32 << log2_max_pic_order_cnt_lsb;
+
+        // Step 1: unmark everything. All pictures start as UnusedForReference.
+        dpb.unmark_all_references();
+
+        // Step 2: mark short-term references by full POC.
+        let st_pocs = rps
+            .st_curr_before
+            .iter()
+            .chain(&rps.st_curr_after)
+            .chain(&rps.st_foll);
+        for &poc in st_pocs {
+            if let Some(pic) = dpb.find_by_poc(poc) {
+                pic.mark(PictureReferenceStatus::ShortTerm);
+            }
+            // Missing ST ref: conformant streams won't hit this; for
+            // non-conformant streams the error surfaces later in
+            // resolve_ref_pics when building the actual ref lists.
+        }
+
+        // Step 3: mark long-term references. When `poc_msb_present` is true
+        // for an entry, match by full POC (the entry already contains the
+        // resolved absolute POC). When false, match by POC LSB (spec 8.3.2 /
+        // FFmpeg find_ref_idx: `mask = use_msb ? ~0 : (1 << log2) - 1`).
+        // A matched LSB-only entry is rewritten to the picture's full POC, so
+        // that reference list construction (which looks pictures up by POC)
+        // resolves it.
+        let n_curr = rps.lt_curr.len();
+        let lt_all: Vec<i32> = rps.lt_curr.iter().chain(&rps.lt_foll).copied().collect();
+        for (idx, &poc_or_lsb) in lt_all.iter().enumerate() {
+            let use_msb = rps.lt_poc_msb_present.get(idx).copied().unwrap_or(false);
+            for pic in dpb.pictures() {
+                if pic.reference_status() == PictureReferenceStatus::ShortTerm {
+                    continue; // ST takes priority
+                }
+                let matches = if use_msb {
+                    pic.poc == poc_or_lsb
+                } else {
+                    pic.poc.rem_euclid(max_poc_lsb) == poc_or_lsb
+                };
+                if matches {
+                    pic.mark(PictureReferenceStatus::LongTerm);
+                    if idx < n_curr {
+                        rps.lt_curr[idx] = pic.poc;
+                    } else {
+                        rps.lt_foll[idx - n_curr] = pic.poc;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::nal::parse_annex_b;
+
+    #[test]
+    fn crop_frame_rejects_invalid_ranges() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/tiny_intra.h265"
+        ))
+        .expect("read fixture");
+        let sps_nal = parse_annex_b(&h265)
+            .into_iter()
+            .find(|nal| nal.nal_unit_type == NalUnitType::Sps)
+            .expect("SPS NAL");
+        let sps = parse_sps(&sps_nal.rbsp).expect("parse SPS");
+        let state = PictureState::<u8>::new(&sps);
+
+        assert!(matches!(
+            crop_frame(&state, 16, 16, 0, 16, 1000, 0, 0, 8),
+            Err(DecodeError::InvalidSyntax(
+                "conformance window exceeds picture dimensions"
+            ))
+        ));
+    }
+
+    #[test]
+    fn rejects_sps_over_picture_limit() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/tiny_intra.h265"
+        ))
+        .expect("read fixture");
+        let sps = parse_annex_b(&h265)
+            .into_iter()
+            .find(|nal| nal.nal_unit_type == NalUnitType::Sps)
+            .expect("SPS NAL");
+        let mut decoder = Decoder::with_limits(DecodeLimits {
+            max_picture_pixels: 255,
+            ..DecodeLimits::default()
+        });
+
+        assert!(matches!(
+            decoder.decode_nal(&sps),
+            Err(DecodeError::ResourceLimit("picture pixel count"))
+        ));
+    }
+
+    #[test]
+    fn rejects_sps_over_picture_memory_limit() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/tiny_intra.h265"
+        ))
+        .expect("read fixture");
+        let sps = parse_annex_b(&h265)
+            .into_iter()
+            .find(|nal| nal.nal_unit_type == NalUnitType::Sps)
+            .expect("SPS NAL");
+        let mut decoder = Decoder::with_limits(DecodeLimits {
+            max_picture_memory_bytes: 1,
+            ..DecodeLimits::default()
+        });
+
+        assert!(matches!(
+            decoder.decode_nal(&sps),
+            Err(DecodeError::ResourceLimit("estimated picture memory"))
+        ));
+    }
+
+    /// Phase 3d-1: hand-verify the POC computation against the spec
+    /// formula for a grab-bag of representative cases. Matches FFmpeg's
+    /// `ff_hevc_compute_poc2` (ps.c) line-for-line.
+    #[test]
+    fn poc_compute_monotonic_lsb_no_wrap() {
+        // log2_max_poc_lsb = 4 → max_poc_lsb = 16.
+        // prev_tid0_poc = 4 (MSB=0, LSB=4), cur LSB = 5.
+        // prev_lsb = 4, diff = 1 → neither branch fires, poc_msb = 0.
+        // poc = 0 + 5 = 5.
+        assert_eq!(Decoder::compute_poc(4, 5, 4, false), Some(5));
+    }
+
+    #[test]
+    fn poc_compute_wraps_forward_across_msb() {
+        // max_poc_lsb = 16; prev_tid0_poc = 15 (MSB=0, LSB=15), cur LSB=1.
+        // cur_lsb > prev_lsb but (cur_lsb - prev_lsb) = -14 after signed
+        // subtraction... we check the spec condition:
+        //   cur_lsb < prev_lsb (1 < 15) && (prev_lsb - cur_lsb) >= max_poc_lsb/2
+        //   (15 - 1) = 14 >= 8 → yes, so poc_msb = prev_poc_msb + max_poc_lsb = 16.
+        //   poc = 16 + 1 = 17.
+        assert_eq!(Decoder::compute_poc(15, 1, 4, false), Some(17));
+    }
+
+    #[test]
+    fn poc_compute_wraps_backward_across_msb() {
+        // Classic "LSB went backwards" case (e.g. B-frame references
+        // the IDR at POC=16 with prev_tid0_poc=17 and cur LSB=0).
+        //
+        // max_poc_lsb = 16, prev_tid0_poc = 17 (MSB=16, LSB=1), cur_lsb = 15.
+        // Neither "cur_lsb < prev_lsb && (prev - cur) >= 8" nor
+        // "cur_lsb > prev_lsb && (cur - prev) > 8" holds:
+        //   15 > 1, 15 - 1 = 14 > 8 → backward wrap branch fires.
+        //   poc_msb = 16 - 16 = 0.
+        //   poc = 0 + 15 = 15.
+        assert_eq!(Decoder::compute_poc(17, 15, 4, false), Some(15));
+    }
+
+    #[test]
+    fn poc_compute_bla_forces_msb_zero() {
+        // BLA picture: POC MSB is explicitly reset to 0 regardless of
+        // `prev_tid0_poc`. With prev = 20 (MSB=16, LSB=4) and cur LSB=5,
+        // a non-BLA picture would give poc = 16 + 5 = 21, but a
+        // BLA_W_LP explicitly sets poc_msb to 0 → poc = 5.
+        assert_eq!(Decoder::compute_poc(20, 5, 4, true), Some(5));
+        // For TrailR the normal path returns 21.
+        assert_eq!(Decoder::compute_poc(20, 5, 4, false), Some(21));
+    }
+
+    #[test]
+    fn poc_compute_equal_lsb_passes_through() {
+        // prev_tid0_poc = 32 (MSB=32, LSB=0), cur LSB=0 → poc_msb=32.
+        assert_eq!(Decoder::compute_poc(32, 0, 4, false), Some(32));
+    }
+
+    /// Spec 8.3.1: an IRAP picture with NoRaslOutputFlag = 1 (first picture
+    /// in the bitstream, first after EOS, or any BLA) has POC MSB = 0. A
+    /// CRA that starts decoding with a large LSB must not be wrapped to a
+    /// negative POC just because `prev_tid0_poc` is still at its initial 0.
+    #[test]
+    fn test_compute_poc_cra_starting_sequence_has_zero_msb() {
+        // max_poc_lsb = 16, prev = 0, cur LSB = 13: diff 13 > 8 would wrap
+        // MSB to -16 (POC -3) for an ordinary picture...
+        assert_eq!(Decoder::compute_poc(0, 13, 4, false), Some(-3));
+        // ...but a sequence-starting IRAP keeps MSB = 0 → POC = 13.
+        assert_eq!(Decoder::compute_poc(0, 13, 4, true), Some(13));
+    }
+
+    /// Spec 8.3.1: after a mid-stream CRA (NoRaslOutputFlag = 0, open GOP),
+    /// prevTid0Pic is the CRA itself with its real POC. The old code reset
+    /// `prev_tid0_poc` to 0 after every IRAP, which wrapped the MSB of the
+    /// pictures that follow. Simulate: CRA at POC 150 (log2_max_lsb = 8),
+    /// next trailing picture has LSB 151.
+    #[test]
+    fn test_compute_poc_after_mid_stream_cra_keeps_msb() {
+        // Correct seed (CRA's own POC) → 151.
+        assert_eq!(Decoder::compute_poc(150, 151, 8, false), Some(151));
+        // The buggy seed of 0 would have produced 151 - 256 = -105.
+        assert_eq!(Decoder::compute_poc(0, 151, 8, false), Some(-105));
+    }
+
+    // ----- Phase 3d-2: RefPicList0 / RefPicList1 construction tests -----
+
+    use crate::slice::{LongTermRefPicSet, RefPicListModification};
+
+    /// Build a minimal `SliceHeader` for tests that only exercise the
+    /// `build_ref_pic_lists` path. Only the fields the function reads
+    /// need to be valid; the rest take default / placeholder values.
+    fn test_slice_header_for_ref_lists(
+        slice_type: SliceType,
+        num_ref_idx_l0_active_minus1: u32,
+        num_ref_idx_l1_active_minus1: u32,
+        ref_pic_list_modification: RefPicListModification,
+    ) -> SliceHeader {
+        SliceHeader {
+            first_slice_segment_in_pic_flag: true,
+            no_output_of_prior_pics_flag: false,
+            slice_pic_parameter_set_id: 0,
+            dependent_slice_segment_flag: false,
+            slice_segment_address: 0,
+            slice_type,
+            pic_output_flag: true,
+            slice_pic_order_cnt_lsb: 0,
+            slice_sao_luma_flag: false,
+            slice_sao_chroma_flag: false,
+            slice_qp_delta: 0,
+            slice_qp_y: 26,
+            slice_cb_qp_offset: 0,
+            slice_cr_qp_offset: 0,
+            cu_chroma_qp_offset_enabled_flag: false,
+            slice_deblocking_filter_disabled_flag: true,
+            slice_beta_offset_div2: 0,
+            slice_tc_offset_div2: 0,
+            entry_point_offsets: Vec::new(),
+            header_size_bits: 0,
+            short_term_ref_pic_set_sps_flag: false,
+            short_term_ref_pic_set_idx: 0,
+            short_term_rps: None,
+            long_term_rps: LongTermRefPicSet::default(),
+            slice_temporal_mvp_enabled_flag: false,
+            num_ref_idx_l0_active_minus1,
+            num_ref_idx_l1_active_minus1,
+            mvd_l1_zero_flag: false,
+            cabac_init_flag: false,
+            collocated_from_l0_flag: true,
+            collocated_ref_idx: 0,
+            max_num_merge_cand: 5,
+            ref_pic_list_modification,
+            pred_weight_table: crate::slice::PredWeightTable::default(),
+            slice_loop_filter_across_slices_enabled_flag: true,
+            nal_unit_type: NalUnitType::TrailR,
+            temporal_id: 0,
+            poc: 10,
+        }
+    }
+
+    /// DeltaPocMsbCycleLt (eq. 7-52) accumulates within the SPS-candidate
+    /// entries and within the slice-coded ones, restarting at the first
+    /// slice-coded entry. POC 100, MaxPicOrderCntLsb 16 (LSB 4): one SPS
+    /// entry with cycle 1 (POC 84), then slice entries with cycles 2 and 1
+    /// (2 and 2 + 1 = 3 cycles back: POCs 68 and 52).
+    #[test]
+    fn long_term_msb_cycles_restart_at_slice_entries() {
+        let mut sh =
+            test_slice_header_for_ref_lists(SliceType::P, 0, 0, RefPicListModification::default());
+        sh.poc = 100;
+        sh.slice_pic_order_cnt_lsb = 4;
+        sh.long_term_rps = LongTermRefPicSet {
+            poc_lsb_lt: vec![4, 4, 4],
+            used_by_curr_pic_lt_flag: vec![true; 3],
+            delta_poc_msb_present_flag: vec![true; 3],
+            delta_poc_msb_cycle_lt: vec![1, 2, 1],
+            num_long_term_sps: 1,
+        };
+        let rps = Decoder::derive_rps_from_slice_header_parts(&sh, &[], 4).unwrap();
+        assert_eq!(rps.lt_curr, vec![84, 68, 52]);
+    }
+
+    fn test_decoded_picture(poc: i32) -> Arc<DecodedPicture> {
+        Arc::new(DecodedPicture::new(
+            PixelData::U8(vec![]),
+            PixelData::U8(vec![]),
+            PixelData::U8(vec![]),
+            16,
+            16,
+            poc,
+        ))
+    }
+
+    #[test]
+    fn build_ref_pic_lists_p_slice_without_modification() {
+        // RPS: st_curr_before = [8, 6], st_curr_after = [], lt_curr = [].
+        // Current POC = 10, 2 L0 refs → L0 = [pic@8, pic@6].
+        let rps = ReferencePictureSets {
+            st_curr_before: vec![8, 6],
+            st_curr_after: vec![],
+            st_foll: vec![],
+            lt_curr: vec![],
+            lt_foll: vec![],
+            lt_poc_msb_present: vec![],
+        };
+        let mut dpb = DecodedPictureBuffer::new();
+        dpb.insert(test_decoded_picture(8));
+        dpb.insert(test_decoded_picture(6));
+
+        let sh = test_slice_header_for_ref_lists(
+            SliceType::P,
+            1, // num_ref_idx_l0_active_minus1 = 1 → 2 active refs
+            0,
+            RefPicListModification::default(),
+        );
+
+        let (l0, l1) = Decoder::build_ref_pic_lists(&rps, &dpb, &sh, None).expect("build lists");
+        assert_eq!(l0.len(), 2);
+        assert_eq!(l0[0].poc, 8);
+        assert_eq!(l0[1].poc, 6);
+        assert!(l1.is_empty(), "P slice has no L1");
+    }
+
+    #[test]
+    fn build_ref_pic_lists_b_slice_l1_uses_after_before_order() {
+        // RPS: before = [8], after = [12]. For L0 the temp order is
+        // [before, after] → [8, 12]; for L1 it's [after, before] → [12, 8].
+        let rps = ReferencePictureSets {
+            st_curr_before: vec![8],
+            st_curr_after: vec![12],
+            st_foll: vec![],
+            lt_curr: vec![],
+            lt_foll: vec![],
+            lt_poc_msb_present: vec![],
+        };
+        let mut dpb = DecodedPictureBuffer::new();
+        dpb.insert(test_decoded_picture(8));
+        dpb.insert(test_decoded_picture(12));
+
+        let sh = test_slice_header_for_ref_lists(
+            SliceType::B,
+            1, // 2 L0 refs
+            1, // 2 L1 refs
+            RefPicListModification::default(),
+        );
+
+        let (l0, l1) = Decoder::build_ref_pic_lists(&rps, &dpb, &sh, None).expect("build lists");
+        assert_eq!(l0.len(), 2);
+        assert_eq!(l0[0].poc, 8);
+        assert_eq!(l0[1].poc, 12);
+        assert_eq!(l1.len(), 2);
+        assert_eq!(l1[0].poc, 12);
+        assert_eq!(l1[1].poc, 8);
+    }
+
+    #[test]
+    fn build_ref_pic_lists_applies_modification() {
+        let rps = ReferencePictureSets {
+            st_curr_before: vec![8, 6],
+            st_curr_after: vec![],
+            st_foll: vec![],
+            lt_curr: vec![],
+            lt_foll: vec![],
+            lt_poc_msb_present: vec![],
+        };
+        let mut dpb = DecodedPictureBuffer::new();
+        dpb.insert(test_decoded_picture(8));
+        dpb.insert(test_decoded_picture(6));
+
+        // list_entry_l0 = [1, 0] → swap: result = [pic@6, pic@8].
+        let modif = RefPicListModification {
+            ref_pic_list_modification_flag_l0: true,
+            list_entry_l0: vec![1, 0],
+            ..Default::default()
+        };
+
+        let sh = test_slice_header_for_ref_lists(SliceType::P, 1, 0, modif);
+        let (l0, _l1) = Decoder::build_ref_pic_lists(&rps, &dpb, &sh, None).expect("build lists");
+        assert_eq!(l0.len(), 2);
+        assert_eq!(l0[0].poc, 6);
+        assert_eq!(l0[1].poc, 8);
+    }
+
+    #[test]
+    fn build_ref_pic_lists_temp_list_wraps_for_high_active_count() {
+        // RPS has only 2 pictures but num_ref_idx_l0_active = 5 → the temp
+        // list wraps: [8, 6, 8, 6, 8], then first 5 are taken as-is.
+        let rps = ReferencePictureSets {
+            st_curr_before: vec![8, 6],
+            st_curr_after: vec![],
+            st_foll: vec![],
+            lt_curr: vec![],
+            lt_foll: vec![],
+            lt_poc_msb_present: vec![],
+        };
+        let mut dpb = DecodedPictureBuffer::new();
+        dpb.insert(test_decoded_picture(8));
+        dpb.insert(test_decoded_picture(6));
+
+        let sh = test_slice_header_for_ref_lists(
+            SliceType::P,
+            4, // 5 active L0 refs
+            0,
+            RefPicListModification::default(),
+        );
+        let (l0, _l1) = Decoder::build_ref_pic_lists(&rps, &dpb, &sh, None).expect("build lists");
+        assert_eq!(l0.len(), 5);
+        let pocs: Vec<i32> = l0.iter().map(|p| p.poc).collect();
+        assert_eq!(pocs, vec![8, 6, 8, 6, 8]);
+    }
+
+    #[test]
+    fn build_ref_pic_lists_errors_when_poc_missing_from_dpb() {
+        let rps = ReferencePictureSets {
+            st_curr_before: vec![8],
+            st_curr_after: vec![],
+            st_foll: vec![],
+            lt_curr: vec![],
+            lt_foll: vec![],
+            lt_poc_msb_present: vec![],
+        };
+        // DPB is empty → the POC=8 lookup fails.
+        let dpb = DecodedPictureBuffer::new();
+        let sh =
+            test_slice_header_for_ref_lists(SliceType::P, 0, 0, RefPicListModification::default());
+        assert!(Decoder::build_ref_pic_lists(&rps, &dpb, &sh, None).is_err());
+    }
+
+    /// **Phase 2d byte-exact test**: feed `testdata/tiny_intra.h265` through
+    /// `Decoder::decode_nal` and assert the resulting `Frame.y/u/v` matches
+    /// `testdata/tiny_intra_ref.yuv` byte-for-byte.
+    ///
+    /// Reference YUV layout (`ffmpeg -i tiny_intra.h265 -f rawvideo
+    /// -pix_fmt yuv420p tiny_intra_ref.yuv`):
+    ///
+    /// - 256 bytes of luma (16×16) all `0x7E`
+    /// - 64 bytes of Cb (8×8) all `0x80`
+    /// - 64 bytes of Cr (8×8) all `0x80`
+    /// - 384 bytes total
+    #[test]
+    fn test_decode_tiny_intra_byte_exact() {
+        let h265_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/tiny_intra.h265");
+        let yuv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/tiny_intra_ref.yuv");
+
+        let h265 = std::fs::read(h265_path).expect("read h265 fixture");
+        let ref_yuv = std::fs::read(yuv_path).expect("read reference yuv");
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+
+        assert_eq!(frame.width, 16);
+        assert_eq!(frame.height, 16);
+        assert_eq!(frame.y.len(), 256);
+        assert_eq!(frame.u.len(), 64);
+        assert_eq!(frame.v.len(), 64);
+
+        // Reassemble in the same layout as the reference YUV (Y then U then V).
+        let mut decoded = Vec::with_capacity(384);
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+
+        assert_eq!(
+            decoded.len(),
+            ref_yuv.len(),
+            "size mismatch: {} vs {}",
+            decoded.len(),
+            ref_yuv.len()
+        );
+        assert_eq!(
+            decoded, ref_yuv,
+            "decoded planes do not match reference YUV byte-for-byte"
+        );
+    }
+
+    /// **Phase 3b-2 byte-exact test**: 16×16 flat-gray with SAO enabled
+    /// (no `--no-sao`). Tests:
+    ///
+    /// - `sample_adaptive_offset_enabled_flag = 1` SPS path
+    /// - `slice_sao_luma_flag` / `slice_sao_chroma_flag` parsing in slice header
+    /// - Per-CTB `decode_sao_param` parsing (merge flags, type_idx, offsets,
+    ///   eo_class / band_position) at the start of each CTU
+    /// - `apply_sao_picture` running over the picture after deblock
+    #[test]
+    fn test_decode_sao_byte_exact() {
+        let h265_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/sao.h265");
+        let yuv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/sao_ref.yuv");
+        let h265 = std::fs::read(h265_path).expect("read h265 fixture");
+        let ref_yuv = std::fs::read(yuv_path).expect("read reference yuv");
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+        assert_eq!(
+            decoded, ref_yuv,
+            "decoded planes do not match reference YUV byte-for-byte"
+        );
+    }
+
+    /// **Phase 3b-1 byte-exact test**: 32×32 horizontal gradient with
+    /// deblocking enabled (no `--no-deblock`). Tests:
+    ///
+    /// - `slice_deblocking_filter_disabled_flag` plumbing through the slice header
+    /// - Per-TU boundary strength marking (intra → bS=2)
+    /// - Per-min-CB QP table population
+    /// - Luma and chroma deblock filters running over the picture
+    #[test]
+    fn test_decode_deblock_grad_byte_exact() {
+        let h265_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/deblock_grad.h265");
+        let yuv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/deblock_grad_ref.yuv");
+        let h265 = std::fs::read(h265_path).expect("read h265 fixture");
+        let ref_yuv = std::fs::read(yuv_path).expect("read reference yuv");
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+        assert_eq!(
+            decoded, ref_yuv,
+            "decoded planes do not match reference YUV byte-for-byte"
+        );
+    }
+
+    // Phase 3a-2 4×4 fixture: deferred to Phase 3a-3.
+    //
+    // x265 with `--max-tu-size 4` on a flat input picks angular intra
+    // modes for some 4×4 PUs (visible as gradient patterns in the reference
+    // YUV). Validating the 4×4 luma DST end-to-end therefore requires
+    // angular intra prediction, which is the next sub-phase. The DST
+    // implementation in `inverse_transform::transform_4x4_luma` is correct
+    // (it mirrors FFmpeg's `transform_4x4_luma` line-for-line), but
+    // exercising it through the full pipeline waits for 3a-3.
+
+    /// **Phase 3a-2 byte-exact test**: 16×16 flat-gray frame with
+    /// `--ctu 16 --max-tu-size 8` → 4 CTUs at 16×16, each split into
+    /// 4 8×8 luma TUs (transform_tree at log2_trafo=4 has implicit
+    /// `split_transform_flag=1` because log2_trafo > max_tb=3). Tests:
+    ///
+    /// - Recursive `transform_tree` split at log2_trafo > max_tb
+    /// - 8×8 inverse DCT (`idct_8x8`)
+    /// - 8×8 residual_coding with the 2×2 sub-block scan (`DIAG_SCAN_2X2`)
+    /// - `last_significant_coeff_x/y_prefix` for `log2_size = 3`
+    /// - `sig_coeff_flag` `scf_offset` for `log2_trafo == 3` (different
+    ///   from `log2_trafo == 4` we already covered)
+    #[test]
+    fn test_decode_tu8_byte_exact() {
+        let h265_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/tu8.h265");
+        let yuv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/tu8_ref.yuv");
+        let h265 = std::fs::read(h265_path).expect("read h265 fixture");
+        let ref_yuv = std::fs::read(yuv_path).expect("read reference yuv");
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+        let mut decoded = Vec::with_capacity(1536);
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+        assert_eq!(
+            decoded, ref_yuv,
+            "decoded planes do not match reference YUV byte-for-byte"
+        );
+    }
+
+    /// **Phase 3a-2 byte-exact test**: 32×32 flat-gray frame with
+    /// `--ctu 32 --max-tu-size 32` → single CTU, single CU, single 32×32
+    /// luma TU. Tests:
+    ///
+    /// - 32×32 inverse DCT (`idct_32x32` / `idct_dc` for the DC fast path)
+    /// - 32×32 residual_coding with the 8×8 sub-block scan (`DIAG_SCAN_8X8`)
+    /// - `last_significant_coeff_x/y_prefix` context derivation for `log2_size = 5`
+    /// - Dequantization with `shift = bit_depth + log2_trafo_size - 5 = 8`
+    #[test]
+    fn test_decode_tu32_byte_exact() {
+        let h265_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/tu32.h265");
+        let yuv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/tu32_ref.yuv");
+        let h265 = std::fs::read(h265_path).expect("read h265 fixture");
+        let ref_yuv = std::fs::read(yuv_path).expect("read reference yuv");
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+        assert_eq!(frame.width, 32);
+        assert_eq!(frame.height, 32);
+        let mut decoded = Vec::with_capacity(1536);
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+        assert_eq!(
+            decoded, ref_yuv,
+            "decoded planes do not match reference YUV byte-for-byte"
+        );
+    }
+
+    /// **Phase 3a-1 byte-exact test**: 32×32 flat-gray frame, `--ctu 16` →
+    /// 4 CTUs in raster order. Tests:
+    ///
+    /// - Multi-CTU loop in `Decoder::decode_slice`
+    /// - `end_of_slice_flag` (terminate bin) decoded at each CTB boundary
+    /// - `decode_coding_quadtree` returning a `more_data` flag
+    /// - Partial-availability reference samples (CTUs 2/3/4 have decoded
+    ///   neighbors from the earlier CTUs)
+    ///
+    /// Reference YUV is 1536 bytes: 1024 luma (all 0x7E) + 256 Cb (0x80) +
+    /// 256 Cr (0x80).
+    #[test]
+    fn test_decode_multi_ctu_byte_exact() {
+        let h265_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/multi_ctu.h265");
+        let yuv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/multi_ctu_ref.yuv");
+
+        let h265 = std::fs::read(h265_path).expect("read h265 fixture");
+        let ref_yuv = std::fs::read(yuv_path).expect("read reference yuv");
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+
+        assert_eq!(frame.width, 32);
+        assert_eq!(frame.height, 32);
+        assert_eq!(frame.y.len(), 1024);
+        assert_eq!(frame.u.len(), 256);
+        assert_eq!(frame.v.len(), 256);
+
+        let mut decoded = Vec::with_capacity(1536);
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+        assert_eq!(
+            decoded, ref_yuv,
+            "decoded planes do not match reference YUV byte-for-byte"
+        );
+    }
+
+    /// **Phase 3a-3 byte-exact test**: 16x16 flat-gray frame with
+    /// `--ctu 16 --max-tu-size 4` to force angular intra prediction modes.
+    ///
+    /// Fixture: `testdata/angular.h265` + `testdata/angular_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 16x16 flat gray YUV input (luma=0x7E, chroma=128)
+    /// x265 --input angular_input.yuv --input-res 16x16 --fps 1 --frames 1 \
+    ///   --preset ultrafast --no-wpp --no-signhide --ctu 16 --max-tu-size 4 \
+    ///   --no-open-gop --keyint 1 --no-scenecut --no-sao --no-deblock \
+    ///   --qp 25 --no-psnr --no-ssim --no-info -o angular.h265
+    /// ffmpeg -i angular.h265 -f rawvideo -pix_fmt yuv420p angular_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_angular_byte_exact() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/angular.h265"
+        ))
+        .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/angular_ref.yuv"
+        ))
+        .expect("read ref");
+
+        let w: usize = 16;
+        let h: usize = 16;
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+
+        assert_eq!(frame.width as usize, w);
+        assert_eq!(frame.height as usize, h);
+
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+
+        assert_eq!(
+            decoded.len(),
+            ref_yuv.len(),
+            "size mismatch: {} vs {}",
+            decoded.len(),
+            ref_yuv.len()
+        );
+
+        if decoded != ref_yuv {
+            for (i, (a, b)) in decoded.iter().zip(ref_yuv.iter()).enumerate() {
+                if a != b {
+                    let plane = if i < w * h {
+                        "Y"
+                    } else if i < w * h + (w / 2) * (h / 2) {
+                        "U"
+                    } else {
+                        "V"
+                    };
+                    panic!(
+                        "mismatch at byte {} (plane {}) ours={} ref={}",
+                        i, plane, a, b
+                    );
+                }
+            }
+        }
+    }
+
+    /// **Phase 3a-3 byte-exact test**: 16x16 vertical-stripe frame with
+    /// `--ctu 16 --max-tu-size 4 --qp 30` to force angular intra prediction
+    /// modes (modes 2..34). The stripe pattern causes x265 to pick modes like 3
+    /// and 34 for many PUs within a single CTU.
+    ///
+    /// Fixture: `testdata/angular_grad.h265` + `testdata/angular_grad_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 16x16 vertical stripe YUV input (left=40, right=200, chroma=128)
+    /// x265 --input angular_grad_input.yuv --input-res 16x16 --fps 1 --frames 1 \
+    ///   --preset ultrafast --no-wpp --no-signhide --ctu 16 --max-tu-size 4 \
+    ///   --no-open-gop --keyint 1 --no-scenecut --no-sao --no-deblock \
+    ///   --qp 30 --no-psnr --no-ssim --no-info -o angular_grad.h265
+    /// ffmpeg -i angular_grad.h265 -f rawvideo -pix_fmt yuv420p angular_grad_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_angular_gradient_byte_exact() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/angular_grad.h265"
+        ))
+        .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/angular_grad_ref.yuv"
+        ))
+        .expect("read ref");
+
+        let w: usize = 16;
+        let h: usize = 16;
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+
+        assert_eq!(frame.width as usize, w);
+        assert_eq!(frame.height as usize, h);
+
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+
+        assert_eq!(
+            decoded.len(),
+            ref_yuv.len(),
+            "size mismatch: {} vs {}",
+            decoded.len(),
+            ref_yuv.len()
+        );
+
+        if decoded != ref_yuv {
+            for (i, (a, b)) in decoded.iter().zip(ref_yuv.iter()).enumerate() {
+                if a != b {
+                    let plane = if i < w * h {
+                        "Y"
+                    } else if i < w * h + (w / 2) * (h / 2) {
+                        "U"
+                    } else {
+                        "V"
+                    };
+                    panic!(
+                        "mismatch at byte {} (plane {}) ours={} ref={}",
+                        i, plane, a, b
+                    );
+                }
+            }
+        }
+    }
+
+    /// **Phase 3a-4 byte-exact test**: 16x16 flat-gray frame with
+    /// `--scaling-list default` to enable the HEVC default scaling matrices.
+    ///
+    /// This exercises:
+    /// - `scaling_list_enabled_flag = 1` in SPS (no longer rejected)
+    /// - Default scaling list construction (spec tables 7-3..7-6)
+    /// - Scaling matrix lookup in `residual_coding` dequantization
+    /// - DC scale for 16x16 TUs (`sl_dc`)
+    /// - Position downsampling for 16x16: `pos = ((y>>1)<<3) + (x>>1)`
+    ///
+    /// Fixture: `testdata/scaling_list.h265` + `testdata/scaling_list_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 16x16 flat gray YUV input (luma=0x7E, chroma=128)
+    /// x265 --input scaling_list_input.yuv --input-res 16x16 --fps 1 --frames 1 \
+    ///   --preset ultrafast --no-wpp --no-signhide --ctu 16 \
+    ///   --no-open-gop --keyint 1 --no-scenecut --no-sao --no-deblock \
+    ///   --qp 25 --no-psnr --no-ssim --no-info --scaling-list default \
+    ///   -o scaling_list.h265
+    /// ffmpeg -i scaling_list.h265 -f rawvideo -pix_fmt yuv420p scaling_list_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_scaling_list_default_byte_exact() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/scaling_list.h265"
+        ))
+        .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/scaling_list_ref.yuv"
+        ))
+        .expect("read ref");
+
+        let w: usize = 16;
+        let h: usize = 16;
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+
+        assert_eq!(frame.width as usize, w);
+        assert_eq!(frame.height as usize, h);
+
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+
+        assert_eq!(
+            decoded.len(),
+            ref_yuv.len(),
+            "size mismatch: {} vs {}",
+            decoded.len(),
+            ref_yuv.len()
+        );
+
+        if decoded != ref_yuv {
+            for (i, (a, b)) in decoded.iter().zip(ref_yuv.iter()).enumerate() {
+                if a != b {
+                    let plane = if i < w * h {
+                        "Y"
+                    } else if i < w * h + (w / 2) * (h / 2) {
+                        "U"
+                    } else {
+                        "V"
+                    };
+                    panic!(
+                        "mismatch at byte {} (plane {}) ours={} ref={}",
+                        i, plane, a, b
+                    );
+                }
+            }
+        }
+    }
+
+    /// **Phase 3a-6 byte-exact test**: 16x16 vertical-stripe frame encoded
+    /// with `--signhide`, so `pps_sign_data_hiding_enabled_flag` is set.
+    ///
+    /// Exercises:
+    /// - `sign_data_hiding_enabled_flag = 1` in the PPS (no longer rejected)
+    /// - `sign_hidden = (last_nz_pos_in_cg - first_nz_pos_in_cg >= 4)` gate
+    /// - Decoding `n_end - 1` sign bits in hidden sub-blocks
+    /// - Sum-of-abs parity adjustment on the hidden coefficient
+    ///
+    /// Fixture: `testdata/signhide.h265` + `testdata/signhide_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 16x16 vertical stripe YUV input (left=40, right=200, chroma=128)
+    /// x265 --input signhide_input.yuv --input-res 16x16 --fps 1 --frames 1 \
+    ///   --preset ultrafast --no-wpp --signhide --ctu 16 --max-tu-size 4 \
+    ///   --no-open-gop --keyint 1 --no-scenecut --no-sao --no-deblock \
+    ///   --qp 20 --no-psnr --no-ssim --no-info -o signhide.h265
+    /// ffmpeg -i signhide.h265 -f rawvideo -pix_fmt yuv420p signhide_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_signhide_byte_exact() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/signhide.h265"
+        ))
+        .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/signhide_ref.yuv"
+        ))
+        .expect("read ref");
+
+        let w: usize = 16;
+        let h: usize = 16;
+
+        let nals = parse_annex_b(&h265);
+
+        // Sanity-check: the PPS in this fixture must actually have SDH on.
+        let pps_nal = nals
+            .iter()
+            .find(|n| n.nal_unit_type == NalUnitType::Pps)
+            .expect("fixture must contain a PPS");
+        let pps = parse_pps(&pps_nal.rbsp).expect("parse PPS");
+        assert!(
+            pps.sign_data_hiding_enabled_flag,
+            "signhide fixture must have sign_data_hiding_enabled_flag = 1"
+        );
+
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+
+        assert_eq!(frame.width as usize, w);
+        assert_eq!(frame.height as usize, h);
+
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+
+        assert_eq!(
+            decoded.len(),
+            ref_yuv.len(),
+            "size mismatch: {} vs {}",
+            decoded.len(),
+            ref_yuv.len()
+        );
+
+        if decoded != ref_yuv {
+            for (i, (a, b)) in decoded.iter().zip(ref_yuv.iter()).enumerate() {
+                if a != b {
+                    let plane = if i < w * h {
+                        "Y"
+                    } else if i < w * h + (w / 2) * (h / 2) {
+                        "U"
+                    } else {
+                        "V"
+                    };
+                    panic!(
+                        "mismatch at byte {} (plane {}) ours={} ref={}",
+                        i, plane, a, b
+                    );
+                }
+            }
+        }
+    }
+
+    /// **Phase 3a-5 byte-exact test**: 16x16 noise-pattern frame at QP 51.
+    ///
+    /// The original test attempted `--pcm` but most x265 builds don't
+    /// support it. The fixture was generated without `--pcm`, so it tests
+    /// the high-QP noise-pattern decode path rather than actual PCM CUs.
+    /// The unit tests in `cu_tree.rs` for `decode_pcm_block` and
+    /// `CabacReader::pcm_byte_position` cover the PCM path synthetically.
+    ///
+    /// Fixture: `testdata/pcm.h265` + `testdata/pcm_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 16x16 deterministic xorshift noise YUV input (seed=0xdeadbeef)
+    /// x265 --input pcm_input.yuv --input-res 16x16 --fps 1 --frames 1 \
+    ///   --preset ultrafast --no-wpp --no-signhide --ctu 16 \
+    ///   --no-open-gop --keyint 1 --no-scenecut --no-sao --no-deblock \
+    ///   --qp 51 --no-psnr --no-ssim --no-info -o pcm.h265
+    /// ffmpeg -i pcm.h265 -f rawvideo -pix_fmt yuv420p pcm_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_pcm_byte_exact() {
+        let h265 = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/pcm.h265"))
+            .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/pcm_ref.yuv"))
+            .expect("read ref");
+
+        let w: usize = 16;
+        let h: usize = 16;
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            match decoder.decode_nal(nal) {
+                Ok(Some(f)) => {
+                    assert!(frame.is_none(), "fixture has only one frame");
+                    frame = Some(f);
+                }
+                Ok(None) => {}
+                Err(e) => panic!("decode_nal error: {e}"),
+            }
+        }
+        if let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+
+        assert_eq!(frame.width as usize, w);
+        assert_eq!(frame.height as usize, h);
+
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+
+        assert_eq!(
+            decoded.len(),
+            ref_yuv.len(),
+            "size mismatch: {} vs {}",
+            decoded.len(),
+            ref_yuv.len()
+        );
+
+        if decoded != ref_yuv {
+            for (i, (a, b)) in decoded.iter().zip(ref_yuv.iter()).enumerate() {
+                if a != b {
+                    let plane = if i < w * h {
+                        "Y"
+                    } else if i < w * h + (w / 2) * (h / 2) {
+                        "U"
+                    } else {
+                        "V"
+                    };
+                    panic!(
+                        "mismatch at byte {} (plane {}) ours={} ref={}",
+                        i, plane, a, b
+                    );
+                }
+            }
+        }
+    }
+
+    /// **Phase 3c-1 / 3c-3 byte-exact test**: 64×64 flat-gray frame encoded
+    /// with `--slices 2`. x265 hard-requires `--wpp` whenever `--slices > 1`,
+    /// so the fixture's PPS has `entropy_coding_sync_enabled_flag = 1` and
+    /// exercises both the multi-slice infrastructure from 3c-1 AND the WPP
+    /// per-row CABAC reinit / state propagation from 3c-3.
+    ///
+    /// At `--ctu 16` the picture has 16 CTBs laid out 4×4. Each slice
+    /// covers 8 CTBs = 2 CTB rows, so each slice carries one
+    /// `entry_point_offset` pointing at the start of its second row's
+    /// substream.
+    ///
+    /// Exercises:
+    ///
+    /// - `first_slice_segment_in_pic_flag = 0` + `slice_segment_address`
+    ///   parsing in the slice header
+    /// - Multi-slice picture assembly in `Decoder::decode_slice`
+    /// - CABAC reinit per slice (fresh contexts from the slice's QP)
+    /// - WPP `entropy_coding_sync_enabled_flag = 1` PPS path
+    /// - `num_entry_point_offsets` + `entry_point_offset_minus1[]` parsing
+    /// - Per-row CABAC reinit + context state save/load across rows
+    /// - `end_of_slice_flag` decoded at the end of every row (WPP)
+    /// - Deblock + SAO finalize only after the last slice arrives
+    /// - Byte-exact match against FFmpeg for a multi-slice WPP bitstream
+    #[test]
+    fn test_decode_multi_slice_byte_exact() {
+        let h265_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/multi_slice.h265");
+        let yuv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/multi_slice_ref.yuv");
+        let h265 = std::fs::read(h265_path).expect("read h265 fixture");
+        let ref_yuv = std::fs::read(yuv_path).expect("read reference yuv");
+        let nals = parse_annex_b(&h265);
+        let vcl_count = nals.iter().filter(|n| n.nal_unit_type.is_vcl()).count();
+        assert_eq!(vcl_count, 2, "fixture must have exactly 2 VCL NAL units");
+
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+        assert_eq!(frame.width, 64);
+        assert_eq!(frame.height, 64);
+
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+        if decoded != ref_yuv {
+            let w = frame.width as usize;
+            let h = frame.height as usize;
+            for (i, (a, b)) in decoded.iter().zip(ref_yuv.iter()).enumerate() {
+                if a != b {
+                    let (plane, idx) = if i < w * h {
+                        ("Y", i)
+                    } else if i < w * h + (w / 2) * (h / 2) {
+                        ("U", i - w * h)
+                    } else {
+                        ("V", i - w * h - (w / 2) * (h / 2))
+                    };
+                    let (px, py) = (idx % w, idx / w);
+                    panic!(
+                        "first mismatch at byte {} (plane {} x={} y={}) ours={} ref={}",
+                        i, plane, px, py, a, b
+                    );
+                }
+            }
+        }
+    }
+
+    /// **Phase 3c-2 byte-exact test**: 256x256 flat-gray intra frame with
+    /// `--tiles 2x2`, encoded by kvazaar. Tests:
+    ///
+    /// - PPS `tiles_enabled_flag = 1` parsing (no longer rejected)
+    /// - `num_tile_columns_minus1` / `num_tile_rows_minus1` / uniform spacing
+    /// - `Pps::resolve_tile_geometry` producing `column_widths_in_ctbs`
+    /// - `TileScanTables::build` building the raster<->tile-scan mapping
+    /// - Per-tile CABAC reinit at the tile boundary (byte offset + state)
+    /// - CTB iteration in tile-scan order
+    /// - `tab_tile_id` population + intra-availability tile boundary check
+    /// - Byte-exact match against FFmpeg
+    ///
+    /// Fixture: `testdata/tiles.h265` + `testdata/tiles_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 256x256 flat gray YUV input (luma=0x7E, chroma=128)
+    /// kvazaar --input tiles_input.yuv --input-res 256x256 --input-fps 1 \
+    ///   --frames 1 --preset ultrafast --tiles 2x2 --no-wpp --no-sao \
+    ///   --no-deblock --no-signhide --gop 0 --period 1 --qp 25 \
+    ///   --output tiles.h265
+    /// ffmpeg -i tiles.h265 -f rawvideo -pix_fmt yuv420p tiles_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_tiles_byte_exact() {
+        let h265 = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/tiles.h265"))
+            .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/tiles_ref.yuv"
+        ))
+        .expect("read ref");
+
+        let w: usize = 256;
+        let h: usize = 256;
+
+        let nals = parse_annex_b(&h265);
+
+        // Sanity-check: the PPS really has tiles_enabled_flag = 1.
+        let pps_nal = nals
+            .iter()
+            .find(|n| n.nal_unit_type == NalUnitType::Pps)
+            .expect("fixture must contain a PPS");
+        let pps = parse_pps(&pps_nal.rbsp).expect("parse tiled PPS");
+        assert!(
+            pps.tiles_enabled_flag,
+            "tiles fixture must have tiles_enabled_flag = 1"
+        );
+        assert_eq!(pps.num_tile_columns, 2);
+        assert_eq!(pps.num_tile_rows, 2);
+
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+        assert_eq!(frame.width as usize, w);
+        assert_eq!(frame.height as usize, h);
+
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+
+        assert_eq!(
+            decoded.len(),
+            ref_yuv.len(),
+            "size mismatch: {} vs {}",
+            decoded.len(),
+            ref_yuv.len()
+        );
+        if decoded != ref_yuv {
+            for (i, (a, b)) in decoded.iter().zip(ref_yuv.iter()).enumerate() {
+                if a != b {
+                    let (plane, idx) = if i < w * h {
+                        ("Y", i)
+                    } else if i < w * h + (w / 2) * (h / 2) {
+                        ("U", i - w * h)
+                    } else {
+                        ("V", i - w * h - (w / 2) * (h / 2))
+                    };
+                    let (px, py) = (idx % w, idx / w);
+                    panic!(
+                        "first mismatch at byte {} (plane {} x={} y={}) ours={} ref={}",
+                        i, plane, px, py, a, b
+                    );
+                }
+            }
+        }
+    }
+
+    /// **Phase 3c-4 byte-exact test**: 128x128 flat-gray intra frame with
+    /// `kvazaar --slices wpp --wpp`, which puts each CTB row in its own
+    /// slice segment with `dependent_slice_segment_flag = 1`. Tests:
+    ///
+    /// - PPS `dependent_slice_segments_enabled_flag = 1`
+    /// - Slice header parser accepting `dependent_slice_segment_flag = 1`
+    /// - `Decoder::decode_slice` copying inherited fields from the
+    ///   independent slice header into the dependent slice header
+    /// - CABAC save at the end of each slice + WPP row-save restore
+    /// - Per-slice `entry_point_offsets` still parsed for dependent slices
+    ///
+    /// Fixture: `testdata/dep_slices.h265` + `testdata/dep_slices_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 128x128 flat gray YUV input (luma=0x7E, chroma=128)
+    /// kvazaar --input dep_slices_input.yuv --input-res 128x128 --input-fps 1 \
+    ///   --frames 1 --preset ultrafast --slices wpp --wpp --no-sao \
+    ///   --no-deblock --no-signhide --gop 0 --period 1 --qp 25 \
+    ///   --output dep_slices.h265
+    /// ffmpeg -i dep_slices.h265 -f rawvideo -pix_fmt yuv420p dep_slices_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_dependent_slices_byte_exact() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/dep_slices.h265"
+        ))
+        .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/dep_slices_ref.yuv"
+        ))
+        .expect("read ref");
+
+        let w: usize = 128;
+        let h: usize = 128;
+
+        let nals = parse_annex_b(&h265);
+
+        // Sanity-check: the PPS really enables dependent slice segments.
+        let pps_nal = nals
+            .iter()
+            .find(|n| n.nal_unit_type == NalUnitType::Pps)
+            .expect("fixture must contain a PPS");
+        let pps = parse_pps(&pps_nal.rbsp).expect("parse dep-slice PPS");
+        assert!(
+            pps.dependent_slice_segments_enabled_flag,
+            "dependent slices fixture must have dependent_slice_segments_enabled_flag = 1"
+        );
+
+        let vcl_count = nals.iter().filter(|n| n.nal_unit_type.is_vcl()).count();
+        assert!(
+            vcl_count >= 2,
+            "dependent slices fixture must have at least 2 VCL NAL units (got {})",
+            vcl_count
+        );
+
+        // Parse each VCL slice header and check that at least one is a
+        // dependent slice segment.
+        let sps_nal = nals
+            .iter()
+            .find(|n| n.nal_unit_type == NalUnitType::Sps)
+            .expect("fixture must contain an SPS");
+        let sps = crate::sps::parse_sps(&sps_nal.rbsp).expect("parse SPS");
+        let mut pps_resolved = pps.clone();
+        pps_resolved
+            .resolve_tile_geometry(&sps)
+            .expect("resolve tile geometry");
+        let mut dependent_count = 0usize;
+        for vcl in nals.iter().filter(|n| n.nal_unit_type.is_vcl()) {
+            let sh = crate::slice::parse_slice_segment_header(
+                &vcl.rbsp,
+                vcl.nal_unit_type,
+                &sps,
+                &pps_resolved,
+            )
+            .expect("parse slice header");
+            if sh.dependent_slice_segment_flag {
+                dependent_count += 1;
+            }
+        }
+        assert!(
+            dependent_count >= 1,
+            "dependent slices fixture must contain at least one dependent slice segment"
+        );
+
+        let mut decoder = Decoder::new();
+        let mut frame: Option<Frame> = None;
+        for nal in &nals {
+            if let Some(f) = decoder.decode_nal(nal).expect("decode_nal") {
+                assert!(frame.is_none(), "fixture has only one frame");
+                frame = Some(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            assert!(frame.is_none(), "fixture has only one frame");
+            frame = Some(f);
+        }
+        let frame = frame.expect("expected one decoded frame");
+        assert_eq!(frame.width as usize, w);
+        assert_eq!(frame.height as usize, h);
+
+        let mut decoded = Vec::with_capacity(ref_yuv.len());
+        decoded.extend_from_slice(frame.y.as_u8().unwrap());
+        decoded.extend_from_slice(frame.u.as_u8().unwrap());
+        decoded.extend_from_slice(frame.v.as_u8().unwrap());
+
+        assert_eq!(
+            decoded.len(),
+            ref_yuv.len(),
+            "size mismatch: {} vs {}",
+            decoded.len(),
+            ref_yuv.len()
+        );
+        if decoded != ref_yuv {
+            for (i, (a, b)) in decoded.iter().zip(ref_yuv.iter()).enumerate() {
+                if a != b {
+                    let (plane, idx) = if i < w * h {
+                        ("Y", i)
+                    } else if i < w * h + (w / 2) * (h / 2) {
+                        ("U", i - w * h)
+                    } else {
+                        ("V", i - w * h - (w / 2) * (h / 2))
+                    };
+                    let (px, py) = (idx % w, idx / w);
+                    panic!(
+                        "first mismatch at byte {} (plane {} x={} y={}) ours={} ref={}",
+                        i, plane, px, py, a, b
+                    );
+                }
+            }
+        }
+    }
+
+    /// **Phase 3d-3 inter P-slice byte-exact test**: 2-frame IPP sequence.
+    /// - Frame 0 (IDR) decodes byte-exact against FFmpeg reference.
+    /// - Frame 1 (P-slice) decodes byte-exact against FFmpeg reference.
+    ///
+    /// Fixture: `testdata/inter_p.h265` + `testdata/inter_p_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 16x16, 2 identical flat-gray frames (luma=0x7E, chroma=128)
+    /// x265 --input inter_p_input.yuv --input-res 16x16 --fps 1 --frames 2 \
+    ///   --preset ultrafast --no-wpp --no-signhide --ctu 16 --no-open-gop \
+    ///   --keyint 2 --bframes 0 --no-scenecut --no-sao --no-deblock \
+    ///   --qp 25 --no-psnr --no-ssim --no-info --no-weightp -o inter_p.h265
+    /// ffmpeg -i inter_p.h265 -f rawvideo -pix_fmt yuv420p inter_p_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_inter_p_slice_no_crash() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/inter_p.h265"
+        ))
+        .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/inter_p_ref.yuv"
+        ))
+        .expect("read ref");
+
+        let w: usize = 16;
+        let h: usize = 16;
+        let y_size = w * h;
+        let uv_size = (w / 2) * (h / 2);
+        let frame_size = y_size + 2 * uv_size;
+
+        assert_eq!(
+            ref_yuv.len(),
+            frame_size * 2,
+            "reference YUV should have 2 frames"
+        );
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frames: Vec<Frame> = Vec::new();
+        for nal in &nals {
+            match decoder.decode_nal(nal) {
+                Ok(Some(f)) => frames.push(f),
+                Ok(None) => {}
+                Err(e) => panic!("decode_nal failed: {:?}", e),
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            frames.push(f);
+        }
+
+        assert!(
+            !frames.is_empty(),
+            "expected at least 1 decoded frame, got {}",
+            frames.len()
+        );
+
+        // Frame 0 (IDR): byte-exact against FFmpeg.
+        let frame0 = &frames[0];
+        assert_eq!(frame0.width as usize, w);
+        assert_eq!(frame0.height as usize, h);
+
+        let ref_frame0 = &ref_yuv[..frame_size];
+        let mut decoded0 = Vec::with_capacity(frame_size);
+        decoded0.extend_from_slice(frame0.y.as_u8().unwrap());
+        decoded0.extend_from_slice(frame0.u.as_u8().unwrap());
+        decoded0.extend_from_slice(frame0.v.as_u8().unwrap());
+        assert_eq!(
+            decoded0, ref_frame0,
+            "frame 0 (IDR) is not byte-exact against FFmpeg reference"
+        );
+
+        // Frame 1 (P-slice): byte-exact against FFmpeg.
+        assert!(
+            frames.len() >= 2,
+            "expected 2 decoded frames, got {}",
+            frames.len()
+        );
+        let frame1 = &frames[1];
+        assert_eq!(frame1.width as usize, w);
+        assert_eq!(frame1.height as usize, h);
+
+        let ref_frame1 = &ref_yuv[frame_size..frame_size * 2];
+        let mut decoded1 = Vec::with_capacity(frame_size);
+        decoded1.extend_from_slice(frame1.y.as_u8().unwrap());
+        decoded1.extend_from_slice(frame1.u.as_u8().unwrap());
+        decoded1.extend_from_slice(frame1.v.as_u8().unwrap());
+        assert_eq!(
+            decoded1, ref_frame1,
+            "frame 1 (P-slice) is not byte-exact against FFmpeg reference"
+        );
+    }
+
+    /// Phase 3e: B-slice byte-exact test.
+    ///
+    /// 3-frame sequence (IDR + P + B), all frames byte-exact against FFmpeg.
+    ///
+    /// Fixture: `testdata/inter_b.h265` + `testdata/inter_b_ref.yuv`
+    /// Generated with:
+    /// ```text
+    /// # 16x16, 3 frames: luma=100, 110, 120; chroma=128
+    /// x265 --input inter_b_input.yuv --input-res 16x16 --fps 1 --frames 3 \
+    ///   --preset ultrafast --no-wpp --no-signhide --ctu 16 --no-open-gop \
+    ///   --keyint 3 --bframes 1 --no-scenecut --no-sao --no-deblock \
+    ///   --qp 25 --no-psnr --no-ssim --no-info --no-weightp --no-weightb \
+    ///   -o inter_b.h265
+    /// ffmpeg -i inter_b.h265 -f rawvideo -pix_fmt yuv420p inter_b_ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_inter_b_slice_byte_exact() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/inter_b.h265"
+        ))
+        .expect("read fixture");
+        let ref_yuv = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/inter_b_ref.yuv"
+        ))
+        .expect("read ref");
+
+        let w: usize = 16;
+        let h: usize = 16;
+        let y_size = w * h;
+        let uv_size = (w / 2) * (h / 2);
+        let frame_size = y_size + 2 * uv_size;
+
+        assert_eq!(
+            ref_yuv.len(),
+            frame_size * 3,
+            "reference YUV should have 3 frames"
+        );
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frames: Vec<Frame> = Vec::new();
+        for nal in &nals {
+            match decoder.decode_nal(nal) {
+                Ok(Some(f)) => frames.push(f),
+                Ok(None) => {}
+                Err(e) => panic!("decode_nal failed: {:?}", e),
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            frames.push(f);
+        }
+
+        assert_eq!(
+            frames.len(),
+            3,
+            "expected 3 decoded frames, got {}",
+            frames.len()
+        );
+
+        // Sort our decoded frames by POC (display order) to match FFmpeg output.
+        frames.sort_by_key(|f| f.pic_order_cnt);
+
+        // Compare each frame byte-exact against FFmpeg reference.
+        for (i, frame) in frames.iter().enumerate() {
+            assert_eq!(frame.width as usize, w);
+            assert_eq!(frame.height as usize, h);
+
+            let ref_frame = &ref_yuv[i * frame_size..(i + 1) * frame_size];
+            let mut decoded = Vec::with_capacity(frame_size);
+            decoded.extend_from_slice(frame.y.as_u8().unwrap());
+            decoded.extend_from_slice(frame.u.as_u8().unwrap());
+            decoded.extend_from_slice(frame.v.as_u8().unwrap());
+            assert_eq!(
+                decoded, ref_frame,
+                "frame {} (POC {}) is not byte-exact against FFmpeg reference",
+                i, frame.pic_order_cnt
+            );
+        }
+    }
+
+    /// Phase 3f: 1080p hash test.
+    ///
+    /// Decodes a 1920x1080 10-frame P-only sequence and verifies all 10
+    /// frames decode correctly (byte-exact with FFmpeg).
+    ///
+    /// Fixture: `testdata/1080p.h265`
+    /// Generated with:
+    /// ```text
+    /// ffmpeg -y -f lavfi -i color=gray:size=1920x1080:rate=30:duration=0.33 \
+    ///   -frames:v 10 -pix_fmt yuv420p -f rawvideo input_1080p.yuv
+    /// x265 --input input_1080p.yuv --input-res 1920x1080 --fps 30 --frames 10 \
+    ///   --preset ultrafast --no-wpp --bframes 0 --ref 1 --keyint 10 --qp 28 \
+    ///   --no-open-gop --no-sao --no-deblock --no-signhide \
+    ///   --no-psnr --no-ssim --no-info -o 1080p.h265
+    /// ```
+    #[test]
+    fn test_decode_1080p_hash() {
+        use sha2::{Digest, Sha256};
+
+        let h265 = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/1080p.h265"))
+            .expect("read fixture");
+
+        let num_frames: usize = 10;
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut our_hasher = Sha256::new();
+        let mut frame_count = 0usize;
+
+        for (i, nal) in nals.iter().enumerate() {
+            match decoder.decode_nal(nal) {
+                Ok(Some(frame)) => {
+                    our_hasher.update(frame.y.as_u8().unwrap());
+                    our_hasher.update(frame.u.as_u8().unwrap());
+                    our_hasher.update(frame.v.as_u8().unwrap());
+                    frame_count += 1;
+                }
+                Ok(None) => {}
+                Err(e) => panic!(
+                    "decode_nal failed on NAL[{}] (frame {}): {:?}",
+                    i, frame_count, e
+                ),
+            }
+        }
+        // Flush any remaining frames.
+        while let Some(frame) = decoder.flush() {
+            our_hasher.update(frame.y.as_u8().unwrap());
+            our_hasher.update(frame.u.as_u8().unwrap());
+            our_hasher.update(frame.v.as_u8().unwrap());
+            frame_count += 1;
+        }
+
+        assert_eq!(
+            frame_count, num_frames,
+            "expected {} decoded frames, got {}",
+            num_frames, frame_count
+        );
+
+        let our_hash = our_hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+
+        // SHA-256 verified against FFmpeg: `ffmpeg -i 1080p.h265 -f rawvideo
+        // -pix_fmt yuv420p pipe:1 | shasum -a 256`. The conformance window
+        // crop ensures our output matches FFmpeg's 1920×1080 output (not the
+        // CTU-padded 1920×1088 coded picture).
+        let expected_hash = "ee157a13ccac1b08728ece0719421731e6ce0bbdfabe10c43a5239c3a1b6f810";
+        assert_eq!(
+            our_hash, expected_hash,
+            "1080p SHA-256 mismatch: ours={} expected={}",
+            our_hash, expected_hash
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Real-world-ish test fixtures
+    // -----------------------------------------------------------------------
+    //
+    // All fixtures below use `testsrc2` or `testsrc` patterns encoded with
+    // x265 `--preset ultrafast --ctu 16`. B-frame fixtures require sorting
+    // decoded frames by POC (display order) before hashing, because FFmpeg
+    // outputs in display order while our decoder outputs in decode order.
+
+    /// Helper: decode a fixture, sort by POC, and return the SHA-256 hash
+    /// of all planes concatenated in display order.
+    /// Hash a PixelData plane into a SHA-256 hasher. 8-bit hashes raw bytes;
+    /// 10-bit hashes each sample as two little-endian bytes (matching FFmpeg's
+    /// yuv420p10le output format).
+    fn hash_pixel_data(hasher: &mut sha2::Sha256, data: &crate::pixel::PixelData) {
+        use sha2::Digest;
+        match data {
+            crate::pixel::PixelData::U8(v) => hasher.update(v),
+            crate::pixel::PixelData::U16(v) => {
+                for &sample in v {
+                    hasher.update(sample.to_le_bytes());
+                }
+            }
+        }
+    }
+
+    fn decode_and_hash(fixture_name: &str, expected_frames: usize) -> String {
+        use sha2::{Digest, Sha256};
+
+        let h265 = std::fs::read(
+            concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/").to_string() + fixture_name,
+        )
+        .unwrap_or_else(|e| panic!("read {fixture_name}: {e}"));
+
+        let nals = parse_annex_b(&h265);
+        let mut decoder = Decoder::new();
+        let mut frames: Vec<Frame> = Vec::new();
+
+        for (i, nal) in nals.iter().enumerate() {
+            match decoder.decode_nal(nal) {
+                Ok(Some(frame)) => frames.push(frame),
+                Ok(None) => {}
+                Err(e) => panic!(
+                    "{}: decode_nal failed on NAL[{}] (frame {}): {:?}",
+                    fixture_name,
+                    i,
+                    frames.len(),
+                    e
+                ),
+            }
+        }
+        // Flush remaining frames (B-frames buffered in DPB).
+        while let Some(frame) = decoder.flush() {
+            frames.push(frame);
+        }
+
+        assert_eq!(
+            frames.len(),
+            expected_frames,
+            "{}: expected {} frames, got {}",
+            fixture_name,
+            expected_frames,
+            frames.len()
+        );
+
+        // Sort by POC for display-order hash comparison with FFmpeg.
+        frames.sort_by_key(|f| f.pic_order_cnt);
+
+        let mut hasher = Sha256::new();
+        for frame in &frames {
+            hash_pixel_data(&mut hasher, &frame.y);
+            hash_pixel_data(&mut hasher, &frame.u);
+            hash_pixel_data(&mut hasher, &frame.v);
+        }
+        hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    }
+
+    /// 320x240, 30 frames, bframes=1, ref=4, qp=24 — exercises multi-ref
+    /// P/B prediction on varied testsrc2 content. No SAO, no deblock.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=30:duration=1.0" \
+    ///   -frames:v 30 -pix_fmt yuv420p -f rawvideo /tmp/input.yuv
+    /// x265 --input /tmp/input.yuv --input-res 320x240 --fps 30 --frames 30 \
+    ///   --preset ultrafast --ctu 16 --no-wpp --bframes 1 --ref 4 --qp 24 \
+    ///   --keyint 30 --no-open-gop --no-weightp --no-weightb --no-scenecut \
+    ///   --no-sao --no-deblock --no-signhide \
+    ///   --no-psnr --no-ssim --no-info -o realworld_320x240.h265
+    /// ```
+    #[test]
+    fn test_decode_realworld_320x240_byte_exact() {
+        let hash = decode_and_hash("realworld_320x240.h265", 30);
+        let expected = "e12a27d0656e2dd3967e11934f32db1f5a03fec48da911429561b8417334690e";
+        assert_eq!(
+            hash, expected,
+            "realworld_320x240 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 1280x720, 10 frames, bframes=1, ref=2, qp=26 — HD content with
+    /// B-frames. 720p is CTU-aligned in width (1280/16=80) but height
+    /// (720/16=45) has no padding.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=1280x720:rate=30:duration=0.34" \
+    ///   -frames:v 10 -pix_fmt yuv420p -f rawvideo /tmp/input.yuv
+    /// x265 --input /tmp/input.yuv --input-res 1280x720 --fps 30 --frames 10 \
+    ///   --preset ultrafast --ctu 16 --no-wpp --bframes 1 --ref 2 --qp 26 \
+    ///   --keyint 10 --no-open-gop --no-weightp --no-weightb --no-scenecut \
+    ///   --no-sao --no-deblock --no-signhide \
+    ///   --no-psnr --no-ssim --no-info -o realworld_720p.h265
+    /// ```
+    #[test]
+    fn test_decode_realworld_720p_hash() {
+        let hash = decode_and_hash("realworld_720p.h265", 10);
+        let expected = "9cbafe78054edc6fc565f80c6339e36a3c536eb58da558f7b4a76523d26ff638";
+        assert_eq!(
+            hash, expected,
+            "realworld_720p hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 320x240, 20 frames of moving testsrc pattern — exercises non-zero MVs,
+    /// sub-pixel interpolation, and temporal prediction with actual motion.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc=size=320x240:rate=30:duration=0.67" \
+    ///   -frames:v 20 -pix_fmt yuv420p -f rawvideo /tmp/input.yuv
+    /// x265 --input /tmp/input.yuv --input-res 320x240 --fps 30 --frames 20 \
+    ///   --preset ultrafast --ctu 16 --no-wpp --bframes 1 --ref 2 --qp 22 \
+    ///   --keyint 20 --no-open-gop --no-weightp --no-weightb --no-scenecut \
+    ///   --no-sao --no-deblock --no-signhide \
+    ///   --no-psnr --no-ssim --no-info -o motion_320x240.h265
+    /// ```
+    #[test]
+    fn test_decode_motion_320x240_hash() {
+        let hash = decode_and_hash("motion_320x240.h265", 20);
+        let expected = "5b7faa6a62ba7932fc643a3b668b1dfc06cae44bfec43651de4b59a1c3aa35fb";
+        assert_eq!(
+            hash, expected,
+            "motion_320x240 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 320x240, 10 frames with deblocking AND SAO enabled (qp=30 for
+    /// visible artifacts that the filters correct). Validates in-loop
+    /// filtering on multi-CTU B-frame content.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=30:duration=0.34" \
+    ///   -frames:v 10 -pix_fmt yuv420p -f rawvideo /tmp/input.yuv
+    /// x265 --input /tmp/input.yuv --input-res 320x240 --fps 30 --frames 10 \
+    ///   --preset ultrafast --ctu 16 --no-wpp --bframes 1 --ref 2 --qp 30 \
+    ///   --keyint 10 --no-open-gop --no-weightp --no-weightb --no-scenecut \
+    ///   --no-signhide --no-psnr --no-ssim --no-info \
+    ///   -o deblock_sao_320x240.h265
+    /// ```
+    #[test]
+    fn test_decode_deblock_sao_320x240_hash() {
+        let hash = decode_and_hash("deblock_sao_320x240.h265", 10);
+        let expected = "e672d49a06df7798d7c5c1610b5ccfe2e37772bbbf4eee3a2d3877838d12dc82";
+        assert_eq!(
+            hash, expected,
+            "deblock_sao_320x240 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// Same content as deblock_sao_320x240 but with `--no-deblock`.
+    /// Verifies that pre-deblock inter prediction is byte-exact.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=30:duration=0.34" \
+    ///   -frames:v 10 -pix_fmt yuv420p -f rawvideo /tmp/input.yuv
+    /// x265 --input /tmp/input.yuv --input-res 320x240 --fps 30 --frames 10 \
+    ///   --preset ultrafast --ctu 16 --no-wpp --bframes 1 --ref 2 --qp 30 \
+    ///   --keyint 10 --no-open-gop --no-weightp --no-weightb --no-scenecut \
+    ///   --no-sao --no-deblock --no-psnr --no-ssim --no-info \
+    ///   -o deblock_sao_nodeblock.h265
+    /// ```
+    #[test]
+    fn test_decode_deblock_sao_nodeblock_hash() {
+        let hash = decode_and_hash("deblock_sao_nodeblock.h265", 10);
+        // FFmpeg reference: ffmpeg -i deblock_sao_nodeblock.h265 -f rawvideo -pix_fmt yuv420p pipe:1 | shasum -a 256
+        let expected = "609700078af4bf8de52d904a89ae75ced37b1e98e28cb0dc74ebc5bc980faff5";
+        assert_eq!(
+            hash, expected,
+            "deblock_sao_nodeblock hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 320x240, 10 frames with sign data hiding AND default scaling lists
+    /// enabled. Tests the coefficient coding path with sign hiding and
+    /// the dequantization path with non-flat scaling matrices.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=30:duration=0.34" \
+    ///   -frames:v 10 -pix_fmt yuv420p -f rawvideo /tmp/input.yuv
+    /// x265 --input /tmp/input.yuv --input-res 320x240 --fps 30 --frames 10 \
+    ///   --preset ultrafast --ctu 16 --no-wpp --signhide --scaling-list default \
+    ///   --bframes 1 --ref 2 --qp 26 --keyint 10 --no-open-gop \
+    ///   --no-weightp --no-weightb --no-scenecut --no-sao --no-deblock \
+    ///   --no-psnr --no-ssim --no-info \
+    ///   -o signhide_scaling_320x240.h265
+    /// ```
+    #[test]
+    fn test_decode_signhide_scaling_320x240_hash() {
+        let hash = decode_and_hash("signhide_scaling_320x240.h265", 10);
+        let expected = "ff3e179ade08f6b3111c5b21d576605f5ee4d22b3ad5747f15c2d78dcbd2e512";
+        assert_eq!(
+            hash, expected,
+            "signhide_scaling_320x240 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// Single 64x64 I-frame with `--aq-mode 1 --qg-size 32`: exercises the
+    /// HEVC spec 8.6.1 QP prediction path. Each 32x32 QP group carries its
+    /// own `cu_qp_delta`, requiring `get_qPy_pred` / `set_qPy` to average
+    /// the left + above QPs from `tab_qp_y` (with `qpy_pred` as fallback
+    /// when neighbors are unavailable).
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=64x64:rate=30:duration=0.1" \
+    ///   -frames:v 1 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 64x64 --fps 30 --frames 1 \
+    ///   --preset ultrafast --ctu 64 --keyint 30 --no-open-gop \
+    ///   --aq-mode 1 --aq-strength 1.0 --no-cutree --qg-size 32 \
+    ///   --no-sao --no-deblock --no-info --no-psnr --no-ssim --no-wpp \
+    ///   -o aq_intra_64.h265
+    /// ```
+    #[test]
+    fn test_decode_aq_intra_64_hash() {
+        let hash = decode_and_hash("aq_intra_64.h265", 1);
+        let expected = "8ba0a950e270204375060527f592b5a0bfc3ad49d51919269d91239d7f09fbcf";
+        assert_eq!(
+            hash, expected,
+            "aq_intra_64 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 320×240 I+B+P+B+P with `--aq-mode 1 --qg-size 32`: exercises the
+    /// `transform_tree` sibling cbf-inheritance fix (siblings at the same
+    /// split depth must see the ORIGINAL parent's `cbf_cb/cbf_cr`, not
+    /// each other's). Before the fix, subsequent siblings inherited the
+    /// previous sibling's cbf, which caused `cbf_cr` to be skipped
+    /// whenever the first sibling decoded `cbf_cr = 0` — a CABAC desync
+    /// that only surfaced in large AQ-enabled P-frames (small fixtures
+    /// happened to not exercise the split+cbf_cb=1+cbf_cr=0 combination).
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=30:duration=0.2" \
+    ///   -frames:v 5 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 320x240 --fps 30 --frames 5 \
+    ///   --preset ultrafast --ctu 64 --keyint 30 --no-open-gop --bframes 1 \
+    ///   --aq-mode 1 --aq-strength 1.0 --no-cutree --qg-size 32 \
+    ///   --no-sao --no-deblock --no-info --no-psnr --no-ssim --no-wpp \
+    ///   -o aq_p_320x240.h265
+    /// ```
+    #[test]
+    fn test_decode_aq_p_320x240_hash() {
+        let hash = decode_and_hash("aq_p_320x240.h265", 5);
+        let expected = "7bb34e31bfbe81e9a18c35af020c853f1bed56e8b28c67b1809f63e2e4dde98a";
+        assert_eq!(
+            hash, expected,
+            "aq_p_320x240 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 128×128, 10 frames with `--bframes 3 --ref 4`: exercises the
+    /// I-B-B-B-P reference picture ordering, which stresses the DPB's
+    /// reference list construction and the hierarchical-B POC scheduling.
+    /// Prior to the WPP/AQ fixes, B-pyramids with `--bframes ≥ 2` hit
+    /// CABAC desyncs partway through decode.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=128x128:rate=30:duration=1" \
+    ///   -frames:v 10 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 128x128 --fps 30 --frames 10 \
+    ///   --preset ultrafast --ctu 16 --keyint 30 --no-open-gop \
+    ///   --bframes 3 --ref 4 --qp 26 --no-cutree --no-aq \
+    ///   --no-sao --no-deblock --no-info --no-psnr --no-ssim --no-wpp \
+    ///   -o bframes3_128x128.h265
+    /// ```
+    #[test]
+    fn test_decode_bframes3_128x128_hash() {
+        let hash = decode_and_hash("bframes3_128x128.h265", 10);
+        let expected = "0c56f162732109b9e03899b73cadbb64ad6759c48814e60bad58767c08ec3c80";
+        assert_eq!(
+            hash, expected,
+            "bframes3_128x128 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 384×216 CTU=16 WPP with `--bframes 1 --ref 4`: exercises the
+    /// entry-point-offset emulation-prevention-byte compensation (HEVC spec
+    /// 7.4.7.1). Small CTU sizes + multi-CTB-row pictures produce long
+    /// slice data that tends to contain one or more `00 00 03` sequences,
+    /// so every WPP row reinit must convert the NAL-space
+    /// `entry_point_offset_minus1[]` values to RBSP-space by subtracting the
+    /// count of EPBs falling inside each substream.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=384x216:rate=24:duration=0.5" \
+    ///   -frames:v 12 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 384x216 --fps 24 --frames 12 \
+    ///   --preset ultrafast --ctu 16 --keyint 30 --no-open-gop \
+    ///   --bframes 1 --ref 4 --qp 26 --no-cutree \
+    ///   --wpp -o wpp_ctu16.h265
+    /// ```
+    #[test]
+    fn test_decode_wpp_ctu16_hash() {
+        let hash = decode_and_hash("wpp_ctu16.h265", 12);
+        let expected = "acd550e2f1b1e94ec10da401af621c2eb955a2a475d3797850b2d3dda1ede71b";
+        assert_eq!(
+            hash, expected,
+            "wpp_ctu16 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 320x240, 5 frames (I+B+P+B+P) with CTU=64, no SAO, no deblock,
+    /// constant QP (cu_qp_delta_enabled_flag=0).
+    /// Tests the critical CTU=64 fixes: set_ct_depth for leaf CUs only
+    /// (not split nodes) and more_data propagation at quad-tree boundaries.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// x265 --input input.yuv --input-res 320x240 --fps 30 --frames 5 \
+    ///   --ctu 64 --keyint 30 --no-open-gop --bframes 1 --no-sao --no-deblock \
+    ///   --qp 26 --no-cutree --no-aq --no-psnr --no-ssim --no-info \
+    ///   -o ctu64_noqp_nosao_320x240.h265
+    /// ```
+    #[test]
+    fn test_decode_ctu64_wpp_hash() {
+        let hash = decode_and_hash("ctu64_wpp.h265", 5);
+        let expected = "de7a1ac668d67e19fb052beb7cd5577d3f40bb2b7244dd82b421d98ead1f702c";
+        assert_eq!(
+            hash, expected,
+            "ctu64_wpp hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    #[test]
+    fn test_decode_ctu64_320x240_hash() {
+        let hash = decode_and_hash("ctu64_noqp_nosao_320x240.h265", 5);
+        let expected = "98341166e6c5235b88fe3e9dcc5532084462f704969d608a949d6cc015c09621";
+        assert_eq!(
+            hash, expected,
+            "ctu64_noqp_nosao_320x240 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 64x64, 1 I-frame, CTU=64, flat grey content — byte-exact baseline.
+    #[test]
+    fn test_decode_ctu64_flat64_hash() {
+        let hash = decode_and_hash("flat64.h265", 1);
+        let expected = "cb11e05cb5da949c0e0f5b5a7cb310df35a96a22c45d1ada70d950859fe697d1";
+        assert_eq!(
+            hash, expected,
+            "flat64 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    #[test]
+    fn test_decode_ctu64_128x128_hash() {
+        let hash = decode_and_hash("ctu64_128x128.h265", 2);
+        let expected = "ed0c46cb86b57c9b605971288c21aa1b9016e800ecc99c544e27e12bda9622ee";
+        assert_eq!(
+            hash, expected,
+            "ctu64_128x128 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 32x32, CTU=32, I+P, gradient. Tests 32x32 TU residual at CTU=32
+    /// and weighted prediction (luma_offset=17 applied via pred_weight_table).
+    #[test]
+    fn test_decode_tu32_inter_hash() {
+        let hash = decode_and_hash("tu32_test.h265", 2);
+        let expected = "e13bfc4fdfe0cbd5c3d763d8461ceb939fff088a1fb8d1fe3975c99d0d52a802";
+        assert_eq!(
+            hash, expected,
+            "tu32_test hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 128×128, 6 frames of mandelbrot zoom (high-motion inter content),
+    /// `--preset medium --tu-inter-depth 3`. The deep inter TU split produces
+    /// 4×4 inter luma TUs, which must use the regular DCT (not the 4×4
+    /// intra-luma DST). The earlier `apply_residual_to_luma` unconditionally
+    /// dispatched to DST on any 4×4 luma TU — correct for intra, silently
+    /// wrong for inter. Also exercises the `do_chroma_deferred` inter-path
+    /// at `blk_idx == 3`, which previously skipped chroma residual_coding
+    /// entirely and desynced CABAC. Without either fix, this fixture diverges
+    /// from FFmpeg in the P-frames.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "mandelbrot=size=128x128:rate=30:start_scale=5" \
+    ///   -frames:v 6 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 128x128 --fps 30 --frames 6 \
+    ///   --preset medium --ctu 32 --keyint 30 --no-open-gop --bframes 0 \
+    ///   --tu-inter-depth 3 --max-tu-size 32 --qp 32 --no-cutree --no-aq \
+    ///   --no-sao --no-deblock --no-wpp --no-info --no-psnr --no-ssim \
+    ///   -o tu_inter4x4_motion.h265
+    /// ```
+    #[test]
+    fn test_decode_tu_inter_4x4_hash() {
+        let hash = decode_and_hash("tu_inter4x4_motion.h265", 6);
+        let expected = "1a58b820e57a2cc7c5f02fd0af49c7a8df575eea08776ad6d1d8e37adebfeade";
+        assert_eq!(
+            hash, expected,
+            "tu_inter4x4_motion hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 128×128, 3 frames (I+P+P) with `--preset medium --tskip --signhide`.
+    /// Exercises `transform_skip_flag` decoding (HEVC spec 7.3.8.11 /
+    /// 9.3.4.2.5): when `transform_skip_enabled_flag = 1`, each 4×4 TU
+    /// decodes a CABAC bin that, if set, bypasses the inverse transform and
+    /// instead applies the additional dequant right-shift from FFmpeg's
+    /// `hevcdsp.dequant()` (shift = 15 - bitDepth - log2TrafoSize). Also
+    /// verifies the sign_data_hiding interaction: in Main Profile (no Range
+    /// Extensions), SDH is NOT disabled by transform_skip_flag — it's only
+    /// gated by `implicit_rdpcm_enabled` which is a Range Extension feature.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=128x128:rate=30:duration=0.2" \
+    ///   -frames:v 3 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 128x128 --fps 30 --frames 3 \
+    ///   --preset medium --ctu 16 --keyint 30 --no-open-gop --bframes 0 \
+    ///   --tskip --signhide --qp 26 --no-cutree --no-aq --no-sao \
+    ///   --no-deblock --no-wpp --no-info --no-psnr --no-ssim \
+    ///   -o tskip_128x128.h265
+    /// ```
+    #[test]
+    fn test_decode_transform_skip_hash() {
+        let hash = decode_and_hash("tskip_128x128.h265", 3);
+        let expected = "0b4ace7f469d9fcd377efb0a8b9512697e89a3f04a5e726ff9d7f06f4e14c6af";
+        assert_eq!(
+            hash, expected,
+            "tskip_128x128 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 64x64, 1 I-frame, CTU=64, 2D gradient content — byte-exact.
+    /// Tests PART_NxN per-sub-CU intra mode lookup via tab_ipm.
+    #[test]
+    fn test_decode_ctu64_grad64_hash() {
+        let hash = decode_and_hash("grad64.h265", 1);
+        let expected = "9ca645aeecb7492ec294734478e5e8683ed8e872228977e35dd42ca054b9025d";
+        assert_eq!(
+            hash, expected,
+            "grad64 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 64x64, 1 I-frame, CTU=64, horizontal ramp — byte-exact.
+    #[test]
+    fn test_decode_ctu64_ramp64_hash() {
+        let hash = decode_and_hash("ramp64.h265", 1);
+        let expected = "2177e962f4fff5e9e506a60ab415b9fe4080fdd769716a51150fdd43ebba7aae";
+        assert_eq!(
+            hash, expected,
+            "ramp64 hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 64×64, 2 frames (I+P), lossless with `cu_transquant_bypass_flag`.
+    /// When `transquant_bypass_enabled_flag = 1` in PPS, each CU can set
+    /// `cu_transquant_bypass_flag` which skips both dequantization and
+    /// inverse transform — the raw decoded coefficient levels ARE the
+    /// spatial residual. Also disables sign data hiding and deblocking
+    /// on the bypassed CU's boundaries.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=64x64:rate=30:duration=0.1" \
+    ///   -frames:v 2 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 64x64 --fps 30 --frames 2 \
+    ///   --preset ultrafast --ctu 16 --keyint 30 --no-open-gop --bframes 0 \
+    ///   --lossless --no-cutree --no-aq --no-sao --no-deblock --no-wpp \
+    ///   --no-info --no-psnr --no-ssim \
+    ///   -o transquant_bypass_64x64.h265
+    /// ```
+    #[test]
+    fn test_decode_transquant_bypass_hash() {
+        let hash = decode_and_hash("transquant_bypass_64x64.h265", 2);
+        let expected = "6bf3ca6a6ce625fbde46994777239aae61d3b92b75729cece0945f89edec1435";
+        assert_eq!(
+            hash, expected,
+            "transquant_bypass hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 128×128, 4 frames (I+P+P+P) with `--constrained-intra`.
+    /// When `constrained_intra_pred_flag = 1`, intra blocks must NOT use
+    /// inter-predicted neighbor samples as references. The availability
+    /// check must additionally verify that each neighbor min-PU has
+    /// `pred_flag == 0` (intra). Without enforcement, intra blocks in
+    /// P-frames would use inter-predicted pixels, producing wrong output.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=128x128:rate=30:duration=0.2" \
+    ///   -frames:v 4 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 128x128 --fps 30 --frames 4 \
+    ///   --preset ultrafast --ctu 16 --keyint 30 --no-open-gop --bframes 0 \
+    ///   --constrained-intra --qp 26 --no-cutree --no-aq --no-sao \
+    ///   --no-deblock --no-wpp --no-info --no-psnr --no-ssim \
+    ///   -o constrained_intra_128x128.h265
+    /// ```
+    #[test]
+    fn test_decode_constrained_intra_hash() {
+        let hash = decode_and_hash("constrained_intra_128x128.h265", 4);
+        let expected = "5306a3cb6d71fc1ead86e18e455c528bb01ea763087fc179726c4f80b54502e0";
+        assert_eq!(
+            hash, expected,
+            "constrained_intra hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 256×256, 3 frames with `pps_loop_filter_across_slices_enabled_flag = 0`,
+    /// WPP dependent slices, deblocking + SAO enabled. Exercises the
+    /// slice-boundary deblocking/SAO suppression: edges at slice boundaries
+    /// must NOT be filtered when the flag is 0. Encoded with kvazaar (which
+    /// sets the PPS flag to 0 when using `--slices wpp`).
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=256x256:rate=30:duration=0.2" \
+    ///   -frames:v 3 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// kvazaar -i /tmp/in.yuv --input-res 256x256 --input-fps 30 -p 3 \
+    ///   --wpp --slices wpp --qp 26 --deblock 0:0 --sao \
+    ///   --no-open-gop --period 16 --no-bipred \
+    ///   -o no_filter_across_slices_256x256.h265
+    /// ```
+    #[test]
+    fn test_decode_no_filter_across_slices_hash() {
+        let hash = decode_and_hash("no_filter_across_slices_256x256.h265", 3);
+        let expected = "43920743b688ce7532c8e07fc6dd28d14169db351fd26ede858fa9a755aaf902";
+        assert_eq!(
+            hash, expected,
+            "no_filter_across_slices hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 256×256, 3 frames (I+P+P) with 2 independent slices per frame, WPP,
+    /// SAO + deblock enabled. Exercises the multi-slice SAO merge-flag
+    /// availability check: `sao_merge_left_flag` / `sao_merge_up_flag` must
+    /// NOT be decoded when the neighbor CTB is in a different slice (spec
+    /// 7.3.8.4 / FFmpeg `hls_sao_param` gates on `ctb_left_flag` /
+    /// `ctb_up_flag`). Before the fix, the decoder decoded a spurious
+    /// `sao_merge_up` bin at the first CTB of the second slice, desyncing
+    /// CABAC for the rest of that slice.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=256x256:rate=30:duration=0.2" \
+    ///   -frames:v 3 -pix_fmt yuv420p -f rawvideo /tmp/in.yuv
+    /// x265 --input /tmp/in.yuv --input-res 256x256 --fps 30 --frames 3 \
+    ///   --preset ultrafast --ctu 32 --keyint 30 --no-open-gop --bframes 0 \
+    ///   --slices 2 --wpp --qp 26 --no-cutree --no-aq --sao --deblock 0:0 \
+    ///   --no-info --no-psnr --no-ssim \
+    ///   -o multi_slice_sao_deblock_256x256.h265
+    /// ```
+    #[test]
+    fn test_decode_multi_slice_sao_deblock_hash() {
+        let hash = decode_and_hash("multi_slice_sao_deblock_256x256.h265", 3);
+        let expected = "3a8a37e3bd30b6b19b56b59945c6c6d97723b0b3161da20e985bf314800d3c83";
+        assert_eq!(
+            hash, expected,
+            "multi_slice_sao_deblock hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 64×64, 1 I-frame with `pcm_enabled_flag = 1` and actual PCM-coded
+    /// blocks. Generated with the HM reference encoder at QP=4 on random
+    /// noise, which forces PCM selection (raw samples are cheaper than
+    /// coding random noise at near-lossless QP). The output is a lossless
+    /// roundtrip of the original random input — proving PCM samples are
+    /// decoded correctly, CABAC reinit after PCM blocks works, and the
+    /// `pcm_byte_position` / `skip_bytes` logic matches FFmpeg.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// python3 -c "import random; random.seed(42); ..." > /tmp/pcm_noise.yuv
+    /// TAppEncoder -c pcm.cfg   # HM reference encoder
+    ///   # pcm.cfg: 64×64, CTU=16, QP=4, PCMEnabledFlag=1,
+    ///   #          PCMLog2MaxSize=4, PCMLog2MinSize=3,
+    ///   #          LoopFilterDisable=1, SAO=0
+    /// ```
+    #[test]
+    fn test_decode_pcm_hm_hash() {
+        let hash = decode_and_hash("pcm_hm_64x64.h265", 1);
+        let expected = "f893ddcb970048ea87f2c2e2dbb2058152c625305adbd0fee5988b1c1bfb9853";
+        assert_eq!(
+            hash, expected,
+            "pcm_hm hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 128×128, 3 frames (I+P+P), **10-bit** Main 10 profile.
+    /// Exercises the full 10-bit decode path: `PictureState<u16>` planes,
+    /// 10-bit dequantization (with `qp_bd_offset = 12`), 10-bit inverse
+    /// transform (`shift = 20 - 10 = 10`), 10-bit MC filter shifts
+    /// (`mc_shift = 4`, `shift1 = 2`), 10-bit intra prediction, and
+    /// `PixelData::U16` output. Byte-exact against FFmpeg with
+    /// `yuv420p10le` output.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=128x128:rate=30:duration=0.2" \
+    ///   -frames:v 3 -pix_fmt yuv420p10le -f rawvideo /tmp/in10.yuv
+    /// x265 --input /tmp/in10.yuv --input-res 128x128 --fps 30 --frames 3 \
+    ///   --input-depth 10 --output-depth 10 \
+    ///   --preset ultrafast --ctu 16 --keyint 30 --no-open-gop --bframes 0 \
+    ///   --qp 26 --no-cutree --no-aq --no-sao --no-deblock --no-wpp \
+    ///   --no-info --no-psnr --no-ssim \
+    ///   -o 10bit_128x128.h265
+    /// ```
+    /// 64×64, 170 frames, **open GOP** with a mid-stream CRA at POC 150
+    /// (log2_max_poc_lsb = 8, so the CRA's LSB 150 is past the half-range
+    /// wrap point) followed by two RASL pictures and trailing B/P pictures.
+    ///
+    /// Regression test for prevTid0Pic handling (spec 8.3.1): the decoder
+    /// used to reset `prev_tid0_poc` to 0 after every IRAP including CRA,
+    /// so the picture after the CRA derived POC -105 instead of 151 and
+    /// its reference lookup failed. All 170 frames must decode byte-exact
+    /// against FFmpeg.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=64x64:rate=30" -frames:v 170 \
+    ///   -pix_fmt yuv420p src.yuv
+    /// x265 --input src.yuv --input-res 64x64 --fps 30 --preset medium \
+    ///   --open-gop --keyint 150 --min-keyint 150 --bframes 2 --b-adapt 0 \
+    ///   --no-scenecut -o open_gop_cra.h265
+    /// ffmpeg -i open_gop_cra.h265 -f rawvideo -pix_fmt yuv420p ref.yuv
+    /// sha256sum ref.yuv
+    /// ```
+    #[test]
+    fn test_decode_open_gop_mid_stream_cra_hash() {
+        let hash = decode_and_hash("open_gop_cra.h265", 170);
+        let expected = "864f167b0b161b89d6bf855345280ed1b0f5abbdc27d322851b017e2acd3a2d4";
+        assert_eq!(
+            hash, expected,
+            "open_gop_cra hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// Same stream as `open_gop_cra.h265`, but starting at the CRA: the
+    /// VPS/SPS/PPS followed by every NAL from the CRA (POC 150) onward.
+    /// This is the seek-to-keyframe case. The CRA is now the first picture
+    /// in the bitstream, so NoRaslOutputFlag = 1 (spec 8.1.3):
+    ///
+    /// - its POC MSB must be 0 (POC 150, not -106 from LSB wrap against the
+    ///   initial `prev_tid0_poc` of 0), and
+    /// - its two associated RASL pictures (POC 148, 149) must be skipped,
+    ///   since they reference pictures before the CRA that were never
+    ///   decoded. FFmpeg drops them too, hence 20 output frames, not 22.
+    ///
+    /// Fixture: `open_gop_cra.h265` with every NAL before the CRA removed
+    /// except the parameter sets; reference from
+    /// `ffmpeg -i seek_to_cra.h265 -f rawvideo -pix_fmt yuv420p`.
+    #[test]
+    fn test_decode_seek_to_cra_skips_rasl_hash() {
+        let hash = decode_and_hash("seek_to_cra.h265", 20);
+        let expected = "aac9bf6f5be286020b9e73170e0c6cb0f058aa642e03340dd264726017bc3a80";
+        assert_eq!(
+            hash, expected,
+            "seek_to_cra hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+
+        // The pixel hash alone cannot distinguish POC 150 from a uniformly
+        // shifted -106 (display order is unchanged), so also pin the POCs:
+        // the CRA must get MSB = 0 and the RASL pictures must be absent.
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/seek_to_cra.h265"
+        ))
+        .unwrap();
+        let mut decoder = Decoder::new();
+        let mut pocs: Vec<i32> = Vec::new();
+        for nal in parse_annex_b(&h265).iter() {
+            if let Some(f) = decoder.decode_nal(nal).unwrap() {
+                pocs.push(f.pic_order_cnt);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            pocs.push(f.pic_order_cnt);
+        }
+        pocs.sort_unstable();
+        assert_eq!(pocs, (150..=169).collect::<Vec<i32>>());
+    }
+
+    /// 64×64, 1 I-frame, 8-bit **4:4:4 with PCM blocks** (HM reference
+    /// encoder, QP 4 on random noise so PCM wins everywhere). In 4:4:4 the
+    /// PCM chroma payload is `cb_size × cb_size` per plane, not
+    /// `(cb_size/2)²`; reading it as 4:2:0 would misplace every chroma
+    /// sample and desync the CABAC restart after each PCM block. FFmpeg's
+    /// output is a lossless roundtrip of the noise input. Byte-exact.
+    ///
+    /// Fixture generated with (HM `TAppEncoder -c pcm444.cfg`):
+    /// ```text
+    /// python3 -c "import random; random.seed(42); open('n.yuv','wb').write(
+    ///   bytes(random.randrange(256) for _ in range(64*64*3)))"
+    /// # pcm444.cfg: Profile main-RExt, InputChromaFormat/ChromaFormatIDC 444,
+    /// #   64×64, MaxCUWidth 16, QP 4, IntraPeriod 1, PCMEnabledFlag 1,
+    /// #   PCMLog2MaxSize 4, PCMLog2MinSize 3, LoopFilterDisable 1, SAO 0
+    /// ```
+    #[test]
+    fn test_decode_444_pcm_hm_hash() {
+        let hash = decode_and_hash("pcm444_hm_64x64.h265", 1);
+        let expected = "a084bc71fd39d6cff8bc6d6e9bf11c26b890e972c97a9d67d789f9f8b1f18a59";
+        assert_eq!(
+            hash, expected,
+            "444 PCM hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// Same as `pcm444_hm_64x64.h265` but **10-bit** 4:4:4 (InputBitDepth
+    /// and InternalBitDepth 10, 10-bit noise, seed 43). Covers PCM sample
+    /// bit depth 10 with full-size chroma. Byte-exact against FFmpeg
+    /// (`yuv444p10le`).
+    #[test]
+    fn test_decode_444_pcm_10bit_hm_hash() {
+        let hash = decode_and_hash("pcm444_10bit_hm_64x64.h265", 1);
+        let expected = "a82e4946d42bb50dbe1741aa8ad21a01ff4c3d9c7df99e04a57cfabdc5d45e03";
+        assert_eq!(
+            hash, expected,
+            "444 PCM 10-bit hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// Two kvazaar `--tiles 2x2` streams concatenated: 2 intra frames at
+    /// 256×256, then 2 at 384×256 whose PPS was dropped because it is
+    /// byte-identical to the first stream's. The second SPS changes the
+    /// picture width from 4 to 6 CTBs, so the uniform tile columns must be
+    /// re-derived from 2+2 to 3+3 CTBs. Regression test: the resolved tile
+    /// geometry was cached on the PPS and not recomputed for the new SPS,
+    /// so the second stream decoded with the first stream's tile layout.
+    ///
+    /// Expected output is FFmpeg's decode of each original stream on its
+    /// own, concatenated. Fixture generated with:
+    /// ```text
+    /// for sz in 256x256 384x256; do
+    ///   ffmpeg -f lavfi -i "testsrc2=size=$sz:rate=30" -frames:v 2 \
+    ///     -pix_fmt yuv420p src_$sz.yuv
+    ///   kvazaar --input src_$sz.yuv --input-res $sz --input-fps 30 \
+    ///     --frames 2 --preset ultrafast --tiles 2x2 --no-wpp --gop 0 \
+    ///     --period 1 --qp 30 --output t_$sz.h265
+    /// done
+    /// # tiles_resize.h265 = every NAL of t_256x256.h265, then every NAL of
+    /// # t_384x256.h265 except its PPS.
+    /// ```
+    #[test]
+    fn test_decode_tiles_resolution_change_keeps_pps() {
+        use sha2::{Digest, Sha256};
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/tiles_resize.h265"
+        ))
+        .unwrap();
+        let mut decoder = Decoder::new();
+        let mut frames = Vec::new();
+        for nal in parse_annex_b(&h265).iter() {
+            if let Some(f) = decoder.decode_nal(nal).unwrap() {
+                frames.push(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            frames.push(f);
+        }
+        let sizes: Vec<(u32, u32)> = frames.iter().map(|f| (f.width, f.height)).collect();
+        assert_eq!(sizes, vec![(256, 256), (256, 256), (384, 256), (384, 256)]);
+        // Decode order equals output order here (all intra), so hash in order.
+        let mut hasher = Sha256::new();
+        for f in &frames {
+            hash_pixel_data(&mut hasher, &f.y);
+            hash_pixel_data(&mut hasher, &f.u);
+            hash_pixel_data(&mut hasher, &f.v);
+        }
+        let hash: String = hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let expected = "bc55385a64e5e0392c10cfc693b87c51db67bfd2a8b2b8f9613f091b9483b8ea";
+        assert_eq!(hash, expected, "tiles_resize hash mismatch");
+    }
+
+    /// 384×256, 8 frames (IPPPPPPP), kvazaar `--tiles 3x2` with deblocking
+    /// and SAO on and `loop_filter_across_tiles_enabled_flag = 0`. Real
+    /// content (testsrc2), so every derivation that must treat a neighbour in
+    /// another tile as unavailable matters: split_cu_flag and cu_skip_flag
+    /// CABAC contexts, the intra MPM candidates, SAO merge flags, and
+    /// deblocking / SAO at tile boundaries. 0.2.0 and earlier decoded this
+    /// wrongly; the older `tiles.h265` fixture is flat gray, which hid it.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=384x256:rate=30" -frames:v 8 \
+    ///   -pix_fmt yuv420p src.yuv
+    /// kvazaar --input src.yuv --input-res 384x256 --input-fps 30 --frames 8 \
+    ///   --preset ultrafast --tiles 3x2 --no-wpp --gop 0 --period 0 --qp 30 \
+    ///   --output tiles_inter_kvazaar_384x256.h265
+    /// ```
+    #[test]
+    fn test_decode_tiles_inter_kvazaar_hash() {
+        let hash = decode_and_hash("tiles_inter_kvazaar_384x256.h265", 8);
+        let expected = "5a1d4639e2fbaec4e76ba9d766be598bf4dbef39d5b636cc4c88554e7793b95b";
+        assert_eq!(hash, expected, "tiles_inter_kvazaar hash mismatch");
+    }
+
+    /// 832×256, 4 frames (IPPP), HM reference encoder, non-uniform 3×2 tiles
+    /// (columns 8/9/9 CTBs, rows 3/5 CTBs at CTU 32), deblocking and SAO on,
+    /// `LFCrossTileBoundaryFlag = 0`: deblocking and SAO must not use samples
+    /// across tile boundaries.
+    ///
+    /// Fixture generated with HM `TAppEncoder -c cfg`, where cfg sets:
+    /// ```text
+    /// SourceWidth 832, SourceHeight 256, FramesToBeEncoded 4, IntraPeriod 4,
+    /// GOPSize 1 (Frame1: P 1 3 0.4624 0.0 0 0 1.0 0 0 0 1 1 -1 0),
+    /// MaxCUWidth/Height 32, MaxPartitionDepth 3, QP 30,
+    /// TileUniformSpacing 0, NumTileColumnsMinus1 2, TileColumnWidthArray 8 9,
+    /// NumTileRowsMinus1 1, TileRowHeightArray 3,
+    /// LFCrossTileBoundaryFlag 0, LoopFilterDisable 0, SAO 1
+    /// ```
+    /// with testsrc2 input. Expected hash: FFmpeg's yuv420p output.
+    #[test]
+    fn test_decode_tiles_hm_no_filter_across_tiles_hash() {
+        let hash = decode_and_hash("tiles_hm_no_lf_across_832x256.h265", 4);
+        let expected = "cad2c0739f8275782631dde5815d8841ffea42568ee52804146c6b40553b22d2";
+        assert_eq!(hash, expected, "tiles_hm_no_lf_across hash mismatch");
+    }
+
+    /// Same as `tiles_hm_no_lf_across_832x256.h265` but with
+    /// `LFCrossTileBoundaryFlag = 1`, so deblocking and SAO do filter across
+    /// tile boundaries. The two fixtures decode to different pictures, so
+    /// together they pin both settings of the flag.
+    #[test]
+    fn test_decode_tiles_hm_filter_across_tiles_hash() {
+        let hash = decode_and_hash("tiles_hm_lf_across_832x256.h265", 4);
+        let expected = "1e687da4160ec0543db3e00f73a8ce92328dc3058b91b70b46b39511624eaeaf";
+        assert_eq!(hash, expected, "tiles_hm_lf_across hash mismatch");
+    }
+
+    /// 416×240, 4 frames (IPPP), HM reference encoder with
+    /// `Log2ParallelMergeLevel 3` (AMP and TMVP off). With a parallel merge
+    /// level above 2, every 8×8 CU derives one merge candidate list for the
+    /// whole CU (singleMCLFlag, spec 8.5.3.2.2). The second PU of an 8×4 /
+    /// 4×8 split used its own origin for that list instead of the CU's.
+    /// Byte-exact against FFmpeg.
+    ///
+    /// Fixture generated with HM `TAppEncoder` (testsrc2 input), cfg:
+    /// ```text
+    /// SourceWidth 416, SourceHeight 240, FramesToBeEncoded 4, IntraPeriod -1,
+    /// GOPSize 1 (Frame1: P 1 3 0.4624 0.0 0 0 1.0 0 0 0 1 1 -1 0),
+    /// MaxCUWidth/Height 64, MaxPartitionDepth 4, QP 32,
+    /// Log2ParallelMergeLevel 3, AMP 0, TMVPMode 0
+    /// ```
+    #[test]
+    fn test_decode_pmerge_level3_hash() {
+        let hash = decode_and_hash("pmerge_level3_hm_416x240.h265", 4);
+        let expected = "40e75a9535304a3cb50a5ebce908f40991f16e2b48a789d1707f2113ecba443c";
+        assert_eq!(hash, expected, "pmerge_level3 hash mismatch");
+    }
+
+    /// 416×240, 4 frames (IPPP), HM reference encoder with 64×64 CTBs,
+    /// `MaxCuDQPDepth 2` (16×16 quantization groups) and adaptive QP. A
+    /// cu_qp_delta coded in a TU away from the origin of a CU larger than
+    /// the quantization group must still take its QP prediction from the CU
+    /// origin (spec 8.6.1). Byte-exact against FFmpeg.
+    ///
+    /// Fixture generated with HM `TAppEncoder` (testsrc2 input), cfg as for
+    /// `pmerge_level3_hm_416x240.h265` but with `Log2ParallelMergeLevel 2`,
+    /// AMP 1, TMVPMode 1, QP 22, `MaxCuDQPDepth 2`, `AdaptiveQP 1`,
+    /// `MaxQPAdaptationRange 12`.
+    #[test]
+    fn test_decode_delta_qp_groups_hash() {
+        let hash = decode_and_hash("delta_qp_groups_hm_416x240.h265", 4);
+        let expected = "8e0729fae2ac52d719064fe0c94bfc20ad62a0fa075f903b09d9101c13307240";
+        assert_eq!(hash, expected, "delta_qp_groups hash mismatch");
+    }
+
+    /// Frames of `name` from display-order mode, and from decoding-order
+    /// mode sorted by POC (one coded video sequence, every picture output).
+    fn display_vs_sorted(name: &str) -> (Vec<Frame>, Vec<Frame>) {
+        let data =
+            std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/").to_string() + name)
+                .unwrap();
+        let nals = parse_annex_b(&data);
+        let mut dec = Decoder::new().with_display_order();
+        let mut display = Vec::new();
+        for nal in &nals {
+            assert!(dec.decode_nal(nal).unwrap().is_none());
+            display.extend(std::iter::from_fn(|| dec.next_output()));
+        }
+        display.extend(std::iter::from_fn(|| dec.flush()));
+        let mut dec = Decoder::new();
+        let mut sorted: Vec<Frame> = nals
+            .iter()
+            .filter_map(|n| dec.decode_nal(n).unwrap())
+            .collect();
+        sorted.extend(std::iter::from_fn(|| dec.flush()));
+        sorted.sort_by_key(|f| f.pic_order_cnt);
+        (display, sorted)
+    }
+
+    fn same_plane(a: &PixelData, b: &PixelData) -> bool {
+        match (a, b) {
+            (PixelData::U8(x), PixelData::U8(y)) => x == y,
+            (PixelData::U16(x), PixelData::U16(y)) => x == y,
+            _ => false,
+        }
+    }
+
+    fn same_frames(a: &[Frame], b: &[Frame]) -> bool {
+        a.len() == b.len()
+            && a.iter().zip(b).all(|(x, y)| {
+                x.pic_order_cnt == y.pic_order_cnt
+                    && same_plane(&x.y, &y.y)
+                    && same_plane(&x.u, &y.u)
+                    && same_plane(&x.v, &y.v)
+            })
+    }
+
+    /// Display-order mode on B-frame streams outputs every picture in POC
+    /// order, the same frames as sorting decoding-order output, and releases
+    /// some before the end of the stream (the reorder limit bounds the delay).
+    #[test]
+    fn test_display_order_matches_sorted_decode_order() {
+        for name in [
+            "bframes3_128x128.h265",
+            "open_gop_cra.h265",
+            "inter444_b_96x96.h265",
+        ] {
+            let (display, sorted) = display_vs_sorted(name);
+            assert!(!display.is_empty(), "{name}: no frames");
+            assert!(
+                same_frames(&display, &sorted),
+                "{name}: display order differs"
+            );
+        }
+    }
+
+    /// Frames are released while decoding, not only at flush.
+    #[test]
+    fn test_display_order_releases_before_flush() {
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/bframes3_128x128.h265"
+        ))
+        .unwrap();
+        let mut dec = Decoder::new().with_display_order();
+        let mut early = 0;
+        for nal in parse_annex_b(&data) {
+            dec.decode_nal(&nal).unwrap();
+            early += std::iter::from_fn(|| dec.next_output()).count();
+        }
+        let late = std::iter::from_fn(|| dec.flush()).count();
+        assert!(early > 0, "nothing released before flush");
+        assert!(late > 0, "flush released nothing");
+    }
+
+    /// Threaded decoding must not change the output: every in-tree
+    /// fixture (all chroma formats, bit depths, tiles, WPP, multiple
+    /// slices with mixed loop-filter flags, PCM / lossless blocks that
+    /// filters must not touch) decodes identically with 1, 2, 3 and 7
+    /// threads. Odd counts give bands of unequal height. Pictures decoded
+    /// with errors (fuzz fixtures) must match too.
+    #[test]
+    fn threaded_decode_matches_single_thread() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/testdata");
+        let mut names: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|e| e == "h265"))
+            .collect();
+        names.sort();
+        assert!(names.len() > 50, "fixtures missing");
+        for path in names {
+            let data = std::fs::read(&path).unwrap();
+            let nals = parse_annex_b(&data);
+            let single = decode_with_threads(&nals, 1);
+            for threads in [2, 3, 7] {
+                assert!(
+                    decode_with_threads(&nals, threads) == single,
+                    "{} differs with {threads} threads",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    /// NAL units of other layers (nuh_layer_id > 0) are ignored: a copy of
+    /// every NAL unit tagged as layer 1 (which, decoded as the base layer,
+    /// would replace the parameter sets and start or extend pictures)
+    /// leaves the output unchanged.
+    #[test]
+    fn enhancement_layer_nal_units_are_ignored() {
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/inter420_100x68.h265"
+        ))
+        .unwrap();
+        let nals = parse_annex_b(&data);
+        let mut layered = Vec::new();
+        for nal in &nals {
+            layered.push(NalUnit {
+                nal_unit_type: nal.nal_unit_type,
+                nuh_layer_id: nal.nuh_layer_id,
+                temporal_id: nal.temporal_id,
+                rbsp: std::borrow::Cow::Borrowed(&nal.rbsp[..]),
+                epb_positions: nal.epb_positions.clone(),
+            });
+            layered.push(NalUnit {
+                nal_unit_type: nal.nal_unit_type,
+                nuh_layer_id: 1,
+                temporal_id: nal.temporal_id,
+                rbsp: std::borrow::Cow::Borrowed(&nal.rbsp[..]),
+                epb_positions: nal.epb_positions.clone(),
+            });
+        }
+        for threads in [1, 3] {
+            let plain = decode_with_threads(&nals, threads);
+            assert!(!plain.1.is_empty());
+            assert!(decode_with_threads(&layered, threads) == plain);
+        }
+    }
+
+    /// The slices of an IRAP picture are I slices (7.4.7.1): a P picture
+    /// relabelled as a CRA (with the no_output_of_prior_pics_flag bit an
+    /// IRAP slice header has after its first bit) is rejected.
+    #[test]
+    fn inter_slice_in_irap_is_rejected() {
+        let data = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/inter420_100x68.h265"
+        ))
+        .unwrap();
+        let nals = parse_annex_b(&data);
+        let mut dec = Decoder::new();
+        let mut errors = Vec::new();
+        let mut relabelled = false;
+        for nal in &nals {
+            let mut nal_unit_type = nal.nal_unit_type;
+            let mut rbsp = nal.rbsp.to_vec();
+            if !relabelled && matches!(nal_unit_type, NalUnitType::TrailR | NalUnitType::TrailN) {
+                nal_unit_type = NalUnitType::Cra;
+                relabelled = true;
+                // Insert a 0 bit after the first: shift the rest right.
+                let mut shifted = vec![rbsp[0] & 0x80];
+                shifted.resize(rbsp.len() + 1, 0);
+                for (i, &b) in rbsp.iter().enumerate() {
+                    let rest = if i == 0 { b & 0x7f } else { b };
+                    shifted[i] |= rest >> 1;
+                    shifted[i + 1] |= rest << 7;
+                }
+                rbsp = shifted;
+            }
+            let nal = NalUnit {
+                nal_unit_type,
+                nuh_layer_id: 0,
+                temporal_id: 0,
+                rbsp: std::borrow::Cow::Owned(rbsp),
+                epb_positions: nal.epb_positions.clone(),
+            };
+            if let Err(e) = dec.decode_nal(&nal) {
+                errors.push(e);
+            }
+        }
+        assert!(relabelled);
+        assert_eq!(
+            errors,
+            [DecodeError::InvalidSyntax("inter slice in an IRAP picture")]
+        );
+    }
+
+    /// Decode `nals` with `threads` threads; returns the errors (as text, so
+    /// they compare; sorted, as frame threading reports slice-data errors
+    /// on a later call than sequential decoding does) and every frame,
+    /// with its POC and all sample bytes.
+    fn decode_with_threads(nals: &[NalUnit], threads: usize) -> (Vec<String>, Vec<(i32, Vec<u8>)>) {
+        let mut dec = Decoder::new().with_threads(threads);
+        let (mut results, mut frames) = (Vec::new(), Vec::new());
+        let mut take = |f: Frame| {
+            let mut bytes = Vec::new();
+            for plane in [&f.y, &f.u, &f.v] {
+                match plane {
+                    PixelData::U8(p) => bytes.extend_from_slice(p),
+                    PixelData::U16(p) => bytes.extend(p.iter().flat_map(|s| s.to_le_bytes())),
+                }
+            }
+            frames.push((f.pic_order_cnt, bytes));
+        };
+        for nal in nals {
+            match dec.decode_nal(nal) {
+                Ok(Some(f)) => take(f),
+                Ok(None) => {}
+                Err(e) => results.push(format!("{e:?}")),
+            }
+        }
+        while let Some(f) = dec.flush() {
+            take(f);
+        }
+        // Errors from the last pictures' threads, found during flush.
+        while let Some(e) = dec.next_error() {
+            results.push(format!("{e:?}"));
+        }
+        results.sort();
+        (results, frames)
+    }
+
+    /// A small threaded decode for Miri (`cargo +nightly miri test --lib
+    /// threaded_decode_small -- ` with `MIRIFLAGS=-Zmiri-disable-isolation`):
+    /// the first pictures of a WPP stream and of a B-frame stream with 1
+    /// and 3 threads, exercising the wavefront rows of a first picture,
+    /// frame threading with row filters and reference waits, and the
+    /// worker pool, under Miri's aliasing and data-race checks.
+    #[test]
+    fn threaded_decode_small() {
+        for (name, pictures) in [
+            ("rext_rice_wpp_hm_444_96x64.h265", 2),
+            ("bframes3_128x128.h265", 3),
+        ] {
+            let data = read_fixture(name);
+            let mut nals = parse_annex_b(&data);
+            // Parameter sets plus the first `pictures` pictures.
+            let mut seen = 0;
+            nals.retain(|n| {
+                if n.nal_unit_type.is_vcl() && n.rbsp.first().is_some_and(|b| b & 0x80 != 0) {
+                    seen += 1;
+                }
+                seen <= pictures
+            });
+            let single = decode_with_threads(&nals, 1);
+            assert!(!single.1.is_empty(), "{name}: no frames");
+            assert!(
+                decode_with_threads(&nals, 3) == single,
+                "{name} differs with 3 threads"
+            );
+        }
+    }
+
+    /// Wavefront decoding of damaged WPP streams matches sequential
+    /// decoding exactly: per-NAL results (which slices fail, with which
+    /// error) and every sample of every frame. Corrupting slice data at
+    /// different depths makes a row fail, or the slice end early, while
+    /// rows below it are already decoding; those rows must be discarded and
+    /// their tables reset as if they had never been decoded.
+    #[test]
+    fn threaded_wpp_damage_matches_single_thread() {
+        let mut damaged_runs = 0;
+        for name in [
+            "wpp_ctu16.h265",
+            "ctu64_wpp.h265",
+            "rext_rice_wpp_hm_444_96x64.h265",
+        ] {
+            let data = read_fixture(name);
+            let clean = parse_annex_b(&data);
+            let vcl: Vec<usize> = (0..clean.len())
+                .filter(|&i| clean[i].nal_unit_type.is_vcl())
+                .collect();
+            for &k in vcl.iter().take(8) {
+                for tenths in [2, 4, 6, 8, 9] {
+                    let mut nals = parse_annex_b(&data);
+                    let mut b = nals[k].rbsp.to_vec();
+                    let n = b.len();
+                    let at = n * tenths / 10;
+                    for x in &mut b[at..(at + 6).min(n)] {
+                        *x ^= 0xa5;
+                    }
+                    nals[k].rbsp = std::borrow::Cow::Owned(b);
+                    let single = decode_with_threads(&nals, 1);
+                    if !single.0.is_empty() {
+                        damaged_runs += 1;
+                    }
+                    for threads in [2, 4] {
+                        assert!(
+                            decode_with_threads(&nals, threads) == single,
+                            "{name}: NAL {k} damaged at {tenths}/10 differs with {threads} threads"
+                        );
+                    }
+                }
+            }
+        }
+        // The damage must actually exercise the error paths.
+        assert!(
+            damaged_runs > 10,
+            "only {damaged_runs} damaged decodes failed"
+        );
+    }
+
+    /// Wavefront decoding of every bitstream in `$RUST_H265_WPP_DIR` (for
+    /// example the extracted JCT-VC conformance vectors) matches sequential
+    /// decoding, with the access checker on (test builds). Not run by
+    /// default: `RUST_H265_WPP_DIR=... cargo test --release -- --ignored
+    /// wavefront_matches_on_directory`.
+    #[test]
+    #[ignore]
+    fn wavefront_matches_on_directory() {
+        let dir = std::env::var("RUST_H265_WPP_DIR").expect("set RUST_H265_WPP_DIR");
+        let mut files = Vec::new();
+        let mut stack = vec![std::path::PathBuf::from(dir)];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).unwrap() {
+                let p = e.unwrap().path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p
+                    .extension()
+                    .is_some_and(|x| ["bit", "bin", "h265", "hevc"].iter().any(|e| x == *e))
+                {
+                    files.push(p);
+                }
+            }
+        }
+        files.sort();
+        assert!(!files.is_empty());
+        for f in &files {
+            let data = std::fs::read(f).unwrap();
+            let nals = parse_annex_b(&data);
+            let single = decode_with_threads(&nals, 1);
+            assert!(
+                decode_with_threads(&nals, 3) == single,
+                "{} differs with 3 threads",
+                f.display()
+            );
+        }
+        eprintln!("{} bitstreams match", files.len());
+    }
+
+    fn read_fixture(name: &str) -> Vec<u8> {
+        std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/").to_string() + name).unwrap()
+    }
+
+    /// Decode `nals`, skipping index `skip`; returns the frames and the
+    /// indices of the NAL units that returned an error.
+    fn decode_lossy(
+        nals: &[NalUnit],
+        skip: Option<usize>,
+        display: bool,
+    ) -> (Vec<Frame>, Vec<usize>) {
+        let mut dec = if display {
+            Decoder::new().with_display_order()
+        } else {
+            Decoder::new()
+        };
+        let (mut frames, mut errors) = (Vec::new(), Vec::new());
+        for (i, nal) in nals.iter().enumerate() {
+            if Some(i) == skip {
+                continue;
+            }
+            match dec.decode_nal(nal) {
+                Ok(Some(f)) => frames.push(f),
+                Ok(None) => {}
+                Err(_) => errors.push(i),
+            }
+            frames.extend(std::iter::from_fn(|| dec.next_output()));
+        }
+        frames.extend(std::iter::from_fn(|| dec.flush()));
+        (frames, errors)
+    }
+
+    /// A picture that loses a slice is still finished and output, with the
+    /// lost CTBs mid-grey, and the pictures after it decode without errors.
+    /// The fixture has 16x16 CTBs and two slices per picture, the second
+    /// starting at CTB row 2 (y = 32).
+    #[test]
+    fn test_lost_slice_picture_still_output() {
+        let data = read_fixture("multi_slice_sao_deblock_256x256.h265");
+        let nals = parse_annex_b(&data);
+        let vcl: Vec<usize> = (0..nals.len())
+            .filter(|&i| nals[i].nal_unit_type.is_vcl())
+            .collect();
+        let (clean, _) = decode_lossy(&nals, None, false);
+        for display in [false, true] {
+            let (frames, errors) = decode_lossy(&nals, Some(vcl[1]), display);
+            assert!(errors.is_empty(), "errors at NALs {errors:?}");
+            assert_eq!(frames.len(), clean.len());
+            let damaged = frames.iter().find(|f| f.pic_order_cnt == 0).unwrap();
+            let (y, y_clean) = (damaged.y.as_u8().unwrap(), clean[0].y.as_u8().unwrap());
+            // Rows of the first slice clear of the deblocking / SAO reach of
+            // the lost area are untouched.
+            assert_eq!(&y[..24 * 256], &y_clean[..24 * 256]);
+            // The middle of the lost area is mid-grey.
+            assert_eq!(y[128 * 256 + 128], 128);
+        }
+    }
+
+    /// Damaging any one slice (corrupt header bytes, corrupt slice data, or
+    /// drop it) of a stream with B-frames costs at most that picture: no
+    /// later NAL unit fails ("previous picture incomplete", "reference
+    /// picture not in DPB"), in either output mode. A dropped reference
+    /// picture is replaced by a generated one (spec 8.3.3).
+    #[test]
+    fn test_single_damaged_slice_does_not_stop_decoding() {
+        let data = read_fixture("bframes3_128x128.h265");
+        let clean = parse_annex_b(&data);
+        let vcl: Vec<usize> = (0..clean.len())
+            .filter(|&i| clean[i].nal_unit_type.is_vcl())
+            .collect();
+        for &k in &vcl {
+            for mode in ["head", "data", "drop"] {
+                let mut nals = parse_annex_b(&data);
+                if mode != "drop" {
+                    let mut b = nals[k].rbsp.to_vec();
+                    let n = b.len();
+                    let range = if mode == "head" {
+                        1..12.min(n)
+                    } else {
+                        n / 2..(n / 2 + 24).min(n)
+                    };
+                    for x in &mut b[range] {
+                        *x ^= 0x5a;
+                    }
+                    nals[k].rbsp = std::borrow::Cow::Owned(b);
+                }
+                let skip = (mode == "drop").then_some(k);
+                for display in [false, true] {
+                    let (frames, errors) = decode_lossy(&nals, skip, display);
+                    assert!(
+                        errors.iter().all(|&e| e == k),
+                        "NAL {k} {mode}: later NALs failed: {errors:?}"
+                    );
+                    assert!(
+                        frames.len() + 1 >= vcl.len(),
+                        "NAL {k} {mode}: only {} frames",
+                        frames.len()
+                    );
+                }
+            }
+        }
+    }
+
+    /// Frames decoded from `data` and every error returned on the way.
+    fn decode_collect_errors(data: &[u8]) -> (usize, Vec<DecodeError>) {
+        let mut dec = Decoder::new();
+        let (mut frames, mut errors) = (0, Vec::new());
+        for nal in parse_annex_b(data) {
+            match dec.decode_nal(&nal) {
+                Ok(Some(_)) => frames += 1,
+                Ok(None) => {}
+                Err(e) => errors.push(e),
+            }
+        }
+        frames += std::iter::from_fn(|| dec.flush()).count();
+        (frames, errors)
+    }
+
+    /// Range-extension coding tools: implicit RDPCM (an SPS range-extension
+    /// flag) and cross-component prediction (a PPS range-extension flag),
+    /// byte-exact against FFmpeg.
+    ///
+    /// Fixtures: HM `TAppEncoder`, 64x64 4:4:4 8-bit, one intra frame,
+    /// `Profile main_444`, `TransformSkip 1`, CTU 32, QP 30, plus
+    /// `ImplicitResidualDPCM 1` or `CrossComponentPrediction 1`.
+    #[test]
+    fn test_decode_rext_rdpcm_and_ccp_hash() {
+        for (name, expected) in [
+            (
+                "rext_implicit_rdpcm_hm_444_64x64.h265",
+                "87df856a2ada4648a62572fac3f5b22159f5c74aa4483ceb6001ad1c4e4959a5",
+            ),
+            (
+                "rext_ccp_hm_444_64x64.h265",
+                "75233ed530402a8e3d7779d8237fb43750eab6358b06647b3ea325cfc5a4d1e0",
+            ),
+        ] {
+            assert_eq!(decode_and_hash(name, 1), expected, "{name} hash mismatch");
+        }
+    }
+
+    /// Range-extension tools in inter streams, against the HM encoder's
+    /// reconstruction (SHA-256 of its recon YUV). Each fixture is HM
+    /// `TAppEncoder`, 96x64, I + 4 P (GOPSize 1), CTU 32, TransformSkip 1,
+    /// TransformSkipFast 0, QP 27, `Profile main_444` (`main_444_12` for the
+    /// 12-bit one), plus:
+    ///
+    /// - lossless_rot_rdpcm: TransquantBypassEnable, CUTransquantBypassFlagForce,
+    ///   ResidualRotation, ImplicitResidualDPCM, ExplicitResidualDPCM. FFmpeg
+    ///   decodes this differently: it applies neither rotation nor (for
+    ///   inter CUs) explicit RDPCM to lossless blocks the way HM does.
+    /// - rice_wpp: GolombRiceParameterAdaptation, WaveFrontSynchro (StatCoeff
+    ///   synchronised across CTB rows).
+    /// - ts32_12bit: 12-bit, TransformSkipLog2MaxSize 5, QP 17 (negative
+    ///   transform-skip shift).
+    /// - hp_wp: HighPrecisionPredictionWeighting, WeightedPredP, fade-in input.
+    /// - chroma_qp_adj: MaxCUChromaQpAdjustmentDepth 1 (chroma QP offset lists).
+    /// - chroma_qp_adj_dep: the same with 16x16 CTUs (MaxCUWidth/Height 16,
+    ///   MaxPartitionDepth 2, QuadtreeTULog2MaxSize 4) and a dependent slice
+    ///   segment every 2 CTUs (SliceSegmentMode 1, SliceSegmentArgument 2):
+    ///   dependent segments inherit cu_chroma_qp_offset_enabled_flag.
+    /// - bypass_align: intra only (no GOP, IntraPeriod 1), QP 4, `Profile
+    ///   high_throughput_444_16_intra`, AlignCABACBeforeBypass 1 (CABAC
+    ///   bypass alignment; FFmpeg does not implement it).
+    #[test]
+    fn test_decode_rext_tools_match_hm() {
+        for (name, expected) in [
+            (
+                "rext_lossless_rot_rdpcm_hm_444_96x64.h265",
+                "0edb56876a266b124bff4c7491768db10246444a839eb62ae40ebc5cc4674df7",
+            ),
+            (
+                "rext_rice_wpp_hm_444_96x64.h265",
+                "93269487838c988d25bc472347b34527d219690215035ccfd49404e83db5d1d9",
+            ),
+            (
+                "rext_ts32_12bit_hm_444_12bit_96x64.h265",
+                "fe33ab56c97e76f2e4d9da5fa4dace3f08ba1735f74e4f27b712d0bb334aa892",
+            ),
+            (
+                "rext_hp_wp_hm_444_96x64.h265",
+                "8cd1a02bd582e6bdbc9bb04c5dbc49268c8a5f7110cd1958beb1cf7d7bc48929",
+            ),
+            (
+                "rext_bypass_align_hm_444_96x64.h265",
+                "33ea5e4e900abeb4d6e86a4380d8b68f44fc0a8b8714900a2e6d4ac4fbdc9638",
+            ),
+            (
+                "rext_chroma_qp_adj_hm_444_96x64.h265",
+                "3d7cf6860d67488fb42bc6cf5cb713e0920f1699685ff57e1c759c066ee8668a",
+            ),
+            (
+                "rext_chroma_qp_adj_dep_hm_444_96x64.h265",
+                "4081d3ee2eda3e78a8ec1101a96e64d445a450891edb0b319b8038c4b246d761",
+            ),
+        ] {
+            assert_eq!(decode_and_hash(name, 5), expected, "{name} hash mismatch");
+        }
+    }
+
+    /// A rejected SPS replaces an earlier SPS with the same ID: the slices
+    /// that follow it fail instead of decoding with the stale SPS. The
+    /// rejected stream is 4:2:2 (x265 `--input-csp i422`, 64x64, 1 frame),
+    /// which the decoder does not support; it is reported at the SPS and at
+    /// its slice, and no frame comes out of it.
+    #[test]
+    fn test_rejected_sps_replaces_same_id() {
+        let good = read_fixture("intra444_96x96.h265");
+        let (good_frames, good_errors) = decode_collect_errors(&good);
+        assert!(good_errors.is_empty());
+        let mut data = good.clone();
+        data.extend_from_slice(&read_fixture("unsupported_422_x265_64x64.h265"));
+        let (frames, errors) = decode_collect_errors(&data);
+        assert_eq!(frames, good_frames);
+        assert!(errors.len() >= 2, "errors {errors:?}");
+        assert!(
+            errors
+                .iter()
+                .all(|e| matches!(e, DecodeError::Unsupported(_))),
+            "errors {errors:?}"
+        );
+    }
+
+    /// Pictures reuse the buffers of earlier ones: after decoding a stream
+    /// with inter prediction, the pool holds the last picture state and the
+    /// planes of pictures that left the DPB. Output stays byte-exact (the
+    /// fixture hash tests decode through the pool).
+    #[test]
+    fn test_picture_pool_recycles_buffers() {
+        let data = read_fixture("bframes3_128x128.h265");
+        let mut dec = Decoder::new();
+        for nal in parse_annex_b(&data) {
+            dec.decode_nal(&nal).unwrap();
+        }
+        while dec.flush().is_some() {}
+        assert!(
+            dec.pool.state_u8.is_some(),
+            "finished picture state not kept"
+        );
+        assert!(
+            !dec.pool.planes_u8.is_empty(),
+            "no planes recovered from retired pictures"
+        );
+    }
+
+    #[test]
+    fn test_decode_10bit_hash() {
+        let hash = decode_and_hash("10bit_128x128.h265", 3);
+        let expected = "27867ceb486a4a0996970873ee0725c1e82ee72a585e5e51c4939eb6916059c9";
+        assert_eq!(
+            hash, expected,
+            "10bit hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 96×96, 1 intra frame, **4:4:4** (ChromaArrayType == 3). Exercises the
+    /// full-resolution chroma path: chroma TBs the same size as luma (no
+    /// half-sizing, no 4×4 deferral), reference-sample smoothing on chroma
+    /// (PLANAR/angular filtered like luma), per-PU `intra_chroma_pred_mode`
+    /// for PART_NxN CUs, `Min(qPi, 51)` chroma QP, chroma SAO and deblocking
+    /// on the 8×8 luma grid, plus the conformance-window crop (96 is not
+    /// CTB-aligned at CTU 64). Byte-exact against FFmpeg with `yuv444p`.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=96x96:rate=30:duration=0.034" \
+    ///   -frames:v 1 -pix_fmt yuv444p -f rawvideo /tmp/in444.yuv
+    /// x265 --input /tmp/in444.yuv --input-res 96x96 --fps 30 --frames 1 \
+    ///   --input-csp i444 --preset medium --keyint 1 --min-cu-size 8 \
+    ///   --no-info -o intra444_96x96.h265
+    /// ```
+    #[test]
+    fn test_decode_444_intra_byte_exact() {
+        let hash = decode_and_hash("intra444_96x96.h265", 1);
+        let expected = "fb8b7f1874713da3ca1e8bd131593336218e85fa1bd19caffcca684effe395a6";
+        assert_eq!(
+            hash, expected,
+            "444 intra hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 96×96, 1 intra frame, **10-bit 4:4:4** — the exact format Apple HEIC
+    /// "edited" photos use (`yuv444p10le`). Combines the full-resolution
+    /// chroma path above with the 10-bit reconstruction path (`PictureState
+    /// <u16>`, `qp_bd_offset = 12`, 10-bit inverse transform and clipping).
+    /// Byte-exact against FFmpeg with `yuv444p10le`.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=96x96:rate=30:duration=0.034" \
+    ///   -frames:v 1 -pix_fmt yuv444p10le -f rawvideo /tmp/in444_10.yuv
+    /// x265 --input /tmp/in444_10.yuv --input-res 96x96 --fps 30 --frames 1 \
+    ///   --input-csp i444 --input-depth 10 --output-depth 10 \
+    ///   --preset medium --keyint 1 --min-cu-size 8 \
+    ///   --no-info -o intra444_10bit_96x96.h265
+    /// ```
+    #[test]
+    fn test_decode_444_intra_10bit_byte_exact() {
+        let hash = decode_and_hash("intra444_10bit_96x96.h265", 1);
+        let expected = "0bf1f7ee3492b98b8cd7a622f2f1afe4e390438e3bece26641b771a3c9eadfb5";
+        assert_eq!(
+            hash, expected,
+            "444 10-bit intra hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 100×68 8-bit 4:4:4 intra, coded as 104×72 with a conformance window
+    /// of 4 luma samples right and bottom. In 4:4:4 the window offsets are in
+    /// luma units (SubWidthC = SubHeightC = 1); reading them as 4:2:0 units
+    /// would crop 8 and emit a 96×64 frame. Byte-exact against FFmpeg.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=100x68:rate=30" -frames:v 1 \
+    ///   -pix_fmt yuv444p -f rawvideo src444.yuv
+    /// x265 --input src444.yuv --input-res 100x68 --input-csp i444 --fps 30 \
+    ///   --frames 1 --preset medium --ctu 32 --keyint 1 --min-cu-size 8 \
+    ///   --no-info -o intra444_100x68.h265
+    /// ```
+    #[test]
+    fn test_decode_444_conformance_window_byte_exact() {
+        let h265 = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/intra444_100x68.h265"
+        ))
+        .unwrap();
+        let mut decoder = Decoder::new();
+        let mut frames = Vec::new();
+        for nal in parse_annex_b(&h265).iter() {
+            if let Some(f) = decoder.decode_nal(nal).unwrap() {
+                frames.push(f);
+            }
+        }
+        while let Some(f) = decoder.flush() {
+            frames.push(f);
+        }
+        assert_eq!(frames.len(), 1);
+        assert_eq!((frames[0].width, frames[0].height), (100, 68));
+        assert_eq!(frames[0].chroma_format_idc, 3);
+        assert_eq!(frames[0].u.len(), 100 * 68);
+
+        let hash = decode_and_hash("intra444_100x68.h265", 1);
+        let expected = "b6c9c0b9021641a6db7596196005212a81a73f217856d386ead29eb66c183038";
+        assert_eq!(
+            hash, expected,
+            "444 conformance window hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 96×96, 8 frames, 8-bit **4:4:4 inter** (I/P, IDR every 4). Chroma
+    /// motion compensation at full resolution: the chroma block is the PU
+    /// size, chroma MVs are `mv * 2` in eighth-sample units (spec 8.5.3.2.10
+    /// with SubWidthC = 1), reference chroma planes are read at the luma
+    /// stride. Byte-exact against FFmpeg with `yuv444p`.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=96x96:rate=30:duration=0.27" \
+    ///   -frames:v 8 -pix_fmt yuv444p -f rawvideo /tmp/in444p.yuv
+    /// x265 --input /tmp/in444p.yuv --input-res 96x96 --fps 30 --frames 8 \
+    ///   --input-csp i444 --preset medium --keyint 4 --bframes 0 \
+    ///   --no-scenecut --min-cu-size 8 --no-info -o inter444_96x96.h265
+    /// ```
+    #[test]
+    fn test_decode_444_inter_p_byte_exact() {
+        let hash = decode_and_hash("inter444_96x96.h265", 8);
+        let expected = "8f9dc649f02205e8df26aab4192f6cc36c4f22edc6009705ad21b2aba98296a2";
+        assert_eq!(
+            hash, expected,
+            "444 inter P hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 96×96, 12 frames, 8-bit 4:4:4 with **B-frames and weighted
+    /// prediction** (`--weightp --weightb`): exercises 4:4:4 chroma
+    /// bi-prediction and the weighted uni/bi chroma paths with full-size
+    /// intermediate buffers. Byte-exact against FFmpeg.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=96x96:rate=30" -frames:v 12 \
+    ///   -pix_fmt yuv444p -f rawvideo src.yuv
+    /// x265 --input src.yuv --input-res 96x96 --input-csp i444 --fps 30 \
+    ///   --frames 12 --preset medium --ctu 32 --keyint 12 --bframes 2 \
+    ///   --b-adapt 0 --weightp --weightb --no-scenecut --min-cu-size 8 \
+    ///   --no-info -o inter444_b_96x96.h265
+    /// ```
+    #[test]
+    fn test_decode_444_inter_b_weighted_byte_exact() {
+        let hash = decode_and_hash("inter444_b_96x96.h265", 12);
+        let expected = "d0b0bf1e5513db8a92a4ebf02f7ff3b65cc4750b3c2f62ed46a97a93e773c50c";
+        assert_eq!(
+            hash, expected,
+            "444 inter B hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// Same encoder settings as `inter444_b_96x96.h265` but **10-bit**
+    /// 4:4:4 (`--input-depth 10 --output-depth 10`, `yuv444p10le`).
+    #[test]
+    fn test_decode_444_inter_10bit_byte_exact() {
+        let hash = decode_and_hash("inter444_10bit_96x96.h265", 12);
+        let expected = "d020419204a17df1ee813095cc6495f1accbde67d2e36637b787857448e97c48";
+        assert_eq!(
+            hash, expected,
+            "444 inter 10-bit hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 100×68 8-bit **4:2:0** inter with B-frames, CTU 32. The width is not
+    /// a multiple of the CTB size, so the reference planes in the DPB have a
+    /// stride (128) wider than the picture (100). Regression test: motion
+    /// compensation used to read reference planes with `stride == width`,
+    /// which was only correct for CTB-aligned widths and corrupted every
+    /// inter picture otherwise. Byte-exact against FFmpeg.
+    ///
+    /// Fixture generated with:
+    /// ```text
+    /// ffmpeg -f lavfi -i "testsrc2=size=100x68:rate=30" -frames:v 12 \
+    ///   -pix_fmt yuv420p -f rawvideo src.yuv
+    /// x265 --input src.yuv --input-res 100x68 --input-csp i420 --fps 30 \
+    ///   --frames 12 --preset medium --ctu 32 --keyint 12 --bframes 2 \
+    ///   --b-adapt 0 --no-scenecut --min-cu-size 8 --no-info \
+    ///   -o inter420_100x68.h265
+    /// ```
+    #[test]
+    fn test_decode_420_inter_unaligned_width_byte_exact() {
+        let hash = decode_and_hash("inter420_100x68.h265", 12);
+        let expected = "ec32cfc3861ee0271af780ea66b115e580b50aa7ee4501794b05d692e1accaaf";
+        assert_eq!(
+            hash, expected,
+            "420 unaligned-width inter hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    /// 100×68 8-bit **4:4:4** inter with B-frames: non-CTB-aligned width
+    /// plus full-resolution chroma MC, with the conformance window in luma
+    /// units. Same encoder settings as `inter420_100x68.h265` with
+    /// `--input-csp i444`. Byte-exact against FFmpeg.
+    #[test]
+    fn test_decode_444_inter_unaligned_width_byte_exact() {
+        let hash = decode_and_hash("inter444_100x68.h265", 12);
+        let expected = "e9c237e4ec5c484e858a3b1ab01e30413ad18fdb012e1df61573bbed77160d36";
+        assert_eq!(
+            hash, expected,
+            "444 unaligned-width inter hash mismatch:\n  got: {hash}\n  exp: {expected}"
+        );
+    }
+
+    // ---- Fuzz regression helpers ----
+    // Each helper decodes malformed input and asserts no panic. Errors are
+    // expected — the invariant is "return Err, don't crash".
+
+    /// Decode raw Annex B data — must not panic.
+    fn fuzz_annex_b(data: &[u8]) {
+        let nals = parse_annex_b(data);
+        let mut decoder = Decoder::new();
+        for nal in &nals {
+            let _ = decoder.decode_nal(nal);
+        }
+        while decoder.flush().is_some() {}
+    }
+
+    /// Replicate `decode_single_nal` fuzz target framing: first two bytes
+    /// select NAL type and tid, rest is payload wrapped in Annex B.
+    fn fuzz_single_nal(fuzz_input: &[u8]) {
+        if fuzz_input.len() < 3 {
+            return;
+        }
+        let nal_type = fuzz_input[0] & 0x3f;
+        let temporal_id = (fuzz_input[1] & 0x07).max(1);
+        let mut annex_b = vec![0x00, 0x00, 0x00, 0x01];
+        annex_b.push((nal_type << 1) & 0x7e);
+        annex_b.push(temporal_id & 0x07);
+        annex_b.extend_from_slice(&fuzz_input[2..]);
+        fuzz_annex_b(&annex_b);
+    }
+
+    /// Replicate `decode_hvcc` fuzz target framing: first byte selects
+    /// length_size, rest is HVCC payload.
+    fn fuzz_hvcc(fuzz_input: &[u8]) {
+        if fuzz_input.is_empty() {
+            return;
+        }
+        let length_size = (fuzz_input[0] % 4) + 1;
+        let nals = crate::nal::parse_hvcc(&fuzz_input[1..], length_size);
+        let mut decoder = Decoder::new();
+        for nal in &nals {
+            let _ = decoder.decode_nal(nal);
+        }
+        while decoder.flush().is_some() {}
+    }
+
+    // ---- Fuzz regression tests ----
+
+    /// CABAC reinit with byte offset past end of RBSP (crash-aeb0d7c8).
+    #[test]
+    fn test_fuzz_cabac_reinit_oob() {
+        fuzz_annex_b(&[
+            0, 0, 0, 1, 64, 1, 12, 2, 255, 255, 1, 96, 0, 0, 3, 0, 128, 0, 0, 3, 0, 0, 3, 0, 186,
+            0, 0, 4, 2, 16, 36, 0, 0, 0, 1, 66, 1, 2, 1, 96, 0, 0, 3, 0, 128, 0, 0, 3, 0, 0, 3, 0,
+            186, 0, 0, 160, 8, 8, 4, 5, 176, 64, 33, 146, 76, 42, 1, 0, 0, 3, 3, 232, 0, 0, 117,
+            48, 8, 0, 0, 0, 1, 68, 1, 224, 113, 130, 153, 32, 0, 0, 1, 38, 1, 172, 228, 25, 11, 39,
+            192, 105, 240, 16,
+        ]);
+    }
+
+    /// `bit_depth_luma_minus8` overflow on cast to u8 (crash-affb98ea).
+    #[test]
+    fn test_fuzz_sps_bit_depth_overflow() {
+        fuzz_single_nal(&[
+            97, 20, 0, 0, 0, 64, 0, 235, 0, 0, 178, 0, 0, 178, 178, 0, 0, 64, 0, 235, 0, 0, 178, 0,
+            0, 178, 178, 0, 0, 0, 64, 0, 235, 0, 0, 178, 178, 178, 0, 0, 20, 165,
+        ]);
+    }
+
+    /// 14- or 16-bit samples: the motion compensation shift `14 - BitDepth`
+    /// underflowed (crash-9d8c35f4). Bit depths above 12 are now rejected.
+    #[test]
+    fn test_fuzz_bit_depth_above_12_rejected() {
+        fuzz_single_nal(&[
+            34, 220, 225, 255, 193, 9, 0, 0, 1, 67, 98, 1, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 34, 34,
+            162, 34, 58, 34, 0, 197, 146, 73, 36, 238, 146, 171, 225, 255, 0, 0, 1, 0, 1, 255, 255,
+            255, 67, 255,
+        ]);
+    }
+
+    /// Huge SPS dimensions causing OOM (oom-7aff3154).
+    #[test]
+    fn test_fuzz_sps_huge_dimensions_oom() {
+        fuzz_hvcc(&[
+            0, 20, 69, 7, 126, 10, 31, 0, 0, 0, 250, 48, 0, 47, 28, 0, 0, 0, 4, 7, 250, 0, 0, 28,
+            117, 0, 4, 7, 250, 0, 0, 0,
+        ]);
+    }
+
+    /// Bitstream reader read past end (crash-393a61db).
+    #[test]
+    fn test_fuzz_bitstream_read_oob() {
+        fuzz_single_nal(&[
+            160, 0, 16, 188, 255, 255, 0, 0, 0, 0, 255, 255, 255, 255, 255, 0, 57, 0, 0, 35, 192,
+            61, 1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 3, 62, 0, 78, 0, 3, 6, 0, 160,
+        ]);
+    }
+
+    /// Truncated slice data bitstream overread (crash-5db2d906).
+    #[test]
+    fn test_fuzz_bitstream_read_oob_annex_b() {
+        fuzz_annex_b(&[
+            0, 0, 0, 1, 64, 1, 12, 1, 255, 255, 3, 112, 0, 0, 3, 0, 144, 0, 49, 3, 0, 0, 3, 0, 30,
+            186, 2, 64, 0, 0, 0, 1, 66, 1, 1, 3, 112, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0, 3, 0, 30,
+            160, 136, 42, 150, 233, 111, 133, 192, 32, 0, 0, 121, 0, 0, 3, 0, 125, 1, 0, 0, 0, 1,
+            70, 1, 192, 113, 129, 164, 128, 0, 0, 1, 40, 1, 172, 76, 220, 96, 80, 128,
+        ]);
+    }
+
+    /// coeff_abs_level_remaining overflow: `1u32 << prefix_minus3` with
+    /// large prefix from corrupted CABAC bypass bins (crash-ea099d01).
+    #[test]
+    fn test_fuzz_coeff_abs_level_overflow() {
+        fuzz_annex_b(&[
+            0, 0, 0, 1, 64, 1, 12, 1, 255, 255, 1, 96, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0, 3, 0, 60,
+            145, 48, 36, 0, 0, 0, 1, 66, 1, 1, 1, 96, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0, 3, 0, 60,
+            160, 10, 8, 15, 22, 89, 19, 146, 76, 46, 1, 0, 0, 3, 3, 232, 0, 0, 117, 48, 8, 0, 0, 0,
+            1, 68, 1, 193, 113, 129, 164, 128, 0, 0, 0, 1, 40, 1, 172, 240, 103, 165, 44, 130, 136,
+            58, 254, 104, 127, 125, 141, 199, 142, 86, 151, 166, 67, 118, 100, 99, 23, 21, 210,
+            170, 101, 95, 113, 52, 200, 13, 182, 86, 105, 86, 186, 244, 1, 145, 214, 46, 217, 229,
+            21, 69, 206, 27, 122, 230, 52, 124, 60, 73, 192, 94,
+        ]);
+    }
+
+    /// SPS log2 coding block size overflow on u8 add (crash-484a1baf).
+    #[test]
+    fn test_fuzz_sps_cb_size_overflow() {
+        fuzz_single_nal(&[
+            33, 47, 83, 83, 97, 83, 134, 83, 117, 117, 117, 117, 45, 117, 117, 117, 119, 34, 34,
+            34, 154, 33, 47, 93, 0, 65, 0, 0, 0, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 132, 36, 154,
+            23, 47, 34, 4,
+        ]);
+    }
+
+    /// Huge num_entry_point_offsets causing OOM (oom-0fa6f5c4).
+    #[test]
+    fn test_fuzz_entry_point_offsets_oom() {
+        fuzz_hvcc(&[
+            0, 31, 68, 68, 0, 59, 7, 198, 255, 44, 0, 0, 0, 4, 85, 85, 40, 1, 0, 170, 170, 170,
+            170, 170, 0, 0, 0, 0, 0, 14, 85, 219, 219, 153,
+        ]);
+    }
+
+    /// TileScanTables::build index OOB with malformed PPS tile geometry
+    /// (crash-2ae82f61). Truncated to VPS+SPS+PPS that trigger the issue.
+    #[test]
+    fn test_fuzz_tile_scan_oob() {
+        fuzz_annex_b(&[
+            0, 0, 0, 1, 64, 1, 12, 2, 255, 255, 1, 96, 0, 0, 3, 0, 128, 0, 0, 3, 0, 0, 3, 0, 186,
+            0, 0, 44, 9, 0, 0, 0, 1, 66, 1, 2, 1, 96, 0, 0, 3, 0, 128, 0, 0, 3, 0, 0, 3, 0, 186, 0,
+            0, 160, 8, 8, 4, 5, 203, 146, 76, 34, 1, 0, 0, 3, 3, 232, 0, 0, 3, 3, 232, 8, 0, 0, 0,
+            1, 68, 1, 192, 108, 97, 37, 41, 32,
+        ]);
+    }
+
+    /// PPS huge tile columns/rows causing OOM (oom-b1c9dbd8).
+    #[test]
+    fn test_fuzz_pps_tile_oom() {
+        fuzz_hvcc(&[
+            0, 12, 68, 9, 255, 253, 10, 237, 0, 0, 0, 2, 239, 0, 0, 6, 2, 3, 3, 0, 1, 0, 0, 0, 0,
+            115, 237, 42, 0, 2,
+        ]);
+    }
+
+    /// SPS log2 transform block size overflow on u8 add (crash-249a158e).
+    #[test]
+    fn test_fuzz_sps_tb_size_overflow() {
+        fuzz_single_nal(&[
+            225, 58, 235, 0, 0, 0, 0, 32, 0, 0, 0, 37, 83, 32, 196, 1, 73, 36, 146, 73, 36, 146,
+            73, 51, 0, 255, 255, 255, 255, 254, 255, 255, 247, 32, 51, 0, 255, 255, 255, 255, 254,
+            255, 255, 247, 32, 1, 0, 36, 1, 0, 73, 34, 14, 77, 46, 0,
+        ]);
+    }
+
+    /// MC ref index OOB with empty ref list (crash-01215333).
+    #[test]
+    fn test_fuzz_mc_ref_oob() {
+        fuzz_annex_b(&[
+            0, 0, 0, 1, 64, 1, 12, 1, 255, 255, 1, 96, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0, 3, 0, 60,
+            186, 2, 64, 0, 0, 0, 1, 66, 1, 1, 1, 96, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0, 3, 0, 60, 160,
+            8, 8, 4, 5, 150, 233, 41, 50, 184, 4, 0, 0, 15, 160, 0, 1, 212, 192, 32, 0, 0, 0, 1,
+            68, 1, 192, 113, 130, 18, 0, 0, 0, 1, 40, 1, 175, 57, 5, 253, 249, 56, 215, 224, 9,
+            152, 59, 1, 181, 253, 215, 210, 206, 44,
+        ]);
+    }
+
+    /// SPS PCM log2 cb size overflow on u8 add (crash-1875800f).
+    #[test]
+    fn test_fuzz_sps_pcm_size_overflow() {
+        fuzz_single_nal(&[
+            161, 134, 0, 0, 0, 34, 1, 161, 1, 161, 161, 39, 39, 161, 1, 161, 161, 39, 168, 39, 39,
+            161, 55, 1, 0, 0, 0, 255, 59, 1, 161, 161, 39, 168, 39, 39, 161, 55, 33, 161, 161, 50,
+            255, 59, 1, 0, 0, 1, 0,
+        ]);
+    }
+
+    /// Same PCM log2 cb size overflow via decode_hvcc (crash-e920ac13).
+    #[test]
+    fn test_fuzz_sps_pcm_size_overflow_hvcc() {
+        fuzz_hvcc(&[
+            0, 25, 67, 23, 0, 0, 16, 4, 41, 1, 20, 0, 0, 0, 69, 69, 69, 50, 33, 69, 69, 187, 186,
+            214, 65, 0, 1, 0, 0, 0, 0, 0, 0, 3, 255, 200, 183, 183, 183, 183, 41, 255, 255,
+        ]);
+    }
+
+    /// Scaling list delta_coef overflow (crash-dfd8a6ba).
+    #[test]
+    fn test_fuzz_scaling_list_overflow() {
+        fuzz_hvcc(&[
+            0, 139, 69, 6, 64, 247, 255, 255, 2, 255, 253, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 239, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 0, 1, 0, 0, 0, 0,
+            1, 255, 255, 255, 0, 0, 0, 1, 0, 0, 0, 44, 0, 0, 2, 2, 0, 2, 0, 73, 1, 0, 141, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 2, 0, 0, 6, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 80, 255, 255,
+            255, 2, 0, 0, 6, 255, 255, 255, 255, 64, 80, 255, 9, 255, 2, 2, 18, 64, 6, 2, 0, 0, 2,
+            2, 64, 64, 0, 64,
+        ]);
+    }
+
+    /// SPS conformance window subtraction overflow (crash-3f6a7c4d).
+    #[test]
+    fn test_fuzz_sps_conf_win_overflow() {
+        fuzz_single_nal(&[
+            98, 149, 237, 255, 255, 255, 98, 144, 237, 75, 255, 255, 33, 255, 0, 255, 255, 255,
+            255, 255, 165, 0, 0, 1, 56, 0, 0, 1, 67, 58, 161, 161, 161, 161, 161, 253, 255, 161,
+            161, 253, 255, 164, 164, 164, 93, 164, 164, 164, 50, 164, 164, 75, 75, 75, 75, 1, 0, 0,
+            128, 0, 4, 0, 1, 0, 251, 75, 33, 255, 49, 0, 0, 0, 103, 111,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_pred_weight_overflow() {
+        fuzz_hvcc(&[
+            0, 13, 69, 231, 176, 67, 255, 91, 0, 127, 255, 67, 0, 40, 67, 10, 42, 0, 0, 133, 1, 0,
+            0, 3, 1, 0, 40, 67, 10, 42, 0, 0, 127, 1, 0, 0, 3, 1, 0, 5, 133, 36, 45, 1, 1, 53, 2,
+            2, 1, 98, 0, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 45,
+            73, 255, 67, 0, 40, 67, 10, 42, 0, 0, 133, 0, 133, 1, 0, 0, 3, 1, 0, 40, 67, 10, 42, 0,
+            0, 127, 1, 0, 0, 3, 1, 0, 5, 133, 36, 45, 1, 1, 53, 2, 2, 1, 98, 0, 73, 73, 73, 73, 73,
+            73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 73, 45, 73, 255, 67, 0, 40, 67, 10, 42, 0,
+            0, 133, 1, 0, 0, 3, 1, 0, 222, 188, 245, 213, 255, 255, 128, 254, 0, 0, 3, 1, 0, 5, 2,
+            0, 0, 0, 1, 189, 2, 2, 1, 2, 2, 103, 114, 102, 93, 111, 32, 116, 215, 115, 255, 255,
+            255, 0, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230,
+            230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 0, 0, 0, 0, 133, 36, 252, 255,
+            255, 255, 2, 2, 1, 175, 175, 175, 175, 175, 175, 175, 175, 175, 175, 175, 175, 127, 73,
+            73, 73, 73, 73, 45, 73, 255, 67, 0, 40, 1, 0, 0, 3, 1, 0, 222, 188, 245, 213, 255, 255,
+            128, 254, 0, 0, 3, 1, 0, 5, 2, 0, 0, 0, 1, 189, 2, 2, 1, 2, 2, 103, 114, 102, 93, 111,
+            32, 116, 215, 115, 255, 255, 255, 0, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230,
+            230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 230, 0,
+            0, 0, 0, 133, 36, 252, 255, 255, 255, 2, 2, 1, 175, 175, 175, 175, 175, 175, 175, 175,
+            175, 175, 175, 175, 127, 73, 73, 73, 73, 73, 45, 73, 255, 67, 0, 40, 2, 1, 49, 1, 1,
+            251, 2, 1, 96, 2, 1, 2, 0, 0,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_ref_sample_oob() {
+        fuzz_annex_b(&[
+            0, 0, 0, 1, 64, 1, 12, 1, 255, 255, 3, 112, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0, 3, 0, 30,
+            149, 148, 9, 0, 0, 0, 1, 66, 1, 1, 3, 112, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0, 3, 0, 30,
+            160, 32, 129, 5, 150, 86, 84, 228, 194, 224, 16, 0, 0, 62, 128, 0, 7, 83, 0, 128, 0, 0,
+            0, 1, 68, 1, 192, 114, 176, 52, 144, 0, 0, 0, 1, 40, 1, 173, 192, 55, 28, 233, 229,
+            158, 50, 28, 63, 87, 142, 250, 98, 227, 53, 155, 245, 129, 115, 75, 162, 106, 166, 89,
+            120, 89, 54, 112, 233, 117, 47, 131, 178, 65, 1, 28, 146, 151, 148, 68, 41, 75, 213,
+            100, 220, 212, 59, 240, 37, 169, 214, 64, 248, 105, 8, 49, 187, 84, 251, 92, 197, 123,
+            99, 229, 33, 100, 164, 219, 80, 58, 236, 222, 7, 212, 172, 151, 135, 91, 83, 209, 66,
+            96, 224, 124, 253, 78, 26, 69, 170, 111, 151, 120, 177, 186, 191, 255, 229, 19, 87, 36,
+            250, 114, 175, 230, 85, 251, 79, 23, 249, 206, 246, 233, 97, 115, 238, 233, 76, 193,
+            190, 136, 130, 119, 235, 252, 228, 214, 9, 10, 28, 242, 252, 37, 106, 128, 234, 29,
+            215, 214, 140, 106, 196, 104, 116, 212, 59, 240, 37, 169, 214, 64, 248, 105, 8, 49,
+            187, 84, 251, 92, 197, 123, 99, 229, 33, 100, 164, 219, 80, 58, 236, 222, 7, 212, 172,
+            151, 135, 91, 83, 209, 66, 96, 224, 124, 253, 78, 26, 69, 170, 111, 151, 120, 177, 186,
+            191, 255, 229, 19, 87, 36, 250, 114, 175, 230, 85, 251, 79, 23, 249, 206, 246, 233, 97,
+            115, 238, 233, 76, 193, 190, 136, 130, 119, 235, 252, 228, 214, 9, 10, 28, 242, 252,
+            37, 106, 128, 234, 29, 215, 214, 140, 106, 196, 104, 116, 221, 39, 195, 231, 232, 96,
+            211, 232, 193, 173, 121, 111, 128, 156, 113, 176, 227, 19, 148, 227, 99, 203, 96, 74,
+            214, 4, 147, 178, 63, 93, 142, 24, 177, 55, 114, 165, 217, 238, 191, 30, 135, 225, 152,
+            237, 100, 144, 229, 223, 19, 0, 0, 0, 0, 0, 0, 0, 241, 158, 7, 229, 160, 139, 157, 223,
+            23, 147, 53, 181, 207, 156, 245, 217, 32, 182, 43, 104, 109, 47, 217, 157, 244, 177,
+            11, 173, 26, 9, 88, 241, 60, 223, 227, 159, 201, 111, 208, 41, 55, 254, 30, 104, 187,
+            67, 143, 224, 19, 243, 87, 114, 98, 40, 28, 36, 208, 7, 244, 134, 97, 42, 212, 31, 133,
+            122, 150, 138, 213, 114, 217, 163, 251, 241, 78, 104, 32, 73, 216, 5, 215, 98, 205,
+            135, 23, 82, 240, 174, 116, 169, 250, 40, 59, 183, 230, 29, 219, 217, 70, 9, 128, 129,
+            65, 176, 99, 137, 165, 211, 160, 151, 162, 82, 81, 83, 114, 72, 174, 209, 202, 154, 99,
+            0, 217, 81, 189, 237, 153, 195, 208, 31, 165, 171, 111, 88, 104, 119, 67, 7, 6, 221,
+            62, 248, 141, 56, 216, 88, 101, 110, 2, 14, 21, 2, 114, 184, 36, 188, 100, 8, 167, 0,
+            206, 78, 42, 186, 177, 167, 139, 198, 250, 86, 86, 76, 200, 116, 17, 246, 191, 119,
+            124, 128, 148, 14, 18, 230, 5, 174, 82, 162, 17, 218, 182, 54, 249, 151, 39, 63, 230,
+            254, 13, 187, 90, 180, 233, 166, 189, 211, 28, 255, 93, 115, 206, 70, 198, 253, 121,
+            153, 67, 41, 130, 144, 59, 83, 9, 207, 182, 159, 32, 81, 153, 246, 16, 154, 85, 200,
+            69, 212, 13, 95, 250, 24, 229, 170, 244, 2, 229, 107, 246, 231, 121, 149, 232, 202,
+            215, 173, 3, 167, 245, 145, 252, 112, 127, 207, 1, 241, 209, 4, 189, 115, 184, 223,
+            161, 182, 13, 83, 7, 65, 140, 0, 249, 25, 235, 75, 185, 181, 198, 26, 30, 83, 166, 98,
+            223, 147, 205, 3, 83, 45, 78, 15, 255, 234, 69, 255, 226, 106, 148, 157, 67, 227, 111,
+            92, 97, 108, 23, 54, 82, 245, 165, 134, 52, 67, 122, 59, 117, 126, 117, 198, 168, 124,
+            129, 76, 33, 193, 29, 34, 175, 225, 168, 225, 206, 44, 191, 160, 246, 50, 28, 48, 12,
+            199, 199, 46, 67, 39, 148, 17, 199, 23, 26, 38, 66, 212, 162, 39, 191, 140, 130, 19,
+            121, 74, 86, 147, 104, 105, 59, 97, 11, 156, 2, 35, 45, 207, 252, 81, 75, 127, 147, 22,
+            94, 190, 68, 119, 170, 10, 155, 151, 151, 126, 199, 173, 161, 40, 40, 17, 21, 158, 136,
+            188, 248, 143, 251, 53, 222, 158, 198, 152, 194, 123, 172, 27, 169, 190, 225, 30, 218,
+            240, 121, 227, 251, 247, 25, 248, 215, 7, 60, 168, 168, 22, 12, 250, 43, 164, 250, 193,
+            250, 23, 187, 202, 212, 21, 110, 128, 69, 177, 215, 210, 53, 14, 113, 201, 73, 195,
+            110, 48, 217, 130, 45, 9, 145, 50, 16, 33, 106, 170, 82, 34, 231, 114, 71, 237, 119,
+            196, 241, 57, 155, 116, 229, 44, 248, 177, 3, 26, 41, 98, 219, 57, 170, 126, 105, 168,
+            20, 155, 135, 31, 77, 12, 249, 183, 108, 25, 30, 156, 163, 37, 163, 225, 173, 203, 91,
+            236, 123, 249, 23, 216, 167, 94, 3, 81, 51, 220, 72, 18, 38, 39, 155, 232, 82, 253, 26,
+            164, 173, 131, 251, 171, 32, 58, 128, 113, 26, 134, 214, 112, 132, 28, 170, 128, 186,
+            153, 140, 106, 213, 158, 105, 211, 198, 188, 121, 135, 8, 168, 212, 146, 164, 56, 137,
+            212, 13, 128, 131, 180, 249, 83, 243, 102, 236, 85, 252, 237, 163, 174, 218, 155, 60,
+            213, 30, 214, 160, 149, 10, 12, 86, 99, 70, 43, 248, 189, 66, 166, 250, 164, 164, 150,
+            149, 60, 12, 0, 0, 0, 1, 64, 1, 12, 1, 255, 255, 1, 96, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0,
+            3, 0, 30, 146, 128, 144, 0, 0, 0, 1, 66, 1, 1, 1, 96, 0, 0, 3, 0, 144, 0, 0, 3, 0, 0,
+            3, 0, 30, 160, 16, 32, 32, 89, 100, 171, 145, 194, 224, 16, 0, 0, 62, 128, 0, 7, 83, 0,
+            128, 0, 0, 0, 1, 68, 1, 193, 113, 161, 164, 128, 0, 0, 0, 182, 40, 1, 172, 208, 26,
+            131, 248, 246, 1, 23, 45, 0, 73, 168, 229, 93, 18, 133, 204, 194, 169, 99, 103, 33, 58,
+            193, 164, 115, 37, 101, 205, 179, 101, 191, 222, 237, 133, 170, 157, 190, 50, 36, 224,
+            126, 36, 194, 141, 58, 160, 27, 147, 217, 221, 32, 198, 12, 87, 108, 28, 190, 30, 11,
+            117, 3, 7, 62, 147, 162, 244, 74, 38, 176, 66, 145, 93, 14, 7, 36, 52, 246, 141, 195,
+            48, 166, 139, 86, 33, 92, 185, 127, 129, 29, 13, 11, 233, 25, 107, 74, 19, 79, 142,
+            158, 1, 156, 159, 1, 104, 168, 131, 243, 240, 217, 21, 120, 173, 235, 10, 20, 242, 208,
+            255, 231, 240, 133, 178, 201, 79, 250, 73, 146, 201, 125, 37, 208, 250, 175, 97, 85,
+            49, 48, 36, 190, 204, 227, 130, 170, 103, 14, 223, 10, 124, 80, 164, 59, 155, 42, 32,
+            167, 61, 12, 191, 244, 142, 91, 70, 19, 222, 143, 163, 57, 170, 123, 42, 87, 53, 170,
+            76, 170, 240, 121, 195, 243, 194, 148, 211, 168, 87, 43, 164, 129, 180, 108, 189, 233,
+            185, 113, 228, 130, 101, 225, 219, 174, 162, 224, 57, 18, 164, 8, 155, 9, 14, 108, 82,
+            224, 149, 168, 138, 221, 190, 154, 159, 59, 63, 149, 36, 156, 175, 164, 76, 67, 190,
+            62, 11, 32, 51, 90, 0, 60, 23, 64, 253, 188, 48, 108, 52, 85, 89, 213, 202, 43, 190,
+            174, 169, 227, 138, 18, 22, 60, 190, 56, 196, 89, 93, 192, 14, 129, 63, 238, 116, 115,
+            88, 101, 37, 94, 4, 224, 245, 97, 248, 195, 89, 191, 218, 8, 150, 180, 162, 239, 209,
+            75, 124, 114, 75, 181, 156, 120, 33, 121, 250, 34, 15, 213, 184, 34, 65, 26, 12, 2, 58,
+            58, 49, 189, 135, 21, 48, 224, 44, 15, 188, 79, 228, 168, 218, 56, 112, 82, 8, 182,
+            222, 181, 116, 52, 75, 239, 63, 31, 244, 221, 119, 123, 165, 172, 215, 212, 77, 22,
+            193, 172, 164, 122, 102, 14, 245, 171, 43, 167, 144, 171, 57, 195, 226, 11, 204, 46,
+            17, 247, 213, 217, 224, 114, 24, 242, 54, 247, 42, 45, 161, 171, 24, 131, 152, 79, 206,
+            251, 44, 188, 53, 63, 161, 72, 44, 38, 196, 37, 0, 33, 181, 69, 97, 54, 54, 172, 111,
+            243, 23, 252, 207, 184, 169, 216, 161, 10, 163, 173, 3, 235, 4, 125, 204, 129, 131, 55,
+            72, 208, 135, 112, 44, 48, 185, 195, 99, 40, 215, 17, 59, 109, 118, 174, 149, 57, 36,
+            46, 217, 150, 124, 14, 31, 212, 45, 91, 67, 198, 203, 92, 99, 75, 65, 173, 28, 6, 132,
+            121, 64, 117, 97, 180, 111, 1, 53, 49, 212, 241, 208, 111, 51, 27, 123, 115, 99, 38,
+            36, 234, 69, 251, 202, 164, 73, 155, 217, 33, 70, 53, 27, 214, 253, 233, 249, 65, 137,
+            206, 149, 65, 223, 179, 253, 162, 254, 208, 102, 207, 51, 53, 95, 81, 162, 59, 130, 30,
+            58, 114, 192, 85, 137, 149, 37, 205, 171, 36, 5, 118, 64, 105, 64, 104, 178, 119, 177,
+            160, 230, 117, 141, 88, 247, 70, 215, 244, 236, 136, 17, 233, 197, 211, 215, 187, 152,
+            204, 30, 102, 173, 202, 1, 220, 77, 58, 140, 103, 161, 43, 1, 0, 0, 0, 0, 0, 0, 37, 24,
+            121, 248, 238, 101, 25, 25, 93, 23, 248, 230, 23, 38, 25, 7, 175, 182, 216, 104, 120,
+            194, 46, 15, 165, 41, 96, 23, 243, 64, 155, 236, 226, 49, 68, 197, 82, 147, 103, 255,
+            122, 109, 27, 108, 175, 16, 152, 191, 108, 102, 112, 253, 40, 118, 146, 149, 110, 108,
+            13, 81, 78, 78, 9, 144, 150, 69, 97, 112, 89, 234, 39, 172, 107, 27, 130, 52, 247, 54,
+            166, 202, 28, 221, 78, 137, 191, 33, 49, 202, 147, 113, 126, 59, 22, 209, 107, 171,
+            106, 36, 54, 39, 183, 215, 121, 181, 230, 14, 221, 229, 235, 245, 90, 236, 45, 10, 38,
+            72, 24, 1, 123, 165, 97, 244, 95, 105, 199, 241, 115, 131, 186, 116, 248, 247, 84, 245,
+            104, 72, 18, 17, 111, 128, 133, 98, 55, 26, 118, 38, 126, 210, 249, 1, 87, 129, 171,
+            197, 118, 130, 118, 152, 129, 148, 2, 132, 13, 173, 130, 43, 221, 33, 198, 104, 50, 77,
+            174, 81, 152, 65, 14, 32, 27, 117, 167, 251, 110, 217, 109, 54, 99, 17, 83, 101, 58,
+            111, 225, 93, 61, 112, 246, 83, 44, 145, 111, 219, 225, 58, 68, 79, 203, 23, 60, 180,
+            202, 108, 253, 205, 238, 171, 42, 174, 184, 3, 42, 47, 31, 50, 1, 231, 227, 58, 35, 42,
+            237, 73, 163, 108, 34, 226, 163, 59, 242, 134, 233, 59, 186, 56, 124, 252, 125, 94,
+            128, 211, 11, 54, 112, 225, 7, 34, 60, 228, 14, 229, 42, 117, 80, 248, 111, 146, 151,
+            218, 63, 152, 245, 37, 234, 226, 99, 215, 246, 160, 56, 226, 122, 110, 103, 59, 68,
+            181, 27, 151, 48, 29, 94, 124, 212, 8, 140, 246, 201, 44, 187, 18, 60, 225, 194, 158,
+            228, 18, 233, 145, 55, 116, 38, 246, 193, 151, 80, 118, 243, 101, 34, 54, 6, 132, 216,
+            213, 53, 60, 130, 64, 194, 96, 204, 139, 104, 230, 210, 87, 4, 47, 179, 53, 233, 202,
+            83, 171, 139, 248, 29, 54, 152, 12, 6, 149, 71, 72, 200, 87, 32, 181, 22, 99, 162, 241,
+            228, 129, 107, 177, 34, 154, 17, 65, 58, 47, 243, 161, 108, 204, 56, 183, 39, 127, 72,
+            117, 202, 45, 24, 34, 210, 14, 216, 135, 207, 132, 243, 32, 15, 128, 0, 0, 0, 1, 2, 1,
+            208, 9, 120, 67, 24, 200, 152, 51, 20, 100, 64, 0, 0, 0, 1, 2, 1, 208, 17, 255, 81, 12,
+            24, 200, 14, 133, 104, 64, 49, 5, 36, 18, 58, 137, 80, 0, 0, 0, 1, 2, 1, 208, 24, 159,
+            247, 16, 192, 99, 32, 153, 204, 10, 116, 106, 131, 64, 155, 70, 19, 82, 133, 124, 168,
+            162, 120, 106, 242, 8, 40, 63, 98, 157, 250, 38, 43, 171, 254, 28, 229, 180, 108, 91,
+            176, 59, 94, 134, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 135, 168, 209, 146, 61, 81, 122, 220, 142, 121, 68, 141, 172,
+            57, 2, 192, 72, 0, 0, 0, 1, 2, 1, 208, 32, 159, 247, 16, 192, 99, 32, 60, 25, 143, 2,
+            199, 85, 114, 243, 243, 71, 125, 243, 85, 235, 249, 122, 60, 45, 212, 55, 117, 14, 79,
+            224, 249, 194, 136, 185, 95, 29, 153, 46, 98, 215, 206, 158, 13, 22, 112, 8, 152, 80,
+            129, 102, 51, 115, 79, 8, 101, 109, 98, 225, 91, 218, 212, 243, 103, 54, 223, 98, 90,
+            129, 66, 185, 4, 7, 44, 133, 238, 164, 146, 75, 57, 38, 36, 234, 69, 251, 202, 164, 73,
+            155, 217, 33, 70, 53, 27, 214, 253, 233, 249, 65, 137, 206, 149, 65, 223, 179, 253,
+            162, 254, 208, 102, 207, 51, 53, 95, 81, 162, 59, 130, 30, 58, 114, 192, 85, 137, 149,
+            37, 205, 171, 36, 5, 118, 64, 105, 64, 104, 178, 119, 177, 160, 230, 117, 141, 88, 247,
+            70, 215, 244, 236, 136, 17, 233, 197, 211, 215, 187, 152, 204, 30, 102, 173, 202, 1,
+            220, 77, 58, 140, 103, 161, 43, 144, 214, 105, 56, 84, 155, 35, 37, 24, 121, 248, 238,
+            101, 25, 25, 93, 23, 248, 230, 23, 38, 25, 7, 175, 182, 216, 104, 120, 194, 46, 15,
+            165, 41, 96, 23, 243, 64, 155, 236, 226, 49, 68, 197, 82, 147, 103, 255, 122, 109, 27,
+            108, 175, 16, 152, 191, 108, 102, 112, 253, 40, 118, 146, 149, 110, 108, 13, 81, 78,
+            78, 9, 144, 150, 69, 97, 112, 89, 234, 39, 172, 107, 27, 130, 52, 247, 54, 166, 202,
+            28, 221, 78, 137, 191, 33, 49, 202, 147, 113, 126, 59, 22, 209, 107, 171, 106, 36, 54,
+            39, 183, 215, 121, 181, 230, 14, 221, 229, 235, 245, 90, 236, 45, 10, 38, 72, 24, 1,
+            123, 165, 97, 244, 95, 105, 199, 241, 115, 131, 186, 116, 248, 247, 84, 245, 104, 72,
+            18, 17, 111, 128, 133, 98, 55, 26, 118, 38, 126, 210, 249, 1, 87, 129, 171, 197, 118,
+            130, 118, 152, 129, 148, 2, 132, 13, 173, 130, 43, 221, 33, 198, 104, 50, 77, 174, 81,
+            152, 65, 14, 32, 27, 117, 167, 251, 110, 217, 109, 54, 99, 17, 83, 101, 58, 111, 225,
+            93, 61, 112, 246, 83, 44, 145, 111, 219, 225, 58, 68, 79, 203, 23, 60, 180, 202, 108,
+            253, 205, 238, 171, 42, 174, 184, 3, 42, 47, 31, 50, 1, 231, 227, 58, 35, 42, 237, 73,
+            163, 108, 34, 226, 163, 59, 242, 134, 233, 59, 186, 56, 124, 252, 125, 94, 128, 211,
+            11, 54, 112, 225, 7, 34, 60, 228, 14, 229, 42, 117, 80, 248, 111, 146, 151, 218, 63,
+            152, 245, 37, 234, 226, 99, 215, 246, 160, 56, 226, 122, 110, 103, 59, 68, 181, 27,
+            151, 48, 29, 94, 124, 212, 8, 140, 246, 201, 44, 187, 18, 60, 225, 194, 158, 228, 18,
+            233, 145, 55, 116, 38, 246, 193, 151, 80, 118, 243, 101, 34, 54, 6, 132, 216, 213, 53,
+            60, 130, 64, 194, 96, 204, 139, 104, 230, 210, 87, 4, 47, 179, 53, 233, 202, 83, 171,
+            139, 248, 29, 54, 152, 12, 6, 149, 71, 72, 200, 87, 32, 181, 22, 99, 162, 241, 228,
+            129, 107, 177, 34, 154, 17, 65, 58, 47, 243, 161, 108, 204, 56, 183, 39, 127, 72, 117,
+            202, 45, 24, 34, 210, 14, 216, 135, 207, 132, 243, 32, 15, 128,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_idct_dc_shift_overflow() {
+        fuzz_single_nal(&[
+            162, 1, 178, 0, 246, 162, 161, 0, 73, 0, 161, 231, 0, 0, 1, 66, 73, 1, 0, 1, 0, 0, 0,
+            0, 0, 0, 48, 10, 91, 161, 162, 30, 0, 0, 0, 16, 119, 61, 119, 38, 33, 119, 119, 201,
+            44, 102, 43, 98, 91, 5, 0, 0, 1, 39, 1, 234, 234, 102, 43, 98, 91, 5, 0, 148, 1, 38, 1,
+            234, 234, 234, 234, 234, 15, 21, 21, 5, 234, 234, 234, 234, 10, 10, 10, 10, 10, 10, 10,
+            10, 10, 10, 234, 234, 234, 244, 234, 234, 207, 234, 234, 234, 234, 244, 234, 36,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_chroma_offset_overflow() {
+        fuzz_hvcc(&[
+            96, 35, 67, 10, 34, 34, 0, 34, 34, 34, 49, 162, 34, 34, 34, 40, 34, 34, 34, 34, 34, 34,
+            34, 34, 122, 122, 34, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 46, 68,
+            68, 68, 68, 68, 254, 68, 68, 96, 35, 67, 10, 34, 34, 0, 34, 34, 34, 34, 34, 48, 34, 34,
+            34, 34, 34, 34, 34, 34, 34, 54, 122, 227, 221, 221, 133, 34, 34, 48, 34, 34, 98, 48,
+            34, 40, 34, 255, 251, 255, 7, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 68, 34,
+            98, 48, 34, 40, 68, 68, 2, 0, 34, 34, 122, 227, 221, 221, 133, 34, 34, 48, 34, 68, 68,
+            0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 48, 222, 230, 0, 101, 120, 112, 45, 103, 111, 108, 111, 196, 98, 32, 0, 0, 0,
+            0, 0, 2, 168, 34, 34, 34, 154, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 1, 1, 2,
+            80, 255, 7,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_sao_edge_zero_dim() {
+        fuzz_single_nal(&[
+            33, 255, 82, 0, 0, 0, 225, 0, 101, 0, 0, 0, 112, 39, 34, 34, 34, 34, 34, 42, 45, 42,
+            34, 34, 34, 247, 1, 245, 34, 255, 0, 225, 0, 167, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 1, 0,
+            0, 0, 225, 0, 255, 255, 255, 255, 255, 255, 255, 253, 1, 68, 14, 255, 45, 0, 58, 58,
+            58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58,
+            58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 58, 42, 58, 35, 149, 0, 49,
+            0, 0, 1, 68, 13, 89, 255, 255, 38, 45, 0, 149, 255, 255, 65, 120, 112, 0, 33, 0, 0, 0,
+            0, 1, 0, 123, 160, 199, 108, 111, 109, 98, 32, 111, 118, 101, 114, 102, 108, 111, 119,
+            10, 85, 128, 253, 0, 103, 120, 0, 0, 0, 0, 0, 0, 253, 0, 2, 0, 144, 15, 0, 0, 0, 255,
+            55, 255, 255, 255, 166, 255, 37, 255, 255, 255, 255, 255, 0, 0, 1, 0, 0, 0, 225, 0,
+            255, 255, 255, 255, 255, 255, 255, 253, 1, 68, 14, 255, 45, 0, 35, 149, 0, 49, 0, 0, 1,
+            68, 13, 89, 255, 255, 38, 45, 0, 149, 255, 255, 65, 120, 112, 0, 33, 0, 0, 0, 0, 1, 0,
+            123, 160, 199, 10, 85, 128, 253, 0, 103, 120, 0, 0, 0, 0, 0, 0, 253, 0, 2, 0, 144, 15,
+            0, 0, 0, 255, 55, 255, 255, 255, 166, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 48, 151, 48, 48, 48, 48, 48, 48, 48, 48,
+            48, 48, 48, 48, 48, 253, 1, 68, 14, 255, 45, 0, 35, 149, 0, 49, 0, 0, 1, 68, 13, 89,
+            255, 255, 38, 45, 0, 149, 255, 255, 65, 120, 112, 0, 33, 0, 0, 0, 0, 1, 0, 123, 160,
+            199, 10, 85, 128, 253, 0, 153, 131, 0, 0, 0, 0, 0, 0, 253, 0, 2, 0, 144, 15, 0, 0, 0,
+            255, 55, 255, 255, 255, 166, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 48, 151, 48, 48, 48, 48, 48, 48, 48, 48, 48,
+            48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 1, 0, 0, 1, 0, 236, 37, 236, 241,
+            236, 236, 236, 236, 236, 236, 236, 236, 236, 236, 236, 236, 65, 236, 236, 236, 236,
+            236, 236, 236, 236, 236, 236, 236, 236, 236, 236, 233, 236, 236, 236, 32, 255, 255, 79,
+            79, 78, 79, 34, 34, 79, 79, 40, 168, 34, 1, 64, 0, 0, 3, 101, 120, 112, 65, 39, 111,
+            98, 0, 109, 32, 111, 0, 0, 108, 0, 1, 0, 64, 14, 0, 0, 255, 255, 255, 255, 255, 182,
+            34, 247, 34, 149, 0, 0, 1, 0, 0, 0, 225, 0, 255, 0, 0, 1, 0, 0, 0, 225, 0, 101, 0, 0,
+            0, 106, 120, 112, 45, 103, 109, 34, 42, 45, 42, 34, 34, 34, 247, 1, 245, 34, 255, 0,
+            225, 0, 255, 0, 0, 0, 109, 32, 111, 0, 0, 108, 0, 1, 0, 64, 14, 0, 0, 255, 255, 255,
+            255, 255, 182, 34, 247, 34, 149, 0, 0, 1, 0, 0, 0, 225, 0, 255, 0, 0, 1, 0, 0, 0, 225,
+            0, 101, 0, 0, 0, 106, 120, 112, 45, 103, 109, 34, 42, 45, 42, 34, 34, 34, 247, 1, 245,
+            34, 255, 0, 225, 0, 255, 0, 0, 1, 0, 48, 26,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_sao_edge_zero_width_hvcc() {
+        fuzz_hvcc(&[
+            4, 9, 69, 255, 255, 255, 255, 249, 41, 96, 4, 40, 67, 250, 0, 4, 45, 223, 100, 3, 0, 9,
+            68, 222, 159, 41, 251, 164, 0, 41, 111, 0, 0, 96, 108, 210, 121, 110, 222, 102, 98,
+            159, 53, 41, 255, 255, 255, 255, 255, 255, 255, 0, 35, 35, 35, 176, 223, 107, 51, 35,
+            35, 35, 35, 15, 0, 145, 77, 35, 255, 255, 33, 131, 35, 35, 35, 255, 255, 255, 255, 255,
+            35, 34, 255, 246, 0, 0, 0, 0, 0, 52, 35, 255, 153,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_pps_init_qp_overflow() {
+        fuzz_hvcc(&[
+            68, 17, 68, 3, 255, 160, 20, 0, 0, 0, 0, 3, 63, 255, 255, 255, 1, 236, 0,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_cu_qp_delta_depth_overflow() {
+        fuzz_single_nal(&[
+            33, 9, 162, 162, 177, 162, 162, 0, 162, 162, 0, 0, 165, 253, 141, 9, 162, 162, 162,
+            162, 1, 37, 84, 230, 33, 237, 237, 237, 237, 63, 255, 255, 255, 255, 255, 249, 255,
+            255, 17, 22, 18, 222, 246, 162, 162, 0, 0, 165, 253, 141, 9, 34, 255, 253, 141, 9, 162,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 249,
+            255, 255, 17, 22, 18, 222, 246, 0, 0, 0, 0, 0, 0, 0, 30, 126, 5, 238, 251, 83, 0, 0,
+            35, 0, 186, 251, 28, 83, 83, 6, 255, 255, 1, 0, 0, 1, 68, 83, 155, 42, 162, 0, 162,
+            255, 0, 83, 9, 0, 165, 253, 141, 9, 34, 255, 138, 46, 128, 254, 255, 46, 128, 254, 255,
+            0, 0, 0, 1, 106, 0, 8, 0, 0, 0, 255, 0, 0, 1, 37, 84, 230, 33, 112, 45, 103, 1, 37, 84,
+            230, 110, 111, 116, 32, 115, 117, 112, 112, 111, 114, 116, 101, 100, 1, 255, 255, 232,
+            233, 237, 33, 246, 0, 0, 0, 0, 0, 0, 74, 0, 0, 0, 0, 0, 0, 0, 238, 251, 8, 255, 238, 8,
+            106, 36,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_mvd_abs_overflow() {
+        fuzz_annex_b(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/fuzz_mvd_overflow.h265"
+        )));
+    }
+
+    #[test]
+    fn test_fuzz_entry_point_offset_overflow() {
+        fuzz_hvcc(&[
+            0, 14, 69, 1, 41, 1, 0, 74, 146, 91, 73, 74, 33, 140, 170, 219, 14, 69, 14, 112, 1, 64,
+            12, 5, 247, 255, 48, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164,
+            164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164,
+            164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164,
+            164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164,
+            164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164, 164,
+            164, 164, 164, 164, 164, 164, 164, 164, 50, 54, 54, 64, 40, 67, 254, 102, 150, 153,
+            153, 153, 153, 153, 100, 255, 0, 10, 253, 0, 0, 0, 0, 102, 105, 40, 154, 153, 64, 29,
+            185, 45, 185, 203, 71, 153, 62, 145, 70, 70, 70, 153, 153, 145, 62, 64, 203, 29, 185,
+            188, 185, 255, 255, 200, 200, 149, 149, 149, 149, 144, 248, 1, 255, 74, 1, 1, 144, 132,
+            48, 67, 255, 5, 247, 255, 48, 53, 51, 50, 64, 40, 67, 254, 102, 150, 153, 153, 153,
+            153, 153, 100, 255, 0, 10, 253, 0, 0, 0, 0, 102, 105, 40, 154, 153, 153, 145, 62, 64,
+            29, 203, 45, 185, 185, 71, 70, 70, 70, 153, 153, 145, 62, 64, 29, 203, 185, 188, 185,
+            55, 53, 53, 0, 14, 69, 1, 41, 1, 0, 74, 146, 248, 245, 74, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 9, 248, 245, 8, 8, 8, 149, 151, 149, 148, 149, 149, 149,
+            149, 149, 5, 0, 46, 8, 8, 3, 146, 73, 36, 146, 73, 36, 73, 44, 146, 200, 111, 110, 108,
+            121, 23, 32, 200, 255,
+        ]);
+    }
+
+    #[test]
+    fn test_fuzz_pixel_u8_as_u16() {
+        fuzz_annex_b(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/fuzz_bit_depth_change.h265"
+        )));
+    }
+
+    #[test]
+    fn test_fuzz_qpy_pred_underflow() {
+        fuzz_hvcc(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/fuzz_qpy_pred_underflow.bin"
+        )));
+    }
+
+    #[test]
+    fn test_fuzz_min_tb_log2_overflow() {
+        fuzz_hvcc(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/fuzz_min_tb_log2_overflow.bin"
+        )));
+    }
+
+    /// SPS with MinTbLog2SizeY (5) >= MinCbLog2SizeY (3) inside 16x16 CTBs,
+    /// which spec 7.4.3.2.1 forbids. A 16-wide picture then has zero min-TB
+    /// columns, so `tab_cbf_luma` was empty and boundary-strength derivation
+    /// indexed past it. Found by the `decode_hvcc` fuzz target; it also
+    /// crashed 0.2.0 and earlier.
+    #[test]
+    fn test_fuzz_min_tb_ge_min_cb() {
+        fuzz_hvcc(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/fuzz_min_tb_ge_min_cb.bin"
+        )));
+    }
+
+    #[test]
+    fn test_fuzz_parallel_merge_level_overflow() {
+        fuzz_hvcc(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/fuzz_parallel_merge_level_overflow.bin"
+        )));
+    }
+
+    #[test]
+    fn test_fuzz_dequant_qp_overflow() {
+        fuzz_annex_b(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/testdata/fuzz_dequant_qp_overflow.h265"
+        )));
+    }
+}

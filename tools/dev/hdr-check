@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """HDR and wide colour, end to end: what a display would be sent.
 
-  hdr-check
+  hdr-check [--clip VIDEO]
 
 Starts a headless session of its own ("hdrc") whose screen pretends to be
 a Display P3 HDR panel (OLO_HEADLESS_COLOR=p3-hdr: 1600 cd/m² peak),
@@ -22,6 +22,11 @@ signal, not the sRGB picture screenshots are. Then checks, within a code:
                         sRGB white at SDR's white (148), its HDR10
                         pictures (`RenderImage::deep`) at their own
                         1,000 cd/m² (192) and 100 (130).
+
+  With --clip, an HDR video (PQ or HLG): Viewer plays it, on the HDR
+                        display drawing in HDR10, its highlights past
+                        SDR's white (more than 148); not compared with
+                        a value (what a clip holds is its own).
 
 Build first: `cargo build --release -p app_server --bin olo-app-server
 --example color_probe` and `cargo build --release -p olo-ui --example
@@ -135,6 +140,26 @@ def main():
             for i, (what, want) in enumerate([("its sRGB white at SDR's 203 cd/m²", 148), ("an HDR10 picture at its own 1,000 cd/m²", 192), ("an HDR10 picture at 100 cd/m²", 130)]):
                 at = (int((c["x"] + c["width"] * (i + 0.5) / 3) * scale), int((c["y"] + c["height"] / 2) * scale))
                 near(img.getpixel(at)[:3], (want,) * 3, what)
+
+        if "--clip" in sys.argv:
+            clip = sys.argv[sys.argv.index("--clip") + 1]
+            print(f"Viewer playing {os.path.basename(clip)}:")
+            ts("run", NAME, "olo-viewer", os.path.abspath(clip))
+            time.sleep(4.0)
+            w = next((w for w in ipc({"type": "list_windows"}).get("windows", []) if w.get("app_id") == "olo.viewer"), None)
+            if w is None:
+                print("  BAD Viewer's window didn't come")
+                failures.append("Viewer")
+            else:
+                img = shot("clip", True)
+                scale = img.size[0] / 1280 * 2
+                c = w["content"]
+                crop = img.crop((int(c["x"] * scale), int(c["y"] * scale), int((c["x"] + c["width"]) * scale), int((c["y"] + c["height"]) * scale)))
+                top = max(max(p) for p in pixels(crop))
+                ok = top > 150
+                print(f"  {'ok ' if ok else 'BAD'} its highlights past SDR's white: the brightest {top} (SDR's white 148)")
+                if not ok:
+                    failures.append("Viewer's HDR video")
     finally:
         ts("stop", NAME)
     if failures:

@@ -81,6 +81,9 @@ pub struct PreviewView {
     video: Option<video::Video>,
     /// The video's frame showing, or its poster until one comes.
     frame: Option<Arc<RenderImage>>,
+    /// Its video is known to be HDR (told as `PreviewEvent::Gamut`: its
+    /// window may draw in HDR10).
+    video_hdr: bool,
     /// The cover or poster as drawn (made for its device size).
     art: Option<((u32, u32), Arc<RenderImage>)>,
     art_making: Option<((u32, u32), Task<()>)>,
@@ -133,6 +136,7 @@ impl PreviewView {
             player: None,
             video: None,
             frame: None,
+            video_hdr: false,
             art: None,
             art_making: None,
             dropped: Vec::new(),
@@ -856,6 +860,10 @@ impl PreviewView {
         let mut next_due = None;
         if let Some(v) = &self.video {
             let (frame, next) = v.tick_picture();
+            if v.is_hdr() != self.video_hdr {
+                self.video_hdr = !self.video_hdr;
+                cx.emit(PreviewEvent::Gamut);
+            }
             if let Some(pic) = frame {
                 let gamut = if pic.p3() { olo_ui::gpui::Gamut::DisplayP3 } else { olo_ui::gpui::Gamut::Srgb };
                 let img = match pic {

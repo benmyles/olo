@@ -60,6 +60,7 @@ blade-graphics = { path = "gpui/blade-graphics" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
 blocking = { path = "vendor/blocking" }
 brush-interactive = { path = "vendor/brush-interactive" }
+rust_h265 = { path = "vendor/rust_h265" }
 
 [profile.release]
 debug = "line-tables-only"
