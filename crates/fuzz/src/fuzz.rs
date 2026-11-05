@@ -698,8 +698,10 @@ impl Fuzz {
         let (out, area) = self.area()?;
         let (Some(w), Some(area)) = (wins.get(&wid), area) else { return Ok(()) };
         let Some(f) = fr(w).filter(|_| !w.minimized) else { return Ok(()) };
-        // Only on the active display (the one `arrangement` describes).
-        if overlap(f, area) == 0 {
+        // Only on the active display (the one `arrangement` describes): a
+        // window of another, straddling into it (as windows may), isn't
+        // the arrangement's.
+        if overlap(f, area) == 0 || (w.output.is_some() && out.is_some() && w.output != out) {
             return Ok(());
         }
         if !contains(area, f) {

@@ -2044,9 +2044,24 @@ impl PlatformWindow for WaylandWindow {
         )
     }
 
-    fn resize(&mut self, size: Size<Pixels>) {
+    fn resize(&mut self, mut size: Size<Pixels>) {
         let state = self.borrow();
         let state_ptr = self.0.clone();
+        // Olo: the sides the compositor holds keep its size (a window
+        // maximized, zoomed, full screen or in a tile: xdg's states say
+        // which): an app resizing itself keeps those. A zoomed Terminal
+        // made its text bigger and showed a frame taller than its display.
+        let held_w = state.maximized || state.fullscreen || state.tiling.left || state.tiling.right;
+        let held_h = state.maximized || state.fullscreen || state.tiling.top || state.tiling.bottom;
+        if held_w {
+            size.width = state.bounds.size.width;
+        }
+        if held_h {
+            size.height = state.bounds.size.height;
+        }
+        if held_w && held_h {
+            return;
+        }
         // (Its geometry is told as its size changes: `set_geometry`.)
         // Olo: a window of fixed size its app resized (one that fits
         // what it shows) is fixed at its new size.
