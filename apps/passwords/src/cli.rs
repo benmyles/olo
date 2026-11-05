@@ -15,7 +15,7 @@ use std::{
 };
 
 use olo_keychain::{CliQuery, Response};
-use onepassword::{Item, ItemCategory, ItemFieldType, ItemState, VaultOverview, reference, totp::Totp};
+use onepassword::{Item, ItemCategory, ItemField, ItemFieldType, ItemState, VaultOverview, reference, totp::Totp};
 use serde_json::{Value, json};
 
 use crate::vault::{Data, Entry};
@@ -249,21 +249,49 @@ fn urls(i: &Item) -> Value {
     )
 }
 
+/// The `op://` reference to field `field` of item `i` in the vault named
+/// `vault` (as `op item get` gives it, and as `op read` and `op inject`
+/// take it): names where they make a valid reference, else ids. What
+/// Passwords' Copy Reference copies too.
+pub fn reference(vault: &str, i: &Item, field: &ItemField) -> String {
+    let vault = part(vault, &i.vault_id);
+    let title = part(&i.title, &i.id);
+    let section = field.section_id.as_ref().and_then(|s| i.sections.iter().find(|x| &x.id == s));
+    let label = if field.title.is_empty() { field.id.clone() } else { field.title.clone() };
+    match section {
+        Some(s) => format!("op://{vault}/{title}/{}/{}", part(&s.title, &s.id), part(&label, &field.id)),
+        None => format!("op://{vault}/{title}/{}", part(&label, &field.id)),
+    }
+}
+
+/// The reference to item `i`'s notes.
+pub fn notes_reference(vault: &str, i: &Item) -> String {
+    format!("op://{}/{}/notesPlain", part(vault, &i.vault_id), part(&i.title, &i.id))
+}
+
+/// The field an item's reference is to, when no field is named: its
+/// password, else its first secret (an API key's credential, a card's
+/// number, an SSH key), else its first field with a value.
+pub fn main_field(i: &Item) -> Option<&ItemField> {
+    let secret = |t: ItemFieldType| matches!(t, ItemFieldType::Concealed | ItemFieldType::SshKey | ItemFieldType::CreditCardNumber | ItemFieldType::Totp);
+    i.fields
+        .iter()
+        .find(|f| f.id == "password" && f.section_id.is_none() && !f.value.is_empty())
+        .or_else(|| i.fields.iter().find(|f| secret(f.field_type) && !f.value.is_empty()))
+        .or_else(|| i.fields.iter().find(|f| !f.value.is_empty()))
+}
+
 /// An item as `op item get --format json` prints it, values included.
 pub fn full(data: &Data, e: &Entry) -> Value {
     let i = &e.item;
     let mut v = overview(data, e);
-    let vault = part(&vault_name(data, &i.vault_id), &i.vault_id);
-    let title = part(&i.title, &i.id);
+    let vault_title = vault_name(data, &i.vault_id);
     let sections: Vec<Value> = i.sections.iter().map(|s| json!({ "id": s.id, "label": s.title })).collect();
     let mut fields: Vec<Value> = Vec::new();
     for f in &i.fields {
         let section = f.section_id.as_ref().and_then(|s| i.sections.iter().find(|x| &x.id == s));
         let label = if f.title.is_empty() { f.id.clone() } else { f.title.clone() };
-        let path = match section {
-            Some(s) => format!("op://{vault}/{title}/{}/{}", part(&s.title, &s.id), part(&label, &f.id)),
-            None => format!("op://{vault}/{title}/{}", part(&label, &f.id)),
-        };
+        let path = reference(&vault_title, i, f);
         let mut x = json!({ "id": f.id, "type": field_type(f.field_type), "label": label, "value": f.value, "reference": path });
         if let Some(s) = section {
             x["section"] = json!({ "id": s.id, "label": s.title });
@@ -285,7 +313,7 @@ pub fn full(data: &Data, e: &Entry) -> Value {
     if !i.notes.is_empty() || i.category == ItemCategory::SecureNote {
         fields.push(json!({
             "id": "notesPlain", "type": "STRING", "purpose": "NOTES", "label": "notesPlain",
-            "value": i.notes, "reference": format!("op://{vault}/{title}/notesPlain"),
+            "value": i.notes, "reference": notes_reference(&vault_title, i),
         }));
     }
     v["sections"] = Value::Array(sections);
@@ -359,7 +387,7 @@ pub fn answer(data: &Data, query: &CliQuery) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use onepassword::{ItemField, ItemSection, VaultType, Website};
+    use onepassword::{ItemSection, VaultType, Website};
 
     fn data() -> Data {
         let now = chrono::Utc::now();
@@ -400,6 +428,22 @@ mod tests {
         data.vaults.push(vault);
         data.entries.push(Entry { item, state: ItemState::Active, remote: None, dirty: false, rev: 1 });
         data
+    }
+
+    #[test]
+    fn copy_reference_resolves_back() {
+        // Every field's reference (Passwords' Copy Reference) is one `op
+        // read` takes, back to the field's own value.
+        let d = data();
+        let e = &d.entries[0];
+        let vault = vault_name(&d, &e.item.vault_id);
+        for f in e.item.fields.iter().filter(|f| !f.value.is_empty()) {
+            let r = reference(&vault, &e.item, f);
+            assert_eq!(resolve(&d, &r).as_deref(), Ok(f.value.as_str()), "{r}");
+        }
+        // With no field named: the password.
+        assert_eq!(main_field(&e.item).map(|f| f.id.as_str()), Some("password"));
+        assert_eq!(reference(&vault, &e.item, main_field(&e.item).unwrap()), "op://Developers/App Env/password");
     }
 
     #[test]

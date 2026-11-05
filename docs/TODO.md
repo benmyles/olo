@@ -1673,18 +1673,6 @@ of Finished; a new one goes where its priority puts it.
   headless with a fixture vault and an `sshd` of the test's own on a
   local port (or a Rust SSH server in-process).
 
-- **Passwords: Copy Reference** (Ben, 2026-11-05): "add a copy reference
-  menu item to items in passwords so that i can right click and get a
-  reference that will work in the op cli shim to that secret". The `op`
-  shim already resolves `op://vault/item/[section/]field` (`cli.rs`,
-  the same references `op item get --format json` gives each field). An
-  item's right-click menu (the list's and the window's Item menu) gets
-  Copy Reference (the item's password, or its first secret field: what
-  `op read` wants most), and each field's own menu in the item view Copy
-  Reference for that field; the reference is the one `cli.rs` makes (one
-  function for both), checked by resolving it back (`resolve`) in a
-  test, and shown to agents as the menu items are.
-
 - **Arrow keys skip 10 s in a video, in Viewer and Quick Look** (Ben,
   2026-11-05, for later): "when watching a video in viewer or quick look,
   the left and right arrows should skip back and forward 10s in the video
@@ -1801,6 +1789,21 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Passwords: Copy Reference**~~ (done 2026-11-05, HACKING's op: in
+  the item's right-click menu and Edit menu (its password, else its first
+  secret) and each field's right-click menu (Copy, Copy Reference); the
+  reference `op item get` gives, tested resolving back) (Ben, 2026-11-05): "add a copy reference
+  menu item to items in passwords so that i can right click and get a
+  reference that will work in the op cli shim to that secret". The `op`
+  shim already resolves `op://vault/item/[section/]field` (`cli.rs`,
+  the same references `op item get --format json` gives each field). An
+  item's right-click menu (the list's and the window's Item menu) gets
+  Copy Reference (the item's password, or its first secret field: what
+  `op read` wants most), and each field's own menu in the item view Copy
+  Reference for that field; the reference is the one `cli.rs` makes (one
+  function for both), checked by resolving it back (`resolve`) in a
+  test, and shown to agents as the menu items are.
 
 - ~~**Faster Rust builds: the low-hanging fruit**~~ (done 2026-11-05,
   HACKING's Layout: there isn't any. Measured on the same edits:

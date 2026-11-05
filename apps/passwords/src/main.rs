@@ -1216,7 +1216,35 @@ impl Passwords {
     }
 
     /// The selected item's username, password or one-time code.
+    /// An `op://` reference to field `field` of `item` (its main one when
+    /// None: `cli::main_field`), for the `op` command (Ben, 2026-11-05:
+    /// "right click and get a reference that will work in the op cli
+    /// shim"): copied as plain text, no secret in it.
+    pub fn copy_reference(&mut self, item: &str, field: Option<&str>, cx: &mut Context<Self>) {
+        let Some(i) = self.details.get(item).cloned() else { return };
+        let vault = self.vaults.iter().find(|v| v.id == i.vault_id).map_or_else(|| i.vault_id.clone(), |v| v.title.clone());
+        let found = match field {
+            Some("notesPlain") => Some((cli::notes_reference(&vault, &i), "notes".to_owned())),
+            Some(f) => i.field(f).map(|f| (cli::reference(&vault, &i, f), if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() })),
+            None => cli::main_field(&i).map(|f| (cli::reference(&vault, &i, f), if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() })),
+        };
+        match found {
+            Some((reference, what)) => {
+                cx.write_to_clipboard(olo_ui::gpui::ClipboardItem::new_string(reference));
+                self.flash(format!("Copied the reference to “{}”’s {what}.", i.title));
+            }
+            None => self.flash(format!("“{}” has nothing to refer to.", i.title)),
+        }
+        cx.notify();
+    }
+
     fn copy_selected(&mut self, kind: &str, cx: &mut Context<Self>) {
+        if kind == "reference" {
+            if let Some(id) = self.selected.clone() {
+                self.copy_reference(&id, None, cx);
+            }
+            return;
+        }
         let Some(item) = self.selected.as_ref().and_then(|s| self.details.get(s)).cloned() else { return };
         let field = match kind {
             "username" => {
@@ -1863,6 +1891,8 @@ impl Passwords {
             .item("Copy One-Time Password", "copy:otp")
             .shift_key("o")
             .enabled(has && has_otp)
+            .item("Copy Reference", "copy:reference")
+            .enabled(has && details.is_some())
             .separator()
             .item("Find", "find")
             .key("f")
@@ -1916,6 +1946,7 @@ impl Passwords {
                 .enabled(has(ItemFieldType::Concealed))
                 .item("Copy One-Time Password", "copy:otp")
                 .enabled(has(ItemFieldType::Totp))
+                .item("Copy Reference", "copy:reference")
                 .separator()
                 .item("Open Website", "open")
                 .enabled(!o.websites.is_empty())

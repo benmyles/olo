@@ -10046,7 +10046,12 @@ is off.
 `op` asks over the keychain socket (`Request::Cli { query: CliQuery }` →
 `Response::Cli { json }`, in 1Password's JSON shapes), starting Passwords
 if it isn't running; the shapes, field types and `op://vault/item/[section/]field[?attribute=…]`
-references are `apps/passwords/src/cli.rs`. Account questions (`op
+references are `apps/passwords/src/cli.rs` (`cli::reference`, one
+function for `op item get`'s and for Passwords' Copy Reference: an
+item's right-click menu and Edit menu copy its main field's,
+`cli::main_field`, its password else its first secret; a field's own
+right-click menu, that field's; tested by resolving each back,
+`copy_reference_resolves_back`). Account questions (`op
 account list`, `whoami`) are answered from the linked accounts without
 unlocking. Anything else waits for an unlock, then for the person's say:
 an alert names the command, the program that ran it and its folder, and
