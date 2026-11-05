@@ -438,13 +438,13 @@ scalar conversion. No engine unsafe code, GPU dispatch, thread, timer,
 polling or idle work is introduced. Batch result tests compare all 225
 space pairs, masks, mixed spaces and short/tail lengths exactly.
 
-Independent grammar/coordinate data accounts for **12,703 cases: 9,728
-direct passes, 2,760 reviewed current-spec passes, 215 explicit non-passes**.
+Independent grammar/coordinate data accounts for **12,703 cases: 9,921
+direct passes, 2,760 reviewed current-spec passes, 22 explicit non-passes**.
 This includes 43 independent absolute conversion vectors, not just
 round-trip tests. The fixture README documents licenses, literal extraction,
 selection, numeric tolerances, current-spec changes and full non-pass
-reasons. The remaining cases include math/substitution, profiles, device
-colors and one unported WPT assertion. Known unsupported grammar returns
+reasons. The remaining cases include substitution, profiles, device
+colors, two nonfinite serialization references and one unported WPT assertion. Known unsupported grammar returns
 `Unsupported`/`RequiresSubstitution`, separately from invalid input/resource
 errors. Relative colors, mixing/interpolation, gamut mapping, CSSOM,
 property compilation, cascade and painting remain unfinished. The native
@@ -526,8 +526,8 @@ the derived data. Remaining non-passes are nonnumeric wrappers, serialization
 and property-limit drivers. All seven native groups cover live context,
 unit/type rules, IEEE edge cases, private Debug/source lifetime, limits,
 cancellation, 10,000 nested inputs, 5,000-term flat evaluation and 10,000
-malformed values. Math is not yet connected to the color parser; its earlier
-215 non-passes remain unchanged.
+malformed values. Color-channel integration now reuses these numeric values;
+its contracts and measured costs follow below.
 
 ```sh
 cargo test --release -p olo-web --test math
@@ -547,3 +547,61 @@ binary identities and allocation-capacity accounting are in
 `measurements/2026-11-05-math.json`. These controls include compiler/layout
 effects; the measurements do not establish uniform speedups, UI latency,
 GPU performance, browser memory or website compatibility.
+
+
+## Numeric color channels and invalidation metadata
+
+The color parser reuses typed `css::math` in numeric channels. Root number,
+percentage and (for hue) angle types must match each channel grammar.
+Percentage/number addition remains invalid; hue contexts prohibit percentage
+leaves even if a calculation would cancel their dimensions. Legacy comma
+forms retain their homogeneous-unit, percentage and `none` restrictions.
+Math IEEE values remain raw until the shared color normalization/clamping
+boundary, including the specified zero normalization of infinite hues.
+Static calculations fold into the same heap-free absolute Value as literal
+channels. They do not keep syntax, expression or numeric arenas.
+
+Contextual channels retain four typed values and unit/space metadata in a
+72-byte Functional. Root values share it by Arc. Conditional arenas store
+an index into an exact boxed slice of Functional leaves, preserving 20-byte
+nodes and a 24-byte Value on the default build. The example root font math
+uses 280 extra retained bytes, including its numeric program and Arc headers;
+the sample conditional with no math grows from 208 to 232 bytes for metadata.
+Compiler temporaries stay inline for four numeric slots and one Functional;
+large conditional lists may spill. The journal records the memory/performance
+tradeoffs; this is not a statement about page/browser memory.
+
+`Context::math_factor` and `math_tree_count` delegate to the same explicit
+numeric snapshot contracts as the math core. No production font/container
+metrics or tree scopes are guessed. Resolution queries only the chosen
+branch, shares one temporary numeric stack across its channels and checks
+cancellation inside numeric execution. Node/instruction budgets cover the
+whole compiled color; actual numeric compiler work is charged to the
+outer parse budget. Resolution deducts conditional visits and all selected
+numeric instructions from one work budget. Nesting remains hard-bounded.
+
+`Value::dependencies()` returns conservative scheme/current/system/math
+metadata, including both branches. Conditional metadata is cached during
+compilation; root Functional queries at most four channel dependency masks.
+The future style host must use it with actual cascade/font/container/tree
+changes. This API does not implement live style invalidation, author color-
+scheme, forced dark mode or tree-scope enforcement.
+
+The existing denominator now has 193 more direct passes: 155 computed-
+coordinate and 38 validity-only assertions, including static math and
+context-dependent computation. Literal
+fixture environment extraction preserves source width changes; a documented
+16px native default stands in for an unspecified WPT font. This is a supplied
+numeric environment, not layout. Two infinite chroma serialization references
+remain non-passes rather than being coerced into finite reference values.
+Full counts and non-passes are in
+`measurements/2026-11-05-color-math-coverage.json`; exact before/after binary
+and source identities, raw observations, first-call latency and storage are
+in `measurements/2026-11-05-color-math.json`.
+
+```sh
+cargo test --release -p olo-web --test colors
+cargo test --release -p olo-web --test colors --all-features
+cargo build --release -p olo-web --example color_math_bench
+taskset -c 0 /usr/bin/time -v target/release/examples/color_math_bench 20
+```

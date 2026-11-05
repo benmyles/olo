@@ -97,6 +97,14 @@ dump('derived-conversions.json',{'scope':'Literal standard-space absolute conver
 cases=[];unported=[]
 for path in sorted((ROOT/'wpt').glob('*.html')):
  text=path.read_text();d=Data(text);mode='invalid' if 'invalid' in path.name else 'valid' if 'valid' in path.name else 'computed'
+ def context_fields(position,value):
+  if not re.search(r'\d(?:em|cqw)\b',value,re.I):return {}
+  # Literal source environment only. Unspecified WPT font-size uses the
+  # explicit native 16px representative default, not measured font/layout.
+  before=text[:position]
+  fonts=list(re.finditer(r'font-size:\s*([\d.]+)px',before))
+  widths=list(re.finditer(r"getElementById\(['\"]container['\"]\)\.style\.width\s*=\s*['\"]([\d.]+)px['\"]",before))
+  return {'context':{'em':float(fonts[-1][1]) if fonts else 16.,'container_width':float(widths[-1][1]) if widths else None}}
  for i,t in enumerate(d.tokens):
   if t=='tests' and d.tokens[i+1:i+3]==['=','[']:
    rows,_=d.value(i+2)
@@ -104,7 +112,7 @@ for path in sorted((ROOT/'wpt').glob('*.html')):
    for n,row in enumerate(rows,1):
     if isinstance(row,str):row=[row]
     if not isinstance(row,list) or not isinstance(row[0],str):raise ValueError(row)
-    cases.append({'file':path.name,'case':n,'mode':mode,'input':row[0],'expected':row[1] if mode=='computed' else None})
+    cases.append({'file':path.name,'case':n,'mode':mode,'input':row[0],'expected':row[1] if mode=='computed' else None,**context_fields(d.positions[i],row[0])})
   if t not in ('test_computed_value','test_valid_value','test_invalid_value') or d.tokens[i+1]!='(':continue
   end=d.end[i+1];arg0,j=d.value(i+2)
   if arg0!='color' or d.tokens[j]!=',':continue
@@ -132,7 +140,7 @@ for path in sorted((ROOT/'wpt').glob('*.html')):
     if d.tokens[input_index]!='test':unported.append({'file':path.name,'offset':d.positions[i],'reason':'non-literal direct call'})
     continue
    if mode=='computed' and not isinstance(expected,str):unported.append({'file':path.name,'input':value,'reason':'non-literal computed expectation'});continue
-   cases.append({'file':path.name,'case':text.count('\n',0,d.positions[i])+1,'mode':mode,'input':value,'expected':expected})
+   cases.append({'file':path.name,'case':text.count('\n',0,d.positions[i])+1,'mode':mode,'input':value,'expected':expected,**context_fields(d.positions[i],value)})
 dump('derived-wpt.json',{'scope':'Native ports of literal value assertions/template-space expansions; no WPT JS, CSSOM serialization, page/style/layout execution','cases':cases,'unported':unported})
 print('Color.js vectors:',len(json.loads((ROOT/'derived-conversions.json').read_text())['cases']))
 print('WPT assertions:',len(cases),'unported direct forms:',len(unported))

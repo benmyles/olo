@@ -1427,98 +1427,154 @@
       "case": 55,
       "mode": "computed",
       "input": "color(srgb calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
-      "expected": "color(srgb 0.6 0 0 / 0.5)"
+      "expected": "color(srgb 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 55,
       "mode": "computed",
       "input": "color(srgb-linear calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
-      "expected": "color(srgb-linear 0.6 0 0 / 0.5)"
+      "expected": "color(srgb-linear 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 55,
       "mode": "computed",
       "input": "color(a98-rgb calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
-      "expected": "color(a98-rgb 0.6 0 0 / 0.5)"
+      "expected": "color(a98-rgb 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 55,
       "mode": "computed",
       "input": "color(rec2020 calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
-      "expected": "color(rec2020 0.6 0 0 / 0.5)"
+      "expected": "color(rec2020 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 55,
       "mode": "computed",
       "input": "color(prophoto-rgb calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
-      "expected": "color(prophoto-rgb 0.6 0 0 / 0.5)"
+      "expected": "color(prophoto-rgb 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 55,
       "mode": "computed",
       "input": "color(display-p3 calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
-      "expected": "color(display-p3 0.6 0 0 / 0.5)"
+      "expected": "color(display-p3 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 55,
       "mode": "computed",
       "input": "color(display-p3-linear calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
-      "expected": "color(display-p3-linear 0.6 0 0 / 0.5)"
+      "expected": "color(display-p3-linear 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 56,
       "mode": "computed",
       "input": "color(srgb 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "color(srgb 0.5 0 0 / 0.6)"
+      "expected": "color(srgb 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 56,
       "mode": "computed",
       "input": "color(srgb-linear 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "color(srgb-linear 0.5 0 0 / 0.6)"
+      "expected": "color(srgb-linear 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 56,
       "mode": "computed",
       "input": "color(a98-rgb 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "color(a98-rgb 0.5 0 0 / 0.6)"
+      "expected": "color(a98-rgb 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 56,
       "mode": "computed",
       "input": "color(rec2020 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "color(rec2020 0.5 0 0 / 0.6)"
+      "expected": "color(rec2020 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 56,
       "mode": "computed",
       "input": "color(prophoto-rgb 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "color(prophoto-rgb 0.5 0 0 / 0.6)"
+      "expected": "color(prophoto-rgb 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 56,
       "mode": "computed",
       "input": "color(display-p3 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "color(display-p3 0.5 0 0 / 0.6)"
+      "expected": "color(display-p3 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 56,
       "mode": "computed",
       "input": "color(display-p3-linear 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "color(display-p3-linear 0.5 0 0 / 0.6)"
+      "expected": "color(display-p3-linear 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
@@ -1987,42 +2043,66 @@
       "case": 88,
       "mode": "computed",
       "input": "color(xyz calc(0.5 + (sign(1em - 10px) * 0.1)) 0 0 / 0.5)",
-      "expected": "color(xyz-d65 0.6 0 0 / 0.5)"
+      "expected": "color(xyz-d65 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 88,
       "mode": "computed",
       "input": "color(xyz-d50 calc(0.5 + (sign(1em - 10px) * 0.1)) 0 0 / 0.5)",
-      "expected": "color(xyz-d50 0.6 0 0 / 0.5)"
+      "expected": "color(xyz-d50 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 88,
       "mode": "computed",
       "input": "color(xyz-d65 calc(0.5 + (sign(1em - 10px) * 0.1)) 0 0 / 0.5)",
-      "expected": "color(xyz-d65 0.6 0 0 / 0.5)"
+      "expected": "color(xyz-d65 0.6 0 0 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 89,
       "mode": "computed",
       "input": "color(xyz 0.5 0 0 / calc(0.5 + (sign(1em - 10px) * 0.1)))",
-      "expected": "color(xyz-d65 0.5 0 0 / 0.6)"
+      "expected": "color(xyz-d65 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 89,
       "mode": "computed",
       "input": "color(xyz-d50 0.5 0 0 / calc(0.5 + (sign(1em - 10px) * 0.1)))",
-      "expected": "color(xyz-d50 0.5 0 0 / 0.6)"
+      "expected": "color(xyz-d50 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 89,
       "mode": "computed",
       "input": "color(xyz-d65 0.5 0 0 / calc(0.5 + (sign(1em - 10px) * 0.1)))",
-      "expected": "color(xyz-d65 0.5 0 0 / 0.6)"
+      "expected": "color(xyz-d65 0.5 0 0 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-color-function.html",
@@ -3268,14 +3348,22 @@
       "case": 315,
       "mode": "computed",
       "input": "color(srgb calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0 0 / 0.51)",
-      "expected": "color(srgb 0.6 0 0 / 0.51)"
+      "expected": "color(srgb 0.6 0 0 / 0.51)",
+      "context": {
+        "em": 16.0,
+        "container_width": 1000.0
+      }
     },
     {
       "file": "color-computed-color-function.html",
       "case": 317,
       "mode": "computed",
       "input": "color(srgb calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0 0 / 0.52)",
-      "expected": "color(srgb 0.4 0 0 / 0.52)"
+      "expected": "color(srgb 0.4 0 0 / 0.52)",
+      "context": {
+        "em": 16.0,
+        "container_width": 100.0
+      }
     },
     {
       "file": "color-computed-hsl.html",
@@ -29427,112 +29515,176 @@
       "case": 3736,
       "mode": "computed",
       "input": "hsl(calc(50deg + (sign(1em - 10px) * 10deg)), 100%, 37.5%, 50%)",
-      "expected": "rgba(191, 191, 0, 0.5)"
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3737,
       "mode": "computed",
       "input": "hsla(calc(50deg + (sign(1em - 10px) * 10deg)), 100%, 37.5%, 50%)",
-      "expected": "rgba(191, 191, 0, 0.5)"
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3738,
       "mode": "computed",
       "input": "hsl(calc(50 + (sign(1em - 10px) * 10)), 100%, 37.5%, 50%)",
-      "expected": "rgba(191, 191, 0, 0.5)"
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3739,
       "mode": "computed",
       "input": "hsla(calc(50 + (sign(1em - 10px) * 10)), 100%, 37.5%, 50%)",
-      "expected": "rgba(191, 191, 0, 0.5)"
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3740,
       "mode": "computed",
       "input": "hsl(60deg, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(191, 191, 0, 0.6)"
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3741,
       "mode": "computed",
       "input": "hsla(60deg, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(191, 191, 0, 0.6)"
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3742,
       "mode": "computed",
       "input": "hsl(60, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(191, 191, 0, 0.6)"
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3743,
       "mode": "computed",
       "input": "hsla(60, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(191, 191, 0, 0.6)"
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3744,
       "mode": "computed",
       "input": "hsl(calc(50deg + (sign(1em - 10px) * 10deg)) 100% 37.5% / 50%)",
-      "expected": "rgba(191, 191, 0, 0.5)"
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3745,
       "mode": "computed",
       "input": "hsla(calc(50deg + (sign(1em - 10px) * 10deg)) 100% 37.5% / 50%)",
-      "expected": "rgba(191, 191, 0, 0.5)"
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3746,
       "mode": "computed",
       "input": "hsl(calc(50 + (sign(1em - 10px) * 10)) 100 37.5 / 0.5)",
-      "expected": "rgba(191, 191, 0, 0.5)"
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3747,
       "mode": "computed",
       "input": "hsla(calc(50 + (sign(1em - 10px) * 10)) 100 37.5 / 0.5)",
-      "expected": "rgba(191, 191, 0, 0.5)"
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3748,
       "mode": "computed",
       "input": "hsl(60deg 100% 37.5% / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(191, 191, 0, 0.6)"
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3749,
       "mode": "computed",
       "input": "hsla(60deg 100% 37.5% / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(191, 191, 0, 0.6)"
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3750,
       "mode": "computed",
       "input": "hsl(60 100 37.5 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": "rgba(191, 191, 0, 0.85)"
+      "expected": "rgba(191, 191, 0, 0.85)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-hsl.html",
       "case": 3751,
       "mode": "computed",
       "input": "hsla(60 100 37.5 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": "rgba(191, 191, 0, 0.85)"
+      "expected": "rgba(191, 191, 0, 0.85)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
@@ -30379,112 +30531,176 @@
       "case": 121,
       "mode": "computed",
       "input": "lab(calc(50 + (sign(1em - 10px) * 10)) 30 50 / 50%)",
-      "expected": "lab(60 30 50 / 0.5)"
+      "expected": "lab(60 30 50 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 122,
       "mode": "computed",
       "input": "oklab(calc(0.5 + (sign(1em - 10px) * 0.1)) 0.3 0.5 / 50%)",
-      "expected": "oklab(0.6 0.3 0.5 / 0.5)"
+      "expected": "oklab(0.6 0.3 0.5 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 123,
       "mode": "computed",
       "input": "lab(60 30 50 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "lab(60 30 50 / 0.6)"
+      "expected": "lab(60 30 50 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 124,
       "mode": "computed",
       "input": "oklab(0.6 0.3 0.5 / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "oklab(0.6 0.3 0.5 / 0.6)"
+      "expected": "oklab(0.6 0.3 0.5 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 125,
       "mode": "computed",
       "input": "lch(calc(50 + (sign(1em - 10px) * 10)) 30 50deg / 50%)",
-      "expected": "lch(60 30 50 / 0.5)"
+      "expected": "lch(60 30 50 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 126,
       "mode": "computed",
       "input": "oklch(calc(0.5 + (sign(1em - 10px) * 0.1)) 0.3 50deg / 50%)",
-      "expected": "oklch(0.6 0.3 50 / 0.5)"
+      "expected": "oklch(0.6 0.3 50 / 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 127,
       "mode": "computed",
       "input": "lch(60 30 50deg / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "lch(60 30 50 / 0.6)"
+      "expected": "lch(60 30 50 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 128,
       "mode": "computed",
       "input": "oklch(0.6 0.3 50deg / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "oklch(0.6 0.3 50 / 0.6)"
+      "expected": "oklch(0.6 0.3 50 / 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 187,
       "mode": "computed",
       "input": "lab(calc(50 + (sign(2cqw - 10px) * 10)) 30 50 / 0.51)",
-      "expected": "lab(60 30 50 / 0.51)"
+      "expected": "lab(60 30 50 / 0.51)",
+      "context": {
+        "em": 16.0,
+        "container_width": 1000.0
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 188,
       "mode": "computed",
       "input": "oklab(calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0.3 0.5 / 0.51)",
-      "expected": "oklab(0.6 0.3 0.5 / 0.51)"
+      "expected": "oklab(0.6 0.3 0.5 / 0.51)",
+      "context": {
+        "em": 16.0,
+        "container_width": 1000.0
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 189,
       "mode": "computed",
       "input": "lch(calc(50 + (sign(2cqw - 10px) * 10)) 30 50 / 0.51)",
-      "expected": "lch(60 30 50 / 0.51)"
+      "expected": "lch(60 30 50 / 0.51)",
+      "context": {
+        "em": 16.0,
+        "container_width": 1000.0
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 190,
       "mode": "computed",
       "input": "oklch(calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0.3 50 / 0.51)",
-      "expected": "oklch(0.6 0.3 50 / 0.51)"
+      "expected": "oklch(0.6 0.3 50 / 0.51)",
+      "context": {
+        "em": 16.0,
+        "container_width": 1000.0
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 192,
       "mode": "computed",
       "input": "lab(calc(50 + (sign(2cqw - 10px) * 10)) 30 50 / 0.52)",
-      "expected": "lab(40 30 50 / 0.52)"
+      "expected": "lab(40 30 50 / 0.52)",
+      "context": {
+        "em": 16.0,
+        "container_width": 100.0
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 193,
       "mode": "computed",
       "input": "oklab(calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0.3 0.5 / 0.52)",
-      "expected": "oklab(0.4 0.3 0.5 / 0.52)"
+      "expected": "oklab(0.4 0.3 0.5 / 0.52)",
+      "context": {
+        "em": 16.0,
+        "container_width": 100.0
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 194,
       "mode": "computed",
       "input": "lch(calc(50 + (sign(2cqw - 10px) * 10)) 30 50 / 0.52)",
-      "expected": "lch(40 30 50 / 0.52)"
+      "expected": "lch(40 30 50 / 0.52)",
+      "context": {
+        "em": 16.0,
+        "container_width": 100.0
+      }
     },
     {
       "file": "color-computed-lab.html",
       "case": 195,
       "mode": "computed",
       "input": "oklch(calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0.3 50 / 0.52)",
-      "expected": "oklch(0.4 0.3 50 / 0.52)"
+      "expected": "oklch(0.4 0.3 50 / 0.52)",
+      "context": {
+        "em": 16.0,
+        "container_width": 100.0
+      }
     },
     {
       "file": "color-computed-rgb.html",
@@ -31037,126 +31253,198 @@
       "case": 79,
       "mode": "computed",
       "input": "rgb(calc(50% + (sign(1em - 10px) * 10%)), 0%, 0%, 50%)",
-      "expected": "rgba(153, 0, 0, 0.5)"
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 80,
       "mode": "computed",
       "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)), 0%, 0%, 50%)",
-      "expected": "rgba(153, 0, 0, 0.5)"
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 81,
       "mode": "computed",
       "input": "rgb(calc(50 + (sign(1em - 10px) * 10)), 0, 0, 0.5)",
-      "expected": "rgba(60, 0, 0, 0.5)"
+      "expected": "rgba(60, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 82,
       "mode": "computed",
       "input": "rgba(calc(50 + (sign(1em - 10px) * 10)), 0, 0, 0.5)",
-      "expected": "rgba(60, 0, 0, 0.5)"
+      "expected": "rgba(60, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 83,
       "mode": "computed",
       "input": "rgb(0%, 0%, 0%, calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(0, 0, 0, 0.6)"
+      "expected": "rgba(0, 0, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 84,
       "mode": "computed",
       "input": "rgba(0%, 0%, 0%, calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(0, 0, 0, 0.6)"
+      "expected": "rgba(0, 0, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 85,
       "mode": "computed",
       "input": "rgb(0, 0, 0, calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": "rgba(0, 0, 0, 0.85)"
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 86,
       "mode": "computed",
       "input": "rgba(0, 0, 0, calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": "rgba(0, 0, 0, 0.85)"
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 87,
       "mode": "computed",
       "input": "rgb(calc(50% + (sign(1em - 10px) * 10%)) 0% 0% / 50%)",
-      "expected": "rgba(153, 0, 0, 0.5)"
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 88,
       "mode": "computed",
       "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 0% 0% / 50%)",
-      "expected": "rgba(153, 0, 0, 0.5)"
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 89,
       "mode": "computed",
       "input": "rgb(calc(50 + (sign(1em - 10px) * 10)) 0 0 / 0.5)",
-      "expected": "rgba(60, 0, 0, 0.5)"
+      "expected": "rgba(60, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 90,
       "mode": "computed",
       "input": "rgba(calc(50 + (sign(1em - 10px) * 10)) 0 0 / 0.5)",
-      "expected": "rgba(60, 0, 0, 0.5)"
+      "expected": "rgba(60, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 91,
       "mode": "computed",
       "input": "rgb(0% 0% 0% / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(0, 0, 0, 0.6)"
+      "expected": "rgba(0, 0, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 92,
       "mode": "computed",
       "input": "rgba(0% 0% 0% / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": "rgba(0, 0, 0, 0.6)"
+      "expected": "rgba(0, 0, 0, 0.6)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 93,
       "mode": "computed",
       "input": "rgb(0 0 0 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": "rgba(0, 0, 0, 0.85)"
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 94,
       "mode": "computed",
       "input": "rgba(0 0 0 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": "rgba(0, 0, 0, 0.85)"
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 95,
       "mode": "computed",
       "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 0 0% / 0.5)",
-      "expected": "rgba(153, 0, 0, 0.5)"
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-computed-rgb.html",
       "case": 96,
       "mode": "computed",
       "input": "rgba(0% 0 0% / calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": "rgba(0, 0, 0, 0.85)"
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-invalid-hsl.html",
@@ -32038,154 +32326,242 @@
       "case": 49,
       "mode": "valid",
       "input": "rgb(calc(50% + (sign(1em - 10px) * 10%)), 0%, 0%, 50%)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 50,
       "mode": "valid",
       "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)), 0%, 0%, 50%)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 51,
       "mode": "valid",
       "input": "rgb(calc(50 + (sign(1em - 10px) * 10)), 0, 0, 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 52,
       "mode": "valid",
       "input": "rgba(calc(50 + (sign(1em - 10px) * 10)), 0, 0, 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 53,
       "mode": "valid",
       "input": "rgb(0%, 0%, 0%, calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 54,
       "mode": "valid",
       "input": "rgba(0%, 0%, 0%, calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 55,
       "mode": "valid",
       "input": "rgb(0, 0, 0, calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 56,
       "mode": "valid",
       "input": "rgba(0, 0, 0, calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 57,
       "mode": "valid",
       "input": "rgb(calc(50% + (sign(1em - 10px) * 10%)) 0% 0% / 50%)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 58,
       "mode": "valid",
       "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 0% 0% / 50%)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 59,
       "mode": "valid",
       "input": "rgb(calc(50 + (sign(1em - 10px) * 10)) 0 0 / 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 60,
       "mode": "valid",
       "input": "rgba(calc(50 + (sign(1em - 10px) * 10)) 0 0 / 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 61,
       "mode": "valid",
       "input": "rgb(0% 0% 0% / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 62,
       "mode": "valid",
       "input": "rgba(0% 0% 0% / calc(50% + (sign(1em - 10px) * 10%)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 63,
       "mode": "valid",
       "input": "rgb(0 0 0 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 64,
       "mode": "valid",
       "input": "rgba(0 0 0 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 65,
       "mode": "valid",
       "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 0 0% / 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 66,
       "mode": "valid",
       "input": "rgba(0% 0 0% / calc(0.75 + (sign(1em - 10px) * 0.1)))",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 67,
       "mode": "valid",
       "input": "rgba(calc(50 + (sign(1em - 10px) * 10)) 400 -400 / 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 68,
       "mode": "valid",
       "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 400% -400% / 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 69,
       "mode": "valid",
       "input": "rgba(calc(50 + (sign(1em - 10px) * 10)), 400, -400, 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     },
     {
       "file": "color-valid-rgb.html",
       "case": 70,
       "mode": "valid",
       "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)), 400%, -400%, 0.5)",
-      "expected": null
+      "expected": null,
+      "context": {
+        "em": 16.0,
+        "container_width": null
+      }
     }
   ],
   "unported": [

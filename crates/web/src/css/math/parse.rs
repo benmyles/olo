@@ -22,10 +22,14 @@ pub(super) fn parse(mut values: Components<'_>, options: Options, limits: Limits
     parser.finish(term)
 }
 pub(super) fn compile(component: Component<'_>, options: Options, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
+    compile_accounted(component, options, limits, cancelled).map(|(value, _)| value)
+}
+pub(super) fn compile_accounted(component: Component<'_>, options: Options, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<(Value, usize)> {
     let mut parser = Parser { code: SmallVec::new(), options, limits, work: 0, cancelled };
     parser.tick((component.span().end - component.span().start) as usize + 1)?;
     let term = parser.value(component, 0, false)?;
-    parser.finish(term)
+    let work = parser.work;
+    parser.finish(term).map(|value| (value, work))
 }
 impl Parser<'_> {
     fn tick(&mut self, n: usize) -> Result<()> {

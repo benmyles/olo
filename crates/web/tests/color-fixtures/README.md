@@ -44,14 +44,29 @@ chroma clamps and hue normalization. The adapter transforms only those
 numeric expectations according to CSS Color 4, independently of the engine:
 L clamps to [0,100] for Lab/LCH, [0,1] for OKLab/OKLCH; chroma is nonnegative;
 polar hues normalize to [0,360). The 2,760 affected cases are reported
-`updated_specification`, separately from 9,728 direct passes. The adapter can
+`updated_specification`, separately from 9,921 direct passes. The adapter can
 map obsolete Color 3 alpha-hex rejection to its identical input's Color 4
 reference; none of this pinned subset needs that mapping.
 
-Current total: 12,703 cases; 9,728 direct passes, 2,760 reviewed current-spec
-passes, 215 explicit non-passes. Those gaps are 195 math expressions, two
-substitutions, six custom-profile values, eleven device-color values and
-one unported expectation. Unexpected invalid results, errors, mismatches
+Numeric context ports record literal font sizes and each preceding literal
+container-width assignment from the original source. The native adapter
+explicitly supplies a representative 16px font where the fixture does not
+specify one, and implements only em/cqw factors used in these resources.
+It never derives context from expected color/alpha or engine output. This
+is not measured font/layout or proof of live style invalidation. Production
+color math has no such defaults and requires an actual host snapshot.
+
+Current total: 12,703 cases; 9,921 direct passes, 2,760 reviewed current-spec
+passes, 22 explicit non-passes. Those gaps are two substitutions, six custom-
+profile values, eleven device-color values, one unported expectation and
+two nonfinite computed-serialization references (`lch`/`oklch` chroma
+`calc(infinity)`). The parser accepts the latter inputs, but the finite
+coordinate API and restricted canonical reference adapter do not validate
+that serialization contract. Those cases remain unsupported, not silently
+passed by changing their references. The 193 additional passes comprise
+155 computed-coordinate and 38 validity-only assertions. Native integration
+tests separately exercise invalid numeric types and channel grammar.
+Unexpected invalid results, errors, mismatches
 and panics fail regression tests. `color_eval` always exits 1 while any
 case remains unsupported. These counts do not imply complete CSS Color
 conformance, dark-mode adaptation or any working websites.

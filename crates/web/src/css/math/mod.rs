@@ -177,6 +177,9 @@ pub enum TreeCount {
     SiblingCount,
 }
 impl Dependencies {
+    pub fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
     pub fn contains(self, unit: RelativeUnit) -> bool {
         self.0 & (1 << unit as u8) != 0
     }
@@ -291,6 +294,9 @@ impl Value {
     }
     pub fn compile(component: Component<'_>, options: Options, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
         parse::compile(component, options, limits, cancelled)
+    }
+    pub(crate) fn compile_accounted(component: Component<'_>, options: Options, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<(Self, usize)> {
+        parse::compile_accounted(component, options, limits, cancelled)
     }
     pub fn ty(&self) -> NumericType {
         match self {

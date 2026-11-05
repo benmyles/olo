@@ -1,10 +1,13 @@
 //! Original typed CSS color values. Parsing, contextual resolution and
 //! unclipped colorimetric conversion; not cascade, gamut mapping or painting.
 mod convert;
+mod functional;
 mod matrices;
 mod named;
 mod parse;
-use crate::css::Components;
+use crate::css::{Components, math};
+pub use functional::Functional;
+use functional::{Numeric, Unit};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -240,11 +243,33 @@ pub trait Context {
     fn system_color(&self, _color: SystemColor, _scheme: Scheme) -> Result<Color> {
         Err(Error::ContextUnavailable)
     }
+    /// Explicit stable numeric snapshot; no font or layout defaults.
+    fn math_factor(&self, _unit: math::RelativeUnit) -> math::Result<f64> {
+        Err(math::Error::ContextUnavailable)
+    }
+    /// The host enforces the math Context's stylesheet/tree-scope rules.
+    fn math_tree_count(&self, _kind: math::TreeCount) -> math::Result<u32> {
+        Err(math::Error::ContextUnavailable)
+    }
+}
+/// Conservative dependencies of the complete value, including unselected
+/// conditional branches. Cached once while compiling; no tree scan to query.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Dependencies {
+    pub current_color: bool,
+    pub system_colors: bool,
+    pub scheme: bool,
+    pub math: math::Dependencies,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
+    /// Conditional nodes plus retained numeric instructions while compiling.
+    /// Also bounds temporary math emission and resolution stack (max 4096).
     pub nodes: usize,
+    /// Shared source/token/emitter work while compiling; conditional visits
+    /// and all selected-channel instructions while resolving.
     pub work: usize,
+    /// Shared color/math nesting, with an unconditional hard maximum of 128.
     pub depth: usize,
 }
 impl Default for Limits {
@@ -274,6 +299,7 @@ enum Atom {
     Absolute(Color),
     Current,
     System(SystemColor),
+    Functional(u32),
 }
 #[derive(Clone, Copy)]
 enum Node {
@@ -281,11 +307,18 @@ enum Node {
     Current,
     System(SystemColor),
     LightDark { light: u32, dark: u32 },
+    Functional(u32),
 }
 /// Arena-owned conditional expression; no recursive tree ownership/drop.
 pub struct Expression {
     nodes: Vec<Node>,
     root: u32,
+    functions: Box<[Functional]>,
+    // Keep the booleans beside root so they use its alignment padding.
+    math: math::Dependencies,
+    current_color: bool,
+    system_colors: bool,
+    scheme: bool,
 }
 #[derive(Clone)]
 pub enum Value {
@@ -293,6 +326,7 @@ pub enum Value {
     CurrentColor,
     System(SystemColor),
     Expression(Arc<Expression>),
+    Functional(Arc<Functional>),
 }
 impl std::fmt::Debug for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -305,16 +339,33 @@ impl Value {
     pub fn parse(values: Components<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
         parse::parse(values, limits, cancelled)
     }
+    /// Conditional-color arena nodes; numeric programs are accounted in bytes.
     pub fn expression_nodes(&self) -> usize {
         match self {
             Self::Expression(e) => e.nodes.len(),
             _ => 0,
         }
     }
+    /// Retained arena capacities, boxed channels and program/Arc headers,
+    /// excluding this Value, allocator metadata and transient worker scratch.
+    /// A clone shares these allocations; do not add them twice for a pool.
     pub fn expression_reserved_bytes(&self) -> usize {
         match self {
-            Self::Expression(e) => e.nodes.capacity() * std::mem::size_of::<Node>() + std::mem::size_of::<Expression>() + 2 * std::mem::size_of::<usize>(),
+            Self::Expression(e) => {
+                let functions = e.functions.len() * size_of::<Functional>() + e.functions.iter().map(Functional::reserved_bytes).sum::<usize>();
+                e.nodes.capacity() * size_of::<Node>() + size_of::<Expression>() + 2 * size_of::<usize>() + functions
+            }
+            Self::Functional(f) => size_of::<Functional>() + 2 * size_of::<usize>() + f.reserved_bytes(),
             _ => 0,
+        }
+    }
+    pub fn dependencies(&self) -> Dependencies {
+        match self {
+            Self::Absolute(_) => Dependencies::default(),
+            Self::CurrentColor => Dependencies { current_color: true, ..Default::default() },
+            Self::System(_) => Dependencies { system_colors: true, scheme: true, ..Default::default() },
+            Self::Expression(e) => Dependencies { current_color: e.current_color, system_colors: e.system_colors, scheme: e.scheme, math: e.math },
+            Self::Functional(f) => Dependencies { math: f.dependencies(), ..Default::default() },
         }
     }
     /// Resolve only the chosen conditional branch. Both branches were
@@ -325,6 +376,7 @@ impl Value {
             Self::Absolute(c) => Atom::Absolute(*c),
             Self::CurrentColor => Atom::Current,
             Self::System(s) => Atom::System(*s),
+            Self::Functional(f) => return Ok(f.resolve(context, limits, cancelled)?.computed()),
             Self::Expression(e) => {
                 let mut at = e.root;
                 let mut work = 0;
@@ -338,6 +390,11 @@ impl Value {
                         Node::Absolute(c) => break Atom::Absolute(c),
                         Node::Current => break Atom::Current,
                         Node::System(s) => break Atom::System(s),
+                        Node::Functional(i) => {
+                            let mut remaining = limits;
+                            remaining.work -= work;
+                            return Ok(e.functions[i as usize].resolve(context, remaining, cancelled)?.computed());
+                        }
                         Node::LightDark { light, dark } => {
                             at = match context.scheme() {
                                 Scheme::Light => light,
@@ -352,6 +409,7 @@ impl Value {
             Atom::Absolute(c) => Ok(c),
             Atom::Current => context.current_color(),
             Atom::System(s) => context.system_color(s, context.scheme()),
+            Atom::Functional(_) => unreachable!(),
         }?;
         Ok(color.computed())
     }

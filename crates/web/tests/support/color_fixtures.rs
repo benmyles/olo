@@ -7,13 +7,32 @@ use olo_web::css::{
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{path::Path, sync::Arc};
-struct Palette(Scheme);
+struct Palette {
+    scheme: Scheme,
+    em: f64,
+    container_width: Option<f64>,
+}
+impl Palette {
+    fn new(scheme: Scheme) -> Self {
+        Self { scheme, em: 16., container_width: None }
+    }
+    fn from_case(scheme: Scheme, case: &Value) -> Self {
+        Self { scheme, em: case["context"]["em"].as_f64().unwrap_or(16.), container_width: case["context"]["container_width"].as_f64() }
+    }
+}
 impl Context for Palette {
+    fn math_factor(&self, unit: css::math::RelativeUnit) -> css::math::Result<f64> {
+        match unit {
+            css::math::RelativeUnit::Em => Ok(self.em),
+            css::math::RelativeUnit::Cqw => self.container_width.map(|w| w / 100.).ok_or(css::math::Error::ContextUnavailable),
+            _ => Err(css::math::Error::ContextUnavailable),
+        }
+    }
     fn current_color(&self) -> css::color::Result<Color> {
         Ok(Color::new(Space::Srgb, [1., 0., 0.], 1., 0))
     }
     fn scheme(&self) -> Scheme {
-        self.0
+        self.scheme
     }
 }
 #[derive(Clone, Debug)]
@@ -118,7 +137,7 @@ fn run(input: &str, expected: &Value) -> Result<(bool, bool, Value), String> {
         let old = reference(text);
         let current = modern(old.clone());
         updated |= !same_reference(&old, &current);
-        let color = value.resolve(&Palette(scheme), Default::default(), None).map_err(|e| e.to_string())?;
+        let color = value.resolve(&Palette::new(scheme), Default::default(), None).map_err(|e| e.to_string())?;
         passed &= compare(color, &current);
         output.push(actual(color));
     }
@@ -193,8 +212,11 @@ pub fn evaluate_extra(dir: &Path) -> Value {
             if test["mode"] == "valid" {
                 return Ok((true, json!("validity only")));
             }
-            let color = value.resolve(&Palette(Scheme::Light), Default::default(), None).map_err(|e| e.to_string())?;
+            let color = value.resolve(&Palette::from_case(Scheme::Light, test), Default::default(), None).map_err(|e| e.to_string())?;
             let expected = test["expected"].as_str().unwrap();
+            if expected.contains("calc(") {
+                return Err("Unsupported(\"nonfinite computed serialization reference\")".to_owned());
+            }
             let reference = reference(expected);
             // These old WPT computed RGB strings round channels to bytes.
             // Test the exact byte endpoint rather than pretend this port

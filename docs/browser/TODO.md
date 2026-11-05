@@ -59,13 +59,15 @@ item means implemented and verified; a partial implementation stays open.
 - [x] Core typed numeric compilation/resolution: dimension algebra, flat
   programs, bounded work/stack/depth, host-unit/tree dependencies, constant
   simplification and independent numeric ports (1,572/1,586; 14 non-passes).
-- [ ] Integrate contextual math with colors and property/style/layout hosts;
-  complete remaining math contexts, substitution and CSSOM behavior.
+- [x] Integrate typed static/contextual math with color channels, shared
+  budgets, live host unit/tree hooks and conservative invalidation metadata.
+- [ ] Complete remaining math contexts, substitution, CSSOM and actual
+  property/style/layout hosts; dependency metadata does not implement them.
 - [x] Original typed absolute CSS colors, deferred current/system/light-dark
   context, missing components, explicit colorimetric conversion, bounded
   allocation-free SIMD worker and measured compact storage. 12,703 native
-  cases: 9,728 direct plus 2,760 reviewed current-spec passes; 215 non-passes.
-- [ ] Complete color math/substitution, relative colors/mixing/interpolation,
+  cases: 9,921 direct plus 2,760 reviewed current-spec passes; 22 non-passes.
+- [ ] Complete color substitution, relative colors/mixing/interpolation,
   gamut mapping/profiles, CSSOM, author color-scheme and Olo palette/style/
   rendering integration. Typed color support is not all-site dark mode.
 - [ ] Implement block/inline, text shaping/bidi, flex/grid/table layout,

@@ -1,0 +1,2379 @@
+{
+  "scope": "CSS numeric color integration; typed CPU compilation/resolution and unchanged conversion worker. No CSSOM/style/layout/GPU/UI/JS/network/browser or Chrome performance claim.",
+  "base_commit": "8cf0a2e1aee54b1e17668bb14b40104d12470311",
+  "before": "Unmodified committed color parser at base_commit, same color_bench source.",
+  "after": "Typed static/contextual math, conservative dependencies, inline compiler scratch, shared normalization and aggregate quotas.",
+  "method": "Three sequential alternating before/after runs (reversed in middle), CPU 0, 20 rounds; ordinary parsing/resolution each 20000 iterations per case; conversion 20 independently reset samples per workload. Contextual math benchmark separately runs three times: 2000 compiles and 20000 resolves per case, with prebuilt Syntax. Throughput parsing/resolution values are each run mean; summaries median of three means. Conversion summary median of three run medians. First-call samples recorded independently. No concurrent checks started by this session during measurements. Clocks/thermals/other load uncontrolled.",
+  "memory_accounting": "Value/Color size and retained unique arena/Arc/program/boxed-channel capacities per separately compiled value; excludes allocator overhead, original Syntax/source and transient compiler/resolution scratch. Cloned Values share arenas and must not be added repeatedly. RSS is entire synthetic benchmark, including generated/reset conversion buffers or the 10000-value pools and allocator retention.",
+  "caveats": [
+    "Feature integration has measured parsing/storage costs: no uniform throughput improvement claim.",
+    "No SIMD or GPU added here; earlier bounded SIMD conversion is unchanged. Conversion differences include machine/compiler/code-layout effects.",
+    "Inline temporary slots avoid extra allocations for the common small contextual compilation. Larger conditional function lists can spill.",
+    "Website conformance and live style invalidation are not demonstrated.",
+    "Prebuilt syntax excludes lexical/source cost. New contextual workloads have no before throughput: old parser explicitly rejects them."
+  ],
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "uname": "Linux 7.2.15-300.fc45.x86_64 x86_64 GNU/Linux",
+  "cpu": {
+    "lscpu": [
+      {
+        "field": "Architecture:",
+        "data": "x86_64"
+      },
+      {
+        "field": "CPU op-mode(s):",
+        "data": "32-bit, 64-bit"
+      },
+      {
+        "field": "Address sizes:",
+        "data": "46 bits physical, 48 bits virtual"
+      },
+      {
+        "field": "Byte Order:",
+        "data": "Little Endian"
+      },
+      {
+        "field": "CPU(s):",
+        "data": "16"
+      },
+      {
+        "field": "On-line CPU(s) list:",
+        "data": "0-15"
+      },
+      {
+        "field": "Vendor ID:",
+        "data": "GenuineIntel"
+      },
+      {
+        "field": "Model name:",
+        "data": "Intel(R) Core(TM) Ultra 7 356H"
+      },
+      {
+        "field": "CPU family:",
+        "data": "6"
+      },
+      {
+        "field": "Model:",
+        "data": "204"
+      },
+      {
+        "field": "Thread(s) per core:",
+        "data": "1"
+      },
+      {
+        "field": "Core(s) per socket:",
+        "data": "16"
+      },
+      {
+        "field": "Socket(s):",
+        "data": "1"
+      },
+      {
+        "field": "Stepping:",
+        "data": "2"
+      },
+      {
+        "field": "Microcode version:",
+        "data": "0x11b"
+      },
+      {
+        "field": "CPU(s) scaling MHz:",
+        "data": "44%"
+      },
+      {
+        "field": "CPU max MHz:",
+        "data": "4700.0000"
+      },
+      {
+        "field": "CPU min MHz:",
+        "data": "400.0000"
+      },
+      {
+        "field": "BogoMIPS:",
+        "data": "7372.80"
+      },
+      {
+        "field": "Flags:",
+        "data": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdt_a rdseed adx smap clflushopt clwb intel_pt sha_ni xsaveopt xsavec xgetbv1 xsaves split_lock_detect user_shstk avx_vnni lass fred lam wbnoinvd dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp hwp_pkg_req hfi vnmi umip pku ospke waitpkg gfni vaes vpclmulqdq rdpid bus_lock_detect movdiri movdir64b fsrm md_clear serialize arch_lbr ibt flush_l1d arch_capabilities"
+      },
+      {
+        "field": "Virtualization:",
+        "data": "VT-x"
+      },
+      {
+        "field": "L1d cache:",
+        "data": "576 KiB (16 instances)"
+      },
+      {
+        "field": "L1i cache:",
+        "data": "1 MiB (16 instances)"
+      },
+      {
+        "field": "L2 cache:",
+        "data": "24 MiB (7 instances)"
+      },
+      {
+        "field": "L3 cache:",
+        "data": "18 MiB (1 instance)"
+      },
+      {
+        "field": "NUMA node(s):",
+        "data": "1"
+      },
+      {
+        "field": "NUMA node0 CPU(s):",
+        "data": "0-15"
+      },
+      {
+        "field": "Vulnerability Gather data sampling:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Ghostwrite:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Indirect target selection:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Itlb multihit:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability L1tf:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Mds:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Meltdown:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Mmio stale data:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Old microcode:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Reg file data sampling:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Retbleed:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Spec rstack overflow:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Spec store bypass:",
+        "data": "Mitigation; Speculative Store Bypass disabled via prctl"
+      },
+      {
+        "field": "Vulnerability Spectre v1:",
+        "data": "Mitigation; usercopy/swapgs barriers and __user pointer sanitization"
+      },
+      {
+        "field": "Vulnerability Spectre v2:",
+        "data": "Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS Not affected; BHI BHI_DIS_S"
+      },
+      {
+        "field": "Vulnerability Srbds:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Tsa:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Tsx async abort:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Vmscape:",
+        "data": "Not affected"
+      }
+    ]
+  },
+  "commands": [
+    "cargo build --release -p olo-web --example color_bench # at base_commit, reflink before binary",
+    "cargo build --release -p olo-web --example color_bench --example color_math_bench",
+    "cp --reflink=always target/release/examples/color_bench /var/tmp/olo-browser-research/color-math/color-after",
+    "cp --reflink=always target/release/examples/color_math_bench /var/tmp/olo-browser-research/color-math/color-math",
+    "/usr/bin/time -v taskset -c 0 /var/tmp/olo-browser-research/color-math/color-MODE 20",
+    "/usr/bin/time -v taskset -c 0 /var/tmp/olo-browser-research/color-math/color-math 20"
+  ],
+  "source_sha256": {
+    "Cargo.lock": "17ff0dd9e5fe7a3b8c82877b6b0717bc52a4a00f0d56148bc5d1ad2a16e5bfd0",
+    "crates/web/Cargo.toml": "ee68d25d2985f617b88745b2b4a3bf65e1f0d0102efc3bf1496197f8b6ec20a9",
+    "crates/web/src/css/mod.rs": "a311ec7514b08f58e144d31afed1a0dcd02dac2a4ef662179f428cd4b95c8679",
+    "crates/web/examples/color_bench.rs": "0f1ad0330740171ca8e325f132ab436d08fb22b01429074a77964acd9267704b",
+    "crates/web/examples/color_math_bench.rs": "3ee6ad91f5d330a209cf6312a3734284f72420e858d6e16c0416052fc31fa2be",
+    "crates/web/tests/colors.rs": "f8024bba93833c21ae6cac31df442799d8555e7128dca476712ca46872b5ecbc",
+    "crates/web/tests/support/color_fixtures.rs": "0dfb791f27dd694b477f90cfde3faf978dd12cdf6151afe92e2b9d2dd169cb61",
+    "crates/web/src/css/color/convert.rs": "2eef89e99719ee8683b98157763b8fdc833ba3da1e92dca788ae76a982cedcac",
+    "crates/web/src/css/color/functional.rs": "7ef26acb6812221e222707ae9191709b9468cec18e61c7c7a9d3635558910a89",
+    "crates/web/src/css/color/matrices.rs": "33328e8d17676b33931aadaf47b1a4cbe56ae6701227f0c9353f4f8643d810f8",
+    "crates/web/src/css/color/mod.rs": "8e43c8e222c95f1e951c62ce4200ed0d1b4488bf08c236ee4d6ba35b55fd3a9d",
+    "crates/web/src/css/color/named.rs": "6958596a5aea786c365ccc092f37e83b3ae9a5919a563a8c7ce15a1a0ff598e0",
+    "crates/web/src/css/color/parse.rs": "9094982af95c5625ee85367ca646ac987567142d46f0ec39880d75cdf192cb07",
+    "crates/web/src/css/math/mod.rs": "2699c39a09753a26230c80437f2b04a3b7da40a055da91f814cea7b9efc6cf59",
+    "crates/web/src/css/math/ops.rs": "3efa991a803cf1e970c28939b34a4a881ebba050f53a1c453b7b1ac4f5c12a7b",
+    "crates/web/src/css/math/parse.rs": "80e2076c438e4f550c4be2a2fcbcc04fccab80be11e8f0d30660077759f309eb",
+    "crates/web/src/css/math/units.rs": "9bf28bc5cc1bb7df96d0735d852c9ffcb191b6b9e9ac2b4bbe4ea948b9b42110"
+  },
+  "before_source_sha256": {
+    "crates/web/src/css/color/mod.rs": "412ff93ca9a6d60769b35a26adbf1733590d272a1559f50e85c54e3007f34b9e",
+    "crates/web/src/css/color/parse.rs": "b99cd0977081d310f1cbde050e634661559f0199fb5cd6e3fcfd425a33114b23",
+    "crates/web/examples/color_bench.rs": "0f1ad0330740171ca8e325f132ab436d08fb22b01429074a77964acd9267704b",
+    "crates/web/Cargo.toml": "ee68d25d2985f617b88745b2b4a3bf65e1f0d0102efc3bf1496197f8b6ec20a9"
+  },
+  "binary_sha256": {
+    "before": "3a9683cfcbe96ae6860ecf97e6849076e2a8c25717d2aac27c7b137abb114eb7",
+    "after": "20916d438654beec34563113a96e36d94c2239a3dd6c52220adcc8d52c3fd385",
+    "math": "6613ca72cdc8de1c8f562743974e63753d24ad350365b1a0336c101239bef95e"
+  },
+  "checks": {
+    "engine_release_tests": {
+      "sha256": "814473aac1dde39d368ebdd51a8c24a0c911c1d504c43bb3e09a433fc11ff4d3",
+      "final_lines": [
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s",
+        "",
+        "   Doc-tests olo_web",
+        "",
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "all_features_color_tests": {
+      "sha256": "5a9bbed771a4403dc0c39881f3d1f0400be8e8dd22bd149023235b5eb849b526",
+      "final_lines": [
+        "test math_color_quotas_cover_all_channels_and_conditional_nodes ... ok",
+        "test hostile_values_limits_depth_cancellation_and_flat_drop ... ok",
+        "test bounded_batch_matches_individual_conversions_and_resumes_after_cancel ... ok",
+        "test deterministic_malformed_value_fuzz ... ok",
+        "test independent_pinned_grammar_and_conversion_vectors ... ok",
+        "",
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        ""
+      ]
+    },
+    "f64_color_tests": {
+      "sha256": "4678122873a0e18490116c71fd44e413e81d2d13d285357d1a089fd8457e97e9",
+      "final_lines": [
+        "test math_color_quotas_cover_all_channels_and_conditional_nodes ... ok",
+        "test hostile_values_limits_depth_cancellation_and_flat_drop ... ok",
+        "test bounded_batch_matches_individual_conversions_and_resumes_after_cancel ... ok",
+        "test deterministic_malformed_value_fuzz ... ok",
+        "test independent_pinned_grammar_and_conversion_vectors ... ok",
+        "",
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        ""
+      ]
+    },
+    "default_strict_clippy": {
+      "sha256": "a604bb18e41fae3051ea67bcc2aa30e552df038420af7c21f378b6289c3e5647",
+      "final_lines": [
+        "warning: profiles for the non root package will be ignored, specify profiles at the workspace root:",
+        "package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml",
+        "workspace: /home/ben/worktrees/olo/browser/Cargo.toml",
+        "    Checking olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 1.14s"
+      ]
+    },
+    "all_features_strict_clippy": {
+      "sha256": "504bf43337df4e5b5e4fa44d1a18e68034db5bdb0ecdc22ec499b83aeb79960b",
+      "final_lines": [
+        "warning: profiles for the non root package will be ignored, specify profiles at the workspace root:",
+        "package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml",
+        "workspace: /home/ben/worktrees/olo/browser/Cargo.toml",
+        "    Checking olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 1.15s"
+      ]
+    },
+    "workspace_release_build": {
+      "sha256": "5a484126044f0a840d83954239a5a909a6e70bac088ef94b2122ff34d5787849",
+      "final_lines": [
+        "1940 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {",
+        "     |            ^^^^^^^^^^^^^^",
+        "",
+        "warning: `gpui` (lib) generated 7 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)",
+        "   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 2.04s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    },
+    "package_format": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "final_lines": []
+    }
+  },
+  "summary": {
+    "before": {
+      "value_size": 24,
+      "color_size": 20,
+      "ten_thousand_absolute_values_reserved_bytes": 240000,
+      "rss_kib_samples": [
+        18436,
+        18468,
+        18460
+      ],
+      "parsing": [
+        {
+          "source": "#369c",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 15.5639,
+          "resolve_ns": 13.4428,
+          "first_parse_ns": 792
+        },
+        {
+          "source": "rebeccapurple",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 101.8885,
+          "resolve_ns": 13.1737,
+          "first_parse_ns": 1032
+        },
+        {
+          "source": "rgb(30% 60% 90% / 70%)",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 68.3533,
+          "resolve_ns": 13.2535,
+          "first_parse_ns": 1228
+        },
+        {
+          "source": "oklch(60% 0.25 150 / 0.8)",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 69.2601,
+          "resolve_ns": 13.7755,
+          "first_parse_ns": 519
+        },
+        {
+          "source": "color(display-p3 1 0.5 -0.2)",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 70.05575,
+          "resolve_ns": 13.1759,
+          "first_parse_ns": 358
+        },
+        {
+          "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))",
+          "expression_nodes": 5,
+          "expression_reserved_bytes": 208,
+          "parse_ns": 166.3368,
+          "resolve_ns": 14.00135,
+          "first_parse_ns": 841
+        }
+      ],
+      "conversion": [
+        {
+          "from": "Srgb",
+          "to": "Srgb",
+          "median_of_run_medians_ms": 0.12240100000000001
+        },
+        {
+          "from": "DisplayP3Linear",
+          "to": "SrgbLinear",
+          "median_of_run_medians_ms": 0.894738
+        },
+        {
+          "from": "XyzD50",
+          "to": "DisplayP3Linear",
+          "median_of_run_medians_ms": 0.8882789999999999
+        },
+        {
+          "from": "Oklab",
+          "to": "Srgb",
+          "median_of_run_medians_ms": 8.213757
+        },
+        {
+          "from": "DisplayP3",
+          "to": "Srgb",
+          "median_of_run_medians_ms": 16.036633000000002
+        }
+      ]
+    },
+    "after": {
+      "value_size": 24,
+      "color_size": 20,
+      "ten_thousand_absolute_values_reserved_bytes": 240000,
+      "rss_kib_samples": [
+        18780,
+        18644,
+        18788
+      ],
+      "parsing": [
+        {
+          "source": "#369c",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 17.64205,
+          "resolve_ns": 14.37635,
+          "first_parse_ns": 2227
+        },
+        {
+          "source": "rebeccapurple",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 109.3872,
+          "resolve_ns": 13.83735,
+          "first_parse_ns": 1582
+        },
+        {
+          "source": "rgb(30% 60% 90% / 70%)",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 80.10485,
+          "resolve_ns": 13.96885,
+          "first_parse_ns": 1485
+        },
+        {
+          "source": "oklch(60% 0.25 150 / 0.8)",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 85.87775,
+          "resolve_ns": 13.73505,
+          "first_parse_ns": 402
+        },
+        {
+          "source": "color(display-p3 1 0.5 -0.2)",
+          "expression_nodes": 0,
+          "expression_reserved_bytes": 0,
+          "parse_ns": 75.68715,
+          "resolve_ns": 13.83715,
+          "first_parse_ns": 393
+        },
+        {
+          "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))",
+          "expression_nodes": 5,
+          "expression_reserved_bytes": 232,
+          "parse_ns": 190.7081,
+          "resolve_ns": 14.42785,
+          "first_parse_ns": 923
+        }
+      ],
+      "conversion": [
+        {
+          "from": "Srgb",
+          "to": "Srgb",
+          "median_of_run_medians_ms": 0.1228075
+        },
+        {
+          "from": "DisplayP3Linear",
+          "to": "SrgbLinear",
+          "median_of_run_medians_ms": 0.87955
+        },
+        {
+          "from": "XyzD50",
+          "to": "DisplayP3Linear",
+          "median_of_run_medians_ms": 0.8870215
+        },
+        {
+          "from": "Oklab",
+          "to": "Srgb",
+          "median_of_run_medians_ms": 8.217421000000002
+        },
+        {
+          "from": "DisplayP3",
+          "to": "Srgb",
+          "median_of_run_medians_ms": 16.0558605
+        }
+      ]
+    }
+  },
+  "contextual_summary": {
+    "cases": [
+      {
+        "source": "rgb(calc(100 + 20) 0 0)",
+        "source_bytes": 23,
+        "extra_retained_bytes": 0,
+        "conditional_nodes": 0,
+        "parse_us": 0.134286,
+        "resolve_us": 0.00937365,
+        "first_parse_us": 3.511,
+        "first_resolve_us": 0.437
+      },
+      {
+        "source": "oklch(calc(25% * 2) .2 calc(1turn + 30deg))",
+        "source_bytes": 43,
+        "extra_retained_bytes": 0,
+        "conditional_nodes": 0,
+        "parse_us": 0.2218415,
+        "resolve_us": 0.0087201,
+        "first_parse_us": 1.524,
+        "first_resolve_us": 0.034
+      },
+      {
+        "source": "color(srgb calc(50% + sign(1em - 10px) * 10%) 0 0 / .5)",
+        "source_bytes": 55,
+        "extra_retained_bytes": 280,
+        "conditional_nodes": 0,
+        "parse_us": 0.359902,
+        "resolve_us": 0.0433222,
+        "first_parse_us": 2.377,
+        "first_resolve_us": 0.817
+      },
+      {
+        "source": "rgb(calc(sign(2cqw - 10px) * 255) 0 0)",
+        "source_bytes": 38,
+        "extra_retained_bytes": 248,
+        "conditional_nodes": 0,
+        "parse_us": 0.3215945,
+        "resolve_us": 0.036740550000000004,
+        "first_parse_us": 1.009,
+        "first_resolve_us": 0.324
+      },
+      {
+        "source": "color(srgb calc(sibling-index() / sibling-count()) 0 0)",
+        "source_bytes": 55,
+        "extra_retained_bytes": 216,
+        "conditional_nodes": 0,
+        "parse_us": 0.2599525,
+        "resolve_us": 0.027861249999999997,
+        "first_parse_us": 0.647,
+        "first_resolve_us": 0.218
+      },
+      {
+        "source": "light-dark(Canvas, oklab(calc(.5 + sign(1em - 10px) * .1) .2 .3))",
+        "source_bytes": 65,
+        "extra_retained_bytes": 416,
+        "conditional_nodes": 3,
+        "parse_us": 0.447759,
+        "resolve_us": 0.050707050000000004,
+        "first_parse_us": 1.789,
+        "first_resolve_us": 0.27099999999999996
+      },
+      {
+        "source": "rgb(calc((1em + 1px + 1px + 1px + 1px + 1px + 1px \u2026 (6026 bytes)",
+        "source_bytes": 6026,
+        "extra_retained_bytes": 232,
+        "conditional_nodes": 0,
+        "parse_us": 25.604093000000002,
+        "resolve_us": 0.033935200000000006,
+        "first_parse_us": 30.127000000000002,
+        "first_resolve_us": 0.43
+      }
+    ],
+    "pools": [
+      {
+        "count": 10000,
+        "separately_compiled_reserved_bytes": 240000,
+        "source": "rgb(calc(100 + 20) 0 0)"
+      },
+      {
+        "count": 10000,
+        "separately_compiled_reserved_bytes": 240000,
+        "source": "oklch(calc(25% * 2) .2 calc(1turn + 30deg))"
+      },
+      {
+        "count": 10000,
+        "separately_compiled_reserved_bytes": 3040000,
+        "source": "color(srgb calc(50% + sign(1em - 10px) * 10%) 0 0 / .5)"
+      }
+    ],
+    "rss_kib_samples": [
+      6284,
+      6096,
+      6324
+    ]
+  },
+  "runs": [
+    {
+      "mode": "before",
+      "run": 0,
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.196691,
+            "first_step_us": 4.443,
+            "from": "Srgb",
+            "max_step_us": 4.443,
+            "samples_ms": [
+              0.125445,
+              0.122686,
+              0.12497899999999999,
+              0.127945,
+              0.12295500000000001,
+              0.12737400000000001,
+              0.12141500000000001,
+              0.12160800000000001,
+              0.127618,
+              0.127978,
+              0.131298,
+              0.12332200000000001,
+              0.124353,
+              0.133534,
+              0.128961,
+              0.121793,
+              0.12841,
+              0.121741,
+              0.12693000000000002,
+              0.12728899999999999
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.889759,
+            "first_step_us": 18.557,
+            "from": "DisplayP3Linear",
+            "max_step_us": 18.557,
+            "samples_ms": [
+              0.876198,
+              0.888413,
+              0.876186,
+              0.901336,
+              0.894407,
+              0.873183,
+              0.890499,
+              0.874329,
+              0.8734230000000001,
+              0.9182180000000001,
+              0.933763,
+              0.917257,
+              0.9145270000000001,
+              0.9283089999999999,
+              0.916272,
+              0.900442,
+              0.897708,
+              0.901867,
+              0.895995,
+              0.8775109999999999
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.939641,
+            "first_step_us": 16.248,
+            "from": "XyzD50",
+            "max_step_us": 17.056,
+            "samples_ms": [
+              0.878374,
+              0.892566,
+              0.894829,
+              0.889195,
+              0.894695,
+              0.907294,
+              0.875584,
+              0.876196,
+              0.875665,
+              0.893475,
+              0.8939739999999999,
+              0.876203,
+              0.889377,
+              0.880312,
+              0.915226,
+              0.9027339999999999,
+              0.876308,
+              0.873632,
+              0.8873629999999999,
+              0.876218
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.222635,
+            "first_step_us": 139.08599999999998,
+            "from": "Oklab",
+            "max_step_us": 139.08599999999998,
+            "samples_ms": [
+              8.186544,
+              8.226846,
+              8.293358000000001,
+              8.287998,
+              8.194523,
+              8.305458,
+              8.334222,
+              8.350201,
+              8.267261,
+              8.176262,
+              8.189518999999999,
+              8.170111,
+              8.186154,
+              8.167892,
+              8.164569,
+              8.170738,
+              8.146901999999999,
+              8.140400000000001,
+              8.133977,
+              8.176711
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 15.994601000000001,
+            "first_step_us": 248.55500000000004,
+            "from": "DisplayP3",
+            "max_step_us": 262.619,
+            "samples_ms": [
+              15.913676000000002,
+              15.999336,
+              16.148683000000002,
+              15.854277,
+              15.960293,
+              16.282827,
+              16.156160999999997,
+              16.21794,
+              16.141866,
+              16.053137,
+              16.017298999999998,
+              16.001492,
+              15.845623,
+              16.113324,
+              15.846618,
+              16.023618,
+              15.983743000000002,
+              16.018322,
+              15.949878,
+              16.000844999999998
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 821,
+            "parse_ns": 15.8805,
+            "resolve_ns": 13.35815,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1020,
+            "parse_ns": 106.5719,
+            "resolve_ns": 13.1737,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1331,
+            "parse_ns": 69.2914,
+            "resolve_ns": 13.1731,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 519,
+            "parse_ns": 69.2601,
+            "resolve_ns": 13.7755,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 431,
+            "parse_ns": 72.23885,
+            "resolve_ns": 13.1759,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 208,
+            "first_parse_ns": 840,
+            "parse_ns": 169.0431,
+            "resolve_ns": 14.00135,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-before 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.60\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18436\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 6599\n\tVoluntary context switches: 2\n\tInvoluntary context switches: 11\n\tSwaps: 0\n\tFile system inputs: 24\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 0,
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.139687,
+            "first_step_us": 2.287,
+            "from": "Srgb",
+            "max_step_us": 18.471999999999998,
+            "samples_ms": [
+              0.12261499999999999,
+              0.12173,
+              0.122371,
+              0.120835,
+              0.122557,
+              0.121674,
+              0.12237200000000001,
+              0.12246199999999999,
+              0.12201000000000001,
+              0.121321,
+              0.121908,
+              0.12076,
+              0.121764,
+              0.121125,
+              0.121934,
+              0.120941,
+              0.122013,
+              0.120743,
+              0.12324600000000001,
+              0.119649
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.883253,
+            "first_step_us": 16.857000000000003,
+            "from": "DisplayP3Linear",
+            "max_step_us": 16.857000000000003,
+            "samples_ms": [
+              0.877182,
+              0.873824,
+              0.876148,
+              0.883316,
+              0.876218,
+              0.8753489999999999,
+              0.893247,
+              0.8829859999999999,
+              0.8806280000000001,
+              0.879471,
+              0.8804350000000001,
+              0.873954,
+              0.87612,
+              0.875194,
+              0.874624,
+              0.879511,
+              0.8741979999999999,
+              0.8764270000000001,
+              0.874929,
+              0.898839
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.890098,
+            "first_step_us": 19.223,
+            "from": "XyzD50",
+            "max_step_us": 19.223,
+            "samples_ms": [
+              0.876509,
+              0.876652,
+              0.872841,
+              0.871949,
+              0.874397,
+              0.874814,
+              0.8844369999999999,
+              0.892041,
+              0.8770600000000001,
+              0.877629,
+              0.881563,
+              0.870888,
+              0.889856,
+              0.8758319999999999,
+              0.874694,
+              0.8736119999999999,
+              0.873012,
+              0.877845,
+              0.8756820000000001,
+              0.921289
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.400341000000001,
+            "first_step_us": 143.69400000000002,
+            "from": "Oklab",
+            "max_step_us": 145.647,
+            "samples_ms": [
+              8.234143,
+              8.246533,
+              8.191146,
+              8.188027,
+              8.15624,
+              8.159294,
+              8.271591,
+              8.332180999999999,
+              8.282266,
+              8.217051,
+              8.154974000000001,
+              10.820912,
+              8.308724,
+              8.291409,
+              8.209327,
+              20.097476,
+              8.201656,
+              8.202383000000001,
+              18.356458,
+              8.209199
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 16.157486,
+            "first_step_us": 259.19,
+            "from": "DisplayP3",
+            "max_step_us": 261.204,
+            "samples_ms": [
+              16.071412,
+              15.928626000000001,
+              15.937826,
+              15.935972999999999,
+              15.910244,
+              15.895743,
+              16.064826,
+              15.890531999999999,
+              16.111401,
+              16.309974,
+              15.945771,
+              16.234967,
+              16.134407,
+              16.284693,
+              16.172909,
+              16.128781,
+              16.041043000000002,
+              15.984442000000001,
+              16.005727,
+              16.117646999999998
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 4321,
+            "parse_ns": 17.93495,
+            "resolve_ns": 14.4423,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1788,
+            "parse_ns": 106.30145,
+            "resolve_ns": 14.1761,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1803,
+            "parse_ns": 80.10485,
+            "resolve_ns": 13.96885,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 439,
+            "parse_ns": 83.4751,
+            "resolve_ns": 13.8438,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 420,
+            "parse_ns": 73.98105,
+            "resolve_ns": 13.83715,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 980,
+            "parse_ns": 189.70545,
+            "resolve_ns": 14.41415,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-after 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.01\n\tPercent of CPU this job got: 95%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.63\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18780\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 6604\n\tVoluntary context switches: 3\n\tInvoluntary context switches: 96\n\tSwaps: 0\n\tFile system inputs: 4496\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 1,
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.142722,
+            "first_step_us": 2.501,
+            "from": "Srgb",
+            "max_step_us": 2.501,
+            "samples_ms": [
+              0.123795,
+              0.126638,
+              0.136415,
+              0.121273,
+              0.121643,
+              0.12118999999999999,
+              0.122047,
+              0.122121,
+              0.120871,
+              0.124745,
+              0.121253,
+              0.141982,
+              0.125734,
+              0.138697,
+              0.121046,
+              0.125488,
+              0.12124599999999999,
+              0.12564999999999998,
+              0.126467,
+              0.121688
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.911721,
+            "first_step_us": 15.909999999999998,
+            "from": "DisplayP3Linear",
+            "max_step_us": 17.367,
+            "samples_ms": [
+              0.885052,
+              0.8849090000000001,
+              0.888528,
+              0.88196,
+              0.87294,
+              0.882642,
+              0.882405,
+              0.883506,
+              0.9091499999999999,
+              0.8856120000000001,
+              0.8750220000000001,
+              0.9034639999999999,
+              0.9105030000000001,
+              0.893122,
+              0.902336,
+              0.89263,
+              0.907309,
+              0.893439,
+              0.926124,
+              0.8749199999999999
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.9911989999999999,
+            "first_step_us": 18.753,
+            "from": "XyzD50",
+            "max_step_us": 21.425,
+            "samples_ms": [
+              0.893937,
+              0.8965540000000001,
+              0.9173239999999999,
+              0.9028480000000001,
+              0.898564,
+              0.892799,
+              0.888426,
+              0.894657,
+              0.876099,
+              0.873216,
+              0.872402,
+              0.874452,
+              0.876361,
+              0.914058,
+              0.894876,
+              0.87541,
+              0.874883,
+              0.9052910000000001,
+              0.876156,
+              0.8742030000000001
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.172028,
+            "first_step_us": 139.935,
+            "from": "Oklab",
+            "max_step_us": 139.935,
+            "samples_ms": [
+              8.201026,
+              8.191398000000001,
+              8.221403,
+              8.17769,
+              8.186088,
+              8.261017,
+              8.193351999999999,
+              8.203648,
+              8.232980000000001,
+              8.290673,
+              8.248086,
+              8.243251,
+              8.214323,
+              8.246554999999999,
+              8.213263999999999,
+              8.24894,
+              8.223878000000001,
+              8.206286,
+              8.206726,
+              8.220519000000001
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 16.014385,
+            "first_step_us": 249.942,
+            "from": "DisplayP3",
+            "max_step_us": 262.96700000000004,
+            "samples_ms": [
+              16.018931,
+              15.938035,
+              16.057029,
+              16.054692,
+              16.020350999999998,
+              16.106247,
+              15.971616000000001,
+              15.951832999999999,
+              15.963997,
+              15.962962000000001,
+              16.047083,
+              16.173789,
+              16.131117,
+              16.207181000000002,
+              16.245424,
+              16.191481,
+              16.110007,
+              18.471978,
+              15.950296999999999,
+              27.791705999999998
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 2227,
+            "parse_ns": 17.64205,
+            "resolve_ns": 14.37635,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1162,
+            "parse_ns": 109.3872,
+            "resolve_ns": 13.83735,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1434,
+            "parse_ns": 82.49435,
+            "resolve_ns": 14.07605,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 402,
+            "parse_ns": 86.7425,
+            "resolve_ns": 13.73505,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 393,
+            "parse_ns": 75.68715,
+            "resolve_ns": 13.84055,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 917,
+            "parse_ns": 193.3717,
+            "resolve_ns": 14.42785,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-after 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.01\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.61\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18644\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6603\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 67\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 1,
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.12295500000000001,
+            "first_step_us": 2.433,
+            "from": "Srgb",
+            "max_step_us": 2.433,
+            "samples_ms": [
+              0.121478,
+              0.12548600000000001,
+              0.12240100000000001,
+              0.12197300000000001,
+              0.12044099999999999,
+              0.121686,
+              0.12386,
+              0.122024,
+              0.120878,
+              0.123962,
+              0.120417,
+              0.122299,
+              0.12042800000000001,
+              0.121828,
+              0.120707,
+              0.14076,
+              0.12611799999999998,
+              0.125176,
+              0.120905,
+              0.121944
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.9218930000000001,
+            "first_step_us": 18.610999999999997,
+            "from": "DisplayP3Linear",
+            "max_step_us": 18.963,
+            "samples_ms": [
+              10.67151,
+              0.878275,
+              0.911146,
+              0.913909,
+              0.917036,
+              0.894852,
+              0.900533,
+              0.9152669999999999,
+              0.8972939999999999,
+              0.8938149999999999,
+              0.876527,
+              0.897232,
+              0.8758159999999999,
+              0.891316,
+              0.890205,
+              0.894624,
+              0.89989,
+              0.877838,
+              0.8713,
+              0.888124
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.8907010000000001,
+            "first_step_us": 18.605,
+            "from": "XyzD50",
+            "max_step_us": 18.605,
+            "samples_ms": [
+              0.877175,
+              0.875576,
+              0.890678,
+              0.890848,
+              0.8765580000000001,
+              0.8929590000000001,
+              0.8800140000000001,
+              0.87842,
+              0.884873,
+              0.913979,
+              0.896411,
+              0.8980859999999999,
+              0.8779589999999999,
+              0.891123,
+              0.888406,
+              0.888707,
+              0.878377,
+              0.875105,
+              0.891256,
+              0.8795689999999999
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.240757,
+            "first_step_us": 145.255,
+            "from": "Oklab",
+            "max_step_us": 145.255,
+            "samples_ms": [
+              8.198286000000001,
+              8.231784000000001,
+              8.239822,
+              8.176208,
+              8.214637999999999,
+              8.294485,
+              8.277754999999999,
+              8.349234000000001,
+              8.269224000000001,
+              8.28768,
+              8.348248000000002,
+              8.271193,
+              8.262357999999999,
+              8.259559,
+              8.238558999999999,
+              8.301704,
+              8.304443,
+              8.2849,
+              8.306354,
+              8.252316
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 16.181511999999998,
+            "first_step_us": 261.167,
+            "from": "DisplayP3",
+            "max_step_us": 262.652,
+            "samples_ms": [
+              16.158019,
+              16.024131,
+              16.181145,
+              16.115736,
+              16.091635,
+              16.031867000000002,
+              16.047279,
+              16.043831,
+              15.895425000000001,
+              15.857572000000001,
+              15.999757,
+              15.877723,
+              15.915605,
+              16.015397,
+              15.887729,
+              15.852985,
+              16.112135,
+              16.049729,
+              16.181725,
+              16.041399000000002
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 792,
+            "parse_ns": 15.4861,
+            "resolve_ns": 13.91765,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1032,
+            "parse_ns": 101.8885,
+            "resolve_ns": 13.8978,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1164,
+            "parse_ns": 66.5695,
+            "resolve_ns": 14.14005,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 548,
+            "parse_ns": 68.05435,
+            "resolve_ns": 13.9104,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 336,
+            "parse_ns": 70.05575,
+            "resolve_ns": 14.0779,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 208,
+            "first_parse_ns": 841,
+            "parse_ns": 166.3368,
+            "resolve_ns": 14.44355,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-before 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.61\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18468\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6601\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 51\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 2,
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.142019,
+            "first_step_us": 4.041,
+            "from": "Srgb",
+            "max_step_us": 4.041,
+            "samples_ms": [
+              0.121729,
+              0.127026,
+              0.12084800000000001,
+              0.12214499999999999,
+              0.12318,
+              0.12175799999999999,
+              0.12282699999999999,
+              0.122406,
+              0.12095800000000001,
+              0.12244400000000001,
+              0.12660500000000002,
+              0.13958500000000001,
+              0.12999100000000002,
+              0.123644,
+              0.12034600000000001,
+              0.12239600000000002,
+              0.120312,
+              0.122125,
+              0.12108,
+              0.122586
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.8822749999999999,
+            "first_step_us": 18.092,
+            "from": "DisplayP3Linear",
+            "max_step_us": 18.092,
+            "samples_ms": [
+              0.87483,
+              0.886421,
+              0.876417,
+              0.875167,
+              0.876992,
+              0.8783000000000001,
+              0.872045,
+              0.875734,
+              0.886955,
+              0.875071,
+              0.873291,
+              0.874969,
+              0.8753259999999999,
+              0.877764,
+              0.8769210000000001,
+              0.873776,
+              0.8932,
+              0.888145,
+              0.875356,
+              0.8840480000000001
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.8935320000000001,
+            "first_step_us": 18.695,
+            "from": "XyzD50",
+            "max_step_us": 18.695,
+            "samples_ms": [
+              0.8798229999999999,
+              0.873754,
+              0.876696,
+              0.874902,
+              0.888522,
+              0.875959,
+              0.8923479999999999,
+              0.8769710000000001,
+              0.892076,
+              0.90115,
+              0.904884,
+              0.9111670000000001,
+              0.9006879999999999,
+              0.890474,
+              0.906918,
+              0.887948,
+              0.898388,
+              0.877643,
+              0.906531,
+              0.937659
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.175217,
+            "first_step_us": 138.823,
+            "from": "Oklab",
+            "max_step_us": 138.823,
+            "samples_ms": [
+              8.210657,
+              8.238034,
+              8.247513,
+              8.25437,
+              8.249319999999999,
+              8.205487,
+              8.140494,
+              8.176423,
+              8.140154,
+              8.275225,
+              8.177515,
+              8.18343,
+              8.161787,
+              8.216857,
+              8.263480999999999,
+              8.304343000000001,
+              8.324734,
+              8.286297,
+              8.152695999999999,
+              8.167575999999999
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 15.97444,
+            "first_step_us": 253.061,
+            "from": "DisplayP3",
+            "max_step_us": 262.433,
+            "samples_ms": [
+              15.87146,
+              15.940564,
+              15.835528000000002,
+              18.452562,
+              16.114746999999998,
+              27.730595,
+              16.177839,
+              16.137654,
+              16.012117,
+              16.039475,
+              15.994291,
+              16.117818,
+              15.968546,
+              15.934028,
+              16.252859,
+              16.170852999999997,
+              16.104581,
+              16.113213000000002,
+              16.191443,
+              16.176744
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 744,
+            "parse_ns": 15.5639,
+            "resolve_ns": 13.4428,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1127,
+            "parse_ns": 101.4165,
+            "resolve_ns": 13.17015,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1228,
+            "parse_ns": 68.3533,
+            "resolve_ns": 13.2535,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 516,
+            "parse_ns": 70.0897,
+            "resolve_ns": 13.17155,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 358,
+            "parse_ns": 66.149,
+            "resolve_ns": 13.1717,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 208,
+            "first_parse_ns": 846,
+            "parse_ns": 163.32175,
+            "resolve_ns": 13.9651,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-before 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.61\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18460\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6599\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 62\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 2,
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.13676000000000002,
+            "first_step_us": 2.509,
+            "from": "Srgb",
+            "max_step_us": 2.509,
+            "samples_ms": [
+              0.12856700000000001,
+              0.12213600000000001,
+              0.12287999999999999,
+              0.136539,
+              0.122371,
+              0.12273500000000001,
+              0.122044,
+              0.122356,
+              0.12753,
+              0.133344,
+              0.12637400000000001,
+              0.127066,
+              0.122302,
+              0.121346,
+              0.122535,
+              0.121735,
+              0.14155900000000002,
+              0.121968,
+              0.12432900000000001,
+              0.12736
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.878737,
+            "first_step_us": 14.626,
+            "from": "DisplayP3Linear",
+            "max_step_us": 15.796,
+            "samples_ms": [
+              0.8794029999999999,
+              0.897293,
+              0.8963260000000001,
+              0.87669,
+              0.897621,
+              0.88537,
+              0.8729669999999999,
+              0.873838,
+              0.876094,
+              0.876831,
+              0.91067,
+              0.872713,
+              0.8732749999999999,
+              0.874301,
+              0.873383,
+              0.8990699999999999,
+              0.920742,
+              0.913416,
+              0.8796970000000001,
+              0.879818
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.9548220000000001,
+            "first_step_us": 18.612000000000002,
+            "from": "XyzD50",
+            "max_step_us": 20.355,
+            "samples_ms": [
+              0.87807,
+              0.8925759999999999,
+              0.8749600000000001,
+              0.871639,
+              0.874001,
+              0.8875470000000001,
+              0.8944639999999999,
+              0.915982,
+              0.949877,
+              0.880062,
+              0.878221,
+              0.875345,
+              0.893723,
+              0.891867,
+              0.898656,
+              0.906832,
+              0.886496,
+              0.8760140000000001,
+              0.873406,
+              0.8916590000000001
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.317734,
+            "first_step_us": 137.09799999999998,
+            "from": "Oklab",
+            "max_step_us": 137.09799999999998,
+            "samples_ms": [
+              8.203567999999999,
+              8.187315,
+              8.29334,
+              8.195743,
+              8.303068999999999,
+              8.201056999999999,
+              8.164746000000001,
+              8.187054,
+              8.202677,
+              8.149505,
+              8.265081,
+              8.211575,
+              8.171579999999999,
+              8.167917000000001,
+              8.173451,
+              8.257499,
+              8.148887,
+              8.131564000000001,
+              8.155278000000001,
+              8.181761
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 15.923219999999999,
+            "first_step_us": 258.946,
+            "from": "DisplayP3",
+            "max_step_us": 259.911,
+            "samples_ms": [
+              15.870991,
+              15.867864999999998,
+              16.084384,
+              16.073425999999998,
+              16.073799,
+              16.107996,
+              15.916534,
+              16.043561,
+              15.975133,
+              15.941255000000002,
+              15.993721999999998,
+              16.104233999999998,
+              16.040965,
+              16.077426,
+              16.193155,
+              16.050555000000003,
+              15.945663,
+              16.112474000000002,
+              16.072051000000002,
+              16.225392000000003
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1140,
+            "parse_ns": 16.7444,
+            "resolve_ns": 13.9447,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1582,
+            "parse_ns": 114.6268,
+            "resolve_ns": 13.1818,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1485,
+            "parse_ns": 79.49245,
+            "resolve_ns": 13.18485,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 388,
+            "parse_ns": 85.87775,
+            "resolve_ns": 13.1828,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 381,
+            "parse_ns": 79.77135,
+            "resolve_ns": 13.1864,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 923,
+            "parse_ns": 190.7081,
+            "resolve_ns": 14.6389,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-after 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.60\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18788\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6603\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 14\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ],
+  "contextual_runs": [
+    {
+      "run": 0,
+      "benchmark": {
+        "cases": [
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 0,
+            "first_parse_us": 3.511,
+            "first_resolve_us": 0.83,
+            "parse_us": 0.13324499999999997,
+            "resolve_us": 0.0094114,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.47058823704719543,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc(100 + 20) 0 0)",
+            "source_bytes": 23
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 0,
+            "first_parse_us": 1.856,
+            "first_resolve_us": 0.022,
+            "parse_us": 0.2218415,
+            "resolve_us": 0.0087186,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.5,
+                0.20000000298023224,
+                30.0
+              ],
+              "space": "Oklch"
+            },
+            "source": "oklch(calc(25% * 2) .2 calc(1turn + 30deg))",
+            "source_bytes": 43
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 280,
+            "first_parse_us": 2.377,
+            "first_resolve_us": 0.983,
+            "parse_us": 0.359902,
+            "resolve_us": 0.0421266,
+            "result": {
+              "alpha": 0.5,
+              "coordinates": [
+                0.6000000238418579,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "color(srgb calc(50% + sign(1em - 10px) * 10%) 0 0 / .5)",
+            "source_bytes": 55
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 248,
+            "first_parse_us": 1.009,
+            "first_resolve_us": 0.404,
+            "parse_us": 0.341248,
+            "resolve_us": 0.036740550000000004,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc(sign(2cqw - 10px) * 255) 0 0)",
+            "source_bytes": 38
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 216,
+            "first_parse_us": 1.101,
+            "first_resolve_us": 0.28900000000000003,
+            "parse_us": 0.2809235,
+            "resolve_us": 0.028283799999999998,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.75,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "color(srgb calc(sibling-index() / sibling-count()) 0 0)",
+            "source_bytes": 55
+          },
+          {
+            "conditional_nodes": 3,
+            "extra_retained_bytes": 416,
+            "first_parse_us": 2.771,
+            "first_resolve_us": 0.537,
+            "parse_us": 0.447759,
+            "resolve_us": 0.05181685,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.6000000238418579,
+                0.20000000298023224,
+                0.30000001192092896
+              ],
+              "space": "Oklab"
+            },
+            "source": "light-dark(Canvas, oklab(calc(.5 + sign(1em - 10px) * .1) .2 .3))",
+            "source_bytes": 65
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 232,
+            "first_parse_us": 30.127000000000002,
+            "first_resolve_us": 1.4849999999999999,
+            "parse_us": 25.468589499999997,
+            "resolve_us": 0.0317703,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc((1em + 1px + 1px + 1px + 1px + 1px + 1px \u2026 (6026 bytes)",
+            "source_bytes": 6026
+          }
+        ],
+        "color_size": 20,
+        "pools": [
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 240000,
+            "source": "rgb(calc(100 + 20) 0 0)"
+          },
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 240000,
+            "source": "oklch(calc(25% * 2) .2 calc(1turn + 30deg))"
+          },
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 3040000,
+            "source": "color(srgb calc(50% + sign(1em - 10px) * 10%) 0 0 / .5)"
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed contextual color math from prebuilt syntax with explicit host snapshots; no CSSOM/style/layout/painting/JS/network/UI or Chrome comparison",
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-math 20\"\n\tUser time (seconds): 0.06\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 6284\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 1102\n\tVoluntary context switches: 3\n\tInvoluntary context switches: 5\n\tSwaps: 0\n\tFile system inputs: 4488\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "run": 1,
+      "benchmark": {
+        "cases": [
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 0,
+            "first_parse_us": 3.331,
+            "first_resolve_us": 0.15,
+            "parse_us": 0.134286,
+            "resolve_us": 0.0087462,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.47058823704719543,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc(100 + 20) 0 0)",
+            "source_bytes": 23
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 0,
+            "first_parse_us": 1.158,
+            "first_resolve_us": 0.051,
+            "parse_us": 0.21803,
+            "resolve_us": 0.0087201,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.5,
+                0.20000000298023224,
+                30.0
+              ],
+              "space": "Oklch"
+            },
+            "source": "oklch(calc(25% * 2) .2 calc(1turn + 30deg))",
+            "source_bytes": 43
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 280,
+            "first_parse_us": 1.637,
+            "first_resolve_us": 0.6980000000000001,
+            "parse_us": 0.33445600000000003,
+            "resolve_us": 0.0433222,
+            "result": {
+              "alpha": 0.5,
+              "coordinates": [
+                0.6000000238418579,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "color(srgb calc(50% + sign(1em - 10px) * 10%) 0 0 / .5)",
+            "source_bytes": 55
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 248,
+            "first_parse_us": 0.753,
+            "first_resolve_us": 0.218,
+            "parse_us": 0.3039575,
+            "resolve_us": 0.03613465,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc(sign(2cqw - 10px) * 255) 0 0)",
+            "source_bytes": 38
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 216,
+            "first_parse_us": 0.647,
+            "first_resolve_us": 0.155,
+            "parse_us": 0.24792599999999998,
+            "resolve_us": 0.026651000000000005,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.75,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "color(srgb calc(sibling-index() / sibling-count()) 0 0)",
+            "source_bytes": 55
+          },
+          {
+            "conditional_nodes": 3,
+            "extra_retained_bytes": 416,
+            "first_parse_us": 1.583,
+            "first_resolve_us": 0.24699999999999997,
+            "parse_us": 0.436031,
+            "resolve_us": 0.04249665,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.6000000238418579,
+                0.20000000298023224,
+                0.30000001192092896
+              ],
+              "space": "Oklab"
+            },
+            "source": "light-dark(Canvas, oklab(calc(.5 + sign(1em - 10px) * .1) .2 .3))",
+            "source_bytes": 65
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 232,
+            "first_parse_us": 24.858,
+            "first_resolve_us": 0.311,
+            "parse_us": 37.656746,
+            "resolve_us": 0.03572555,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc((1em + 1px + 1px + 1px + 1px + 1px + 1px \u2026 (6026 bytes)",
+            "source_bytes": 6026
+          }
+        ],
+        "color_size": 20,
+        "pools": [
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 240000,
+            "source": "rgb(calc(100 + 20) 0 0)"
+          },
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 240000,
+            "source": "oklch(calc(25% * 2) .2 calc(1turn + 30deg))"
+          },
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 3040000,
+            "source": "color(srgb calc(50% + sign(1em - 10px) * 10%) 0 0 / .5)"
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed contextual color math from prebuilt syntax with explicit host snapshots; no CSSOM/style/layout/painting/JS/network/UI or Chrome comparison",
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-math 20\"\n\tUser time (seconds): 0.06\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 73%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.09\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 6096\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 1099\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 84\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "run": 2,
+      "benchmark": {
+        "cases": [
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 0,
+            "first_parse_us": 4.523,
+            "first_resolve_us": 0.437,
+            "parse_us": 0.14089400000000002,
+            "resolve_us": 0.00937365,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.47058823704719543,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc(100 + 20) 0 0)",
+            "source_bytes": 23
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 0,
+            "first_parse_us": 1.524,
+            "first_resolve_us": 0.034,
+            "parse_us": 0.2283785,
+            "resolve_us": 0.00911535,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.5,
+                0.20000000298023224,
+                30.0
+              ],
+              "space": "Oklch"
+            },
+            "source": "oklch(calc(25% * 2) .2 calc(1turn + 30deg))",
+            "source_bytes": 43
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 280,
+            "first_parse_us": 2.4219999999999997,
+            "first_resolve_us": 0.817,
+            "parse_us": 0.38740749999999996,
+            "resolve_us": 0.04665535,
+            "result": {
+              "alpha": 0.5,
+              "coordinates": [
+                0.6000000238418579,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "color(srgb calc(50% + sign(1em - 10px) * 10%) 0 0 / .5)",
+            "source_bytes": 55
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 248,
+            "first_parse_us": 1.053,
+            "first_resolve_us": 0.324,
+            "parse_us": 0.3215945,
+            "resolve_us": 0.03906845,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc(sign(2cqw - 10px) * 255) 0 0)",
+            "source_bytes": 38
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 216,
+            "first_parse_us": 0.63,
+            "first_resolve_us": 0.218,
+            "parse_us": 0.2599525,
+            "resolve_us": 0.027861249999999997,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.75,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "color(srgb calc(sibling-index() / sibling-count()) 0 0)",
+            "source_bytes": 55
+          },
+          {
+            "conditional_nodes": 3,
+            "extra_retained_bytes": 416,
+            "first_parse_us": 1.789,
+            "first_resolve_us": 0.27099999999999996,
+            "parse_us": 0.4536055,
+            "resolve_us": 0.050707050000000004,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                0.6000000238418579,
+                0.20000000298023224,
+                0.30000001192092896
+              ],
+              "space": "Oklab"
+            },
+            "source": "light-dark(Canvas, oklab(calc(.5 + sign(1em - 10px) * .1) .2 .3))",
+            "source_bytes": 65
+          },
+          {
+            "conditional_nodes": 0,
+            "extra_retained_bytes": 232,
+            "first_parse_us": 31.569000000000003,
+            "first_resolve_us": 0.43,
+            "parse_us": 25.604093000000002,
+            "resolve_us": 0.033935200000000006,
+            "result": {
+              "alpha": 1.0,
+              "coordinates": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "space": "Srgb"
+            },
+            "source": "rgb(calc((1em + 1px + 1px + 1px + 1px + 1px + 1px \u2026 (6026 bytes)",
+            "source_bytes": 6026
+          }
+        ],
+        "color_size": 20,
+        "pools": [
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 240000,
+            "source": "rgb(calc(100 + 20) 0 0)"
+          },
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 240000,
+            "source": "oklch(calc(25% * 2) .2 calc(1turn + 30deg))"
+          },
+          {
+            "count": 10000,
+            "separately_compiled_reserved_bytes": 3040000,
+            "source": "color(srgb calc(50% + sign(1em - 10px) * 10%) 0 0 / .5)"
+          }
+        ],
+        "rounds": 20,
+        "scope": "Typed contextual color math from prebuilt syntax with explicit host snapshots; no CSSOM/style/layout/painting/JS/network/UI or Chrome comparison",
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/color-math/color-math 20\"\n\tUser time (seconds): 0.06\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.06\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 6324\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 1102\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 2\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ]
+}

@@ -1,0 +1,280 @@
+{
+  "scope": "Native CSS color grammar/conversion only; no style/layout/rendering or Chrome conformance",
+  "base_commit": "8cf0a2e1aee54b1e17668bb14b40104d12470311",
+  "total": 12703,
+  "counts": {
+    "passed": 9921,
+    "unsupported": 22,
+    "updated_specification": 2760
+  },
+  "new_direct_passes": {
+    "computed": 155,
+    "validity_only": 38,
+    "total": 193
+  },
+  "fixture_manifest_sha256": "1789b5122c99e0ac2f4dd4a7f9c28330a64a95edbb78356331990683dd8ae616",
+  "full_report_sha256": "3c2bf8524f689b1514c048406f1c558f2ba15117aee38f8fcc91d6753b554ba5",
+  "commands": [
+    "/usr/bin/python3 crates/web/tests/color-fixtures/extract.py",
+    "cargo test --release -p olo-web --test colors",
+    "cargo run --release -p olo-web --example color_eval -- /var/tmp/colors.json"
+  ],
+  "extraction_reproduces_exact_bytes": true,
+  "evaluator_exit_code": 1,
+  "unexpected_mismatches_errors_panics": 0,
+  "per_file_counts": {
+    "generic:generic:color_function_4.json": {
+      "passed": 219
+    },
+    "generic:generic:color_functions_5.json": {
+      "unsupported": 17,
+      "passed": 3
+    },
+    "generic:generic:color_hexadecimal_3.json": {
+      "passed": 81
+    },
+    "generic:generic:color_hexadecimal_4.json": {
+      "passed": 324
+    },
+    "generic:generic:color_hsl_3.json": {
+      "passed": 256
+    },
+    "generic:generic:color_hsl_4.json": {
+      "passed": 500
+    },
+    "generic:generic:color_hwb_4.json": {
+      "passed": 500
+    },
+    "generic:generic:color_keywords_3.json": {
+      "passed": 160
+    },
+    "generic:generic:color_keywords_4.json": {
+      "passed": 1
+    },
+    "generic:generic:color_lab_4.json": {
+      "passed": 900,
+      "updated_specification": 600
+    },
+    "generic:generic:color_lch_4.json": {
+      "passed": 720,
+      "updated_specification": 780
+    },
+    "generic:generic:color_oklab_4.json": {
+      "passed": 900,
+      "updated_specification": 600
+    },
+    "generic:generic:color_oklch_4.json": {
+      "passed": 720,
+      "updated_specification": 780
+    },
+    "extra:wpt literal port:color-computed-color-function.html": {
+      "passed": 468
+    },
+    "extra:wpt literal port:color-computed-hsl.html": {
+      "passed": 3751
+    },
+    "extra:wpt literal port:color-computed-lab.html": {
+      "passed": 134,
+      "unsupported": 2
+    },
+    "extra:wpt literal port:color-computed-rgb.html": {
+      "passed": 94,
+      "unsupported": 2
+    },
+    "extra:wpt literal port:color-invalid-hsl.html": {
+      "passed": 23
+    },
+    "extra:wpt literal port:color-invalid-hwb.html": {
+      "passed": 6
+    },
+    "extra:wpt literal port:color-invalid-lab.html": {
+      "passed": 18
+    },
+    "extra:wpt literal port:color-invalid-rgb.html": {
+      "passed": 30
+    },
+    "extra:wpt literal port:color-valid-rgb.html": {
+      "passed": 70
+    },
+    "extra:wpt unported:color-computed-rgb.html": {
+      "unsupported": 1
+    },
+    "extra:independent absolute conversions:vectors": {
+      "passed": 43
+    }
+  },
+  "nonpasses": [
+    {
+      "case": 1,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 30%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 2,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0, 81%, 81%, 30%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 3,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0, 0.81, 0.81, 0.3)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 4,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 30% / 50%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 5,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 30% / 200%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 6,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 30% / -200%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 7,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 8,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 130%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 9,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% -30%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 11,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 12,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 10% 10% 10% 0)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 13,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0 / 50%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 14,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0 / 0.5)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 15,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0 / 150%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 16,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0 / -150%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 18,
+      "file": "color_functions_5.json",
+      "input": "light-dark(device-cmyk(0 81% 81% 30%), color(--valid 0 0 0 0))",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 19,
+      "file": "color_functions_5.json",
+      "input": "light-dark(device-cmyk(0 81% 81%), color(unvalid 0 0 0 0))",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 76,
+      "expected": "lch(50 calc(infinity) 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(50 calc(infinity) 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "Unsupported(\"nonfinite computed serialization reference\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 113,
+      "expected": "oklch(0.5 calc(infinity) 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(0.5 calc(infinity) 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "Unsupported(\"nonfinite computed serialization reference\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 77,
+      "expected": "rgb(255, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(var(--high), 0, 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color RequiresSubstitution",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 78,
+      "expected": "rgb(0, 64, 128)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(var(--negative), 64, 128)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color RequiresSubstitution",
+      "suite": "wpt literal port"
+    },
+    {
+      "file": "color-computed-rgb.html",
+      "input": "rgb(2.5, 3.4, 4.6)",
+      "outcome": "unsupported",
+      "reason": "non-literal computed expectation",
+      "suite": "wpt unported"
+    }
+  ],
+  "website_evidence": {
+    "passed_cases": 0,
+    "required_cases": 3000,
+    "passing_sites": 0,
+    "selected_sites": 100
+  }
+}

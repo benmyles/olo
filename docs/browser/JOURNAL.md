@@ -1222,3 +1222,113 @@ cases, 0/100 sites**; no usable browser exists. Next: connect math to color
 channels with explicit live context and retained-memory measurements,
 then property/style compilation. Layout, painting, networking, V8, native
 shell, Olo integrations and real website eval journeys remain required.
+
+## 2026-11-05 — connect typed math to color channels
+
+Connected the original numeric compiler to color channels. Static math
+folds to ordinary absolute colors with no retained heap. Dynamic math
+retains four checked typed channels, their units/space and flat shared
+numeric programs. Root values use Arc; conditional nodes refer to an exact
+boxed leaf slice, preserving 20-byte nodes and the default 24-byte Value.
+The compiler's four pending channel slots and first Functional stay inline.
+There is no recursively owned expression tree or retained source syntax.
+
+Shared normalization preserves grammar-specific percentages, missing
+components, alpha/lightness/chroma clamps and hue normalization. Incompatible
+numeric dimensions remain invalid even if multiplication might erase them;
+percentage/number sums remain invalid. Hue contexts reject percentage
+leaves even if an expression would cancel their dimensions. Legacy comma
+and homogeneous-unit restrictions still apply. NaN/infinity/signed zero
+remain inside math until the color boundary; infinite hue normalizes to zero.
+
+Color Context now delegates unit factors and scoped tree counts to the
+numeric snapshot contract, without production defaults. Only the chosen
+conditional branch queries its context. One resolution stack is reused
+across channels; a shared work budget covers conditional visits and all
+selected numeric instructions. Actual numeric compiler work is charged to
+the outer parse budget, with aggregate node/instruction and nesting limits.
+`Value::dependencies()` exposes conservative current/system/scheme/math
+metadata, including unselected branches; conditional dependencies are
+cached while compiling. This supports future host invalidation and does
+not implement a cascade, live style host, tree scopes or dark-page adaptation.
+
+The same 12,703-case color denominator now has **9,921 direct passes,
+2,760 reviewed current-spec passes and 22 explicit non-passes**, with no
+unexpected mismatch/error/panic. **193 additional direct passes** comprise
+155 computed-coordinate assertions and 38 validity-only assertions. The
+fixture extractor records literal font sizes and preceding container-width
+assignments, never derives context from expected alpha/color, and supplies
+an explicit representative 16px font when unspecified. This is a native
+numeric environment, not font/layout measurement. Extraction reproduces
+exact bytes; all manifest hashes match; imported resources remain unchanged.
+The evaluator still exits 1. Remaining cases: eleven device colors, six
+custom profiles, two substitutions, one unported serialization-array driver
+and two infinite-chroma computed serialization references. The latter inputs
+parse, but the finite-coordinate API/reference adapter does not verify their
+serialization; those cases are explicitly unsupported, not rewritten to pass.
+
+Measured release builds on Core Ultra 7 356H, CPU 0, three sequential
+alternating before/after runs, reversed in the middle. The before binary
+comes from `8cf0a2e1`; both use the same ordinary color benchmark. Parsing
+and resolution each run 20,000 iterations per prebuilt value; figures are
+medians of three run means. Clocks/thermals/other load are uncontrolled.
+No concurrent checks were launched by this session during samples.
+Ordinary parsing before → after, in ns:
+
+- Hex **15.564 → 17.642**; keyword **101.888 → 109.387**.
+- RGB **68.353 → 80.105**; OKLCH **69.260 → 85.878**.
+- Predefined color() **70.056 → 75.687**; nested light-dark
+  **166.337 → 190.708**. The added grammar/metadata has a cost; no general
+  parsing speedup is claimed. Initial separate-validation and lazy-boxed-
+  scratch experiments were checked; final code combines static validation
+  with normalization and retains inline scratch. The lazy allocation
+  experiment was slower and was reverted.
+- Ordinary resolution medians span **13.174–14.001 → 13.735–14.428 ns**.
+- Color/Value storage remains **20/24 bytes**; 10,000 absolute values remain
+  **240,000 bytes**. The sample five-node conditional arena grows
+  **208 → 232 bytes** for its compact function-table pointer/dependency cache.
+- Existing conversion throughput (ms, median of run medians) is
+  **0.1224 → 0.1228**, **0.8947 → 0.8796**, **0.8883 → 0.8870**,
+  **8.2138 → 8.2174**, **16.0366 → 16.0559** for the unchanged five
+  workloads. No new SIMD arithmetic or conversion speedup is claimed.
+- Whole ordinary benchmark peak RSS **18,436–18,468 → 18,644–18,788 KiB**,
+  including generated/reset vectors, synthetic pool and allocator retention.
+
+A separate contextual benchmark runs three times, with 2,000 compiles and
+20,000 resolves per prebuilt value per run. No before throughput exists:
+the old parser rejects these expressions. Representative parse/resolve µs:
+static RGB math **0.1343/0.0094**, static polar math **0.2218/0.0087**, font
+math **0.3599/0.0433**, container math **0.3216/0.0367**, tree-count math
+**0.2600/0.0279**, conditional font math **0.4478/0.0507**. Extra retained
+arenas respectively **0, 0, 280, 248, 216, 416 bytes**. A 1,000-term mixed
+sum inside RGB takes **25.6041/0.0339 µs** and retains **232 extra bytes**.
+First-parse medians span **0.647–30.127 µs**, largest sample **31.569 µs**;
+first-resolve medians **0.034–0.817 µs**, largest sample **1.485 µs**. These
+are synthetic CPU worker latencies, not worst-case or UI guarantees.
+
+Pools of 10,000 separately compiled static values retain **240,000 bytes**;
+the font-math pool **3,040,000 bytes** (including each independent arena).
+Clones share those arenas. Contextual benchmark peak RSS **6,096–6,324 KiB**.
+All storage accounting excludes allocator metadata, source Syntax and
+transient compiler/resolver scratch. No browser/page memory claim follows.
+Exact commands, source/binary identities, cold latencies and raw observations:
+`measurements/2026-11-05-color-math.json`; all per-file counts/non-passes:
+`measurements/2026-11-05-color-math-coverage.json`.
+
+All **76 engine release tests** pass, including eleven color groups. Three
+new groups cover static/type/channel rules, live host context/dependencies,
+source lifetime/private Debug, lazy branches, cancellation/resumption,
+aggregate channel/conditional quotas, 10,000-deep numeric syntax and mixed
+color/math nesting beyond the shared hard cap, even with huge caller limits. All
+eleven color groups pass with all measurement features together and with
+f64 storage separately. Default/all-feature strict release clippy, package
+formatting and diff checks pass. Full workspace release build passes
+(2.04 s; existing GPUI warnings and proc-macro-error2 future-compatibility
+notice). No GUI, timers, polling, idle work or personal session changes.
+There is no visible change to screenshot-journal yet.
+
+Full browser goal remains active. Website evidence is still **0/3,000 cases,
+0/100 sites**; no usable browser exists. Next: compile property/style values,
+then cascade/rule indexing with actual contexts and invalidation. Networking,
+layout, GPU painting, V8, browser shell, Olo integrations and real website
+journeys remain required, along with the explicit CSS/HTML gaps.
