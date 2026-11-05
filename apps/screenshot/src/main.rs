@@ -35,7 +35,8 @@ use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "olo.screenshot";
 
-const SIZE: (f32, f32) = (580.0, 276.0);
+/// The window's width; it is as tall as its form needs (`Layout::height`).
+const WIDTH: f32 = 580.0;
 /// The preview's share of the window.
 const PREVIEW_W: f32 = 240.0;
 /// Labels' column in the form.
@@ -54,6 +55,19 @@ enum Msg {
     /// Something else is on the clipboard now: the path given out after
     /// saving isn't needed any more.
     Released,
+    /// A recording asked for from the window started (it goes on by
+    /// itself: we're done), or why not.
+    Recording(Result<(), String>),
+}
+
+/// What the window's Record… records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Record {
+    Screen,
+    /// The active window (the one behind ours), else the screen.
+    Window,
+    /// Dragged out first.
+    Region,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,16 +136,21 @@ struct Layout {
     form_w: f32,
     /// The bottom row of buttons' top.
     buttons_y: f32,
+    /// The window's content's height: the form, then the buttons a
+    /// spacing below it (a fixed height let "Save in:" go under them).
+    height: f32,
 }
 
 fn layout() -> Layout {
-    let (w, h) = SIZE;
+    let w = WIDTH;
     let inset = m::WINDOW_INSET;
-    let buttons_y = h - inset - m::CONTROL_HEIGHT;
+    let (last_top, last_h) = form_rows()[7];
+    let buttons_y = last_top + last_h + m::SPACING;
+    let height = buttons_y + m::CONTROL_HEIGHT + inset;
     let top_h = buttons_y - inset - inset;
     let area = Bounds { origin: point(px(inset), px(inset)), size: size(px(PREVIEW_W), px(top_h - m::LABEL_ROW - m::TIGHT)) };
     let form_x = inset + PREVIEW_W + inset + m::SPACING;
-    Layout { area, form_x, form_w: w - inset - form_x, buttons_y }
+    Layout { area, form_x, form_w: w - inset - form_x, buttons_y, height }
 }
 
 /// The form's rows: each one's top and height, from the window's top.
@@ -249,13 +268,77 @@ impl Screenshot {
         let focus = self.focus.clone();
         cx.defer(move |cx| {
             let view = me.clone();
-            let mut options = WindowOptions::new("Screenshot", SIZE.0, SIZE.1);
+            let mut options = WindowOptions::new("Screenshot", WIDTH, layout().height).fits_content();
             options.fixed = true;
             let w = olo_ui::open_window(cx, options, move |window, _| {
                 window.focus(&focus);
                 view
             });
             me.update(cx, |s, _| s.window = w);
+        });
+    }
+
+    /// Record…'s menu: what to record, or (one going on this display)
+    /// Pause, Resume and Stop.
+    fn record_menu(&self) -> olo_ui::menu::Menu {
+        use olo_ui::menu::Menu;
+        match olo_protocol::recording::going() {
+            Some(g) => {
+                let menu = Menu::new("Record");
+                let menu = if g.paused { menu.item("Resume Recording", "resume") } else { menu.item("Pause Recording", "pause") };
+                menu.item("Stop Recording", "stop")
+            }
+            None => Menu::new("Record").item("Record Screen", "screen").item("Record Active Window", "window").item("Record Region…", "region"),
+        }
+    }
+
+    fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
+        let what = match command {
+            "screen" => Record::Screen,
+            "window" => Record::Window,
+            "region" => Record::Region,
+            // The recorder's own --pause, --resume and --stop.
+            flag => {
+                let flag = format!("--{flag}");
+                std::thread::spawn(move || {
+                    if let Ok(exe) = std::env::current_exe() {
+                        let _ = std::process::Command::new(exe).arg(flag).stdout(std::process::Stdio::null()).status();
+                    }
+                });
+                return;
+            }
+        };
+        self.record(what, cx);
+    }
+
+    /// Record `what` (the pointer in it as the window has it): our window
+    /// steps aside, the recorder starts on its own (Deskbar's record
+    /// light, ⌘⇧6 or Stop Recording finish it, and it tells when it's
+    /// saved), and we're done.
+    fn record(&mut self, what: Record, cx: &mut Context<Self>) {
+        let pointer = self.settings.pointer;
+        let proxy = olo_ui::proxy(cx);
+        std::thread::spawn(move || {
+            let started = (|| {
+                let active = capture::step_aside()?;
+                let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+                let mut cmd = std::process::Command::new(exe);
+                cmd.arg("--toggle-record").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+                match (what, active) {
+                    (Record::Window, Some(id)) => {
+                        cmd.args(["--window", &id.to_string()]);
+                    }
+                    (Record::Region, _) => {
+                        cmd.arg("--region");
+                    }
+                    _ => {}
+                }
+                if !pointer {
+                    cmd.arg("--no-pointer");
+                }
+                cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+            })();
+            proxy.send(Msg::Recording(started));
         });
     }
 
@@ -336,9 +419,17 @@ impl Screenshot {
         let (iw, ih) = (dev(f32::from(area.size.width)) - 2.0 * edge, dev(f32::from(area.size.height)) - 2.0 * edge);
         let (w, h) = (shot.image.width().max(1) as f32, shot.image.height().max(1) as f32);
         let k = (iw / w).min(ih / h);
-        let (pw, ph) = ((w * k).round().max(1.0), (h * k).round().max(1.0));
-        let left = dev(f32::from(area.left())) + edge + ((iw - pw) / 2.0).round();
+        let (mut pw, mut ph) = ((w * k).round().max(1.0), (h * k).round().max(1.0));
         let top = dev(f32::from(area.top())) + edge;
+        // Its caption a few points under the middle of a row of the form
+        // beside it: the picture a little smaller, so the caption is level
+        // with that row (`render` lines it up with one just below).
+        let caption = (top + ph + edge) / scale + m::TIGHT + m::LABEL_ROW / 2.0;
+        if let Some(r) = form_rows().iter().map(|(t, h)| t + h / 2.0).find(|r| (caption - m::LABEL_ROW / 2.0..caption).contains(r)) {
+            ph = (ph - ((caption - r) * scale).ceil()).max(1.0);
+            pw = (w * ph / h).round().max(1.0);
+        }
+        let left = dev(f32::from(area.left())) + edge + ((iw - pw) / 2.0).round();
         let outer = Bounds::from_corners(point(px((left - edge) / scale), px((top - edge) / scale)), point(px((left + pw + edge) / scale), px((top + ph + edge) / scale)));
         (outer, Some((pw as u32, ph as u32)))
     }
@@ -434,6 +525,14 @@ impl Screenshot {
                 }
             }
             Msg::Released => cx.quit(),
+            Msg::Recording(Ok(())) => {
+                let _ = std::fs::remove_file(capture::scratch_path());
+                cx.quit();
+            }
+            Msg::Recording(Err(e)) => {
+                self.open_main(cx);
+                self.show_error(format!("Couldn't start recording.\n\n{e}"), cx);
+            }
         }
         cx.notify();
     }
@@ -542,18 +641,23 @@ impl Render for Screenshot {
         // Buttons.
         let idle = self.busy.is_none() && self.shot.is_some();
         let can_save = self.can_save(cx);
-        let (copy, new, save) = (me.clone(), me.clone(), me.clone());
-        let (w, _) = SIZE;
+        let (copy, new, save, rec) = (me.clone(), me.clone(), me.clone(), me.clone());
+        let w = WIDTH;
         let bw = m::BUTTON_MIN_WIDTH;
         let save_x = w - m::WINDOW_INSET - bw;
-        let new_x = save_x - m::SPACING - 2.0 - 120.0;
+        let new_x = save_x - m::SPACING - 120.0;
         let buttons = div()
             .child(at(m::WINDOW_INSET, l.buttons_y, 130.0).child(Button::new("Copy to clipboard").min_width(130.0).enabled(idle).on_click(move |_, cx| copy.update(cx, |s, cx| s.copy(cx)))))
+            .child(at(m::WINDOW_INSET + 130.0 + m::SPACING, l.buttons_y, bw).child(Button::new("Record…").id("record").min_width(bw).enabled(self.busy.is_none()).on_click_at(move |b, window, cx| {
+                let menu = rec.read(cx).record_menu();
+                let to = rec.clone();
+                olo_ui::menu::popup(window, cx, menu, b, gpui::Corner::BottomLeft, move |cmd, _, cx| to.update(cx, |s, cx| s.record_command(cmd, cx)));
+            })))
             .child(at(new_x, l.buttons_y, 120.0).child(Button::new("New screenshot").min_width(120.0).enabled(self.busy.is_none()).on_click(move |_, cx| new.update(cx, |s, cx| s.take(cx)))))
             .child(at(save_x, l.buttons_y, bw).child(Button::new("Save").default(true).min_width(bw).enabled(can_save).on_click(move |_, cx| save.update(cx, |s, cx| s.save(cx)))));
 
         // Return saves: Save is the default button.
-        div().size_full().relative().track_focus(&self.focus).child(picture).child(form).child(buttons)
+        div().w_full().h(px(l.height)).relative().track_focus(&self.focus).child(picture).child(form).child(buttons)
     }
 }
 
@@ -609,6 +713,12 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--toggle-record") {
         std::process::exit(recording::toggle(&args));
+    }
+    if args.iter().any(|a| a == "--pause") {
+        std::process::exit(recording::pause(true));
+    }
+    if args.iter().any(|a| a == "--resume") {
+        std::process::exit(recording::pause(false));
     }
     if args.iter().any(|a| a == "--recording") {
         std::process::exit(recording::status());

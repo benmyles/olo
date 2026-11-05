@@ -49,3 +49,7 @@ ttf-parser = "0.25"
 [[bin]]
 name = "olo-fakesound"
 path = "src/bin/fakesound.rs"
+
+[dev-dependencies]
+# Videos made for its tests (`seeks_into_a_long_picture`).
+olo-video.workspace = true

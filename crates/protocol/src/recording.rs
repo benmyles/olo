@@ -1,8 +1,8 @@
 //! A screen recording going (olo-screenshot's recorder, recording.rs):
 //! kept in `$XDG_RUNTIME_DIR/olo-recording-<display>.json` while it
 //! runs, one a display (an Agent Screen's and the person's apart), for
-//! `--stop`, Deskbar's tray (a dot while recording, Stop Recording) and
-//! agents.
+//! `--stop`, `--pause` and `--resume`, Deskbar's tray (a dot while
+//! recording, Pause and Stop Recording) and agents.
 
 use std::path::{Path, PathBuf};
 
@@ -15,8 +15,12 @@ pub struct Going {
     pub path: PathBuf,
     /// Seconds since the epoch.
     pub started: u64,
-    /// What's recorded: "display" or "window N".
+    /// What's recorded: "display", "region" or "window N".
     pub what: String,
+    /// Paused (`--pause`): nothing recorded till `--resume`, the time
+    /// paused left out of the video.
+    #[serde(default)]
+    pub paused: bool,
 }
 
 /// The display a program is on (`WAYLAND_DISPLAY`'s name).

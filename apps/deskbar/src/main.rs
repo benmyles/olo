@@ -912,6 +912,8 @@ impl Deskbar {
             // Stop Sharing: olo-portal ends the session (and tells the app).
             // Stop Recording: the recorder finishes the file and says so.
             Some(("record", "stop")) => spawn("olo-screenshot --stop"),
+            Some(("record", "pause")) => spawn("olo-screenshot --pause"),
+            Some(("record", "resume")) => spawn("olo-screenshot --resume"),
             Some(("share", "all")) => {
                 for s in &self.status.sharing {
                     spawn(&format!("olo-portal --stop {}", s.session));
@@ -2005,14 +2007,26 @@ impl Deskbar {
                 .into_any_element(),
             );
         }
-        // A recording of this display going: since when, and Stop.
+        // A recording of this display going: since when, Pause (or
+        // Resume) and Stop.
         if let Some(rec) = st.recording.clone() {
             let since = status::time_of_day(rec.started, &clock);
-            let what = if rec.what == "display" { "the screen".to_owned() } else { format!("a window ({})", rec.what.trim_start_matches("window ")) };
-            let tip_text = format!("Recording {what} since {since}. Click to stop.");
-            let (r, h) = tray_item(&mut d, "recording", tip_text, Box::new(|window, cx, r| status::draw_recording(window, r, &theme::palette(cx))));
+            let what = match rec.what.as_str() {
+                "display" => "the screen".to_owned(),
+                "region" => "part of the screen".to_owned(),
+                w => format!("a window ({})", w.trim_start_matches("window ")),
+            };
+            let paused = rec.paused;
+            let (tip_text, said) = if paused {
+                (format!("Recording {what} since {since}, paused. Click to resume or stop."), format!("Recording {what} since {since} (paused)"))
+            } else {
+                (format!("Recording {what} since {since}. Click to pause or stop."), format!("Recording {what} since {since}"))
+            };
+            let (r, h) = tray_item(&mut d, "recording", tip_text, Box::new(move |window, cx, r| status::draw_recording(window, r, &theme::palette(cx), paused)));
             let (m, v) = (model.clone(), view.clone());
-            let menu = Menu::new("").item(format!("Recording {what} since {since}"), "").enabled(false).item("Stop Recording", "record:stop");
+            let menu = Menu::new("").item(said, "").enabled(false);
+            let menu = if paused { menu.item("Resume Recording", "record:resume") } else { menu.item("Pause Recording", "record:pause") };
+            let menu = menu.item("Stop Recording", "record:stop");
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {
                     if matches!(button(e), MouseButton::Left | MouseButton::Right) {

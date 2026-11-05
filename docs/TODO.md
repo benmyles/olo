@@ -1216,10 +1216,19 @@ of Finished; a new one goes where its priority puts it.
   skill says how; ⌘⇧6 records the screen or stops (Ctrl+Alt+Print
   with the Windows and BeOS profiles), Deskbar's tray showing a record
   light with Stop Recording while it goes, a notification with Show in
-  Tracker when saved. *Left*: Record Window and Record Region in
-  Screenshot's window (the region picker shared), sound, CleanShot X's polish (pointer drawn larger and smoothed,
-  clicks and keys shown, zoom following the action, a background and
-  frame, a webcam bubble, pause), the trimming editor, GIF, and the GPU
+  Tracker when saved. *Then* (2026-11-04): a region (`--region
+  X,Y,W,H` in points, or dragged out with ⌘⇧4's picker), pause and
+  resume (`--pause`/`--resume`, the pause cut out of the video; Deskbar's
+  light shows a pause sign, its menu Pause or Resume), Screenshot's
+  Record… (Screen, Active Window, Region…), and for agents
+  `olo-screen pause-video`, `resume-video`, `record-video --region` and
+  `video-frame` (what a video shows at a time, to check it; the Viewer's
+  seek into a still stretch fixed on the way: it showed the next change).
+  The recorder no longer wakes on a timer (a still or paused recording:
+  only NVIDIA's driver threads wake). *Left*: sound, CleanShot X's
+  polish (pointer drawn larger and smoothed, clicks and keys shown, zoom
+  following the action, a background and frame, a webcam bubble), a
+  countdown (Screenshot's Delay), the trimming editor, GIF, and the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
   4K: 111 ms a frame).
   - **Encoding on the best GPU, chosen in its settings** (Ben,

@@ -713,14 +713,25 @@ pub fn draw_sharing(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
     disc(window, at, 2.5, c(p.failure));
 }
 
-/// A recording going: a red dot in a ring, as a camera's record light.
-pub fn draw_recording(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
-    let at = style::snap_centred(window, r.center(), 2.0, 2.0).center();
-    let at = (f32::from(at.x), f32::from(at.y));
+/// A recording going: a red dot in a ring, as a camera's record light;
+/// paused, a pause sign in the ring instead (two bars on device pixels,
+/// as far apart as they are wide).
+pub fn draw_recording(window: &mut Window, r: Bounds<Pixels>, p: &Palette, paused: bool) {
+    let centre = style::snap_centred(window, r.center(), 2.0, 2.0).center();
+    let at = (f32::from(centre.x), f32::from(centre.y));
     let size = f32::from(r.size.width.min(r.size.height));
     disc(window, at, size * 0.42, c(p.failure));
     disc(window, at, size * 0.34, c(p.panel_background));
-    disc(window, at, size * 0.26, c(p.failure));
+    if !paused {
+        disc(window, at, size * 0.26, c(p.failure));
+        return;
+    }
+    let bar = whole(window, size * 0.11).max(1.0 / window.scale_factor());
+    let sign = style::snap_centred(window, centre, bar * 3.0, whole(window, size * 0.34));
+    let (l, t, h) = (f32::from(sign.left()), f32::from(sign.top()), f32::from(sign.size.height));
+    for x in [l, l + bar * 2.0] {
+        style::fill_rect(window, rect(x, t, bar, h), c(p.failure));
+    }
 }
 
 /// A box's outline in hairlines on device pixels (its edges inside it).

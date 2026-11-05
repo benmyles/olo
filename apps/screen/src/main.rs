@@ -40,11 +40,16 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen archive NAME            a stopped screen out of the way (listed as archived)
        olo-screen unarchive NAME          back among the stopped ones
        olo-screen delete NAME             a screen and everything it kept, to the Trash
-       olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--no-pointer]
-                          [--encoder auto|cpu|nvidia] [--to PATH]
-                                             a video of the screen (or one window), into ~/Videos
-                                             unless told; prints its path (JSON) at once
+       olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
+                          [--no-pointer] [--encoder auto|cpu|nvidia] [--to PATH]
+                                             a video of the screen (or one window, or part), into
+                                             ~/Videos unless told; prints its path (JSON) at once
+       olo-screen pause-video NAME        nothing recorded till resume-video (the pause cut out)
+       olo-screen resume-video NAME
        olo-screen stop-video NAME         the video finished; prints where it went
+       olo-screen video-frame VIDEO [OUT.png] [--at SECONDS]
+                                             the picture a video shows at a time (0: its first),
+                                             to check one recorded
        olo-screen history NAME [--json] [--kind KIND] [--search TEXT] [--last N] [--clear]
                                              what was done on it: each action, what it matched, how it went
        olo-screen history NAME --look N [OUT.png]
@@ -267,7 +272,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 None => video_path(&s.name),
             };
             let mut argv: Vec<String> = vec!["olo-screenshot".into(), "--record".into(), "--to".into(), to.display().to_string()];
-            for flag in ["--seconds", "--fps", "--window", "--encoder"] {
+            for flag in ["--seconds", "--fps", "--window", "--encoder", "--region"] {
                 if let Some(v) = option(rest, flag) {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }
@@ -281,10 +286,17 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             answered(v);
             Ok(())
         }),
-        "stop-video" => screen().and_then(|s| {
+        // (The recorder's --stop, --pause and --resume, on the screen's
+        // display.)
+        "stop-video" | "pause-video" | "resume-video" => screen().and_then(|s| {
             let program = olo_xdg::find_program("olo-screenshot").ok_or("olo-screenshot isn't installed")?;
             let mut cmd = std::process::Command::new(program);
-            cmd.arg("--stop").env_remove("DISPLAY");
+            let flag = match command {
+                "pause-video" => "--pause",
+                "resume-video" => "--resume",
+                _ => "--stop",
+            };
+            cmd.arg(flag).env_remove("DISPLAY");
             for (k, v) in s.env() {
                 cmd.env(k, v);
             }
@@ -297,6 +309,30 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             answered(v);
             Ok(())
         }),
+        // A picture out of a video (one recorded, to check it), as Viewer
+        // shows it there.
+        "video-frame" => (|| {
+            let p = positionals(rest);
+            let video = p.first().ok_or("video-frame VIDEO [OUT.png] [--at SECONDS]")?;
+            let video = std::path::absolute(PathBuf::from(video)).map_err(|e| e.to_string())?;
+            let at: f64 = option(rest, "--at").map_or(Ok(0.0), |v| v.parse()).map_err(|_| "--at takes seconds")?;
+            let out = match p.get(1) {
+                Some(o) => std::path::absolute(PathBuf::from(o)).map_err(|e| e.to_string())?,
+                None => {
+                    let stem = video.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                    video.with_file_name(format!("{stem} at {at} s.png"))
+                }
+            };
+            let image = olo_preview::video::picture_at(&olo_preview::input::Input::file(&video), at)?;
+            let [w, h] = image.size;
+            let file = std::fs::File::create(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+            let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.write_header().and_then(|mut wr| wr.write_image_data(&image.rgba)).map_err(|e| e.to_string())?;
+            print_json(&json!({ "path": out, "at": at, "width": w, "height": h }));
+            Ok(())
+        })(),
         "history" => (|| {
             let n = name()?;
             if has(rest, "--clear") {

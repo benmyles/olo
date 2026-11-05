@@ -452,6 +452,8 @@ fn av1_image(f: &av1::Frame) -> Image {
 struct Packet {
     pts: f64,
     data: Vec<u8>,
+    /// How long it shows, where the container says (an MP4's samples).
+    dur: Option<f64>,
 }
 
 trait Demux: Send {
@@ -467,6 +469,44 @@ trait Demux: Send {
 
 fn open(input: &Input) -> Result<Box<dyn Demux>, String> {
     if input.matroska() { Mkv::open(input).map(|d| Box::new(d) as _) } else { Mp4::open(input).map(|d| Box::new(d) as _) }
+}
+
+/// The picture showing `at` seconds into `input` (the first after a seek
+/// there, as Viewer seeks), as RGBA: a video looked at without playing it
+/// (an agent checking what it recorded: `olo-screen video-frame`). On the
+/// caller's thread and a decoder's, done when it's out.
+pub fn picture_at(input: &Input, at: f64) -> Result<Image, String> {
+    let shared = Arc::new((Mutex::new(Shared { seek: Some(at.max(0.0)), ..Default::default() }), Condvar::new()));
+    let (s, i) = (shared.clone(), input.clone());
+    let worker = std::thread::Builder::new().name("video frame".into()).spawn(move || decode(&i, &s)).map_err(|e| e.to_string())?;
+    let (m, cv) = &*shared;
+    let mut sh = m.lock().unwrap();
+    // (The decoder says nothing as it queues: looked at now and then.)
+    while sh.queue.is_empty() && !sh.eof && sh.error.is_none() && !worker.is_finished() {
+        sh = cv.wait_timeout(sh, Duration::from_millis(10)).unwrap().0;
+    }
+    let first = sh.queue.front().map(|f| f.pic.picture(false));
+    sh.stop = true;
+    drop(sh);
+    cv.notify_all();
+    let ended = worker.join().map_err(|_| "the decoder failed".to_string())?;
+    match first {
+        Some(p) => Ok(p.into_image()),
+        None => Err(ended.err().unwrap_or_else(|| format!("nothing showing at {at} s"))),
+    }
+}
+
+/// What has come before a seek's target, as the decoder goes to it.
+#[derive(Default)]
+struct Lead {
+    /// The last picture before it, if it may still be showing there.
+    held: Option<Pic>,
+    /// Else where the last before it began (it ended before the target).
+    ended: Option<f64>,
+    /// A picture at or after the target was queued.
+    reached: bool,
+    /// Gone back for the last picture already (`ended`, past the end).
+    again: bool,
 }
 
 /// What a file holds, as far as playing it goes.
@@ -561,18 +601,35 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
     let mut dec = Decoder::new(codec, demux.as_ref())?;
     // Presentation times of packets sent and not yet out: decoders hand
     // pictures back in display order, so each takes the earliest.
-    let mut times: BinaryHeap<Reverse<i64>> = BinaryHeap::new();
+    // (Each with its duration, -1 where not known.)
+    let mut times: BinaryHeap<Reverse<(i64, i64)>> = BinaryHeap::new();
     let mut from = 0.0;
     let mut av1_out = Vec::new();
     let mut vp9_out = Vec::new();
     let mut hevc_out = Vec::new();
+    // What came before a seek's target (a still screen in a screen
+    // recording is one picture, seconds long: the one showing there may
+    // have started long before it).
+    let mut lead = Lead::default();
+    // The next seek is ours (`Lead::ended`), not asked for.
+    let mut going_back = false;
     // Queue a picture (made only if it will be shown); false once a seek
     // or stop makes the rest pointless.
-    let push = |times: &mut BinaryHeap<Reverse<i64>>, from: f64, pic: &dyn Fn() -> Pic| -> bool {
-        let Some(Reverse(t)) = times.pop() else { return true };
+    let push = |times: &mut BinaryHeap<Reverse<(i64, i64)>>, from: f64, lead: &mut Lead, pic: &dyn Fn() -> Pic| -> bool {
+        let Some(Reverse((t, d))) = times.pop() else { return true };
         let pts = t as f64 / 1e6;
-        // Pictures before a seek's target only lead up to it.
+        // Pictures before a seek's target only lead up to it; the last
+        // is held (made) only if it may still be showing there (one known
+        // to end before it isn't: making each cost a seek at 4K a sixth
+        // more, `seek_cost`).
         if pts + 0.001 < from {
+            if d < 0 || (t + d) as f64 / 1e6 > from + 0.001 {
+                lead.held = Some(pic());
+                lead.ended = None;
+            } else {
+                lead.held = None;
+                lead.ended = Some(pts);
+            }
             return true;
         }
         let pic = pic();
@@ -583,6 +640,14 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
         if sh.ahead == 0 {
             sh.ahead = (QUEUE_BYTES / pic.bytes().max(1)).clamp(2, AHEAD);
         }
+        // This one starts after the target: the one before is showing
+        // there (at the target, so it's shown at once).
+        if let Some(before) = lead.held.take()
+            && pts > from + 0.001
+        {
+            sh.queue.push_back(Frame { pts: from, pic: before });
+        }
+        lead.reached = true;
         sh.queue.push_back(Frame { pts, pic });
         true
     };
@@ -617,24 +682,25 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     _ => dec = Decoder::new(codec, demux.as_ref())?,
                 }
                 times.clear();
+                lead = Lead { again: std::mem::take(&mut going_back), ..Lead::default() };
                 from = t;
             }
         }
         let packet = demux.next();
         let ended = packet.is_none();
         if let Some(p) = &packet {
-            times.push(Reverse((p.pts * 1e6) as i64));
+            times.push(Reverse(((p.pts * 1e6) as i64, p.dur.map_or(-1, |d| (d * 1e6) as i64))));
         }
         match (&mut dec, packet) {
             (Decoder::H264(d), Some(p)) => {
                 if let Ok(Some(yuv)) = d.decode(&p.data) {
-                    push(&mut times, from, &|| Pic::H264(Arc::new(Planar::from(&yuv))));
+                    push(&mut times, from, &mut lead, &|| Pic::H264(Arc::new(Planar::from(&yuv))));
                 }
             }
             (Decoder::H264(d), None) => {
                 if let Ok(rest) = d.flush_remaining() {
                     for yuv in &rest {
-                        if !push(&mut times, from, &|| Pic::H264(Arc::new(Planar::from(yuv)))) {
+                        if !push(&mut times, from, &mut lead, &|| Pic::H264(Arc::new(Planar::from(yuv)))) {
                             break;
                         }
                     }
@@ -652,7 +718,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                 }
                 for f in av1_out.drain(..) {
                     let f = Arc::new(f);
-                    if !push(&mut times, from, &|| Pic::Planes(f.clone())) {
+                    if !push(&mut times, from, &mut lead, &|| Pic::Planes(f.clone())) {
                         break;
                     }
                 }
@@ -670,7 +736,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                 }
                 for f in hevc_out.drain(..) {
                     let f = Arc::new(f);
-                    if !push(&mut times, from, &|| Pic::Planes(f.clone())) {
+                    if !push(&mut times, from, &mut lead, &|| Pic::Planes(f.clone())) {
                         break;
                     }
                 }
@@ -689,11 +755,11 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     None => d.flush(&mut vp9_out),
                 }
                 for (t, f) in vp9_out.drain(..) {
-                    while times.peek().is_some_and(|Reverse(e)| *e < t) {
+                    while times.peek().is_some_and(|Reverse((e, _))| *e < t) {
                         times.pop();
                     }
                     let f = Arc::new(f);
-                    if !push(&mut times, from, &|| Pic::Planes(f.clone())) {
+                    if !push(&mut times, from, &mut lead, &|| Pic::Planes(f.clone())) {
                         break;
                     }
                 }
@@ -701,7 +767,19 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
         }
         if ended {
             times.clear();
-            m.lock().unwrap().eof = true;
+            let mut sh = m.lock().unwrap();
+            // Nothing at or after the target: the last picture is showing
+            // there (held), or (past its end) is to be shown, decoded again.
+            if sh.seek.is_none() && !sh.stop && !lead.reached {
+                if let Some(before) = lead.held.take() {
+                    sh.queue.push_back(Frame { pts: from, pic: before });
+                } else if let Some(at) = lead.ended.take().filter(|_| !lead.again) {
+                    sh.seek = Some(at);
+                    going_back = true;
+                    continue;
+                }
+            }
+            sh.eof = true;
         }
     }
 }
@@ -820,7 +898,7 @@ impl Demux for Mp4 {
                 Codec::H264 => media::avcc_to_annexb(&s.bytes, self.nal_len, &mut data),
             }
             let pts = (s.start_time as i64 + s.rendering_offset as i64) as f64 / self.timescale + self.shift;
-            return Some(Packet { pts, data });
+            return Some(Packet { pts, data, dur: Some(f64::from(s.duration) / self.timescale) });
         }
     }
 
@@ -911,8 +989,11 @@ impl Demux for Mkv {
                 continue;
             }
             let pts = self.frame.timestamp as f64 * self.scale;
+            // (A block's own duration only: the track's default is the
+            // frame rate's, and a still stretch of a recording is longer.)
+            let dur = self.frame.duration.map(|d| d as f64 * self.scale);
             if self.codec != Codec::H264 {
-                return Some(Packet { pts, data: std::mem::take(&mut self.frame.data) });
+                return Some(Packet { pts, data: std::mem::take(&mut self.frame.data), dur });
             }
             let mut data = Vec::with_capacity(self.frame.data.len() + 64);
             if self.fresh || self.key() {
@@ -920,7 +1001,7 @@ impl Demux for Mkv {
                 self.fresh = false;
             }
             media::avcc_to_annexb(&self.frame.data, self.nal_len, &mut data);
-            return Some(Packet { pts, data });
+            return Some(Packet { pts, data, dur });
         }
         None
     }
@@ -966,6 +1047,71 @@ impl Demux for Mkv {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a seek costs at 4K (H.264, OpenH264's key frames two seconds
+    /// apart): to just before the second key frame, so every picture
+    /// before it is decoded (and, held in case it's the one showing,
+    /// kept). `cargo test --release -p olo-preview seek_cost -- --ignored
+    /// --nocapture`.
+    #[test]
+    #[ignore]
+    fn seek_cost() {
+        use olo_video::{H264, Mp4, Order};
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-preview-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("4k.mp4");
+        let (w, h) = (3840u32, 2160u32);
+        let mut enc = H264::new(w, h, 30).unwrap();
+        let mut mp4 = Mp4::create(&path, w, h, 1000).unwrap();
+        // A bar sweeping across, so every picture differs.
+        for i in 0..62u32 {
+            let px: Vec<u8> = (0..w * h).flat_map(|p| if (p % w) / 64 == i { [255, 255, 255, 255] } else { [(p % 251) as u8, (p / w % 241) as u8, 90, 255] }).collect();
+            let (bits, key) = enc.encode(&px, w as usize * 4, Order::Bgra).unwrap();
+            mp4.add(&bits, key, 33).unwrap();
+        }
+        mp4.finish().unwrap();
+        let mut ms: Vec<f64> = (0..5)
+            .map(|_| {
+                let t = Instant::now();
+                picture_at(&Input::file(&path), 1.95).unwrap();
+                t.elapsed().as_secs_f64() * 1000.0
+            })
+            .collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        ms.sort_by(f64::total_cmp);
+        println!("seek to 1.95 s of 4K H.264 (59 pictures decoded): {:.0} ms (median of 5; {:.0}–{:.0})", ms[2], ms[0], ms[4]);
+    }
+
+    /// A still stretch of a screen recording is one picture, seconds
+    /// long: a seek into it shows it (not the next one), and one past the
+    /// last picture's start shows the last.
+    #[test]
+    fn seeks_into_a_long_picture() {
+        use olo_video::{H264, Mp4, Order};
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-preview-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("still.mp4");
+        let (w, h) = (64u32, 48u32);
+        let mut enc = H264::new(w, h, 30).unwrap();
+        let mut mp4 = Mp4::create(&path, w, h, 1000).unwrap();
+        // Grey 40 for 100 ms, 140 for 3 s, 240 for half a second.
+        for (level, ms) in [(40u8, 100u32), (140, 3000), (240, 500)] {
+            let px = vec![level; (w * h * 4) as usize];
+            let (bits, key) = enc.encode(&px, w as usize * 4, Order::Bgra).unwrap();
+            mp4.add(&bits, key, ms).unwrap();
+        }
+        mp4.finish().unwrap();
+        let level = |at: f64| {
+            let image = picture_at(&Input::file(&path), at).unwrap();
+            image.rgba[(image.rgba.len() / 2) & !3]
+        };
+        let shown: Vec<(f64, u8)> = [0.0, 0.05, 0.1, 1.6, 3.09, 3.1, 3.4, 5.0].into_iter().map(|at| (at, level(at))).collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        let want = [40, 40, 140, 140, 140, 240, 240, 240];
+        for ((at, got), want) in shown.iter().zip(want) {
+            assert!((i32::from(*got) - want).abs() < 12, "at {at} s: {got}, not {want} ({shown:?})");
+        }
+    }
 
     /// `OLO_SAMPLES=dir cargo test -p olo-preview video -- --ignored`
     /// with 8-second 30 fps H.264 clips in `dir`: test.mp4 / test.mkv (one

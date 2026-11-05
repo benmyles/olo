@@ -189,6 +189,23 @@ pub fn take(settings: &Settings, hide: bool) -> Result<Shot, String> {
     result
 }
 
+/// A recording started from Screenshot's window: our windows minimized
+/// first (so they aren't in it, and the active window is the one behind
+/// them, as for `take`), then the active window, if there is one.
+pub fn step_aside() -> Result<Option<u64>, String> {
+    let mut client = Client::connect().map_err(|e| e.to_string())?;
+    let me = std::process::id() as i32;
+    let mine: Vec<u64> = windows(&mut client)?.iter().filter(|w| w.pid == Some(me) && !w.minimized).map(|w| w.id).collect();
+    for &id in &mine {
+        request(&mut client, &Request::Minimize { id })?;
+    }
+    if !mine.is_empty() {
+        // Long enough for the next frame to be drawn without them.
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    Ok(windows(&mut client)?.into_iter().find(|w| w.focused && !w.minimized && w.pid != Some(me)).map(|w| w.id))
+}
+
 /// One output's picture, as it is (no pointer), for the region picker.
 pub fn take_output(output: Option<String>) -> Result<image::RgbaImage, String> {
     let mut client = Client::connect().map_err(|e| e.to_string())?;

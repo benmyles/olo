@@ -44,16 +44,24 @@ is `running`. Delete only screens you made, and only when asked.
 olo-screen start demo --size 1920x1080 --scale 2   # a 4K screen (3840 × 2160 pixels)
 olo-screen record-video demo                       # prints {"path": …, "pid": …} at once
 # … do what the video shows, at a person's pace …
+olo-screen pause-video demo                        # set up the next part off camera…
+olo-screen resume-video demo                       # …the pause is cut out of the video
 olo-screen stop-video demo                         # finishes the MP4; prints where it went
+olo-screen video-frame PATH frame.png --at 12.5    # what the video shows at 12.5 s, to check it
 ```
 
 It records only when something changes (a still screen costs nothing),
 up to 30 frames a second (`--fps`), into ~/Videos unless `--to PATH`;
-`--window ID` records one window, `--seconds N` stops by itself. For a
-polished demo: rehearse it first (without recording), then record it in
-one go; move the pointer deliberately (`move` before `click`), pause a
-moment after each step so it can be seen, and look at the video after
-(`olo-screen run demo olo-viewer PATH`, then `look`).
+`--window ID` records one window, `--region X,Y,W,H` part of the screen
+(points from its top left, as `windows` gives frames), `--seconds N`
+stops by itself (counting only what's recorded). For a polished demo:
+rehearse it first (without recording), then record it in one go; move
+the pointer deliberately (`move` before `click`), pause a moment after
+each step so it can be seen, and pause the recording (not the demo)
+while you set something up that shouldn't be seen. Then check the
+video: `video-frame` at the moments that matter (its start, each step,
+its end), or play it (`olo-screen run demo olo-viewer PATH`, then
+`look`).
 
 ## A web browser: Olo's Chrome, only
 

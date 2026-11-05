@@ -25,5 +25,7 @@ zbus = { version = "5.19", default-features = false, features = ["blocking-api",
 png = "0.18"
 zstd = "0.14"
 olo-video.workspace = true
+# Pictures out of videos (video-frame).
+olo-preview.workspace = true
 ab_glyph = "0.2"
 fontdb = "0.23"

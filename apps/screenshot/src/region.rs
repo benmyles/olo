@@ -1,6 +1,7 @@
 //! `--region` (⌘⇧4): the screen freezes, dims, and you drag out the part
 //! you want; it is saved like a silent screenshot. Escape (or a click
-//! without a drag) cancels.
+//! without a drag) cancels. `--record --region` picks the part to record
+//! the same way (`pick_region`).
 //!
 //! Every output is captured first, then covered by an overlay showing its
 //! picture one pixel to a device pixel, so what you select is exactly what
@@ -42,10 +43,13 @@ enum Msg {
     Frozen(Option<String>, Option<(image::RgbaImage, Arc<RenderImage>)>),
 }
 
-/// The part chosen: the output's picture and a rectangle in its pixels.
-type Cut = (Arc<image::RgbaImage>, [u32; 4]);
+/// The part chosen: the output's picture and a rectangle in its pixels,
+/// and which output that is.
+type Cut = (Arc<image::RgbaImage>, [u32; 4], Option<String>);
 
 struct Screen {
+    /// The output it is (None: the only one, unnamed).
+    output: Option<String>,
     image: Arc<image::RgbaImage>,
     drawn: Arc<RenderImage>,
 }
@@ -105,7 +109,7 @@ impl Picker {
         let me = cx.entity();
         for (output, image, drawn) in std::mem::take(&mut self.frozen) {
             let index = self.screens.len();
-            self.screens.push(Screen { image: Arc::new(image), drawn });
+            self.screens.push(Screen { output: output.clone(), image: Arc::new(image), drawn });
             let picker = me.clone();
             cx.defer(move |cx| {
                 let options = WindowOptions::new("Screenshot", 1.0, 1.0).layer("screenshot-region", LayerShellLayer::Overlay, (true, true, true, true)).layer_options(|l| {
@@ -139,7 +143,7 @@ impl Picker {
         let y = ((f32::from(s.top() - bounds.top()) * k).round() as u32).min(ih - 1);
         let w = ((f32::from(s.size.width) * k).round() as u32).clamp(1, iw - x);
         let h = ((f32::from(s.size.height) * k).round() as u32).clamp(1, ih - y);
-        Some((screen.image.clone(), [x, y, w, h]))
+        Some((screen.image.clone(), [x, y, w, h], screen.output.clone()))
     }
 }
 
@@ -345,7 +349,7 @@ fn freeze(cut: Arc<Mutex<Option<Cut>>>, pick: Option<Arc<Mutex<Option<[u8; 3]>>>
 pub fn run() -> Result<Option<PathBuf>, String> {
     let cut: Arc<Mutex<Option<Cut>>> = Arc::default();
     freeze(cut.clone(), None);
-    let Some((image, [x, y, w, h])) = cut.lock().unwrap_or_else(|e| e.into_inner()).take() else { return Ok(None) };
+    let Some((image, [x, y, w, h], _)) = cut.lock().unwrap_or_else(|e| e.into_inner()).take() else { return Ok(None) };
     let settings = Settings::load();
     let crop = image::imageops::crop_imm(image.as_ref(), x, y, w, h).to_image();
     let png = capture::scratch_path();
@@ -355,6 +359,16 @@ pub fn run() -> Result<Option<PathBuf>, String> {
     let r = capture::save(&Shot { png: png.clone(), image: Arc::new(crop) }, &path, settings.format);
     let _ = std::fs::remove_file(&png);
     r.map(|()| Some(path))
+}
+
+/// Drag out the part of the screen to record (`--record --region`): the
+/// output it's on and the rectangle in its device pixels, or None if
+/// cancelled.
+pub fn pick_region() -> Option<(Option<String>, [u32; 4])> {
+    let cut: Arc<Mutex<Option<Cut>>> = Arc::default();
+    freeze(cut.clone(), None);
+    let (_, rect, output) = cut.lock().unwrap_or_else(|e| e.into_inner()).take()?;
+    Some((output, rect))
 }
 
 /// Pick a colour from the screen (`--pick-color`): the one clicked, or
