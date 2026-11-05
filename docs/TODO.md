@@ -303,6 +303,20 @@ of Finished; a new one goes where its priority puts it.
   purpose; a tile floated by an agent (`set_floating` over IPC) wasn't
   counted as on purpose, so it was put back in its old tile's place.
   Floating or tiling a window now is. 16 passes by itself (the load's).
+  *Seed 16 again* (2026-11-05, a wave of 24 with `--reloads`, 12 at
+  once: 20 pass, three more pass alone): its step 54 is a StyledEdit
+  window opening into a group mid-drag and drawn in front at a size
+  the drag had moved on from (a group asks its windows for its size only
+  between drags, and `mark_behind`'s wait for a window to draw applied
+  only to one coming from behind). Now a window new to a group is asked
+  for the group's size mid-drag too, one size on the way at a time, and
+  waits to have drawn before it's the front, as one from behind does
+  (`Decoration::fronted`): alone it passes 3 runs in 4. *Left*: under a
+  wave's load it still shows for a look (the 100 ms wait,
+  `groups::FRONTING`, runs out first), and alone it sometimes fails at
+  step 68 ("ungrouping 3: settled, then moved": the two tiles left grow
+  from 211 to 1064 px tall after settling) or step 83 (tiles overlapping
+  for 4 looks mid-drag): races around a reload, next to look at.
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery
@@ -1659,6 +1673,18 @@ of Finished; a new one goes where its priority puts it.
   headless with a fixture vault and an `sshd` of the test's own on a
   local port (or a Rust SSH server in-process).
 
+- **Passwords: Copy Reference** (Ben, 2026-11-05): "add a copy reference
+  menu item to items in passwords so that i can right click and get a
+  reference that will work in the op cli shim to that secret". The `op`
+  shim already resolves `op://vault/item/[section/]field` (`cli.rs`,
+  the same references `op item get --format json` gives each field). An
+  item's right-click menu (the list's and the window's Item menu) gets
+  Copy Reference (the item's password, or its first secret field: what
+  `op read` wants most), and each field's own menu in the item view Copy
+  Reference for that field; the reference is the one `cli.rs` makes (one
+  function for both), checked by resolving it back (`resolve`) in a
+  test, and shown to agents as the menu items are.
+
 - **Arrow keys skip 10 s in a video, in Viewer and Quick Look** (Ben,
   2026-11-05, for later): "when watching a video in viewer or quick look,
   the left and right arrows should skip back and forward 10s in the video
@@ -1670,6 +1696,21 @@ of Finished; a new one goes where its priority puts it.
   the window's menu and its keys' help, and told to agents (the player's
   position in its widget tree). Tried headless with a video: ← and →
   move its time by 10 s, the file stays.
+
+- **Viewer: select and copy text in PDFs and other documents** (Ben,
+  2026-11-05, for later): "Viewer needs to support selecting and copying
+  text in PDFs and any other relevant document type". In a PDF (and
+  other documents Viewer shows with text in them: EPUB, a Markdown or
+  plain-text file, Office documents if shown, a picture's OCR later
+  perhaps), text is selected by dragging over it (by word with a
+  double-click, by line with a triple), Select All, and copied with ⌘C
+  and the right-click menu, as a selection anywhere in Olo is (the
+  selection's colour from the palette, drawn over the page at every
+  scale); the text read natively from the document (the PDF's text
+  layer, its glyphs' positions and Unicode mapping, in Rust), in reading
+  order, line breaks and hyphenation as a person would want them pasted.
+  Find (⌘F) finds in it too and shows each match. Agents read a page's
+  text from the widget tree and select it as a person does.
 
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a

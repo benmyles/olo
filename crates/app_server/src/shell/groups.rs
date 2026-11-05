@@ -259,7 +259,10 @@ pub fn mark_behind(space: &Space<WindowElement>) -> Vec<WindowElement> {
                 // (Only with another of its group to show meanwhile: the
                 // one in front closed, it shows at once.)
                 let others = || space.elements().any(|o| o != w && o.decorated() && o.decoration().group == Some(g));
-                if d.behind && d.fronting.is_none() && waiting_to_draw(w) && others() {
+                // (Coming from behind, or new to the group: one that opened
+                // into it mid-drag drew the size it was asked as the drag
+                // moved on, auto-fuzz seed 16.)
+                if (d.behind || !d.fronted) && d.fronting.is_none() && waiting_to_draw(w) && others() {
                     d.fronting = Some(Instant::now());
                     fronting.push(w.clone());
                 }
@@ -269,6 +272,7 @@ pub fn mark_behind(space: &Space<WindowElement>) -> Vec<WindowElement> {
                 // (Its group's front is the one under it meanwhile.)
                 if d.fronting.is_none() {
                     fronts.push(g);
+                    d.fronted = true;
                 }
                 false
             }
@@ -606,12 +610,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     w.meta().joined.set(Some(crate::desktop::Joined { own, own_arrangement, group: frame, worn }));
                     super::tiling::note_joined(w, frame);
                 }
-                self.join_group(w, frame, resizing);
-                self.share_arrangement(&leader, w);
                 // New to the group by itself: it settles (see `Groups`),
                 // asked again if its app drew another size anyway (its
                 // own resize crossing the group's).
                 let new = !was_member(w) && !before.joining.contains(w);
+                // One new to the group is asked for its size even while an
+                // edge is dragged (one size on the way at a time): else, in
+                // front of the group, it was drawn at its own size till the
+                // drag ended, and waited for nothing (`mark_behind`'s
+                // fronting waits only for a size asked; auto-fuzz seed 16:
+                // a StyledEdit window opening into a group mid-drag).
+                let ask_now = resizing && (new || was_settling(w).is_some()) && size_on_the_way(w).is_none() && !drawn_at(&self.space, w, frame);
+                self.join_group(w, frame, resizing && !ask_now);
+                self.share_arrangement(&leader, w);
                 if let Some(since) = was_settling(w).or_else(|| new.then(Instant::now))
                     && !drawn_at(&self.space, w, frame)
                 {
