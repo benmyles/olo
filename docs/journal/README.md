@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Preferences > GPUs: the power mode sets them all
+
+*20:59* — The power mode is the computer's one setting for speed against battery: Power Saver puts every GPU on Cooler and Quieter, Balanced on Balanced, Performance on Fastest, as it sets the processors, wherever it's chosen (a root service, olo-gpu-follow, installed by the first Apply). Its box says so and the mode now; Apply and Revert end the tuning's section, and Screen Recordings starts a section down (the layout review's new after-commit check found it 15 pt under Apply). Dark, 2x.
+
+![Preferences > GPUs: the power mode sets them all](2026-11-04/205957-preferences-gpus-the-power-mode-sets-them-all.png)
+
+### Screenshot: Record…
+
+*20:59* — Screenshot's window records too: Record… offers Record Screen, Record Active Window (the one behind it) and Record Region… (dragged out on the frozen screen). Its window steps aside, the recorder starts on its own and Screenshot quits; with a recording going, the menu is Pause (or Resume) and Stop Recording. The window is as tall as its form now: a fixed height had let Save in: slip under the buttons. Dark, 2x.
+
+![Screenshot: Record…](2026-11-04/205955-screenshot-record.png)
+
+### Deskbar: a paused recording
+
+*20:17* — A recording paused (olo-screenshot --pause, or Pause Recording in this menu) shows a pause sign in its record light's ring: two bars on device pixels, as far apart as they are wide, centred at 1x, 1.5x and 2x. Top: paused, light, 2x. Below: paused and recording, dark, 2x. The menu offers Resume Recording for Pause Recording; the pause is cut out of the video.
+
+![Deskbar: a paused recording](2026-11-04/201749-deskbar-a-paused-recording.png)
+
 ### Preferences ▸ GPUs: what screen recordings encode on
 
 *18:55* — The most powerful there is by default (here the NVIDIA RTX PRO 2000's encoder, NVENC), that GPU, or the processor (OpenH264); the recorder reads it unless told.

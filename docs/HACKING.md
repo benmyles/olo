@@ -3143,7 +3143,11 @@ recorded otherwise.
     `control-edges` (controls down a column almost lined up, left or
     right, in the same section: check boxes' right edges are their
     labels'), `uneven-gaps` (a row of controls spaced unevenly by a
-    point or few).
+    point or few), `after-commit` (a commit row, Apply, Revert, Save,
+    with anything under it closer than `metrics::SECTION`,
+    two spacings: the row ends its group, so what follows is a new
+    section; as close as the rows above, the row reads as the start of
+    what follows, as Preferences ▸ GPUs' Screen Recordings did).
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
@@ -5337,6 +5341,37 @@ each GPU appears at start (a rule running a program the person's account
 could change would run anything as root). Agents read it all with
 `olo-gpu-tune show` (JSON; `--wake` asks a sleeping GPU too).
 
+The power mode is the computer's one setting for speed against
+battery, and it sets every GPU, integrated and discrete, as the power
+profiles daemon sets the processors (all of them: `intel_pstate`'s
+energy preference and governor, turbo) and the firmware's platform
+profile: Power Saver puts each GPU on Cooler and Quieter, Balanced on
+Balanced, Performance on Fastest (`gpu_tuning::for_mode`), one tuned
+by hand too (it stays so only until the mode next changes;
+`following`), wherever the mode is chosen (Preferences ▸ Power,
+Deskbar's battery menu, a ThinkPad's Fn+L/M/H, the daemon's own
+tools). The daemon is the person's to drive without a password, but
+GPU clocks and power limits are root's, so a root service does it:
+`set` also installs and enables `olo-gpu-follow.service` (systemd's own
+API, `olo_system::systemd`: reloaded and started again when it or the
+installed program is new), which runs `olo-gpu-tune follow`: it waits
+for the daemon's name on the system bus (`power_profile::
+wait_for_daemon`, the bus's `NameOwnerChanged`), then for its mode
+changes (`power_profile::watch`, its `PropertiesChanged`), and on each
+keeps the new tuning and applies it as `set` does (a sleeping NVIDIA
+GPU asked, waking it a moment, as applying its preset does anyway).
+It's woken by nothing else: idle, it costs nothing. One password, at
+the first Apply; the panel's Power Mode box offers Apply while the
+service isn't there, or is from an older build (the installed program
+compared with the `olo-gpu-tune` beside Preferences, on its reading
+thread), and otherwise says the mode now and the preset it means. The
+panel follows `/etc/olo/gpus.json` (inotify) so the presets shown change
+with the mode, and Power says the GPUs are set with it. On the ThinkPad
+(2026-11-04): Power Saver put the Intel GPU on 650–1600 MHz with its
+power-saving profile and the NVIDIA GPU on 180–2160 MHz, and all 16
+processors on the "power" preference, turbo off, the platform profile
+low-power.
+
 ## The touch screen (app_server input_handler.rs)
 
 A touch screen (a laptop's, as the ThinkPad P1 Gen 9's Wacom panel) is
@@ -5654,6 +5689,19 @@ Screens' Export Video uses too).
   isn't one of its values set first, or filled by the driver). The JSON
   says which encoded it (`encoder`). A window that changes size is cut
   or shown on black at the size it began.
+- **A region** is cut from each frame of its display as it comes (the
+  display copied whole into a buffer kept for the next, then the rows
+  of the part), so the encoder sees only the part: 400 × 300 points at
+  1.5× is a 600 × 450 video.
+- **Pauses**: `olo-screenshot --pause` (SIGUSR1) and `--resume`
+  (SIGUSR2). Paused, nothing is asked for (a frame on its way is let
+  go) and the time paused is left out of the video's clock, so it goes
+  straight from the moment before to the moment after (a 4 s recording
+  with 2 s paused is 2 s long); `--seconds` counts what's recorded. The
+  recording's file says it (`paused`), and Deskbar's record light shows
+  a pause sign in its ring (two bars on device pixels, as far apart as
+  they are wide), its menu offering Resume Recording for Pause
+  Recording.
 - **Ends** on `olo-screenshot --stop` (SIGTERM to the recorder, which
   finishes the file; `--stop` waits for it on a pidfd, then prints the
   path), `--seconds N`, SIGINT, or the window closing. Written as
@@ -5693,19 +5741,6 @@ backend to show a picker and hand back PipeWire streams. Olo's backend is
 **olo-portal** (`olo-portal --service`, run by olo-session in a real
 session): it owns `org.freedesktop.impl.portal.desktop.olo`; olo-session
 describes it to the portal (`~/.local/share/xdg-desktop-portal/portals/
-- **A region** is cut from each frame of its display as it comes (the
-  display copied whole into a buffer kept for the next, then the rows
-  of the part), so the encoder sees only the part: 400 × 300 points at
-  1.5× is a 600 × 450 video.
-- **Pauses**: `olo-screenshot --pause` (SIGUSR1) and `--resume`
-  (SIGUSR2). Paused, nothing is asked for (a frame on its way is let
-  go) and the time paused is left out of the video's clock, so it goes
-  straight from the moment before to the moment after (a 4 s recording
-  with 2 s paused is 2 s long); `--seconds` counts what's recorded. The
-  recording's file says it (`paused`), and Deskbar's record light shows
-  a pause sign in its ring (two bars on device pixels, as far apart as
-  they are wide), its menu offering Resume Recording for Pause
-  Recording.
 olo.portal`) and routes ScreenCast (and the others below) to it in `olo-portals.conf`
 (`graphical.rs`), restarting xdg-desktop-portal when those change. It
 runs out of app_server on purpose: a share outlives an app_server reload

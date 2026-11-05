@@ -41,6 +41,9 @@ pub struct State {
     /// A presence sensor: whether the session can read it (Olo's rule
     /// in); None without one.
     presence: Option<bool>,
+    /// The GPUs follow the power mode (its follower installed by
+    /// Preferences ▸ GPUs' Apply): read with the modes, off the UI thread.
+    gpus_follow: Arc<std::sync::atomic::AtomicBool>,
 }
 
 type Modes_ = Arc<Mutex<Option<Option<Modes>>>>;
@@ -50,11 +53,14 @@ impl State {
         // The power modes, as the daemon says, kept up to date by its
         // signals (a ThinkPad's Fn+L/M/H too). Tests: made up.
         let modes: Modes_ = Default::default();
+        let gpus_follow: Arc<std::sync::atomic::AtomicBool> = Default::default();
         if cfg!(test) {
             *modes.lock().unwrap() = Some(Some(Modes { active: Mode::Balanced, available: Mode::ALL.to_vec(), degraded: None, drivers: vec!["intel_pstate".into(), "platform_profile".into()] }));
         } else {
-            let (into, proxy) = (modes.clone(), olo_ui::proxy(cx));
+            let (into, proxy, follow) = (modes.clone(), olo_ui::proxy(cx), gpus_follow.clone());
             power_profile::watch(move |m| {
+                let on = std::path::Path::new("/etc/systemd/system/olo-gpu-follow.service").exists();
+                follow.store(on, std::sync::atomic::Ordering::Relaxed);
                 *into.lock().unwrap() = Some(m);
                 proxy.send(Msg::Redraw);
             });
@@ -63,7 +69,7 @@ impl State {
         read_limit(&limit, olo_ui::proxy(cx));
         // (Tests: a ThinkPad's, readable.)
         let presence = if cfg!(test) { Some(true) } else { olo_system::presence::sensor().map(|s| olo_system::presence::readable(&s)) };
-        State { battery: poll(olo_ui::proxy(cx)), modes, limit, presence }
+        State { battery: poll(olo_ui::proxy(cx)), modes, limit, presence, gpus_follow }
     }
 }
 
@@ -191,7 +197,7 @@ pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, divider: f32, choices: &
 /// Power Saver, Balanced or Performance: the system's power profiles
 /// daemon makes each what the machine has (the processors' energy
 /// preference and governor, the firmware's platform profile).
-fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_) {
+fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_follow: bool) {
     ui.bbox("Power Mode", |ui| {
         let Some(modes) = modes else {
             ui.note("Reading…");
@@ -223,7 +229,7 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_) {
             ui.note(why);
         }
         let what = if modes.drivers.is_empty() { "the system's power profiles daemon".to_string() } else { format!("the power profiles daemon, through {}", modes.drivers.join(" and ")) };
-        ui.note(format!("Set for the whole computer by {what}."));
+        ui.note(format!("Set for the whole computer by {what}{}.", if gpus_follow { ", and on every GPU (Preferences ▸ GPUs)" } else { "" }));
     });
 }
 
@@ -233,7 +239,7 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
     // Two columns, so it fits a laptop's screen: the power mode and the
     // battery, and when idle and caffeinated beside them.
     let left = ui.collect(|ui| {
-        power_mode(ui, modes, &st.modes);
+        power_mode(ui, modes, &st.modes, st.gpus_follow.load(std::sync::atomic::Ordering::Relaxed));
         battery_box(ui, battery, st);
     });
     let presence = st.presence;

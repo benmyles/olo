@@ -88,6 +88,31 @@ pub struct Tuning {
     pub driver: Vec<DriverLimits>,
 }
 
+/// The preset a power mode puts every GPU on (the power mode is the
+/// computer's one setting for speed against battery: the processors,
+/// the firmware and the GPUs, integrated and discrete, all follow it;
+/// `olo-gpu-tune follow`): Power Saver's cooler and quieter, Balanced's
+/// the driver's own, Performance's fastest.
+pub fn for_mode(mode: crate::power_profile::Mode) -> Preset {
+    use crate::power_profile::Mode;
+    match mode {
+        Mode::PowerSaver => Preset::Cooler,
+        Mode::Balanced => Preset::Balanced,
+        Mode::Performance => Preset::Fastest,
+    }
+}
+
+/// `kept` with every GPU (its PCI address and what it allows) on
+/// `preset`, one set by hand too (it stays so only till the mode next
+/// changes); None if that changes nothing.
+pub fn following(kept: &Tuning, gpus: &[(String, Caps)], preset: Preset) -> Option<Tuning> {
+    let mut new = kept.clone();
+    for (pci, caps) in gpus {
+        new.set(self::preset(pci, preset, caps));
+    }
+    (new != *kept).then_some(new)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DriverLimits {
@@ -418,6 +443,29 @@ mod tests {
 
     fn xe() -> Caps {
         Caps::Xe(XeCaps { lowest: 100, efficient: 700, highest: 2450, min_now: 700, max_now: 2450, profiles: true, power_saving_now: false })
+    }
+
+    /// The power mode's preset on every GPU, integrated and discrete, one
+    /// set by hand too; nothing when they're on it already.
+    #[test]
+    fn the_power_mode_sets_the_gpus() {
+        use crate::power_profile::Mode;
+        let nv = Caps::Nvidia(NvidiaCaps { power: Some((5, 75, 60, 60)), min_gpu_mhz: 180, max_gpu_mhz: 3090, persistent_now: Some(false) });
+        let gpus = vec![("0000:00:02.0".to_owned(), xe()), ("0000:01:00.0".to_owned(), nv)];
+        let none = Tuning::default();
+        let saving = following(&none, &gpus, for_mode(Mode::PowerSaver)).unwrap();
+        assert!(saving.gpus.iter().all(|g| g.preset == Preset::Cooler) && saving.gpus.len() == 2, "{saving:?}");
+        assert_eq!(saving.of("0000:01:00.0").power_limit_w, Some(40));
+        assert_eq!(following(&saving, &gpus, Preset::Cooler), None, "on it already");
+        // Back to Balanced: as the drivers have it (nothing kept).
+        let balanced = following(&saving, &gpus, for_mode(Mode::Balanced)).unwrap();
+        assert!(balanced.gpus.is_empty(), "{balanced:?}");
+        // One set by hand goes with the mode too.
+        let mut by_hand = none.clone();
+        by_hand.set(GpuTune { pci: "0000:01:00.0".into(), preset: Preset::Custom, power_limit_w: Some(30), ..Default::default() });
+        let fast = following(&by_hand, &gpus, for_mode(Mode::Performance)).unwrap();
+        assert!(fast.gpus.iter().all(|g| g.preset == Preset::Fastest) && fast.gpus.len() == 2, "{fast:?}");
+        assert_eq!(fast.of("0000:01:00.0").power_limit_w, Some(75));
     }
 
     #[test]

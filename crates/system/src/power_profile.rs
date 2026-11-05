@@ -127,6 +127,26 @@ pub fn set(mode: Mode) -> Result<()> {
     bus::set_property(bus::system()?, dest, path, iface, "ActiveProfile", mode.id())
 }
 
+/// Return once a power profiles daemon is on the system bus (at once if
+/// one is), as the bus says names come (`NameOwnerChanged`): nothing
+/// polls. For a service started before the daemon is.
+pub fn wait_for_daemon() -> Result<()> {
+    let conn = bus::system()?;
+    let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).sender("org.freedesktop.DBus")?.interface("org.freedesktop.DBus")?.member("NameOwnerChanged")?.build();
+    let signals = zbus::blocking::MessageIterator::for_match_rule(rule, conn, Some(64))?;
+    // (Looked for once listening, so one coming in between isn't missed.)
+    if place().is_some() {
+        return Ok(());
+    }
+    for m in signals.flatten() {
+        let Ok((name, _, new)) = m.body().deserialize::<(String, String, String)>() else { continue };
+        if !new.is_empty() && PLACES.iter().any(|(dest, ..)| *dest == name) {
+            return Ok(());
+        }
+    }
+    Err(zbus::Error::Failure("the system bus went away".into()))
+}
+
 /// Calls `changed` with the modes now and whenever they change (a mode
 /// chosen here or anywhere else, a ThinkPad's Fn keys, Performance held
 /// back), on threads of its own, by the daemon's signals: nothing polls.

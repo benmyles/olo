@@ -28,11 +28,47 @@ use crate::{Msg, PanelView, form::Ui};
 pub struct State {
     shared: Arc<Mutex<Shared>>,
     asked: bool,
+    /// The tuning kept, followed: the power mode's follower changes it.
+    watch: Option<olo_ui::watch::Watch>,
 }
 
 impl State {
     pub fn new() -> Self {
-        State { shared: Default::default(), asked: false }
+        State { shared: Default::default(), asked: false, watch: None }
+    }
+}
+
+/// The root service that puts the GPUs on the power mode's preset
+/// (`olo-gpu-tune follow`, installed by `olo-gpu-tune set`), and the
+/// program it runs.
+const FOLLOWER: &str = "/etc/systemd/system/olo-gpu-follow.service";
+const INSTALLED: &str = "/usr/local/libexec/olo-gpu-tune";
+
+/// Whether the power mode's follower is installed, and from this build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Follower {
+    #[default]
+    Missing,
+    /// From an older build (Apply brings it up to date).
+    Old,
+    Current,
+}
+
+/// The follower as installed, against the `olo-gpu-tune` beside this
+/// program (on the reading thread: the two compared byte for byte only
+/// when they're one size).
+fn follower() -> Follower {
+    if !std::path::Path::new(FOLLOWER).exists() {
+        return Follower::Missing;
+    }
+    let Ok(exe) = std::env::current_exe() else { return Follower::Current };
+    let ours = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-gpu-tune");
+    let len = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).ok();
+    match (len(std::path::Path::new(INSTALLED)), len(&ours)) {
+        // (Ours not here to compare: as it is.)
+        (_, None) => Follower::Current,
+        (Some(a), Some(b)) if a == b && std::fs::read(INSTALLED).ok() == std::fs::read(&ours).ok() => Follower::Current,
+        _ => Follower::Old,
     }
 }
 
@@ -47,6 +83,10 @@ struct Shared {
     applying: bool,
     /// What the last Apply said.
     said: Option<Result<String, String>>,
+    /// The power mode's follower, as installed.
+    follower: Follower,
+    /// The power mode now (None: no daemon).
+    mode: Option<olo_system::power_profile::Mode>,
 }
 
 #[derive(Clone)]
@@ -79,6 +119,8 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
         let xe = Caps::Xe(gpu_tuning::XeCaps { lowest: 100, efficient: 700, highest: 2450, min_now: 700, max_now: 2450, profiles: true, power_saving_now: false });
         let nv = Caps::Nvidia(gpu_tuning::NvidiaCaps { power: None, min_gpu_mhz: 180, max_gpu_mhz: 3090, persistent_now: Some(false) });
         let mut s = shared.lock().unwrap();
+        s.follower = Follower::Current;
+        s.mode = Some(olo_system::power_profile::Mode::Balanced);
         s.gpus = Some(vec![
             Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false },
             Entry { gpu: gpu("0000:01:00.0", "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU", "nvidia", false, &["HDMI-A-2"]), caps: Some(nv), asleep: true },
@@ -96,8 +138,12 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 })
                 .collect();
             let kept = Tuning::load();
+            let follower = follower();
+            let mode = olo_system::power_profile::modes().ok().flatten().map(|m| m.active);
             {
                 let mut s = shared.lock().unwrap();
+                s.follower = follower;
+                s.mode = mode;
                 // (What's being edited stays; a first read starts it.)
                 if s.gpus.is_none() || s.edited == s.kept {
                     s.edited = kept.clone();
@@ -199,10 +245,15 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         st.asked = true;
         let hold = olo_ui::hold_first_show(ui.window);
         read(st.shared.clone(), olo_ui::proxy(ui.cx), None, hold);
+        // Read again as the follower changes it (a power mode chosen).
+        let (shared, proxy) = (st.shared.clone(), olo_ui::proxy(ui.cx));
+        if !cfg!(test) {
+            st.watch = olo_ui::watch::watch([std::path::PathBuf::from(gpu_tuning::FILE), std::path::PathBuf::from(FOLLOWER)], move |_| read(shared.clone(), proxy.clone(), None, None));
+        }
     }
-    let (gpus, kept, edited, applying, said) = {
+    let (gpus, kept, edited, applying, said, follower, mode) = {
         let s = st.shared.lock().unwrap();
-        (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.applying, s.said.clone())
+        (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.applying, s.said.clone(), s.follower, s.mode)
     };
     let Some(gpus) = gpus else {
         ui.note("Reading…");
@@ -220,7 +271,19 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let right = if boxes.is_empty() { Vec::new() } else { boxes.remove(0) };
         ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
     }
-    let changed = edited != kept;
+    // The power mode sets them all, as it does the processors.
+    ui.bbox("Power Mode", |ui| {
+        ui.note("The power mode sets every GPU, as it does the processors: Power Saver puts them on Cooler and Quieter, Balanced on Balanced and Performance on Fastest, wherever it's chosen (Power, Deskbar's battery, the keyboard). A GPU set here stays so until the mode next changes.");
+        match (mode, follower) {
+            (_, Follower::Missing) => ui.note("Apply once to let it: an administrator's password is asked, this once."),
+            (_, Follower::Old) => ui.note("What does it is from an older Olo: Apply to bring it up to date (an administrator's password is asked)."),
+            (Some(m), Follower::Current) => ui.note(format!("It's {} now: every GPU on {}.", m.label(), gpu_tuning::for_mode(m).name())),
+            (None, Follower::Current) => ui.note("No power profiles daemon is running, so there's no power mode to follow."),
+        }
+    });
+    // (Nothing installed to follow it yet, or an older one: Apply
+    // installs it.)
+    let changed = edited != kept || follower != Follower::Current;
     let (s1, s2, p1) = (st.shared.clone(), st.shared.clone(), olo_ui::proxy(ui.cx));
     let failure = style::c(theme::palette(ui.cx).failure);
     let on_apply = ui.on_click_view(move |_, _, cx| {
@@ -248,7 +311,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 (false, None) => StringView::new("Kept for this computer and set again at every start.").dim(true).wrap(true),
             })),
     );
-    // (Below Apply: it's taken at once, not applied with the tuning.)
+    // (Below Apply, a section of its own: it's taken at once, not applied
+    // with the tuning. The commit row ends its group: `SECTION` under it.)
+    ui.space(m::SECTION - 2.0 * m::STACK);
     recordings(ui, &gpus);
 }
 

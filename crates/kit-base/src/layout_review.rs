@@ -300,6 +300,7 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
     crowded_lines(parts, ppp, &mut out);
     control_edges(parts, ppp, &mut out);
     uneven_gaps(parts, ppp, &mut out);
+    after_commit(parts, &mut out);
     out.sort_by_key(|f| f.level);
     out
 }
@@ -655,6 +656,38 @@ fn uneven_gaps(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
                 );
                 break;
             }
+        }
+    }
+}
+
+/// What a commit row's buttons say: they act on what's above them.
+const COMMITS: [&str; 5] = ["Apply", "Revert", "Save", "Save Changes", "Done"];
+
+/// A commit row (Apply, Revert…) with something close under it. The row acts on what's above it and ends that group, so what
+/// follows is a new section, `metrics::SECTION` under it; closer, the
+/// row reads as the start of what follows (Preferences ▸ GPUs' Screen
+/// Recordings box was 15 pt under its Apply, as close as the rows above
+/// were to each other).
+fn after_commit(p: &Parts, out: &mut Vec<Finding>) {
+    let all = items(p);
+    let mut rows: Vec<f32> = Vec::new();
+    // (Enabled or not: a dimmed Apply ends its group all the same.)
+    for c in p.controls.iter().filter(|c| c.role == "Button" && COMMITS.contains(&c.name.as_str()) && c.shown().is_positive()) {
+        let r = c.shown();
+        // (One row once. A box it's in starts above it: only what starts
+        // under it counts.)
+        if rows.iter().any(|y| (y - r.max.y).abs() <= SAME) {
+            continue;
+        }
+        rows.push(r.max.y);
+        let under = all.iter().filter(|(o, ..)| o.min.y > r.max.y).map(|(o, name, ..)| (o.min.y - r.max.y, name.clone(), *o));
+        let boxes = p.containers.iter().filter(|b| b.min.y > r.max.y && !p.panes.contains(b)).map(|b| (b.min.y - r.max.y, "a box".to_owned(), *b));
+        let Some((gap, name, at)) = under.chain(boxes).min_by(|a, b| a.0.total_cmp(&b.0)) else { continue };
+        if gap < crate::metrics::SECTION - NEAR_EDGE {
+            push(
+                out,
+                finding(Level::Error, "after-commit", format!("{} ends its group, but {name} is {gap:.0} pt under it: start what follows a section down (`metrics::SECTION`)", c.said()), r.union(at)),
+            );
         }
     }
 }

@@ -11,6 +11,10 @@ pub const SPACING: f32 = 12.0;
 /// Between the rows of a box or a form (a control and the next, a note
 /// and what follows it).
 pub const STACK: f32 = 10.0;
+/// Between sections of a form: under a commit row (Apply, Revert: it
+/// ends its group), what follows starts this far down, so the row reads
+/// as the end of what's above it (the layout review's `after-commit`).
+pub const SECTION: f32 = 2.0 * SPACING;
 /// The vertical Deskbar's width; notification banners share its column.
 pub const DESKBAR_WIDTH: f32 = 172.0;
 /// Between closely related items (a note under the control it's about,

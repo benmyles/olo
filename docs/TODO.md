@@ -95,6 +95,33 @@ of Finished; a new one goes where its priority puts it.
   then moved") and seed 3 at step 103 (bringing a tab to the front of
   its group, then the tiles moved); then the sweep again to 16.
 
+- **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
+  changing the power mode in power prefs (and right clicking the battery
+  in deskbar) it should also change the gpus to the equivalent
+  power/perf setting too". Choosing Power Saver, Balanced or Performance
+  (Preferences ▸ Power, or the battery's menu in Deskbar; both call
+  `olo_system::power_profile::set`) also puts every GPU on the matching
+  preset of Preferences ▸ GPUs (`gpu_tuning::Preset`: Cooler, Balanced,
+  Fastest), applied as `olo-gpu-tune set` is, without an administrator's
+  password asked each time (a polkit rule for that one action, or the
+  power-profiles daemon's own change watched by a root helper). A GPU
+  tuned by hand (Custom) is left as it is, or asked about once; the
+  GPUs panel shows the preset the power mode chose. A mode changed
+  elsewhere (the daemon, a hotkey, `powerprofilesctl`) follows too.
+  *Done* (2026-11-04, HACKING's "Each GPU's tuning"): the power mode
+  sets every GPU (Ben: "it should change for ALL gpus including
+  integrated and all discrete as well as all cpus etc -- we want it to
+  be a universal setting"), one tuned by hand too, with no way to turn
+  it off; the processors and the firmware are the daemon's, and follow
+  it already (all 16 checked). Done by a root service,
+  `olo-gpu-follow.service` (`olo-gpu-tune follow`), installed by the
+  GPUs panel's first Apply; Ben's Apply installed it (the first build's,
+  which left hand-tuned GPUs alone): at Power Saver it put the Intel GPU
+  on 650–1600 MHz and power saving and the NVIDIA one on 180–2160 MHz.
+  *Left*: his Apply again for this build's (the panel offers it: the
+  installed program is older), then Performance and Balanced tried from
+  Deskbar.
+
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in
   the sound output menu there's no airpods entry (in sound prefs)".
