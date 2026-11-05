@@ -1392,6 +1392,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         origin + Point::from((n * CASCADE, n * CASCADE))
     }
 
+    /// `window`, its frame `frame` as drawn, drew another size than it was
+    /// asked, one it can be.
+    fn drawn_otherwise(window: &WindowElement, frame: Size<i32, Logical>) -> bool {
+        use smithay::wayland::{compositor::with_states, shell::xdg::SurfaceCachedState};
+        let WindowSurface::Wayland(t) = window.0.underlying_surface();
+        let Some(asked) = t.with_pending_state(|s| s.size) else { return false };
+        let least = with_states(t.wl_surface(), |st| st.cached_state.get::<SurfaceCachedState>().current().min_size);
+        // (Outside the surface's lock: `inner_size` takes it too.)
+        let content = window.inner_size(frame);
+        content != asked && asked.w >= least.w && asked.h >= least.h
+    }
+
     /// A tiled or zoomed window its app keeps bigger than its tile (it
     /// won't be smaller than its least size: a third of a narrow display
     /// is less than StyledEdit's) gives way inwards, so it stays in the
@@ -1413,7 +1425,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let inside = |pos: i32, len: i32, lo: i32, span: i32| if len <= span { pos.clamp(lo, lo + span - len) } else { lo };
         let x = inside(geo.loc.x, geo.size.w, area.loc.x, area.size.w);
         let y = inside(geo.loc.y, geo.size.h, area.loc.y, area.size.h);
-        if (x, y) != (geo.loc.x, geo.loc.y) {
+        // Nor when what it drew isn't the size it acked, and could be (its
+        // least size fits): a frame drawn before, the size asked to come
+        // (the kit's apps answer a new window's first configure with a
+        // frame at their own size, then their tile's). Pushed in by that
+        // frame, a new Terminal stayed over its neighbour, at its tile's
+        // size but where its first frame had fitted (auto-fuzz, seed 7).
+        // (Asked only of one that would move: nothing more on every
+        // commit.)
+        if (x, y) != (geo.loc.x, geo.loc.y) && !Self::drawn_otherwise(window, geo.size) {
             self.space.relocate_element(window, loc + Point::from((x - geo.loc.x, y - geo.loc.y)));
         }
     }

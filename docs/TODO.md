@@ -39,6 +39,18 @@ of Finished; a new one goes where its priority puts it.
   (olo.styled-edit) (8, 8, 764, 528) and 10 (olo.terminal) (610, 8, 380,
   528) overlap". Find why the new tile is laid over its neighbour's, fix
   it, and run the fuzzer long (several seeds, `--reloads`) until clean.
+  *Step 37 fixed* (2026-11-04): the new Terminal answered its first
+  configure with a frame at its own size (934 wide), and
+  `keep_in_tile_area` pushed that inside the tiling area (x 610); it
+  then drew its tile's size there, over its neighbour, till a layout
+  four seconds later. A window that drew another size than it acked,
+  one it can be, is left where its tile is now (`drawn_otherwise`).
+  Seeds 1–3 pass 60 steps. *Next*: seed 7 now fails at step 39, the
+  same in three runs: as a drag of 4's right edge is let go (80 steps
+  8 ms apart, held 0 s), one look of 310 has tile 9 at its new width
+  (876) but 18 px right of where it goes (422, not 404), over 10: its
+  move landing a few drag steps after its size, in the last round
+  (`tile_drag_end`, `round_move`).
 
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in
