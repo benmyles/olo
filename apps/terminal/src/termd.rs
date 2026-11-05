@@ -137,6 +137,14 @@ struct Shell {
     writer: mpsc::Sender<Vec<u8>>,
     attached: Attached,
     title: Arc<Mutex<Option<String>>>,
+    /// The Terminal that had it, gone without a goodbye (re-executing
+    /// for an upgrade or a lost compositor, or crashed), till another
+    /// takes it: listed as its client still, so the other Terminals
+    /// restarting with it leave it be while that process lives (each had
+    /// opened a window for every other's shells, which closed again as
+    /// their owners came back: twenty for five after an app_server
+    /// reload), and a crashed one's are free to adopt.
+    left_by: Mutex<Option<libc::pid_t>>,
     /// Bumped by each read of the shell's output…
     output: Arc<AtomicU64>,
     /// …and what it was when the shell was last kept on disk.
@@ -291,7 +299,7 @@ fn new_shell(st: &mut State, id: u64, pty: pty::Pty, grid: Grid, replay: Option<
         Err(e) => log(format!("shell {id}: {e}")),
     }
     st.seq += 1;
-    st.shells.insert(id, Shell { seq: st.seq, term, shared, master, pid, grid, writer, attached, title, output, kept: 0 });
+    st.shells.insert(id, Shell { seq: st.seq, term, shared, master, pid, grid, writer, attached, title, left_by: Mutex::new(None), output, kept: 0 });
 }
 
 /// Read a shell's output into its emulator, and on to the Terminal
@@ -426,6 +434,7 @@ fn attach(st: &mut State, conn: u64, id: u64, grid: Grid) {
     outbox.send(frame);
     *out = Some(outbox);
     drop(out);
+    *shell.left_by.lock().unwrap() = None;
     drop(term);
     // A full-screen program draws itself again for the new window.
     if alt {
@@ -446,7 +455,7 @@ fn shells(s: &State) -> Vec<wire::ShellInfo> {
         .shells
         .iter()
         .map(|(&id, sh)| {
-            let client = sh.attached.lock().unwrap().as_ref().and_then(|o| pids.get(&o.conn).copied());
+            let client = sh.attached.lock().unwrap().as_ref().and_then(|o| pids.get(&o.conn).copied()).or(*sh.left_by.lock().unwrap());
             let title = sh.title.lock().unwrap().clone();
             (sh.seq, wire::ShellInfo { id, pid: sh.pid, client, grid: sh.grid, title })
         })
@@ -467,6 +476,7 @@ fn handle(st: &St, conn: u64, f: Frame) {
                 let mut a = shell.attached.lock().unwrap();
                 if a.as_ref().is_some_and(|o| old.contains(&o.conn)) {
                     *a = None;
+                    *shell.left_by.lock().unwrap() = Some(hello.pid);
                 }
             }
             if let Some(c) = s.clients.get_mut(&conn) {
@@ -602,11 +612,15 @@ fn serve(st: St, stream: UnixStream, conn: u64) {
         handle(&st, conn, f);
     }
     let mut s = st.lock().unwrap();
-    let bye = s.clients.remove(&conn).is_some_and(|c| c.bye);
+    let gone = s.clients.remove(&conn);
+    let bye = gone.as_ref().is_some_and(|c| c.bye);
+    // (Gone without a goodbye: still its, while it lives.)
+    let left_by = gone.map(|c| c.pid).filter(|&p| p != 0 && !bye);
     for shell in s.shells.values() {
         let mut a = shell.attached.lock().unwrap();
         if a.as_ref().is_some_and(|o| o.conn == conn) {
             *a = None;
+            *shell.left_by.lock().unwrap() = left_by;
         }
     }
     let _ = s.events.send(Ev::Gone { bye });

@@ -524,6 +524,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         info!(window = window.id(), app_id = window.app_id(), slot = p.slot, key = ?p.key, tab_order = p.tab_order, x = at.x, y = at.y, display = ?p.screen_key.as_ref().or(p.screen.as_ref().map(|s| &s.0)), "put back where it was");
         self.restored.push((window.clone(), p.clone()));
         meta.put_back.set(true);
+        self.auto_note_returning(&window);
         meta.slot.set(p.slot);
         meta.was.set(p.id);
         if p.floating.is_some() {

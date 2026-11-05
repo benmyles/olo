@@ -2818,6 +2818,14 @@ so the seeds without it keep their sequences.) Run it after changing
 anything in `autotile.rs`, `tiling.rs`, `rounds.rs` or the resize
 grabs.
 
+`tools/dev/fuzz-sweep [--seeds 1-16] [--jobs N] [--steps N] [--confirm] [--keep] -- FUZZER_ARGS`
+runs a fuzzer over many seeds at once, each in a session of its own
+(16 at once by default, as many as cores; a 16-seed sweep with
+`--reloads` takes about 2.5 minutes, against 35 one at a time),
+starting them half a second apart; `--confirm` runs each failure again
+alone, telling the load's (a timing check missed under 16 sessions)
+from a fault.
+
 `tools/dev/mode-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going]`
 drives the windowing modes (built on wm-fuzz, on a `--session --shell`
 tsession with two displays): each display's mode changed at random among
@@ -4556,7 +4564,12 @@ its neighbour after the tiles had moved since the restart (a drag,
 others coming back). When several of a group's windows, each with a
 tile, go into the group at once (groups coming back together), the
 group keeps the first of their tiles and the others close (each given
-to the group's front, it was laid out in two tiles). The check of
+to the group's front, it was laid out in two tiles). A window coming
+back whose saved place is among those another's kept tile was held for
+(its group's: `kept_for`) gets no tile of its own while windows are
+still coming back (`RESTORING`), nor one about to rejoin its group
+(`joins_a_group`): its group forms in that tile (as a tab of a window
+not shown yet, it split a neighbour's tile for a few frames). The check of
 windows back after a restart (`check_restored`) leaves alone a window
 behind a tiled one in its group, as it does a tile (moved, it came to
 its group's front, out of the tile). Without saved trees
@@ -7151,6 +7164,14 @@ its Wayland socket are there). An **upgrade** re-executes both in place:
 Terminal keeps which shells were in which window (`save_state`), and
 olo-termd hands its PTYs and replays to its new self through an
 inherited file (`OLO_TERMD_RESTORE`); Terminal reconnects on its own.
+A shell whose Terminal went without a goodbye (re-executing, or
+crashed) is still listed as that Terminal's (`Shell::left_by`, its pid)
+until one takes it, so the other Terminals, re-executing alongside it
+after an app_server reload, leave it be while that process lives, and
+a crashed one's are free to adopt (`reattach`'s other shells: the pid
+is gone). Listed as no one's, each Terminal had opened a window for
+every other's shells, which closed again as their owners came back:
+twenty windows for five, each splitting a tile on its way.
 (A Terminal from before olo-termd hands its shells' PTYs to its new
 self, the old way; the new one passes them on to olo-termd, ADOPT.)
 When the desktop session ends (its pid file, watched with a pidfd) or on

@@ -783,6 +783,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// its tab there does. It takes the group's frame and is put in front.
     /// False if either can't be grouped, or they are one window.
     pub fn put_in_group(&mut self, w: &WindowElement, target: &WindowElement, index: Option<usize>) -> bool {
+        self.auto_settled(w);
+        self.auto_settled(target);
         if w == target || !self.groupable(w) || !self.groupable(target) || self.space.element_location(target).is_none() {
             return false;
         }
@@ -827,6 +829,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Take `w` out of its group by hand: on its own from now on, its tab
     /// its own again. False if it is in none.
     pub fn take_out_of_group(&mut self, w: &WindowElement) -> bool {
+        self.auto_settled(w);
         if !self.groups.has(w) {
             return false;
         }
@@ -840,6 +843,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Take `w` out of its group, stepped out like a cascade so the group
     /// shows behind it, in front (agents, the tab's menu).
     pub fn ungroup_window(&mut self, w: &WindowElement) -> bool {
+        self.auto_settled(w);
         let Some(frame) = self.space.element_geometry(w) else { return false };
         if !self.take_out_of_group(w) {
             return false;

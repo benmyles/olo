@@ -260,10 +260,17 @@ of Finished; a new one goes where its priority puts it.
   of each group is, by its key), so each split a tile ("a new window
   into its tile"), then folded into its group as it was put back, the
   tree churning for 0.7 s and the tiles still moving after the fuzzer
-  saw them settle. To do: match a returning tab to its saved place at
-  its first commit (Terminal's windows have keys), or hold back
-  inserting a window of an app whose saved places aren't all claimed
-  yet while `RESTORING`. Also with `--floats` (older, on HEAD too):
+  saw them settle. *Fixed* (2026-11-04, late): those twenty were the
+  Terminals racing each other (each adopted every other's shells as
+  they all re-executed: olo-termd now lists a shell as its Terminal's
+  while that process lives, `Shell::left_by`); and a tab put back is no
+  tile of its own while its group forms (`awaiting`, `kept_for`), nor
+  put back into another kept place once a hand has grouped it. Five
+  Terminals and a Tracker now come back from four reloads in a row
+  straight into their tiles. Seeds 1–16 with `--reloads` pass, all
+  sixteen at once in 155 s (`tools/dev/fuzz-sweep`); seed 1 failed once
+  under that load ("group 1's tab places are [(2, 0), (5, 0), …]": two
+  windows at one tab place) and passed alone: a race to look at. Also with `--floats` (older, on HEAD too):
   seeds 5 (step 51) and 6 (step 73), a group's window behind showing
   as a tile over the window being dragged.
 
