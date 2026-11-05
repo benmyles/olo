@@ -712,6 +712,17 @@ of Finished; a new one goes where its priority puts it.
     stays: the keyboard itself in Preferences ▸ Keyboard (its picture,
     function row, Fn/Globe, keypad), and Touch ID left out, said so
     there. (Apple: support.apple.com/guide/security/secf60513daa)
+  - *Done* (2026-11-04): Preferences ▸ Keyboard ▸ Keyboards knows it
+    (`olo_protocol::keyboards`): a box with its picture, maker and model,
+    keypad and connection, and why its Touch ID isn't used. *Left*: its
+    own picture (the general keyboard icon for now: `genicon.py` needs an
+    image API key, in `OPENAI_API_KEY` or ~/.env, and there is none on
+    this machine; the subject: a slim full-size wireless keyboard with a
+    numeric keypad, a thin silver aluminium base and white blank keys, a
+    small round black key with a silver ring at the top right); and its
+    settings: the function row as F-keys or as media keys (hid_apple's
+    `fnmode`, or done in app_server's keymap so it needs no root), and
+    the Fn/Globe key.
 
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable

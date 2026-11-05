@@ -74,8 +74,9 @@ const LAYOUTS: &[(&str, &str)] = &[
 /// app_server's device events before asking, as Touchpad's devices are).
 fn watch_keyboards(proxy: olo_ui::Proxy) -> Arc<Mutex<Option<Vec<String>>>> {
     let shared: Arc<Mutex<Option<Vec<String>>>> = Default::default();
-    // Tests (the layout lint): a laptop's and an Apple one, named as they come.
-    if cfg!(test) {
+    // Tests (the layout lint), and a look headless (`OLO_KEYBOARDS_DEMO`):
+    // a laptop's and an Apple one, named as they come.
+    if cfg!(test) || std::env::var_os("OLO_KEYBOARDS_DEMO").is_some() {
         *shared.lock().unwrap() = Some(vec![BUILT_IN.into(), "Apple Inc. Magic Keyboard with Touch ID and Numeric Keypad".into()]);
         return shared;
     }
@@ -127,6 +128,44 @@ fn keyboard_name(name: &str) -> String {
     if name == BUILT_IN { "Built-in Keyboard".into() } else { name.to_owned() }
 }
 
+/// The Keyboards tab shown (the layout lint's).
+#[cfg(test)]
+pub fn keyboards_tab(st: &mut State) {
+    st.tab = 2;
+}
+
+/// Size of a known keyboard's picture (points).
+const KEYBOARD_PICTURE: f32 = 64.0;
+
+/// A keyboard Olo knows: its picture beside what it is, and its Touch ID
+/// as it stands here.
+fn known_keyboard(ui: &mut Ui, model: &'static olo_protocol::keyboards::Model) {
+    use olo_ui::{gpui::canvas, widgets::StringView};
+    let mut facts = vec![format!("{} {}", model.maker, model.model)];
+    facts.push(if model.keypad { "full size, with a numeric keypad".into() } else { "compact".into() });
+    facts.push(model.connection.to_owned());
+    let picture = canvas(
+        |_, _, _| {},
+        move |b, _, window, _| {
+            let at = olo_ui::style::snap_centred(window, b.center(), KEYBOARD_PICTURE, KEYBOARD_PICTURE);
+            olo_ui::icons::paint(window, at, model.icon);
+        },
+    )
+    .w(px(KEYBOARD_PICTURE))
+    .h(px(KEYBOARD_PICTURE))
+    .flex_shrink_0();
+    let touch_id = model.touch_id.map(|t| match t {
+        olo_protocol::keyboards::TouchId::SealedToAMac => {
+            "Touch ID isn't used here: its sensor works only with the Mac it's paired to, whose Secure Enclave alone can read what it senses. Use the computer's own fingerprint reader, or your password."
+        }
+    });
+    ui.bbox(model.name, |ui| {
+        let words =
+            div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT)).child(StringView::new(facts.join(" · ")).wrap(true)).children(touch_id.map(|t| StringView::new(t).dim(true).wrap(true)));
+        ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(picture).child(words));
+    });
+}
+
 /// Each keyboard's own settings: Alt and the Windows key swapped, or not
 /// (a check box for each, by name).
 fn keyboards(ui: &mut Ui, st: &State) {
@@ -142,6 +181,11 @@ fn keyboards(ui: &mut Ui, st: &State) {
     if all.is_empty() {
         ui.note("No keyboards are plugged in.");
         return;
+    }
+    // Keyboards Olo knows: each in a box of its own, with its picture and
+    // what it has.
+    for model in plugged.iter().filter_map(|n| olo_protocol::keyboards::identify(n)) {
+        known_keyboard(ui, model);
     }
     ui.bbox("Swap Alt and the Windows Key", |ui| {
         for (name, here) in all {

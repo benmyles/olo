@@ -148,6 +148,27 @@ fn ui_lint_display_colour() {
     assert_clean("Display's Colour tab", &found);
 }
 
+/// Keyboard's Keyboards tab (beside the Keyboard tab the panel lint
+/// sees): the made-up keyboards plugged in, the Magic Keyboard with
+/// Touch ID among them, known, in its own box with its picture.
+#[test]
+fn ui_lint_keyboards_tab() {
+    let mut lint = Lint::new();
+    let (w, h) = Panel::Keyboard.size();
+    let options = WindowOptions::new(Panel::Keyboard.title(), w as f32, h as f32).fits_content();
+    let found = lint.window(&options, move |window, cx| {
+        let prefs = cx.new(|_| prefs());
+        let view = cx.new(|cx| PanelView::new(prefs, Panel::Keyboard, Settings::default(), window, cx));
+        view.update(cx, |v, _| {
+            if let crate::panel::State::Keyboard(st) = &mut v.state {
+                crate::keyboard::keyboards_tab(st);
+            }
+        });
+        view
+    });
+    assert_clean("Keyboard's Keyboards tab", &found);
+}
+
 /// Terminal ▸ Command Suggestions in each of its states (Terminal's
 /// size is the tallest's).
 #[test]

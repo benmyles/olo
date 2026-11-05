@@ -4122,7 +4122,15 @@ in (those with letter keys: not the power button's, the lid's or the
 ThinkPad's extra buttons' pseudo-keyboards), and `InputDevicesChanged`
 says when they come and go; a laptop's own ("AT Translated Set 2
 keyboard") is shown as Built-in Keyboard, and one set up and unplugged
-stays listed, to undo.
+stays listed, to undo. A keyboard Olo knows (`olo_protocol::keyboards`,
+by the name its driver gives it, as `mice` knows mice; only models seen)
+gets a box of its own above, with its picture, what it is (maker,
+model, keypad, how it connects) and what of it Olo can't use: the Magic
+Keyboard with Touch ID's sensor (A2520) is sealed to the Mac it's
+paired with (`TouchId::SealedToAMac`; TODO's "Keyboards we know" has
+how that was found). `OLO_KEYBOARDS_DEMO=1` lists the layout lint's
+made-up keyboards (a laptop's and the A2520), to look at headless;
+`ui_lint_keyboards_tab` lints the tab with them.
 
 Every shortcut, app_server's and the apps', and how keys behave, are one
 keyboard profile (`KeyboardProfile`, in `KeyboardSettings::profile`),

@@ -3118,5 +3118,11 @@
   "title": "Agent Screens: a stopped screen stays, with Start Screen",
   "caption": "Stopping a screen keeps it, listed under Stopped (even one no agent acted on, which used to vanish), with Start Screen to start it again at its size; archived screens under Archived, shown by default. The same from olo-screen: list (with each screen's state), start NAME, archive, unarchive, delete.",
   "image": "2026-11-04/175618-agent-screens-a-stopped-screen-stays-with-start-.png"
+ },
+ {
+  "time": "2026-11-04T18:15:02",
+  "title": "Preferences \u25b8 Keyboard knows the Magic Keyboard with Touch ID",
+  "caption": "The A2520 recognised by its name, in a box of its own with a picture (the keyboard icon for now), what it is, and why its Touch ID isn't used: its sensor is sealed to the Mac it's paired with.",
+  "image": "2026-11-04/181502-preferences-keyboard-knows-the-magic-keyboard-wi.png"
  }
 ]

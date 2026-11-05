@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Preferences ▸ Keyboard knows the Magic Keyboard with Touch ID
+
+*18:15* — The A2520 recognised by its name, in a box of its own with a picture (the keyboard icon for now), what it is, and why its Touch ID isn't used: its sensor is sealed to the Mac it's paired with.
+
+![Preferences ▸ Keyboard knows the Magic Keyboard with Touch ID](2026-11-04/181502-preferences-keyboard-knows-the-magic-keyboard-wi.png)
+
 ### Agent Screens: a stopped screen stays, with Start Screen
 
 *17:56* — Stopping a screen keeps it, listed under Stopped (even one no agent acted on, which used to vanish), with Start Screen to start it again at its size; archived screens under Archived, shown by default. The same from olo-screen: list (with each screen's state), start NAME, archive, unarchive, delete.
