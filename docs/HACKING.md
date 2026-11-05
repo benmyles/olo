@@ -3896,7 +3896,10 @@ opened, its own `panel::State` and text fields).
   each drawn in that theme (`icons::paint_in`, `brand::wordmark_in`):
   a radio button with its name, a line about it, its wordmark and six of
   its icons; clicking anywhere on a row chooses it, and its wallpaper
-  (`choose`). The choice is
+  (`choose`). Beside the rows, the chosen theme's colour sets one above
+  the other (its own, BeOS's, Catppuccin's: a preview of each in light
+  and dark), on a grid of their own (`review::own_grid`): side by side,
+  the panel fits 1280 × 800 with up to a dozen themes. The choice is
   `Appearance::icon_theme` (an id; unknown ones draw the default,
   `bebox`), so agents set it with `SetSettings` like any other.
   Every process draws in one theme, `olo_xdg::themes::current()`: the

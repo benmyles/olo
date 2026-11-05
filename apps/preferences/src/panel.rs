@@ -230,7 +230,8 @@ impl Panel {
             Panel::Security => (420, 416),
             Panel::Sound => (800, 466),
             Panel::Terminal => (520, 692),
-            Panel::Themes => (560, 712),
+            // The themes, the chosen one's colour sets beside them.
+            Panel::Themes => (800, 600),
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).

@@ -32,34 +32,6 @@ of Finished; a new one goes where its priority puts it.
   report says, else: behind other windows rather than minimized, on
   another workspace, across a lock or the display sleeping.
 
-- **Themes after NeXTSTEP, Mac OS 9 and AmigaOS** (Ben, 2026-11-04):
-  "add extra themes for olo- NeXTSTEP, MacOS 9, AmigaOS. they must all
-  come with light and dark variants, and have a complete, max quality
-  icon set generated in the style of each of those OSes using sunburst
-  image generator on highest quality settings. the custom icon set must
-  cover everything for every olo app and place where there's an icon
-  used". Three more themes beside the seven in `olo_theme::looks::THEMES`
-  (each a `data/themes/<name>/` with its icons, wordmark and wallpaper,
-  and its own colour set made from `Seeds`, light and dark, plus BeOS's
-  and Catppuccin's as every theme has): NeXTSTEP's (greys, black
-  window bars, its bevelled 3D and the dimpled grey of its dock and
-  icons, black-and-white 2-bit look carried to colour), Mac OS 9's
-  (Platinum: light grey bevels, pinstriped title bars, purple-blue
-  selection, its soft-shadowed icons), AmigaOS's (Workbench 3.x: blue,
-  orange, white and black, its chunky bevels and pixel-crisp icons;
-  dark the Workbench 1.3 blue). Each the look and the feel only, drawn
-  as Olo's own (no Apple, NeXT or Commodore logos, names or artwork:
-  the Classic theme's rule). Every icon a full set has (135 now in each
-  of `data/icons` and every theme's, every size from 16 to 256 px, each
-  app's, file kinds', places', tray's and controls'): generated with
-  `gpt-image-2.5-sunburst` at quality `high` and full size as
-  docs/ICONS.md says, with each theme's own reference icons made first
-  and every icon after against them, so the set looks drawn by one
-  hand; checked at 16 px and at every scale (`icons::paint`, one pixel
-  to a device pixel), on light, dark and night; Preferences ▸ Themes
-  showing each. Needs an `OPENAI_API_KEY` (not set in the sessions so
-  far: the A2520 keyboard's icon waits on it too).
-
 - **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
   screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
   incorrectly showing up as a keyboard"): "Yubico YubiKey OTP+FIDO+CCID"
@@ -1635,6 +1607,46 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Themes after NeXTSTEP, Mac OS 9 and AmigaOS**~~ (done 2026-11-05:
+  Cube, Platinum and Workbench in `olo_theme::looks::THEMES`, each a
+  full set (135 icons at every size, drawn by gpt-image-2.5-sunburst at
+  high against the theme's own five references, reviewed on contact
+  sheets on light, dark and night, crisp at 1.5×), a wordmark
+  (`tools/genwordmark.py`, new), wallpapers light and dark, and its own
+  colours light and dark (Cube's greys and black tab, Platinum's
+  lavender tab and lilac-blue, Workbench's grey and blue by day and
+  1.3's deep blue and orange by night), with BeOS's and Catppuccin's;
+  Preferences ▸ Themes lays the colour sets beside the ten rows, so it
+  still fits 1280 × 800; the pack's old "Workbench" pattern is "Ring
+  Pattern" now. Reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and
+  dark: clean) (Ben, 2026-11-04):
+  "add extra themes for olo- NeXTSTEP, MacOS 9, AmigaOS. they must all
+  come with light and dark variants, and have a complete, max quality
+  icon set generated in the style of each of those OSes using sunburst
+  image generator on highest quality settings. the custom icon set must
+  cover everything for every olo app and place where there's an icon
+  used". Three more themes beside the seven in `olo_theme::looks::THEMES`
+  (each a `data/themes/<name>/` with its icons, wordmark and wallpaper,
+  and its own colour set made from `Seeds`, light and dark, plus BeOS's
+  and Catppuccin's as every theme has): NeXTSTEP's (greys, black
+  window bars, its bevelled 3D and the dimpled grey of its dock and
+  icons, black-and-white 2-bit look carried to colour), Mac OS 9's
+  (Platinum: light grey bevels, pinstriped title bars, purple-blue
+  selection, its soft-shadowed icons), AmigaOS's (Workbench 3.x: blue,
+  orange, white and black, its chunky bevels and pixel-crisp icons;
+  dark the Workbench 1.3 blue). Each the look and the feel only, drawn
+  as Olo's own (no Apple, NeXT or Commodore logos, names or artwork:
+  the Classic theme's rule). Every icon a full set has (135 now in each
+  of `data/icons` and every theme's, every size from 16 to 256 px, each
+  app's, file kinds', places', tray's and controls'): generated with
+  `gpt-image-2.5-sunburst` at quality `high` and full size as
+  docs/ICONS.md says, with each theme's own reference icons made first
+  and every icon after against them, so the set looks drawn by one
+  hand; checked at 16 px and at every scale (`icons::paint`, one pixel
+  to a device pixel), on light, dark and night; Preferences ▸ Themes
+  showing each. Needs an `OPENAI_API_KEY` (not set in the sessions so
+  far: the A2520 keyboard's icon waits on it too).
 
 - ~~**wm fuzzer: its last faults**~~ (done 2026-11-05: seed 38, Zoom
   Horizontally twice on a Tracker sized since its zoom came back at

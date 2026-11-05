@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Cube, light
+
+*03:52* — The Cube theme: workstation greys, a black tab, deep blue selection, its airbrushed icons and studio wallpaper.
+
+![Cube, light](2026-11-05/035249-cube-light.png)
+
+### Platinum, light
+
+*03:52* — The Platinum theme: platinum grey, a lavender tab, lilac-blue selection, its outlined icons and wallpaper.
+
+![Platinum, light](2026-11-05/035247-platinum-light.png)
+
+### Workbench, dark: deep blue and orange
+
+*03:52* — The Workbench theme's dark colours (Workbench 1.3's blue, orange tab and selection, black outlines), its pixel-art icons and wallpaper.
+
+![Workbench, dark: deep blue and orange](2026-11-05/035246-workbench-dark-deep-blue-and-orange.png)
+
+### Preferences ▸ Themes: Cube, Platinum and Workbench
+
+*03:52* — Three more themes, after NeXTSTEP, Mac OS 9 and AmigaOS: a full icon set each (135, drawn by gpt-image-2.5-sunburst against each theme's references), its wordmark, its wallpaper (light and dark) and its own colours. The panel lays the chosen theme's colour sets beside the ten rows, so it fits 1280 × 800 without scrolling.
+
+![Preferences ▸ Themes: Cube, Platinum and Workbench](2026-11-05/035245-preferences-themes-cube-platinum-and-workbench.png)
+
 ### HDR video shown for an sRGB screen
 
 *01:26* — HDR10 and HLG video (phones', streaming's: BT.2020, PQ or HLG) converted for an ordinary screen: its light counted in SDR's white (203 cd/m²), BT.2020 converted to sRGB, highlights rolled off up to the brightest it was mastered to. A test pattern, a PQ ramp to 1,000 cd/m² over BT.2020 colour bars at 100 and 600 cd/m²: above as it shows now, below as before (dull and grey, its samples taken as sRGB).

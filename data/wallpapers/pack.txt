@@ -10,10 +10,13 @@ toybox|Toybox
 papercraft|Papercraft
 enamel|Enamel
 halftone|Halftone
+cube|Cube
+platinum|Platinum
+workbench|Workbench
 classic|Classic
 dusk-gradient|Dusk
 boing|Boing
 be-blue|Be Blue
 aqua|Aqua
 clouds|Clouds
-workbench-pattern|Workbench
+workbench-pattern|Ring Pattern

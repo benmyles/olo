@@ -107,6 +107,34 @@ SCENES = {
         "halftone dots. Flat solid inks, a slightly coarse dot screen, no gradients except printed dots, a "
         "crisp printed look."
     ),
+    "cube": (
+        "Scene: a calm, exact studio still life with the weight of a photograph, seen nearly straight on at eye "
+        "level: a smooth satin floor of mid grey running back to a seamless backdrop that fades from charcoal "
+        "at the floor to a soft light grey at the top, lit from the upper left. Left of centre stand two "
+        "objects made as the attached wordmark's letters are: a big upright ring like its o (a ring-shaped "
+        "object, not a letter), a solid body of matte black plastic with crisp bevelled edges, its front face "
+        "Be blue, and beside it a matte black cube with a BeOS-yellow front face; each with a fine highlight "
+        "along its lit edges, a soft shadow and a faint reflection in the floor. Nothing else: spare, quiet, "
+        "precise, like a 1990s workstation maker's product photograph."
+    ),
+    "platinum": (
+        "Scene: a friendly, clean late-1990s desktop picture: soft rounded hills in pale lilac-grey and "
+        "platinum grey rolling under a clear, pale sky that fades from soft periwinkle at the top to white at "
+        "the horizon, a few small puffy white clouds; on a hill left of centre, a big chunky Be blue ring like "
+        "the o of the attached wordmark (a ring-shaped object, not a letter) beside a sunny BeOS-yellow bar, "
+        "seen in a gentle view from slightly above. Crisp even black outlines as in the icons, flat colour "
+        "with gentle smooth shading and one soft highlight on each form, a small soft grey shadow to the "
+        "lower right. Cheerful, tidy and restful."
+    ),
+    "workbench": (
+        "Scene: a landscape as crisp pixel art at a large zoom, on a coarse, clearly visible pixel grid with "
+        "no anti-aliasing, a small fixed palette and ordered dithering for every gradient: a steel-blue sky "
+        "dithering in bands to pale sky blue at a low horizon, flat rows of grey and warm beige pixel hills "
+        "and a few blocky white pixel clouds; left of centre, standing on the nearest hill, a big Be blue "
+        "pixel ring like the o of the attached wordmark (a ring-shaped object, not a letter) beside a "
+        "BeOS-yellow pixel bar, both with hard black one-pixel outlines and bright one-pixel highlights on "
+        "their lit edges. Like a 1990s home computer's screen, enlarged: orderly, bright and calm."
+    ),
     "classic": (
         "Scene: Olo's first look, glossy, bright and saturated: a big glossy Be blue ring like the o of the "
         "attached wordmark (a ring-shaped object, not a letter), with a glossy BeOS-yellow bar beside it, "
@@ -127,6 +155,9 @@ DARK_EXTRA = {
     "bebox": "The pillar's LEDs glow brightly in yellow and cast a faint warm light on the plain. ",
     "halftone": "Still flat printed inks and halftone dots: a deep navy night sky, the rays a little lighter navy. ",
     "papercraft": "Still flat card faces, one tone each: a deep navy card sky with a few small folded paper stars. ",
+    "cube": "A near-black studio, the floor and backdrop deep charcoal, the blue and yellow faces softly lit. ",
+    "platinum": "Still black outlines and flat, gently shaded colour: a deep periwinkle dusk, hills in dark lilac-grey. ",
+    "workbench": "Still crisp pixel art with ordered dithering and one-pixel outlines: a deep navy night sky with a few one-pixel stars. ",
 }
 
 

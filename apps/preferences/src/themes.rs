@@ -5,10 +5,12 @@
 //! every app follows at once, and the wallpaper to the theme's own
 //! (`themes::wallpaper`), which Backgrounds can change after.
 //!
-//! Under them, the theme's colour sets (`olo_theme::looks::ColorSet`:
-//! its own, BeOS's, Catppuccin's), each previewed as a small window in
-//! its light and its dark palette. Choosing one sets
-//! `Appearance::colors`; Terminal's colours follow it.
+//! Beside them, the chosen theme's colour sets
+//! (`olo_theme::looks::ColorSet`: its own, BeOS's, Catppuccin's), one
+//! above the other, each previewed as a small window in its light and its
+//! dark palette. Choosing one sets `Appearance::colors`; Terminal's
+//! colours follow it. (Side by side, so the panel fits the smallest
+//! screen however many themes there are, up to a dozen.)
 
 use olo_protocol::Settings;
 use olo_ui::{
@@ -38,6 +40,8 @@ const WORD: f32 = 24.0;
 const WORD_SLOT: f32 = 64.0;
 /// A colour set's preview: a small window in each mode, side by side.
 const PREVIEW_H: f32 = 58.0;
+/// The colour sets' column.
+const COLORS_W: f32 = 216.0;
 
 pub fn ui(ui: &mut Ui) {
     let s = ui.s.clone();
@@ -90,13 +94,25 @@ pub fn ui(ui: &mut Ui) {
             .on_mouse_down(MouseButton::Left, move |_, window, cx| pick_row(window, cx));
         rows.push(row);
     }
-    ui.add(div().flex().flex_col().children(rows));
-    ui.space(m::SPACING);
-    colors(ui, &s);
+    let sets = ui.collect(|ui| colors(ui, &s));
+    ui.add(
+        div().flex().flex_row().items_start().gap(px(m::SPACING)).child(div().flex_1().min_w_0().flex().flex_col().children(rows)).child(
+            div()
+                .relative()
+                .w(px(COLORS_W))
+                .flex_shrink_0()
+                .flex()
+                .flex_col()
+                // (Laid out down its own column: nothing in it lines up
+                // with the theme rows beside it, for the review too.)
+                .child(canvas(|_, _, _| {}, |b, _, window, _| olo_ui::review::own_grid(window, b)).absolute().inset_0())
+                .children(sets),
+        ),
+    );
 }
 
-/// The chosen theme's colour sets, each a preview over its name and a
-/// line about it; clicking any of it chooses the set.
+/// The chosen theme's colour sets, one above the other, each a preview
+/// over its name and a line about it; clicking any of it chooses the set.
 fn colors(ui: &mut Ui, s: &Settings) {
     let theme = themes::resolve(&s.appearance.icon_theme);
     let chosen = ColorSet::resolve(&s.appearance.colors);
@@ -132,9 +148,6 @@ fn colors(ui: &mut Ui, s: &Settings) {
                 div()
                     .id(SharedString::from(format!("colors-{}", set.id())))
                     .relative()
-                    // (Each an equal share of the row, whatever its text.)
-                    .flex_1()
-                    .min_w_0()
                     .flex()
                     .flex_col()
                     .gap(px(m::TIGHT))
@@ -146,7 +159,7 @@ fn colors(ui: &mut Ui, s: &Settings) {
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| pick_card(window, cx)),
             );
         }
-        ui.add(div().flex().flex_row().gap(px(m::SPACING)).children(cards));
+        ui.add(div().flex().flex_col().gap(px(m::SPACING)).children(cards));
     });
 }
 

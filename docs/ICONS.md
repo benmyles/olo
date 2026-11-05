@@ -137,7 +137,7 @@ python3 tools/iconsheet.py docs/img/icon-reference.png \
 
 ## Themes
 
-The whole set, the `olo` mark and the wordmark come in seven looks, chosen
+The whole set, the `olo` mark and the wordmark come in ten looks, chosen
 in Preferences ▸ Themes (`Appearance::icon_theme`; new users get
 BeBox). Every app follows the choice at once. The style above is **Classic**:
 `data/icons` and `data/brand` themselves. Every other theme draws the same
@@ -154,6 +154,9 @@ tab yellow as the brand colours.
 | `papercraft` | Papercraft | Folded card, one flat tone per face, as in R5. |
 | `enamel` | Enamel | Hard enamel pins with polished gold rims for the outline. |
 | `halftone` | Halftone | Flat ink, a heavy black line and halftone-dot shading. |
+| `cube` | Cube | After NeXTSTEP: workstation greys and photographic airbrushed objects, nearly straight on; black-bodied letters. |
+| `platinum` | Platinum | After Mac OS 9: friendly black-outlined icons, lilac folders, gentle isometric devices. |
+| `workbench` | Workbench | After AmigaOS 3 (MagicWB): crisp pixel art, dithered, grey drawers and a steel-blue palette. |
 | `classic` | Classic | This guide's glossy set. |
 
 A theme lives in `data/themes/<id>/`:
@@ -161,6 +164,7 @@ A theme lives in `data/themes/<id>/`:
 | Path | What |
 |---|---|
 | `style.txt` | Its style prompt, used in place of the house style. |
+| `subjects.txt` | Optional: `name|subject` lines, a subject of its own for an icon where the manifest's names what it draws otherwise (Platinum's lilac folder, Workbench's drawers). |
 | `reference/` | Its reference icons, 512 px: folder, application, disk, terminal and home. |
 | `src/` | Raw 1024² renders and their sidecars (gitignored). |
 | `icons/<px>/<name>.png` | The shipped sizes, laid out as in `data/icons`. |
@@ -185,12 +189,29 @@ Rules:
 
 ```sh
 # A new icon NAME, in every theme (one image each; skips ones already drawn)
-tools/genicons.sh --theme bebox,soft-be,toybox,papercraft,enamel,halftone NAME
+tools/genicons.sh --theme bebox,soft-be,toybox,papercraft,enamel,halftone,cube,platinum,workbench NAME
 # …or candidates for one theme
 python3 tools/genicon.py --theme toybox NAME "subject" --variants 2
 # Review, then render the sizes
 python3 tools/mkicons.py --theme toybox NAME
 python3 tools/iconsheet.py /tmp/toybox.png --theme toybox
+```
+
+### Theme wordmarks
+
+Each theme's wordmark is Olo's o, l, o (the o's Be blue, the l BeOS tab
+yellow) made in its material. `tools/genwordmark.py` draws it with the
+icons' model at quality "high", 1536×1024, with the Classic wordmark
+attached for its letters and colours and the theme's reference icons for
+its look; `NOTES` holds a theme's line on how it makes letters, where its
+icon style alone gives the Classic gloss (Cube's black bodies). Candidates
+go to `data/themes/<id>/src/wordmark/`; `--promote` trims one and writes
+it 768 px wide to `brand/olo-wordmark.png`. Look at each on light and dark
+panels before promoting.
+
+```sh
+python3 tools/genwordmark.py cube --variants 2
+python3 tools/genwordmark.py cube --promote data/themes/cube/src/wordmark/olo-wordmark-3.png
 ```
 
 ### Theme wallpapers
