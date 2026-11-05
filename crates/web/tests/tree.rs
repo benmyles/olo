@@ -66,8 +66,49 @@ fn malformed_markup_does_not_panic_or_reprocess_forever() {
     use olo_web::html::{ParseError, ParseOptions, parse};
     use std::sync::Arc;
     let tags = [
-        "div", "p", "a", "b", "i", "html", "head", "body", "pre", "li", "dl", "dd", "form", "button", "option", "select", "optgroup", "script", "style", "title", "textarea", "frameset", "frame",
-        "br", "table", "tbody", "thead", "tfoot", "tr", "td", "th", "caption", "colgroup", "col",
+        "div",
+        "p",
+        "a",
+        "b",
+        "i",
+        "html",
+        "head",
+        "body",
+        "pre",
+        "li",
+        "dl",
+        "dd",
+        "form",
+        "button",
+        "option",
+        "select",
+        "optgroup",
+        "script",
+        "style",
+        "title",
+        "textarea",
+        "frameset",
+        "frame",
+        "svg",
+        "math",
+        "foreignObject",
+        "title",
+        "mi",
+        "mo",
+        "annotation-xml",
+        "mglyph",
+        "circle",
+        "br",
+        "table",
+        "tbody",
+        "thead",
+        "tfoot",
+        "tr",
+        "td",
+        "th",
+        "caption",
+        "colgroup",
+        "col",
     ];
     let mut seed = 0x1309_aca1_2077_9bdfu64;
     for _ in 0..10_000 {
@@ -110,4 +151,45 @@ fn table_text_uses_source_ranges_and_enforces_its_temporary_buffer_quota() {
         parse(source, ParseOptions { document_limits: dom::Limits { owned_text_bytes: 32, ..Default::default() }, ..Default::default() }, None),
         Err(ParseError::Document(dom::Error::TextLimit))
     ));
+}
+
+#[test]
+fn foreign_attributes_keep_expanded_identity_through_cloning_and_qualified_mutation() {
+    use olo_web::{
+        dom::{AttributeNamespace as Ns, Namespace, NodeType},
+        html::{ParseOptions, parse},
+    };
+    use std::sync::Arc;
+    let mut document = parse(
+        Arc::from("<!doctype html><svg viewBox='0 0 1 1' xlink:href='#icon' xml:lang='en' xmlns='urn:ignored' xmlns:xlink='http://www.w3.org/1999/xlink' xlink:unknown='plain'/>"),
+        ParseOptions::default(),
+        None,
+    )
+    .unwrap()
+    .document;
+    let html = document.children(document.root()).unwrap().find(|&n| document.node_type(n).unwrap() == NodeType::Element).unwrap();
+    let body = document.children(html).unwrap().find(|&n| document.name(n).unwrap() == Some("body")).unwrap();
+    let svg = document.first_child(body).unwrap().unwrap();
+    assert_eq!(document.namespace(svg).unwrap(), Some(Namespace::Svg));
+    assert_eq!(document.attribute_ns(svg, Some(Ns::Xlink), "href").unwrap(), Some("#icon"));
+    assert_eq!(document.attribute_ns(svg, None, "xlink:href").unwrap(), None);
+    assert_eq!(document.attribute_ns(svg, Some(Ns::Xml), "lang").unwrap(), Some("en"));
+    assert_eq!(document.attribute_ns(svg, Some(Ns::Xmlns), "xmlns").unwrap(), Some("urn:ignored"));
+    assert_eq!(document.attribute_ns(svg, Some(Ns::Xmlns), "xlink").unwrap(), Some(Ns::Xlink.uri()));
+    assert_eq!(document.attribute_ns(svg, None, "xlink:unknown").unwrap(), Some("plain"));
+    let href = document.attributes_ns(svg).unwrap().find(|a| a.namespace == Some(Ns::Xlink)).unwrap();
+    assert_eq!((href.qualified_name, href.prefix, href.local_name), ("xlink:href", Some("xlink"), "href"));
+    let cloned = document.clone_subtree(svg).unwrap();
+    assert_eq!(document.attributes_ns(svg).unwrap().collect::<Vec<_>>(), document.attributes_ns(cloned).unwrap().collect::<Vec<_>>());
+    let revision = document.revision();
+    assert!(!document.set_attribute(cloned, "xlink:href", "#icon").unwrap());
+    assert_eq!(document.revision(), revision);
+    document.set_attribute(cloned, "xlink:href", "#changed").unwrap();
+    assert_eq!(document.attribute_ns(cloned, Some(Ns::Xlink), "href").unwrap(), Some("#changed"));
+    assert_eq!(document.attribute(svg, "xlink:href").unwrap(), Some("#icon"));
+    assert!(document.remove_attribute(cloned, "xlink:href").unwrap());
+    assert_eq!(document.attribute_ns(cloned, Some(Ns::Xlink), "href").unwrap(), None);
+    document.destroy_subtree(cloned).unwrap();
+    document.destroy_subtree(svg).unwrap();
+    assert_eq!(document.memory().live_attributes, 0);
 }

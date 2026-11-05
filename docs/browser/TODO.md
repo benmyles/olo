@@ -16,16 +16,19 @@ item means implemented and verified; a partial implementation stays open.
   handles, bounded arenas, atomic tree validation, iterative reclamation
   and release storage measurements.
 - [ ] Implement complete HTML tree construction and web-facing DOM semantics
-  (Web IDL, namespaced attributes, adoption, mutation observers, ranges,
+  (Web IDL, arbitrary attribute namespaces and namespaced setters,
+  mutation observers, ranges,
   event dispatch, shadow DOM and GC rooting). Amortized adjacent-text
   appends and source-range merging are implemented and measured.
 - [x] Connect tokenizer to original static document/head/body/list/form/raw-text/
   formatting/frameset tree construction; independent WPT tree runner and
-  per-case regression baseline. 2,796/3,904 tree cases match; this is partial.
+  per-case regression baseline. 3,236/3,904 tree cases match; this is partial.
 - [x] Static table insertion modes, foster parenting, bounded/source-backed
   pending table text; release scaling and common-path comparisons.
-- [ ] Complete foreign-content, template and context fragment parsing;
-  1,108 unsupported static tree cases remain (including script execution).
+- [x] Static SVG/MathML document dispatch, integration points, CDATA,
+  spelling adjustments and compact XLink/XML/XMLNS attribute identity.
+- [ ] Complete template and context fragment parsing; 668 unsupported
+  static tree cases remain (including six requiring script execution).
 - [ ] Add network/encoding/cache/cookies with security and memory bounds.
 - [ ] Implement CSS tokenizer/parser, selectors, cascade, media queries,
   custom properties and style invalidation.
@@ -53,6 +56,6 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: foreign content and namespaced attributes, then templates and
-fragments; complete tokenizer diagnostics/input handling.
+Next: templates and context fragments; complete tokenizer diagnostics/
+input handling and arbitrary namespaces/Web IDL mutation semantics.
 Evaluation capture/replay and executable site journeys remain open.

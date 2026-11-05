@@ -19,8 +19,10 @@ framesets, table modes and foster parenting, active formatting reconstruction
 and adoption, and doctype
 mode selection. Initial `selectedcontent` contents are cloned from the
 selected option. Live selection state, events and mutation hooks remain.
-SVG/MathML foreign parsing, templates and context fragments still
-return explicit unsupported results; they cannot be compatibility passes.
+SVG/MathML document parsing includes namespace-sensitive scope/adoption,
+HTML/MathML integration points, self-closing foreign elements, CDATA and
+foreign spelling/attribute adjustments. Templates and context fragments
+still return explicit unsupported results; they cannot be compatibility passes.
 
 `dom::Document` is storage, not the complete web-facing DOM API. Nodes
 have scoped generational handles and flat 40-byte slots. Text/attribute
@@ -34,8 +36,8 @@ origin/frame boundaries and secret masking around these primitives.
 ## Independent tree coverage
 
 Unmodified WPT fixtures and their license are in `crates/web/tests/wpt-tree`;
-NOTICE.md pins the source revision. Current coverage is **2,796/3,904
-static tree cases**, with **1,108 unsupported**, not passed. Both scripting
+NOTICE.md pins the source revision. Current coverage is **3,236/3,904
+static tree cases**, with **668 unsupported**, not passed. Both scripting
 flags run where the fixture calls for them. Parse-error diagnostics are
 not checked. A native evaluator always exits nonzero until every static
 tree case matches:
@@ -61,7 +63,7 @@ Neither set of counts establishes website rendering, JS or DOM API support.
 ## Reproducible release measurements
 
 Examples `tokenize_bench`, `dom_bench`, `append_bench`, `parse_bench`
-and `table_bench`
+`table_bench` and `foreign_bench`
 emit JSON; run with `cargo run --release -p olo-web --example NAME`.
 Pin to the same CPU and alternate baseline/default runs. Raw samples,
 commands, machine and scope are recorded under `measurements/` and in
@@ -83,3 +85,13 @@ dispatcher and foster insertion paths stay separate from ordinary inserts:
 release comparison caught a compiler inlining/stack regression when merged.
 See `measurements/2026-11-05-table-common.json` and
 `measurements/2026-11-05-tables.json` for every observation.
+
+Foreign attribute namespace bits share the interned-name key: attribute
+slots remain 16 bytes, node slots 40 bytes. The name arena bounds IDs to
+30 bits. `attributes_ns` returns qualified/local names, prefix, value and
+recognized XLink/XML/XMLNS identity; `attribute_ns` looks up expanded
+identity. Qualified-name reads/writes/removal and cloning preserve the
+stored namespace. These are storage primitives: arbitrary XML namespace
+URIs, namespaced Web IDL setters and XML parsing remain unfinished.
+Tokenizer CDATA permission follows current-node changes; text and ignored
+tokens reuse it. Foreign dispatch is separate from HTML mode reprocessing.

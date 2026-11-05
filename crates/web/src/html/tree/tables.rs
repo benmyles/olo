@@ -39,7 +39,7 @@ impl<'a> Builder<'a> {
     }
 
     fn foster_insertion_location(&self, target: NodeId) -> Result<(NodeId, Option<NodeId>)> {
-        if !matches!(self.name(target), "table" | "tbody" | "tfoot" | "thead" | "tr") {
+        if self.document.namespace(target)? != Some(super::Namespace::Html) || !matches!(self.name(target), "table" | "tbody" | "tfoot" | "thead" | "tr") {
             return Ok((target, None));
         }
         let Some((at, &table)) = self.stack.iter().enumerate().rev().find(|(_, node)| self.is(**node, "table") || self.is(**node, "template")) else { return Ok((self.stack[0], None)) };
@@ -60,6 +60,9 @@ impl<'a> Builder<'a> {
 
     pub(super) fn reset_insertion_mode(&mut self) {
         for &node in self.stack.iter().rev() {
+            if self.document.namespace(node).unwrap() != Some(super::Namespace::Html) {
+                continue;
+            }
             self.mode = match self.name(node) {
                 "td" | "th" => Insertion::Cell,
                 "tr" => Insertion::Row,
@@ -94,7 +97,9 @@ impl<'a> Builder<'a> {
 
     fn in_table(&mut self, token: &mut Option<Token<'a>>, tokenizer: &mut Tokenizer<'a>) -> Result<bool> {
         match token {
-            Some(Token::Text(_)) if matches!(self.name(self.current()), "table" | "tbody" | "template" | "tfoot" | "thead" | "tr") => {
+            Some(Token::Text(_))
+                if self.document.namespace(self.current())? == Some(super::Namespace::Html) && matches!(self.name(self.current()), "table" | "tbody" | "template" | "tfoot" | "thead" | "tr") =>
+            {
                 self.pending_table_text = Cow::Borrowed("");
                 self.original_mode = self.mode;
                 self.mode = Insertion::TableText;

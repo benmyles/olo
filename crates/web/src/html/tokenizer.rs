@@ -107,6 +107,7 @@ pub struct Tokenizer<'a> {
     emitted: usize,
     cancelled: Option<&'a AtomicBool>,
     finished: bool,
+    allow_cdata: bool,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -114,7 +115,7 @@ impl<'a> Tokenizer<'a> {
         if input.len() > limits.input_bytes {
             return Err(Error::InputLimit);
         }
-        Ok(Self { input, pos: 0, mode: Mode::Data, limits, emitted: 0, cancelled: None, finished: false })
+        Ok(Self { input, pos: 0, mode: Mode::Data, limits, emitted: 0, cancelled: None, finished: false, allow_cdata: false })
     }
 
     pub fn with_cancellation(mut self, cancelled: &'a AtomicBool) -> Self {
@@ -124,6 +125,14 @@ impl<'a> Tokenizer<'a> {
 
     pub fn set_mode(&mut self, mode: Mode) {
         self.mode = mode;
+    }
+    /// Tree construction sets this from the adjusted current node's
+    /// namespace; CDATA declarations remain comments in HTML content.
+    pub fn set_allow_cdata(&mut self, allow: bool) {
+        self.allow_cdata = allow;
+    }
+    pub(crate) fn allows_cdata(&self) -> bool {
+        self.allow_cdata
     }
     pub fn position(&self) -> usize {
         self.pos
@@ -187,6 +196,11 @@ impl<'a> Tokenizer<'a> {
             if tail.starts_with("<?") {
                 self.pos += 2;
                 return Ok(self.processing_instruction());
+            }
+            if self.allow_cdata && tail.starts_with("<![CDATA[") {
+                self.pos += 9;
+                self.mode = Mode::Cdata;
+                continue;
             }
             if tail.starts_with("<!") {
                 self.pos += 2;

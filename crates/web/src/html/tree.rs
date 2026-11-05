@@ -13,6 +13,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
+mod foreign;
 mod tables;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -85,7 +86,13 @@ pub fn parse(source: Arc<str>, options: ParseOptions, cancelled: Option<&AtomicB
         }
         let token = tokenizer.next_token()?;
         let eof = token.is_none();
+        let previous = if builder.foreign_seen { builder.stack.last().copied() } else { None };
         builder.process(token, &mut tokenizer)?;
+        // Namespace-dependent tokenizer state follows stack changes. Text
+        // and ignored tokens do not repeat a DOM lookup after an earlier SVG.
+        if builder.foreign_seen && builder.stack.last().copied() != previous {
+            tokenizer.set_allow_cdata(builder.stack.last().is_some_and(|&n| builder.document.namespace(n).unwrap() != Some(Namespace::Html)));
+        }
         if eof {
             break;
         }
@@ -144,6 +151,7 @@ struct Builder<'a> {
     frameset_ok: bool,
     ignore_lf: bool,
     foster_parenting: bool,
+    foreign_seen: bool,
     pending_table_text: Cow<'a, str>,
     quirks: QuirksMode,
     options: ParseOptions,
@@ -194,7 +202,7 @@ fn block(name: &str) -> bool {
 fn head_name(name: &str) -> bool {
     matches!(name, "base" | "basefont" | "bgsound" | "link" | "meta" | "noframes" | "script" | "style" | "template" | "title")
 }
-fn special(name: &str) -> bool {
+fn html_special(name: &str) -> bool {
     block(name)
         || heading(name)
         || matches!(
@@ -270,6 +278,7 @@ impl<'a> Builder<'a> {
             frameset_ok: true,
             ignore_lf: false,
             foster_parenting: false,
+            foreign_seen: false,
             pending_table_text: Cow::Borrowed(""),
             quirks: QuirksMode::NoQuirks,
             options,
@@ -359,16 +368,19 @@ impl<'a> Builder<'a> {
     }
     fn scope(&self, names: &[&str], scope: Scope) -> Option<usize> {
         for (at, &node) in self.stack.iter().enumerate().rev() {
-            let name = self.name(node);
-            if names.contains(&name) {
+            let (name, namespace) = self.document.element_name_and_namespace(node).unwrap();
+            let html = namespace == Namespace::Html;
+            if html && names.contains(&name) {
                 return Some(at);
             }
             let boundary = if matches!(scope, Scope::Table) {
-                matches!(name, "html" | "table" | "template")
-            } else {
+                html && matches!(name, "html" | "table" | "template")
+            } else if html {
                 matches!(name, "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee" | "object" | "select" | "template")
                     || matches!(scope, Scope::Button) && name == "button"
                     || matches!(scope, Scope::List) && matches!(name, "ol" | "ul")
+            } else {
+                self.foreign_scope_boundary(node)
             };
             if boundary {
                 return None;
@@ -379,7 +391,7 @@ impl<'a> Builder<'a> {
     fn implied(&mut self, except: &str) {
         while let Some(&node) = self.stack.last() {
             let name = self.name(node);
-            if name == except || !matches!(name, "dd" | "dt" | "li" | "optgroup" | "option" | "p" | "rb" | "rp" | "rt" | "rtc") {
+            if name == except || !matches!(name, "dd" | "dt" | "li" | "optgroup" | "option" | "p" | "rb" | "rp" | "rt" | "rtc") || self.document.namespace(node).unwrap() != Some(Namespace::Html) {
                 break;
             }
             self.stack.pop();
@@ -390,7 +402,7 @@ impl<'a> Builder<'a> {
             if node == target {
                 return true;
             }
-            if matches!(self.name(node), "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee" | "object" | "select" | "template") {
+            if self.scope_boundary(node) {
                 return false;
             }
         }
@@ -424,7 +436,7 @@ impl<'a> Builder<'a> {
                 self.stack.truncate(at);
                 return;
             }
-            if special(self.name(node)) {
+            if self.special(node) {
                 return;
             }
         }
@@ -505,7 +517,7 @@ impl<'a> Builder<'a> {
             if !self.node_in_scope(formatting) {
                 return Ok(());
             }
-            let furthest = ((stack_at + 1)..self.stack.len()).find(|&i| special(self.name(self.stack[i])));
+            let furthest = ((stack_at + 1)..self.stack.len()).find(|&i| self.special(self.stack[i]));
             let Some(furthest) = furthest else {
                 self.stack.truncate(stack_at);
                 self.formatting.remove(position);
@@ -582,6 +594,9 @@ impl<'a> Builder<'a> {
                     return Ok(());
                 }
             }
+        }
+        if tokenizer.allows_cdata() && self.dispatch_foreign(&mut token)? {
+            return Ok(());
         }
         for _ in 0..64 {
             self.check_cancelled()?;
@@ -856,7 +871,7 @@ impl<'a> Builder<'a> {
                     self.insert(tag)?;
                 } else if heading(name) {
                     self.close_p()?;
-                    if heading(self.name(self.current())) {
+                    if heading(self.name(self.current())) && self.document.namespace(self.current())? == Some(Namespace::Html) {
                         self.stack.pop();
                     }
                     self.insert(tag)?;
@@ -874,14 +889,14 @@ impl<'a> Builder<'a> {
                     self.frameset_ok = false;
                     for at in (0..self.stack.len()).rev() {
                         let current = self.name(self.stack[at]);
-                        let matching = if name == "li" { current == "li" } else { matches!(current, "dd" | "dt") };
+                        let matching = (if name == "li" { current == "li" } else { matches!(current, "dd" | "dt") }) && self.document.namespace(self.stack[at])? == Some(Namespace::Html);
                         if matching {
                             let except = current.to_owned();
                             self.implied(&except);
                             self.stack.truncate(at);
                             break;
                         }
-                        if special(current) && !matches!(current, "address" | "div" | "p") {
+                        if self.special(self.stack[at]) && !(self.document.namespace(self.stack[at])? == Some(Namespace::Html) && matches!(current, "address" | "div" | "p")) {
                             break;
                         }
                     }
@@ -987,7 +1002,8 @@ impl<'a> Builder<'a> {
                     }
                     self.insert(tag)?;
                 } else if matches!(name, "math" | "svg") {
-                    return Err(ParseError::Unsupported("foreign content"));
+                    self.reconstruct()?;
+                    self.insert_foreign(tag, if name == "math" { Namespace::MathMl } else { Namespace::Svg })?;
                 } else if matches!(name, "caption" | "col" | "colgroup" | "frame" | "head" | "tbody" | "td" | "tfoot" | "th" | "thead" | "tr") {
                 } else {
                     self.reconstruct()?;

@@ -55,6 +55,57 @@ pub enum Namespace {
     MathMl,
 }
 
+/// Attribute namespaces recognized by the HTML foreign-content parser.
+/// Arbitrary XML namespace URIs and Web IDL setters remain unimplemented.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum AttributeNamespace {
+    Xlink = 1,
+    Xml = 2,
+    Xmlns = 3,
+}
+impl AttributeNamespace {
+    pub fn uri(self) -> &'static str {
+        match self {
+            Self::Xlink => "http://www.w3.org/1999/xlink",
+            Self::Xml => "http://www.w3.org/XML/1998/namespace",
+            Self::Xmlns => "http://www.w3.org/2000/xmlns/",
+        }
+    }
+}
+
+// Namespace bits share the interned-name key. An attribute stays 16 bytes,
+// including its value and link, and ordinary attributes need no side table.
+// The name arena explicitly bounds IDs to the remaining 30 bits.
+const NAME_MASK: u32 = (1 << 30) - 1;
+#[derive(Clone, Copy, Debug)]
+struct AttributeName(NonZeroU32);
+impl AttributeName {
+    fn new(atom: Atom, namespace: Option<AttributeNamespace>) -> Self {
+        Self(NonZeroU32::new(atom.get() | (namespace.map_or(0, |n| n as u32) << 30)).unwrap())
+    }
+    fn atom(self) -> Atom {
+        NonZeroU32::new(self.0.get() & NAME_MASK).unwrap()
+    }
+    fn namespace(self) -> Option<AttributeNamespace> {
+        match self.0.get() >> 30 {
+            1 => Some(AttributeNamespace::Xlink),
+            2 => Some(AttributeNamespace::Xml),
+            3 => Some(AttributeNamespace::Xmlns),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttributeRef<'a> {
+    pub qualified_name: &'a str,
+    pub local_name: &'a str,
+    pub prefix: Option<&'a str>,
+    pub namespace: Option<AttributeNamespace>,
+    pub value: &'a str,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeType {
     Document,
@@ -160,7 +211,7 @@ impl Node {
 
 #[derive(Debug)]
 struct Attribute {
-    name: Atom,
+    name: AttributeName,
     value: TextValue,
     next: Link,
 }
@@ -350,7 +401,7 @@ impl Document {
         if let Some(id) = self.atoms.get(name) {
             return Ok(*id);
         }
-        if name.len() > self.limits.name_bytes.saturating_sub(self.name_bytes) || self.names.len() >= u32::MAX as usize - 1 {
+        if name.len() > self.limits.name_bytes.saturating_sub(self.name_bytes) || self.names.len() >= NAME_MASK as usize {
             return Err(Error::NameLimit);
         }
         let id = link(self.names.len());
@@ -485,6 +536,14 @@ impl Document {
             Data::Doctype(id) => Some(&self.names[index(self.doctypes.get(id).name)]),
             _ => None,
         })
+    }
+    /// One checked lookup for the tree builder's namespace-sensitive rules.
+    pub(crate) fn element_name_and_namespace(&self, id: NodeId) -> Result<(&str, Namespace)> {
+        let at = self.resolve(id)?;
+        match self.nodes[index(at)].data {
+            Data::Element { name, namespace, .. } => Ok((&self.names[index(name)], namespace)),
+            _ => Err(Error::Hierarchy),
+        }
     }
     pub fn namespace(&self, id: NodeId) -> Result<Option<Namespace>> {
         Ok(match self.nodes[index(self.resolve(id)?)].data {
@@ -628,6 +687,14 @@ impl Document {
         let at = self.resolve(id)?;
         Ok(Attributes { document: self, next: self.attribute_head(at)? })
     }
+    /// Structured attribute identity, including the namespace and prefix.
+    pub fn attributes_ns(&self, id: NodeId) -> Result<NamespacedAttributes<'_>> {
+        let at = self.resolve(id)?;
+        Ok(NamespacedAttributes { document: self, next: self.attribute_head(at)? })
+    }
+    pub fn attribute_ns(&self, id: NodeId, namespace: Option<AttributeNamespace>, local_name: &str) -> Result<Option<&str>> {
+        Ok(self.attributes_ns(id)?.find(|a| a.namespace == namespace && a.local_name == local_name).map(|a| a.value))
+    }
     pub fn attribute(&self, id: NodeId, name: &str) -> Result<Option<&str>> {
         let at = self.resolve(id)?;
         let name = self.normalize_attribute(at, name);
@@ -635,7 +702,7 @@ impl Document {
         let mut next = self.attribute_head(at)?;
         while let Some(at) = next {
             let a = self.attributes.get(at);
-            if Some(&a.name) == atom {
+            if Some(&a.name.atom()) == atom {
                 return Ok(Some(self.text(a.value)));
             }
             next = a.next;
@@ -654,7 +721,7 @@ impl Document {
         let mut last = None;
         while let Some(attr) = next {
             let old = self.attributes.get(attr);
-            if Some(old.name) == atom {
+            if Some(old.name.atom()) == atom {
                 if self.text(old.value) == value.as_ref() {
                     return Ok(false);
                 }
@@ -679,7 +746,7 @@ impl Document {
         }
         let name = self.atom(&normalized)?;
         let value = self.store_text(value, 0)?;
-        let attr = self.attributes.insert(Attribute { name, value, next: None });
+        let attr = self.attributes.insert(Attribute { name: AttributeName::new(name, None), value, next: None });
         if let Some(last) = last {
             self.attributes.get_mut(last).next = Some(attr);
         } else {
@@ -694,12 +761,15 @@ impl Document {
     /// normalized/deduplicated these names, so do not search an increasingly
     /// long attribute list for every insertion (quadratic on large tags).
     pub(crate) fn initial_attributes<'a>(&mut self, id: NodeId, attributes: impl IntoIterator<Item = (Cow<'a, str>, Cow<'a, str>)>) -> Result<()> {
+        self.initial_attributes_ns(id, attributes.into_iter().map(|(name, value)| (name, value, None)))
+    }
+    pub(crate) fn initial_attributes_ns<'a>(&mut self, id: NodeId, attributes: impl IntoIterator<Item = (Cow<'a, str>, Cow<'a, str>, Option<AttributeNamespace>)>) -> Result<()> {
         let node = self.resolve(id)?;
         if self.attribute_head(node)?.is_some() {
             return Err(Error::Hierarchy);
         }
         let mut last = None;
-        for (name, value) in attributes {
+        for (name, value, namespace) in attributes {
             if self.attributes.live >= self.limits.attributes {
                 return Err(Error::AttributeLimit);
             }
@@ -708,7 +778,7 @@ impl Document {
             }
             let name = self.atom(&name)?;
             let value = self.store_text(value, 0)?;
-            let attr = self.attributes.insert(Attribute { name, value, next: None });
+            let attr = self.attributes.insert(Attribute { name: AttributeName::new(name, namespace), value, next: None });
             if let Some(last) = last {
                 self.attributes.get_mut(last).next = Some(attr);
             } else {
@@ -728,7 +798,7 @@ impl Document {
         let mut previous = None;
         while let Some(attr) = next {
             let a = self.attributes.get(attr);
-            if Some(a.name) == atom {
+            if Some(a.name.atom()) == atom {
                 self.bump()?;
                 let a = self.attributes.remove(attr);
                 if let Some(previous) = previous {
@@ -1091,6 +1161,23 @@ impl<'a> Iterator for Attributes<'a> {
         let at = self.next?;
         let a = self.document.attributes.get(at);
         self.next = a.next;
-        Some((&self.document.names[index(a.name)], self.document.text(a.value)))
+        Some((&self.document.names[index(a.name.atom())], self.document.text(a.value)))
+    }
+}
+
+pub struct NamespacedAttributes<'a> {
+    document: &'a Document,
+    next: Link,
+}
+impl<'a> Iterator for NamespacedAttributes<'a> {
+    type Item = AttributeRef<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let at = self.next?;
+        let a = self.document.attributes.get(at);
+        self.next = a.next;
+        let qualified_name = self.document.names[index(a.name.atom())].as_ref();
+        let namespace = a.name.namespace();
+        let (prefix, local_name) = if namespace.is_some() { qualified_name.split_once(':').map_or((None, qualified_name), |(p, n)| (Some(p), n)) } else { (None, qualified_name) };
+        Some(AttributeRef { qualified_name, local_name, prefix, namespace, value: self.document.text(a.value) })
     }
 }

@@ -97,7 +97,25 @@ pub fn dump(document: &Document, root: NodeId) -> String {
                     Namespace::MathMl => "math ",
                 };
                 out.push_str(&format!("{prefix}<{ns}{}>\n", document.name(node).unwrap().unwrap()));
-                let mut attrs: Vec<_> = document.attributes(node).unwrap().collect();
+                let mut attrs: Vec<_> = document
+                    .attributes_ns(node)
+                    .unwrap()
+                    .map(|a| {
+                        let name = match a.namespace {
+                            None => a.qualified_name.to_owned(),
+                            Some(ns) => format!(
+                                "{} {}",
+                                match ns {
+                                    olo_web::dom::AttributeNamespace::Xlink => "xlink",
+                                    olo_web::dom::AttributeNamespace::Xml => "xml",
+                                    olo_web::dom::AttributeNamespace::Xmlns => "xmlns",
+                                },
+                                a.local_name
+                            ),
+                        };
+                        (name, a.value)
+                    })
+                    .collect();
                 attrs.sort_by(|a, b| a.0.encode_utf16().cmp(b.0.encode_utf16()));
                 for (name, value) in attrs {
                     out.push_str(&format!("{prefix}  {name}=\"{value}\"\n"));

@@ -347,3 +347,94 @@ buffer tests enforce zero-owned source text and decoded-buffer quotas.
 No visible UI changes or person's-session actions. Next: foreign content
 and namespaced attributes, templates and context fragments. The full
 browser goal remains active and substantially unfinished.
+
+
+## 2026-11-05 — SVG/MathML document trees and compact attribute identity
+
+Implemented foreign-content dispatch, MathML text and HTML integration
+points, HTML breakouts, foreign end-tag recovery, self-closing elements,
+SVG tag/attribute case adjustment and MathML `definitionURL`. Updated
+scope, implied ends, list/heading handling, adoption, foster locations
+and table reset to distinguish HTML elements from identically named
+foreign elements. SVG scripts remain inert. CDATA declarations are
+recognized in foreign namespaces and remain comments in HTML.
+
+Attribute namespace identity now distinguishes the HTML parser's
+XLink/XML/XMLNS attributes from ordinary colon-containing names.
+Namespace bits share a 30-bit interned-name ID: attribute slots remain
+**16 bytes**, nodes **40 bytes**, with no per-attribute side allocation.
+Structured `attributes_ns` exposes qualified/local names, prefix, namespace
+and value; `attribute_ns` reads expanded identity. Cloning, qualified-name
+mutation/removal, source reuse and reclamation preserve this metadata.
+Arbitrary XML namespace URIs and namespaced Web IDL setters remain open.
+Namespaces declared by markup do not change HTML-parser element identity.
+
+The unchanged upstream corpus now matches **3,236/3,904** static tree
+variants, **440 additional matches**. **668 unsupported** remain: context
+fragments 412, templates 250, script execution 6. All cases formerly
+rejected as foreign content now match; that does not claim full SVG/MathML
+or XML conformance. The protected baseline includes all 3,236 matches;
+there are no emitted-tree mismatches/errors/panics. Full `tree_eval`
+acceptance still exits **1**, verified. Diagnostics are unchecked.
+Summary: `measurements/2026-11-05-foreign-coverage.json`.
+
+Performance investigation caught an initial article regression of about
+23%. Namespace-sensitive rules were repeating checked name/namespace
+lookups and calling larger helpers. Added a single checked pair lookup,
+kept the foreign rules separate from the ordinary dispatcher, and avoided
+namespace checks when an element's name already rules out a match.
+CDATA permission follows actual current-node changes. Text/ignored tokens
+reuse that state, including HTML following an earlier SVG; the foreign
+rules run once before HTML insertion-mode reprocessing.
+
+Release comparison against `ba22847b`, Core Ultra 7 356H, CPU 0, rustc
+1.99.1, three alternating runs of 20 parse/drop iterations:
+
+| Static workload | Before foreign rules | Final foreign rules |
+|---|---:|---:|
+| Article, 65,544 nodes | 6.009 ms | 6.184 ms |
+| 100,000 fragmented text tokens | 3.648 ms | 3.737 ms |
+| One 4,096-attribute tag | 0.609 ms | 0.610 ms |
+| Four formatting tags, 4,096 attributes each | 2.142 ms | 2.150 ms |
+
+The final article/text samples remain **2.9%/2.4% slower**; that cost is
+reported, not hidden by the added capability. Median first article parse
+**7.569/7.603 ms**; common benchmark RSS **8,340–8,468 KiB** across builds.
+All common cases retain zero owned text. A separate three-run comparison
+at 40,000 table rows measured **13.790/13.956 ms**, fostered rows
+**13.373/13.300 ms** (before/after). Table benchmark RSS
+**19,212–19,376 KiB**. CPU clocks/load were not controlled. Raw data,
+including intermediate variants and outliers, are in
+`measurements/2026-11-05-foreign-common.json`, with source SHA-256.
+
+New `foreign_bench`, three runs of ten iterations, median parse/drop:
+
+| Static workload | 10,000 repetitions | 20,000 | 40,000 |
+|---|---:|---:|---:|
+| SVG icon/foreignObject groups | 7.679 ms | 15.139 ms | 30.238 ms |
+| MathML/integrated HTML groups | 11.519 ms | 22.983 ms | 47.456 ms |
+| Fragmented HTML text | 0.364 ms | 0.737 ms | 1.481 ms |
+| Fragmented HTML text after SVG | 0.370 ms | 0.751 ms | 1.492 ms |
+| One contiguous SVG CDATA run | 0.002 ms | 0.004 ms | 0.007 ms |
+
+40,000 SVG groups retain **240,005 nodes/160,000 attributes**, MathML
+**440,005 nodes/40,000 attributes**, both with zero owned text. First
+complete parses: **33.501/55.825 ms**; worker-only API. Benchmark peak
+RSS **45,128–45,172 KiB**. The initial mixed-text run measured
+1.451 ms without SVG versus 2.525 ms after SVG; the final cache avoids
+repeated namespace work. Those intermediate observations are single runs,
+not an independently controlled speedup claim. Reproduce with
+`cargo build --release -p olo-web --example foreign_bench`, then
+`taskset -c 0 /usr/bin/time -v target/release/examples/foreign_bench 10`.
+Raw data: `measurements/2026-11-05-foreign.json`. These are static tree
+measurements, not SVG/MathML rendering, network, JS, layout, UI or Chrome
+comparisons.
+
+Validation: release engine tests (15 DOM, four tokenizer, seven tree),
+counterfactual-parser tree tests, clippy and full workspace release build.
+Malformed-document generation now mixes HTML/SVG/MathML tags. A dedicated
+namespace-storage check covers expanded/qualified lookup, clone isolation,
+no-op revisions, namespace-preserving updates/removal and reclamation.
+No visible UI changes or person's-session actions. Next: templates and
+context fragments. The browser goal remains active; shell, CSS/layout,
+JS, integrations, website capture and compatibility acceptance remain.
