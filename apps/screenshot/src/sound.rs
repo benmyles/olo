@@ -21,6 +21,11 @@ use olo_video::aac::{self, Aac};
 /// Bits a second of the sound.
 pub const BITRATE: u32 = 160_000;
 
+/// Frames (of `aac::FRAME`) every stream has before the mixer is woken:
+/// the sound only goes into a file, so it's taken in batches (85 ms), not
+/// a wakeup for every piece.
+const BATCH: usize = 4;
+
 /// What's recorded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Which {
@@ -122,8 +127,14 @@ impl Sound {
                 }
                 bufs.data[i].extend_from_slice(samples);
                 bufs.had[i] += samples.len();
+                // (Woken once every stream has a batch, or one has run a
+                // second ahead.)
+                let have = bufs.data.iter().map(Vec::len).min().unwrap_or(0);
+                let ahead = bufs.data[i].len() > have + RATE as usize * 2;
                 drop(bufs);
-                sh.woken.notify_one();
+                if have >= BATCH * aac::FRAME * 2 || ahead {
+                    sh.woken.notify_one();
+                }
             };
             streams.push(Capture::start(source, 2, name, got)?);
         }
@@ -177,7 +188,7 @@ fn mix(mut aac: Aac, shared: &Shared, out: &Mutex<Vec<Vec<u8>>>) {
                 }
                 let have = bufs.data.iter().map(Vec::len).min().unwrap_or(0);
                 let whole = have / frame * frame;
-                if whole > 0 || done {
+                if whole >= BATCH * frame || done {
                     let take = if done { have } else { whole };
                     let mut mixed = vec![0f32; take];
                     for b in bufs.data.iter_mut() {

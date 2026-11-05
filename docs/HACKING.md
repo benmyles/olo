@@ -5956,7 +5956,14 @@ Screens' Export Video uses too).
   headless with `olo-fakesound`, whose record streams play 440 Hz from
   the microphone and 660 Hz from the monitor: both tones in the file,
   decoded by symphonia as the Viewer does, the sound as long as the
-  video (3.008 s for 3.001; paused 2 of 6 s, 4.01 for 4.0).
+  video (3.008 s for 3.001; paused 2 of 6 s, 4.01 for 4.0; over 12 s
+  the stand-in, paced by sleeps, falls 0.1 s behind real time). The
+  mixer is woken once every stream has four frames (85 ms: the sound
+  only goes into a file), 12 times a second. Measured (`tools/dev/cost`,
+  a still 1920 × 1080 screen on NVENC): 0.4% of a core without sound,
+  2.4% with both, the AAC encoding 0.5% of it, the rest the two
+  streams' client threads, woken for each piece (every 10 ms from the
+  stand-in; a real server's are 40 ms).
 - **A region** is cut from each frame of its display as it comes (the
   display copied whole into a buffer kept for the next, then the rows
   of the part), so the encoder sees only the part: 400 × 300 points at
