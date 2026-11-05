@@ -2878,8 +2878,14 @@ fuzzer a thread, the sessions started a quarter second apart. How many
 at once is set by memory, not the processors (the fuzzers mostly wait
 for windows to settle): a session costs about 450 MB at its peak
 (24 at once took 11 GB, the processors still 80 % idle), so it takes
-500 MB a session out of what's available less the person's share (a
-quarter, 8 GB at least): about 30 on a 64 GB machine. By default a
+600 MB a session (wm 365, mode 462, auto 450 at their peaks) out of
+what's free less the person's reserve (a quarter of the memory, 8 GB at
+least). The machine is shared, and what's free moves as a sweep runs:
+a session starts only while there's room for it above the reserve, the
+sweep stops (as Ctrl-C would) if what's free falls under half of it,
+and everything in the sandbox is the first to go if memory runs out
+(`oom_score_adj` 1000). A wave sized once at its start ran the machine
+out and the kernel killed Ben's Slack. By default a
 sweep is one wave of that many seeds, about two minutes for 120 steps
 of auto (one at a time, an hour). `--confirm` runs the failures again
 by themselves (all at once: a few sessions are next to no load),

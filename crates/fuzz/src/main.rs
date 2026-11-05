@@ -44,6 +44,11 @@ pub fn stopping() -> bool {
     STOPPING.load(Ordering::Relaxed)
 }
 
+/// Stop, as Ctrl-C does (the sweep's memory guard).
+pub fn stop() {
+    STOPPING.store(true, Ordering::Relaxed);
+}
+
 extern "C" fn on_signal(_: libc::c_int) {
     STOPPING.store(true, Ordering::Relaxed);
 }

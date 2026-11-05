@@ -196,10 +196,26 @@ fn one(kind: &str, seed: u64, steps: u32, extra: &[String], keep: bool, tag: &st
 
 /// MemAvailable, in MB.
 fn available_mb() -> u64 {
-    std::fs::read_to_string("/proc/meminfo")
-        .ok()
-        .and_then(|m| m.lines().find(|l| l.starts_with("MemAvailable:")).and_then(|l| l.split_whitespace().nth(1)).and_then(|k| k.parse::<u64>().ok()))
-        .map_or(8192, |kb| kb / 1024)
+    meminfo("MemAvailable:").unwrap_or(8192)
+}
+
+/// A line of /proc/meminfo, in MB.
+fn meminfo(key: &str) -> Option<u64> {
+    std::fs::read_to_string("/proc/meminfo").ok().and_then(|m| m.lines().find(|l| l.starts_with(key)).and_then(|l| l.split_whitespace().nth(1)).and_then(|k| k.parse::<u64>().ok())).map(|kb| kb / 1024)
+}
+
+/// What a session may take, MB, measured at its peak (12 at once, 80
+/// steps): wm 365, mode 462, auto 450 (24 at once, 120 steps), with room.
+const SESSION_MB: u64 = 600;
+
+/// Memory kept for the person's own programs, MB: a quarter of it all,
+/// 8 GB at least. (The machine is shared: their programs, other agents',
+/// grow while a sweep runs.) A sweep starts a session only while more
+/// than this and a session's worth is free, and stops if what's free
+/// falls under half of it. A wave sized once at the start, from what was
+/// free then, ran the machine out, and the kernel killed Ben's Slack.
+fn reserve_mb() -> u64 {
+    (meminfo("MemTotal:").unwrap_or(32_768) / 4).max(8192)
 }
 
 pub fn main(args: &[String]) -> i32 {
@@ -213,16 +229,13 @@ pub fn main(args: &[String]) -> i32 {
         return 2;
     };
     let extra: Vec<String> = theirs[1..].to_vec();
-    // What a session costs, measured (auto, 120 steps, 24 at once): 11 GB
-    // of MemAvailable at their peak, about 450 MB each, with the
-    // processors 80 % idle (the fuzzers mostly wait for windows to
-    // settle). So memory sets how many: 500 MB each, out of what's
-    // available less the person's share (a quarter of it, 8 GB at least);
-    // and by default a sweep is one wave of that many seeds.
-    let jobs: usize = opt("--jobs").and_then(|j| j.parse().ok()).unwrap_or_else(|| {
-        let mb = available_mb();
-        (mb.saturating_sub((mb / 4).max(8192)) / 500).clamp(1, 96) as usize
-    });
+    // Memory sets how many at once, not the processors (80 % idle with
+    // 24 sessions: the fuzzers mostly wait for windows to settle): a
+    // session's worth (`SESSION_MB`) for each, out of what's free less
+    // the person's (`reserve_mb`); and by default a sweep is one wave of
+    // that many seeds. As it runs, a session starts only while there's
+    // room for it still, and the sweep stops if there's none (`guard`).
+    let jobs: usize = opt("--jobs").and_then(|j| j.parse().ok()).unwrap_or_else(|| (available_mb().saturating_sub(reserve_mb()) / SESSION_MB).clamp(1, 96) as usize);
     let seeds = seeds_of(&opt("--seeds").unwrap_or_else(|| format!("1-{jobs}")));
     let steps: u32 = opt("--steps").and_then(|s| s.parse().ok()).unwrap_or(120);
     let keep = ours.iter().any(|a| a == "--keep");
@@ -237,6 +250,7 @@ pub fn main(args: &[String]) -> i32 {
         PROFILE.get().copied().unwrap_or("release")
     );
     let run = Run { kind: &kind, steps, extra: &extra, keep };
+    let _guard = guard();
     let t0 = Instant::now();
     let mut failed = run.all(&seeds, jobs, "sweep", |seed, _, line| println!("  {seed:3}: {line}"));
     println!("{} of {} passed in {:.0} s", seeds.len() - failed.len(), seeds.len(), t0.elapsed().as_secs_f64());
@@ -258,6 +272,32 @@ pub fn main(args: &[String]) -> i32 {
         }
     }
     i32::from(!failed.is_empty())
+}
+
+/// While it lives, the sweep stops (as Ctrl-C would) if what's free falls
+/// under half the person's reserve: their programs come first.
+struct Guard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+fn guard() -> Guard {
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let d = done.clone();
+    let floor = reserve_mb() / 2;
+    let _ = std::thread::Builder::new().name("memory".into()).spawn(move || {
+        while !d.load(std::sync::atomic::Ordering::Relaxed) {
+            if available_mb() < floor && !crate::stopping() {
+                println!("memory ran low (under {floor} MB free): stopping, the person's programs first");
+                crate::stop();
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    });
+    Guard(done)
+}
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// A sweep's fuzzer and how it runs each seed.
@@ -285,6 +325,10 @@ impl Run<'_> {
                         let start = Instant::now() + Duration::from_millis(250 * (i % jobs) as u64);
                         while Instant::now() < start && !crate::stopping() {
                             std::thread::sleep(Duration::from_millis(20));
+                        }
+                        // Room for one more session, or waits for some.
+                        while available_mb() < reserve_mb() + SESSION_MB && !crate::stopping() {
+                            std::thread::sleep(Duration::from_millis(250));
                         }
                         if crate::stopping() {
                             break;

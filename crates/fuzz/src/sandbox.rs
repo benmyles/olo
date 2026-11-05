@@ -88,6 +88,10 @@ pub fn run(args: &[String]) -> i32 {
                 libc::_exit(1);
             }
         }
+        // The first to go if memory runs out, all of the sandbox (it's
+        // inherited): never the person's programs. A sweep that took more
+        // than there was had the kernel kill Ben's Slack.
+        let _ = std::fs::write("/proc/self/oom_score_adj", "1000");
         let code = namespaces(&plan, args);
         // SAFETY: the child ends here.
         unsafe { libc::_exit(code) };
@@ -480,6 +484,8 @@ pub fn probe() -> i32 {
     say("no network", std::net::TcpStream::connect_timeout(&"1.1.1.1:443".parse().expect("an address"), std::time::Duration::from_millis(500)).is_err());
     let procs = std::fs::read_dir("/proc").map(|d| d.flatten().filter(|e| e.file_name().to_string_lossy().parse::<u32>().is_ok()).count()).unwrap_or(0);
     say(&format!("only its own processes ({procs})"), procs < 10);
+    let oom = std::fs::read_to_string("/proc/self/oom_score_adj").unwrap_or_default();
+    say(&format!("the first to go if memory runs out (oom_score_adj {})", oom.trim()), oom.trim() == "1000");
     say("results can be written", std::fs::write(Path::new(OUT).join(".probe"), "x").is_ok());
     let _ = std::fs::remove_file(Path::new(OUT).join(".probe"));
     i32::from(!sealed)
