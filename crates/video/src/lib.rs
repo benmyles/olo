@@ -1076,7 +1076,8 @@ mod tests {
             rates.extend(qs.into_iter().map(|q| nvenc::Rate::Quality(q, bps * 2)));
             for rate in rates {
                 let mut e = nvenc::Nvenc::with_rate(w, h, 30, rate, codec).unwrap();
-                let file = std::env::temp_dir().join(format!("olo-bench-{}.mp4", std::process::id()));
+                // (On disk, not /tmp: that is memory.)
+                let file = std::path::PathBuf::from(format!("/var/tmp/olo-bench-{}.mp4", std::process::id()));
                 let mut mp4 = Mp4::create_for(&file, w, h, 1000, codec).unwrap();
                 for f in &frames {
                     let (bits, key) = e.encode(f, w as usize * 4).unwrap();
