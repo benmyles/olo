@@ -10,6 +10,7 @@
 //! (⌘⇧4) lets you drag out part of the screen first (region.rs). However
 //! it is saved, the file's path goes on the clipboard.
 
+mod backdrop;
 mod capture;
 mod recording;
 mod region;
@@ -263,6 +264,7 @@ impl Screenshot {
             "gif" => r.gif = !r.gif,
             "show-clicks" => r.show_clicks = !r.show_clicks,
             "show-keys" => r.show_keys = !r.show_keys,
+            "background" => r.background = !r.background,
             _ => return,
         }
         let mine = r.clone();
@@ -360,6 +362,8 @@ impl Screenshot {
                     .checked(r.show_clicks)
                     .item("Show Shortcuts", "show-keys")
                     .checked(r.show_keys)
+                    .item("Window on a Background", "background")
+                    .checked(r.background)
                     .separator()
                     .item("Save as GIF", "gif")
                     .checked(r.gif)
@@ -369,7 +373,7 @@ impl Screenshot {
 
     fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let what = match command {
-            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" => {
+            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" => {
                 self.toggle(command);
                 cx.notify();
                 return;

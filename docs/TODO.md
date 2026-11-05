@@ -1524,10 +1524,12 @@ of Finished; a new one goes where its priority puts it.
   their first 2.5 s (the encoder opened before the clock starts). *A
   countdown* (2026-11-05): 3 s on screen before a person's recording.
   *Trimming* (2026-11-05): the Viewer's Edit ▸ Trim…, `--trim`, copied
-  without encoding again.
+  without encoding again. *A window on a background* (2026-11-05):
+  Record… ▸ Window on a Background, `--background`: the blurred
+  wallpaper, rounded corners, a shadow.
   *Left*: CleanShot X's
   polish (pointer drawn larger and smoothed, zoom
-  following the action, a background and frame, a webcam bubble), and
+  following the action, a webcam bubble), and
   the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
   4K: 111 ms a frame).

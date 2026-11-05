@@ -42,7 +42,7 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen delete NAME             a screen and everything it kept, to the Trash
        olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
                                [--show-clicks] [--show-keys] [--sound computer|microphone|both|none] [--as-gif]
-                          [--no-pointer] [--encoder auto|cpu|nvidia] [--to PATH]
+                          [--no-pointer] [--background] [--encoder auto|cpu|nvidia] [--to PATH]
                                              a video of the screen (or one window, or part), into
                                              ~/Videos unless told; prints its path (JSON) at once
        olo-screen pause-video NAME        nothing recorded till resume-video (the pause cut out)
@@ -278,7 +278,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }
             }
-            for flag in ["--no-pointer", "--show-clicks", "--show-keys", "--as-gif"] {
+            for flag in ["--no-pointer", "--show-clicks", "--show-keys", "--as-gif", "--background"] {
                 if has(rest, flag) {
                     argv.push(flag.into());
                 }

@@ -6022,6 +6022,23 @@ Screens' Export Video uses too).
   bits, cached. Written as `.gif.part`, then put in place; SIGINT and
   SIGTERM stop it as they stop a recording. A 4 s recording of
   Terminal at 1280 × 800: 11 frames, 960 × 600, 294 KB.
+- **A window on a background** (`backdrop.rs`; `--background`, the
+  settings' `background`, Record… ▸ Window on a Background; only for a
+  window): each frame is the window, its corners rounded (10 points'
+  radius, anti-aliased against what's under them), on the wallpaper
+  blurred and dimmed to 86%, a soft shadow under it (a rounded
+  rectangle's distance, dropped a quarter of its spread), with a margin
+  of 6% of its longer side (32 to 128 pixels, less where the video would
+  pass 4096, what the encoders take); without a wallpaper, a gradient of
+  the desktop's colour. The background is made once, as the encoder
+  opens (from a pack picture's preview: it's blurred at an eighth
+  anyway; enlarged in one fixed-point pass on a few threads: 24 ms for
+  a 3840 × 2216 video, where `image`'s resize took 232 ms); the shadow
+  and what shows through the corners again only when the window
+  changes size (it's centred again: the video's size can't change); and
+  the canvas keeps them between frames, so a frame copies only the
+  window's rows: 1.9 ms at 4K, where cutting and padding a window
+  (`fit`) took 2.1. A window grown past the margin is cut.
 - **A region** is cut from each frame of its display as it comes (the
   display copied whole into a buffer kept for the next, then the rows
   of the part), so the encoder sees only the part: 400 × 300 points at

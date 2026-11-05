@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### A window recorded on a background
+
+*06:17* — Record… ▸ Window on a Background (or --background): a window's recording shows it on the wallpaper, blurred and a little dimmed, its corners rounded and a soft shadow under it, as a polished demo of one app usually looks. Made once as the recording starts; each frame copies only the window.
+
+![A window recorded on a background](2026-11-05/061718-a-window-recorded-on-a-background.png)
+
 ### The Viewer's Trim…
 
 *05:57* — Edit ▸ Trim… on a video puts a handle at each end of its timeline (what's cut dimmed, the picture where a handle is dragged shown); Trim copies the stretch kept into “NAME (trimmed).mp4” beside it, nothing encoded again, and shows it. olo-screenshot --trim does the same for agents.

@@ -13,7 +13,8 @@
 //! olo-screenshot --record [--window ID] [--display NAME] [--region [X,Y,W,H]]
 //!                [--seconds N] [--fps N] [--no-pointer]
 //!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
-//!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--to PATH]
+//!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--background]
+//!                [--to PATH]
 //! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
 //! olo-screenshot --trim VIDEO.mp4 --start S --end E [--to PATH]
 //! olo-screenshot --stop          the recording on this display, finished
@@ -41,6 +42,11 @@
 //! `--show-clicks` and `--show-keys` (or the settings', Record…'s ticks)
 //! have app_server show clicks (a ring) and shortcuts (a key cap) while
 //! it records (`Request::SetShowing`), and stop after.
+//!
+//! `--background` (or the settings', Record… ▸ Window on a Background)
+//! shows a window's recording on the wallpaper, blurred, the window's
+//! corners rounded and a shadow under it (`backdrop.rs`): the video that
+//! much bigger. Only for a window; the screen and a region are as they are.
 //!
 //! `--region X,Y,W,H` records that part of the display (points from its
 //! top left, as windows' frames are given); `--region` alone has it
@@ -273,6 +279,13 @@ fn scale_of(name: &str) -> f64 {
     outputs.iter().find(|o| o.name == name).map_or(1.0, |o| o.scale)
 }
 
+/// The scale of the display window `id` is on.
+fn window_scale(id: u64) -> f64 {
+    let reply = olo_protocol::Client::connect().ok().and_then(|mut c| c.request(&olo_protocol::Request::ListWindows).ok());
+    let Some(olo_protocol::Reply::Windows { windows }) = reply else { return 1.0 };
+    windows.iter().find(|w| w.id == id).and_then(|w| w.output.clone()).map_or(1.0, |o| scale_of(&o))
+}
+
 /// Points (`r`, from the display's top left) at `scale`: its pixels.
 fn in_pixels(r: [f64; 4], scale: f64) -> [u32; 4] {
     let x = (r[0] * scale).round();
@@ -318,16 +331,24 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     }
     let fps: u32 = option(args, "--fps").map_or(Ok(30), str::parse).map_err(|_| "--fps takes a number")?;
     let fps = fps.clamp(1, 60);
+    let all = olo_protocol::Client::connect().ok().and_then(|mut c| match c.request(&olo_protocol::Request::GetSettings).ok()? {
+        olo_protocol::Reply::Settings { settings } => Some(settings),
+        _ => None,
+    });
+    let settings = all.as_ref().map(|s| s.screen_recording.clone());
     // As asked, else as Preferences ▸ GPUs has it, else the most
     // powerful there is.
-    let chosen = option(args, "--encoder").map(str::to_owned).or_else(|| match olo_protocol::Client::connect().ok()?.request(&olo_protocol::Request::GetSettings).ok()? {
-        olo_protocol::Reply::Settings { settings } => Some(settings.screen_recording.encoder),
+    let chosen = option(args, "--encoder").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.encoder.clone()));
+    // A window on a background: what it's made of.
+    let backdrop = match &source {
+        Source::Window { id, .. } if args.iter().any(|a| a == "--background") || settings.as_ref().is_some_and(|s| s.background) => Some(crate::backdrop::Look {
+            wallpaper: all.as_ref().and_then(|s| s.wallpaper.clone()),
+            dark: all.as_ref().is_some_and(|s| s.appearance.effective_theme == olo_ui::palette::ThemeMode::Dark),
+            colour: all.as_ref().and_then(|s| s.workspace_colors.first().copied()).unwrap_or([51, 102, 152]),
+            scale: window_scale(*id),
+        }),
         _ => None,
-    });
-    let settings = olo_protocol::Client::connect().ok().and_then(|mut c| match c.request(&olo_protocol::Request::GetSettings).ok()? {
-        olo_protocol::Reply::Settings { settings } => Some(settings.screen_recording),
-        _ => None,
-    });
+    };
     let as_gif = args.iter().any(|a| a == "--as-gif") || settings.as_ref().is_some_and(|s| s.gif);
     let show_clicks = args.iter().any(|a| a == "--show-clicks") || settings.as_ref().is_some_and(|s| s.show_clicks);
     let show_keys = args.iter().any(|a| a == "--show-keys") || settings.as_ref().is_some_and(|s| s.show_keys);
@@ -386,7 +407,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     if showing {
         set_showing(show_clicks, show_keys);
     }
-    let result = record_into(&mut capture, &path, fps, seconds, choice, crop, sound, countdown.min(10), &g, woken.as_raw_fd());
+    let result = record_into(&mut capture, &path, fps, seconds, choice, crop, backdrop, sound, countdown.min(10), &g, woken.as_raw_fd());
     if showing {
         set_showing(false, false);
     }
@@ -415,6 +436,7 @@ fn record_into(
     seconds: Option<f64>,
     choice: olo_video::Choice,
     crop: Option<[u32; 4]>,
+    backdrop: Option<crate::backdrop::Look>,
     which: crate::sound::Which,
     countdown: u32,
     going: &Going,
@@ -438,7 +460,10 @@ fn record_into(
     let (ready_tx, ready) = std::sync::mpsc::channel::<Result<(), String>>();
     let worker = {
         let (slot, ended, end, part, sound_in) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone());
-        std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &end, &part, fps, choice, size, &ready_tx, &sound_in)).map_err(|e| e.to_string())?
+        std::thread::Builder::new()
+            .name("recording encoder".into())
+            .spawn(move || encode(&slot, &ended, &end, &part, fps, choice, size, backdrop.as_ref(), &ready_tx, &sound_in))
+            .map_err(|e| e.to_string())?
     };
     // The countdown meanwhile, a number a second (a stop ends it).
     let say = |n: u32| {
@@ -609,6 +634,7 @@ fn encode(
     fps: u32,
     choice: olo_video::Choice,
     size: Option<(u32, u32)>,
+    look: Option<&crate::backdrop::Look>,
     ready: &std::sync::mpsc::Sender<Result<(), String>>,
     sound: &Mutex<Option<SoundIn>>,
 ) -> Result<(usize, (u32, u32), &'static str), String> {
@@ -631,13 +657,27 @@ fn encode(
     let (m, cv) = slot;
     // Milliseconds: durations as they came.
     let mut video: Option<(olo_video::Encoder, olo_video::Mp4, Vec<u8>)> = None;
+    // A window on a background: the video its size (made with the
+    // encoder, before the recording starts).
+    let mut backdrop: Option<crate::backdrop::Backdrop> = None;
+    let open = |w: u32, h: u32, backdrop: &mut Option<crate::backdrop::Backdrop>| -> Result<(olo_video::Encoder, olo_video::Mp4, Vec<u8>), String> {
+        let (vw, vh) = match look {
+            Some(look) => {
+                let b = crate::backdrop::Backdrop::new(w, h, look);
+                let size = (b.width, b.height);
+                *backdrop = Some(b);
+                size
+            }
+            None => olo_video::even(w, h),
+        };
+        let enc = olo_video::Encoder::new(vw, vh, fps, choice)?;
+        let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
+        Ok((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]))
+    };
     // Opened now, at the size the capture says (before the recording
     // starts: the recorder waits for this); else at the first picture.
     if let Some((vw, vh)) = size {
-        let opened = olo_video::Encoder::new(vw, vh, fps, choice).and_then(|enc| {
-            let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
-            Ok((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]))
-        });
+        let opened = open(vw, vh, &mut backdrop);
         match opened {
             Ok(v) => video = Some(v),
             Err(e) => {
@@ -664,16 +704,16 @@ fn encode(
         };
         let Some(w) = next else { break };
         if video.is_none() {
-            let (vw, vh) = olo_video::even(w.width, w.height);
-            let enc = olo_video::Encoder::new(vw, vh, fps, choice)?;
-            let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
-            video = Some((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]));
+            video = Some(open(w.width, w.height, &mut backdrop)?);
         }
         let (enc, mp4, canvas) = video.as_mut().unwrap();
         let (vw, vh) = enc.size();
         // The picture at the video's size: a window that grew is cut, one
-        // that shrank shown on black.
-        fit(&w, canvas, vw, vh);
+        // that shrank shown on black (or on its background, centred).
+        match backdrop.as_mut() {
+            Some(b) => b.compose(&w.data, w.stride, w.width, w.height, canvas),
+            None => fit(&w, canvas, vw, vh),
+        }
         let (bits, key) = enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra)?;
         if let Some((b, k, at)) = held.take() {
             let ms = w.at.saturating_sub(at).as_millis().max(1) as u32;

@@ -1486,11 +1486,14 @@ pub struct ScreenRecordingSettings {
     /// Seconds counted down on screen before a recording a person starts
     /// (⌘⇧6, Screenshot's Record…) begins; 0: none.
     pub countdown: u32,
+    /// A window's recording shown on the wallpaper, blurred, its corners
+    /// rounded and a shadow under it (Screenshot's `backdrop.rs`).
+    pub background: bool,
 }
 
 impl Default for ScreenRecordingSettings {
     fn default() -> Self {
-        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into(), gif: false, show_clicks: false, show_keys: false, countdown: 3 }
+        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into(), gif: false, show_clicks: false, show_keys: false, countdown: 3, background: false }
     }
 }
 
