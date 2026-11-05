@@ -103,6 +103,29 @@ of Finished; a new one goes where its priority puts it.
   `hmac-secret` is the way in. Next: `CTAPHID_INIT` and
   `authenticatorGetInfo` (its extensions, PIN set or not), then the
   sealed-password design above.
+  *Stray taps ignored* (Ben, 2026-11-04): "i have a habit of
+  accidentally tapping my yubikey and it adds the code where i don't
+  want it. when you add the native olo yubikey support, also make it so
+  that stray taps are ignored -- the code should only be captured and
+  used if we're actually in a context where we are waiting for a
+  permission grant from the yubikey for sudo or passwords. also add an
+  option for inserting the code anyway by using 3 taps so that someone
+  could use it e.g. if they are just filling in a web form olo knows
+  nothing about and want the code there. that option can be enabled by
+  default too." A touch types a Yubico OTP (44 characters and Enter)
+  through the key's OTP interface, a USB keyboard of its own: Olo takes
+  that keyboard's keys itself (by the device, as the YubiKey is already
+  told from keyboards: `olo_protocol::keyboards::security_key`) and
+  passes nothing of it to the focused window. While a sudo, Passwords,
+  polkit or lock-screen request is waiting for the key, a touch (FIDO2's
+  user presence, or the OTP if that's how it's set up) answers it; at
+  any other time a touch does nothing. Three touches in a row (within a
+  couple of seconds each) type the next OTP into the focused window as
+  the key would have: Preferences ▸ Security ▸ YubiKey, "Three touches
+  type a code" (on by default). Each code an OTP that was swallowed was
+  one the key used up; that's fine (Yubico's counter only moves on). A
+  key's touches are told apart from a real keyboard's typing by the
+  device, never by timing or the text.
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the
