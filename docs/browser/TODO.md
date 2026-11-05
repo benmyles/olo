@@ -56,6 +56,13 @@ item means implemented and verified; a partial implementation stays open.
   remain unimplemented.
 - [ ] Implement CSS property grammars, cascade, media queries,
   custom properties and style invalidation.
+- [x] Original typed absolute CSS colors, deferred current/system/light-dark
+  context, missing components, explicit colorimetric conversion, bounded
+  allocation-free SIMD worker and measured compact storage. 12,703 native
+  cases: 9,728 direct plus 2,760 reviewed current-spec passes; 215 non-passes.
+- [ ] Complete color math/substitution, relative colors/mixing/interpolation,
+  gamut mapping/profiles, CSSOM, author color-scheme and Olo palette/style/
+  rendering integration. Typed color support is not all-site dark mode.
 - [ ] Implement block/inline, text shaping/bidi, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
@@ -83,7 +90,7 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: CSS property/style compilation, stylesheet contexts/rule indexing,
+Next: CSS property/style compilation and color integration, stylesheet contexts/rule indexing,
 remaining selector integrations, descriptor-aware parsing and
 HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
 and the six tree cases requiring script execution.

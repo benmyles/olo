@@ -1,0 +1,2203 @@
+{
+  "scope": "Native CSS color grammar/conversion only; no style/layout/rendering or Chrome conformance",
+  "total": 12703,
+  "counts": {
+    "passed": 9728,
+    "unsupported": 215,
+    "updated_specification": 2760
+  },
+  "base_commit": "83b2e9aac856dd6237884d3ad9830256b60f89d1",
+  "fixture_manifest_sha256": "3cd5b66d5bad854d9b0522186ed67c992e22ec5d8de8619c1c9146e7da07818d",
+  "commands": [
+    "cargo test --release -p olo-web --test colors",
+    "cargo run --release -p olo-web --example color_eval -- /var/tmp/colors.json"
+  ],
+  "evaluator_exit_code": 1,
+  "unexpected_mismatches_errors_panics": 0,
+  "per_file_counts": {
+    "generic:color_function_4.json": {
+      "passed": 219
+    },
+    "generic:color_functions_5.json": {
+      "unsupported": 17,
+      "passed": 3
+    },
+    "generic:color_hexadecimal_3.json": {
+      "passed": 81
+    },
+    "generic:color_hexadecimal_4.json": {
+      "passed": 324
+    },
+    "generic:color_hsl_3.json": {
+      "passed": 256
+    },
+    "generic:color_hsl_4.json": {
+      "passed": 500
+    },
+    "generic:color_hwb_4.json": {
+      "passed": 500
+    },
+    "generic:color_keywords_3.json": {
+      "passed": 160
+    },
+    "generic:color_keywords_4.json": {
+      "passed": 1
+    },
+    "generic:color_lab_4.json": {
+      "passed": 900,
+      "updated_specification": 600
+    },
+    "generic:color_lch_4.json": {
+      "passed": 720,
+      "updated_specification": 780
+    },
+    "generic:color_oklab_4.json": {
+      "passed": 900,
+      "updated_specification": 600
+    },
+    "generic:color_oklch_4.json": {
+      "passed": 720,
+      "updated_specification": 780
+    },
+    "independent absolute conversions:vectors": {
+      "passed": 43
+    },
+    "wpt literal port:color-computed-color-function.html": {
+      "passed": 409,
+      "unsupported": 59
+    },
+    "wpt literal port:color-computed-hsl.html": {
+      "passed": 3735,
+      "unsupported": 16
+    },
+    "wpt literal port:color-computed-lab.html": {
+      "passed": 88,
+      "unsupported": 48
+    },
+    "wpt literal port:color-computed-rgb.html": {
+      "passed": 60,
+      "unsupported": 36
+    },
+    "wpt literal port:color-invalid-hsl.html": {
+      "passed": 23
+    },
+    "wpt literal port:color-invalid-hwb.html": {
+      "passed": 6
+    },
+    "wpt literal port:color-invalid-lab.html": {
+      "passed": 18
+    },
+    "wpt literal port:color-invalid-rgb.html": {
+      "passed": 30
+    },
+    "wpt literal port:color-valid-rgb.html": {
+      "passed": 32,
+      "unsupported": 38
+    },
+    "wpt unported:color-computed-rgb.html": {
+      "unsupported": 1
+    }
+  },
+  "nonpasses": [
+    {
+      "case": 1,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 30%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 2,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0, 81%, 81%, 30%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 3,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0, 0.81, 0.81, 0.3)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 4,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 30% / 50%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 5,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 30% / 200%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 6,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 30% / -200%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 7,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 8,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% 130%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 9,
+      "file": "color_functions_5.json",
+      "input": "device-cmyk(0 81% 81% -30%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 11,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 12,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 10% 10% 10% 0)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 13,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0 / 50%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 14,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0 / 0.5)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 15,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0 / 150%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 16,
+      "file": "color_functions_5.json",
+      "input": "color(--valid 0 0 0 0 / -150%)",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"custom color profiles\")"
+    },
+    {
+      "case": 18,
+      "file": "color_functions_5.json",
+      "input": "light-dark(device-cmyk(0 81% 81% 30%), color(--valid 0 0 0 0))",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 19,
+      "file": "color_functions_5.json",
+      "input": "light-dark(device-cmyk(0 81% 81%), color(unvalid 0 0 0 0))",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"device colors\")"
+    },
+    {
+      "case": 42,
+      "expected": "color(srgb 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 42,
+      "expected": "color(srgb-linear 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb-linear calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 42,
+      "expected": "color(a98-rgb 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(a98-rgb calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 42,
+      "expected": "color(rec2020 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(rec2020 calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 42,
+      "expected": "color(prophoto-rgb 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(prophoto-rgb calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 42,
+      "expected": "color(display-p3 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3 calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 42,
+      "expected": "color(display-p3-linear 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3-linear calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 43,
+      "expected": "color(srgb 1.5 -0.5 0.5 / 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb calc(50% * 3) calc(-150% / 3) calc(50%) / calc(-50% * 3))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 43,
+      "expected": "color(srgb-linear 1.5 -0.5 0.5 / 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb-linear calc(50% * 3) calc(-150% / 3) calc(50%) / calc(-50% * 3))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 43,
+      "expected": "color(a98-rgb 1.5 -0.5 0.5 / 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(a98-rgb calc(50% * 3) calc(-150% / 3) calc(50%) / calc(-50% * 3))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 43,
+      "expected": "color(rec2020 1.5 -0.5 0.5 / 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(rec2020 calc(50% * 3) calc(-150% / 3) calc(50%) / calc(-50% * 3))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 43,
+      "expected": "color(prophoto-rgb 1.5 -0.5 0.5 / 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(prophoto-rgb calc(50% * 3) calc(-150% / 3) calc(50%) / calc(-50% * 3))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 43,
+      "expected": "color(display-p3 1.5 -0.5 0.5 / 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3 calc(50% * 3) calc(-150% / 3) calc(50%) / calc(-50% * 3))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 43,
+      "expected": "color(display-p3-linear 1.5 -0.5 0.5 / 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3-linear calc(50% * 3) calc(-150% / 3) calc(50%) / calc(-50% * 3))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 51,
+      "expected": "color(srgb 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 51,
+      "expected": "color(srgb-linear 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb-linear calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 51,
+      "expected": "color(a98-rgb 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(a98-rgb calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 51,
+      "expected": "color(rec2020 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(rec2020 calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 51,
+      "expected": "color(prophoto-rgb 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(prophoto-rgb calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 51,
+      "expected": "color(display-p3 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3 calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 51,
+      "expected": "color(display-p3-linear 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3-linear calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 52,
+      "expected": "color(srgb 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 52,
+      "expected": "color(srgb-linear 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb-linear calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 52,
+      "expected": "color(a98-rgb 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(a98-rgb calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 52,
+      "expected": "color(rec2020 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(rec2020 calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 52,
+      "expected": "color(prophoto-rgb 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(prophoto-rgb calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 52,
+      "expected": "color(display-p3 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3 calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 52,
+      "expected": "color(display-p3-linear 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3-linear calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 55,
+      "expected": "color(srgb 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 55,
+      "expected": "color(srgb-linear 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb-linear calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 55,
+      "expected": "color(a98-rgb 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(a98-rgb calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 55,
+      "expected": "color(rec2020 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(rec2020 calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 55,
+      "expected": "color(prophoto-rgb 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(prophoto-rgb calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 55,
+      "expected": "color(display-p3 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3 calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 55,
+      "expected": "color(display-p3-linear 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3-linear calc(50% + (sign(1em - 10px) * 10%)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 56,
+      "expected": "color(srgb 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 56,
+      "expected": "color(srgb-linear 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb-linear 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 56,
+      "expected": "color(a98-rgb 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(a98-rgb 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 56,
+      "expected": "color(rec2020 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(rec2020 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 56,
+      "expected": "color(prophoto-rgb 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(prophoto-rgb 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 56,
+      "expected": "color(display-p3 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 56,
+      "expected": "color(display-p3-linear 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(display-p3-linear 0.5 0 0 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 76,
+      "expected": "color(xyz-d65 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 76,
+      "expected": "color(xyz-d50 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d50 calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 76,
+      "expected": "color(xyz-d65 1.5 -0.5 0.5 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d65 calc(0.5 + 1) calc(0.5 - 1) calc(0.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 84,
+      "expected": "color(xyz-d65 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 84,
+      "expected": "color(xyz-d50 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d50 calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 84,
+      "expected": "color(xyz-d65 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d65 calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 85,
+      "expected": "color(xyz-d65 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 85,
+      "expected": "color(xyz-d50 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d50 calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 85,
+      "expected": "color(xyz-d65 0 0 0)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d65 calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 88,
+      "expected": "color(xyz-d65 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz calc(0.5 + (sign(1em - 10px) * 0.1)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 88,
+      "expected": "color(xyz-d50 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d50 calc(0.5 + (sign(1em - 10px) * 0.1)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 88,
+      "expected": "color(xyz-d65 0.6 0 0 / 0.5)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d65 calc(0.5 + (sign(1em - 10px) * 0.1)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 89,
+      "expected": "color(xyz-d65 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz 0.5 0 0 / calc(0.5 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 89,
+      "expected": "color(xyz-d50 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d50 0.5 0 0 / calc(0.5 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 89,
+      "expected": "color(xyz-d65 0.5 0 0 / 0.6)",
+      "file": "color-computed-color-function.html",
+      "input": "color(xyz-d65 0.5 0 0 / calc(0.5 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 315,
+      "expected": "color(srgb 0.6 0 0 / 0.51)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0 0 / 0.51)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 317,
+      "expected": "color(srgb 0.4 0 0 / 0.52)",
+      "file": "color-computed-color-function.html",
+      "input": "color(srgb calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0 0 / 0.52)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3736,
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "file": "color-computed-hsl.html",
+      "input": "hsl(calc(50deg + (sign(1em - 10px) * 10deg)), 100%, 37.5%, 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3737,
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "file": "color-computed-hsl.html",
+      "input": "hsla(calc(50deg + (sign(1em - 10px) * 10deg)), 100%, 37.5%, 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3738,
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "file": "color-computed-hsl.html",
+      "input": "hsl(calc(50 + (sign(1em - 10px) * 10)), 100%, 37.5%, 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3739,
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "file": "color-computed-hsl.html",
+      "input": "hsla(calc(50 + (sign(1em - 10px) * 10)), 100%, 37.5%, 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3740,
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "file": "color-computed-hsl.html",
+      "input": "hsl(60deg, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3741,
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "file": "color-computed-hsl.html",
+      "input": "hsla(60deg, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3742,
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "file": "color-computed-hsl.html",
+      "input": "hsl(60, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3743,
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "file": "color-computed-hsl.html",
+      "input": "hsla(60, 100%, 37.5%, calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3744,
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "file": "color-computed-hsl.html",
+      "input": "hsl(calc(50deg + (sign(1em - 10px) * 10deg)) 100% 37.5% / 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3745,
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "file": "color-computed-hsl.html",
+      "input": "hsla(calc(50deg + (sign(1em - 10px) * 10deg)) 100% 37.5% / 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3746,
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "file": "color-computed-hsl.html",
+      "input": "hsl(calc(50 + (sign(1em - 10px) * 10)) 100 37.5 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3747,
+      "expected": "rgba(191, 191, 0, 0.5)",
+      "file": "color-computed-hsl.html",
+      "input": "hsla(calc(50 + (sign(1em - 10px) * 10)) 100 37.5 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3748,
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "file": "color-computed-hsl.html",
+      "input": "hsl(60deg 100% 37.5% / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3749,
+      "expected": "rgba(191, 191, 0, 0.6)",
+      "file": "color-computed-hsl.html",
+      "input": "hsla(60deg 100% 37.5% / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3750,
+      "expected": "rgba(191, 191, 0, 0.85)",
+      "file": "color-computed-hsl.html",
+      "input": "hsl(60 100 37.5 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 3751,
+      "expected": "rgba(191, 191, 0, 0.85)",
+      "file": "color-computed-hsl.html",
+      "input": "hsla(60 100 37.5 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 15,
+      "expected": "lab(100 -0.5 1.5 / 0.5)",
+      "file": "color-computed-lab.html",
+      "input": "lab(calc(50 * 3) calc(0.5 - 1) calc(1.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 16,
+      "expected": "lab(0 1.5 -1.5 / 0)",
+      "file": "color-computed-lab.html",
+      "input": "lab(calc(-50 * 3) calc(0.5 + 1) calc(-1.5) / calc(-0.5 * 2))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 22,
+      "expected": "lab(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "lab(calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 23,
+      "expected": "lab(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "lab(calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 38,
+      "expected": "oklab(1 -0.5 1.5 / 0.5)",
+      "file": "color-computed-lab.html",
+      "input": "oklab(calc(0.5 * 3) calc(0.5 - 1) calc(1.5) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 39,
+      "expected": "oklab(0 1.5 -1.5 / 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklab(calc(-0.5 * 3) calc(0.5 + 1) calc(-1.5) / calc(-0.5 * 2))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 47,
+      "expected": "oklab(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklab(calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 48,
+      "expected": "oklab(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklab(calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 67,
+      "expected": "lch(100 0 40 / 0.5)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(50 * 3) calc(0.5 - 1) calc(20deg * 2) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 68,
+      "expected": "lch(0 1.5 320 / 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(-50 * 3) calc(0.5 + 1) calc(-20deg * 2) / calc(-0.5 * 2))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 74,
+      "expected": "lch(100 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(infinity) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 75,
+      "expected": "lch(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(-infinity) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 76,
+      "expected": "lch(50 calc(infinity) 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(50 calc(infinity) 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 77,
+      "expected": "lch(50 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(50 calc(-infinity) 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 78,
+      "expected": "lch(50 10 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(50 10 calc(infinity))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 79,
+      "expected": "lch(50 10 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(50 10 calc(-infinity))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 80,
+      "expected": "lch(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 81,
+      "expected": "lch(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 82,
+      "expected": "lch(50 10 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(50 10 calc(0 / 0))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 83,
+      "expected": "lch(50 10 0)",
+      "file": "color-computed-lab.html",
+      "input": "lch(50 10 calc(NaN))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 102,
+      "expected": "oklch(1 0 40 / 0.5)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(0.5 * 3) calc(0.5 - 1) calc(20deg * 2) / calc(-0.5 + 1))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 103,
+      "expected": "oklch(0 1.5 320 / 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(-0.5 * 3) calc(0.5 + 1) calc(-20deg * 2) / calc(-0.5 * 2))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 111,
+      "expected": "oklch(1 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(infinity) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 112,
+      "expected": "oklch(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(-infinity) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 113,
+      "expected": "oklch(0.5 calc(infinity) 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(0.5 calc(infinity) 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 114,
+      "expected": "oklch(0.5 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(0.5 calc(-infinity) 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 115,
+      "expected": "oklch(0.5 0.1 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(0.5 0.1 calc(infinity))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 116,
+      "expected": "oklch(0.5 0.1 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(0.5 0.1 calc(-infinity))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 117,
+      "expected": "oklch(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(NaN) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 118,
+      "expected": "oklch(0 0 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(0 / 0) 0 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 119,
+      "expected": "oklch(0.5 0.1 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(0.5 0.1 calc(0 / 0))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 120,
+      "expected": "oklch(0.5 0.1 0)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(0.5 0.1 calc(NaN))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 121,
+      "expected": "lab(60 30 50 / 0.5)",
+      "file": "color-computed-lab.html",
+      "input": "lab(calc(50 + (sign(1em - 10px) * 10)) 30 50 / 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 122,
+      "expected": "oklab(0.6 0.3 0.5 / 0.5)",
+      "file": "color-computed-lab.html",
+      "input": "oklab(calc(0.5 + (sign(1em - 10px) * 0.1)) 0.3 0.5 / 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 123,
+      "expected": "lab(60 30 50 / 0.6)",
+      "file": "color-computed-lab.html",
+      "input": "lab(60 30 50 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 124,
+      "expected": "oklab(0.6 0.3 0.5 / 0.6)",
+      "file": "color-computed-lab.html",
+      "input": "oklab(0.6 0.3 0.5 / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 125,
+      "expected": "lch(60 30 50 / 0.5)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(50 + (sign(1em - 10px) * 10)) 30 50deg / 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 126,
+      "expected": "oklch(0.6 0.3 50 / 0.5)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(0.5 + (sign(1em - 10px) * 0.1)) 0.3 50deg / 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 127,
+      "expected": "lch(60 30 50 / 0.6)",
+      "file": "color-computed-lab.html",
+      "input": "lch(60 30 50deg / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 128,
+      "expected": "oklch(0.6 0.3 50 / 0.6)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(0.6 0.3 50deg / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 187,
+      "expected": "lab(60 30 50 / 0.51)",
+      "file": "color-computed-lab.html",
+      "input": "lab(calc(50 + (sign(2cqw - 10px) * 10)) 30 50 / 0.51)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 188,
+      "expected": "oklab(0.6 0.3 0.5 / 0.51)",
+      "file": "color-computed-lab.html",
+      "input": "oklab(calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0.3 0.5 / 0.51)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 189,
+      "expected": "lch(60 30 50 / 0.51)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(50 + (sign(2cqw - 10px) * 10)) 30 50 / 0.51)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 190,
+      "expected": "oklch(0.6 0.3 50 / 0.51)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0.3 50 / 0.51)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 192,
+      "expected": "lab(40 30 50 / 0.52)",
+      "file": "color-computed-lab.html",
+      "input": "lab(calc(50 + (sign(2cqw - 10px) * 10)) 30 50 / 0.52)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 193,
+      "expected": "oklab(0.4 0.3 0.5 / 0.52)",
+      "file": "color-computed-lab.html",
+      "input": "oklab(calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0.3 0.5 / 0.52)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 194,
+      "expected": "lch(40 30 50 / 0.52)",
+      "file": "color-computed-lab.html",
+      "input": "lch(calc(50 + (sign(2cqw - 10px) * 10)) 30 50 / 0.52)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 195,
+      "expected": "oklch(0.4 0.3 50 / 0.52)",
+      "file": "color-computed-lab.html",
+      "input": "oklch(calc(0.5 + (sign(2cqw - 10px) * 0.1)) 0.3 50 / 0.52)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 61,
+      "expected": "rgb(255, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(calc(infinity), 0, 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 62,
+      "expected": "rgb(0, 255, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, calc(infinity), 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 63,
+      "expected": "rgb(0, 0, 255)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, 0, calc(infinity))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 64,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0, 0, 0, calc(infinity))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 65,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(calc(-infinity), 0, 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 66,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, calc(-infinity), 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 67,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, 0, calc(-infinity))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 68,
+      "expected": "rgba(0, 0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0, 0, 0, calc(-infinity))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 69,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(calc(NaN), 0, 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 70,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, calc(NaN), 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 71,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, 0, calc(NaN))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 72,
+      "expected": "rgba(0, 0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0, 0, 0, calc(NaN))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 73,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(calc(0 / 0), 0, 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 74,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, calc(0 / 0), 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 75,
+      "expected": "rgb(0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, 0, calc(0 / 0))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 76,
+      "expected": "rgba(0, 0, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0, 0, 0, calc(0 / 0))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 77,
+      "expected": "rgb(255, 0, 0)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(var(--high), 0, 0)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color RequiresSubstitution",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 78,
+      "expected": "rgb(0, 64, 128)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(var(--negative), 64, 128)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color RequiresSubstitution",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 79,
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(calc(50% + (sign(1em - 10px) * 10%)), 0%, 0%, 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 80,
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)), 0%, 0%, 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 81,
+      "expected": "rgba(60, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(calc(50 + (sign(1em - 10px) * 10)), 0, 0, 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 82,
+      "expected": "rgba(60, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(calc(50 + (sign(1em - 10px) * 10)), 0, 0, 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 83,
+      "expected": "rgba(0, 0, 0, 0.6)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0%, 0%, 0%, calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 84,
+      "expected": "rgba(0, 0, 0, 0.6)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0%, 0%, 0%, calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 85,
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0, 0, 0, calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 86,
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0, 0, 0, calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 87,
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(calc(50% + (sign(1em - 10px) * 10%)) 0% 0% / 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 88,
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 0% 0% / 50%)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 89,
+      "expected": "rgba(60, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(calc(50 + (sign(1em - 10px) * 10)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 90,
+      "expected": "rgba(60, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(calc(50 + (sign(1em - 10px) * 10)) 0 0 / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 91,
+      "expected": "rgba(0, 0, 0, 0.6)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0% 0% 0% / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 92,
+      "expected": "rgba(0, 0, 0, 0.6)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0% 0% 0% / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 93,
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "file": "color-computed-rgb.html",
+      "input": "rgb(0 0 0 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 94,
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0 0 0 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 95,
+      "expected": "rgba(153, 0, 0, 0.5)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 0 0% / 0.5)",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 96,
+      "expected": "rgba(0, 0, 0, 0.85)",
+      "file": "color-computed-rgb.html",
+      "input": "rgba(0% 0 0% / calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "computed",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 33,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(calc(infinity), 0, 0)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 34,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, calc(infinity), 0)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 35,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, 0, calc(infinity))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 36,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0, 0, 0, calc(infinity))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 37,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(calc(-infinity), 0, 0)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 38,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, calc(-infinity), 0)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 39,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, 0, calc(-infinity))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 40,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0, 0, 0, calc(-infinity))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 41,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(calc(NaN), 0, 0)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 42,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, calc(NaN), 0)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 43,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, 0, calc(NaN))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 44,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0, 0, 0, calc(NaN))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 45,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(calc(0 / 0), 0, 0)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 46,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, calc(0 / 0), 0)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 47,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, 0, calc(0 / 0))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 48,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0, 0, 0, calc(0 / 0))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 49,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(calc(50% + (sign(1em - 10px) * 10%)), 0%, 0%, 50%)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 50,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)), 0%, 0%, 50%)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 51,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(calc(50 + (sign(1em - 10px) * 10)), 0, 0, 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 52,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50 + (sign(1em - 10px) * 10)), 0, 0, 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 53,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0%, 0%, 0%, calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 54,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0%, 0%, 0%, calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 55,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0, 0, 0, calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 56,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0, 0, 0, calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 57,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(calc(50% + (sign(1em - 10px) * 10%)) 0% 0% / 50%)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 58,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 0% 0% / 50%)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 59,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(calc(50 + (sign(1em - 10px) * 10)) 0 0 / 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 60,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50 + (sign(1em - 10px) * 10)) 0 0 / 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 61,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0% 0% 0% / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 62,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0% 0% 0% / calc(50% + (sign(1em - 10px) * 10%)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 63,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgb(0 0 0 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 64,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0 0 0 / calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 65,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 0 0% / 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 66,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(0% 0 0% / calc(0.75 + (sign(1em - 10px) * 0.1)))",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 67,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50 + (sign(1em - 10px) * 10)) 400 -400 / 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 68,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)) 400% -400% / 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 69,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50 + (sign(1em - 10px) * 10)), 400, -400, 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "case": 70,
+      "expected": null,
+      "file": "color-valid-rgb.html",
+      "input": "rgba(calc(50% + (sign(1em - 10px) * 10%)), 400%, -400%, 0.5)",
+      "mode": "valid",
+      "outcome": "unsupported",
+      "reason": "CSS color Unsupported(\"math functions\")",
+      "suite": "wpt literal port"
+    },
+    {
+      "file": "color-computed-rgb.html",
+      "input": "rgb(2.5, 3.4, 4.6)",
+      "outcome": "unsupported",
+      "reason": "non-literal computed expectation",
+      "suite": "wpt unported"
+    }
+  ],
+  "reviewed_current_specification": "Only Lab-family L/chroma clamps and polar hue normalization; all 2760 affected pairs remain separately reported. See fixture README and independent reference adapter.",
+  "full_report": "Regenerate with color_eval; individual inputs/outputs are in the reproducible full report rather than copied into this summary.",
+  "website_compatibility": "0/3000 corpus cases and 0/100 sites have complete paired evidence. No browser renderer exists.",
+  "full_report_sha256": "86c63cc46f9d987754c67f0e39037b96e60e96581139a36d0b9c9f55e1eeeed6"
+}

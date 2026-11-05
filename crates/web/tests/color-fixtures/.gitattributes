@@ -1,0 +1,3 @@
+# Preserve pinned upstream bytes without line-ending normalization.
+colorjs-conversions.js -text
+wpt/*.html -text

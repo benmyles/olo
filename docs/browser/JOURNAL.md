@@ -1012,3 +1012,102 @@ Next: property/style compilation and stylesheet contexts/rule indexing,
 remaining selector integrations and the rest of the browser architecture.
 There is still no usable browser or demonstrated website compatibility:
 site evidence remains 0/3,000 configurations. The complete goal stays active.
+
+## 2026-11-05 — typed CSS colors and bounded SIMD conversion
+
+Added an original color-value compiler over the existing CSS component
+arena: named/hex colors, legacy/modern RGB/HSL, HWB, Lab/LCH, OKLab/OKLCH,
+predefined RGB/XYZ spaces, current/system colors and nested `light-dark()`.
+Values retain color-space/missing-component identity without source strings.
+Absolute/current/system values need no heap allocation beyond Syntax;
+conditional expressions own one shared flat arena. Both branches validate,
+only the selected branch resolves, and the host must provide actual
+scheme/current color/system palette. No Olo palette, dark adaptation,
+style computation or painting is connected yet. Compilation is bounded,
+cancellable and hard-limited to 128 nested calls; resolution/drop are iterative.
+
+Colorimetric conversion is original Rust with f64 arithmetic, standard
+transfer functions and normative matrix facts. It preserves out-of-gamut
+coordinates; explicit absolute conversion materializes missing input as
+zero. The separate byte endpoint clips explicitly. Gamut mapping,
+interpolation/analogous missing propagation, math/substitution, relative
+colors/mixing, profiles, CSSOM and complete Color conformance remain open.
+The fact-only generator reproduces both named/matrix tables byte-for-byte
+from the hash-pinned CSS Color 4 HTML after repository rustfmt formatting.
+It executes no JS and reads no test expectations/engine output.
+
+Independent native evidence: **12,703 cases**, comprising **9,728 direct
+passes, 2,760 separately reviewed current-spec passes and 215 non-passes**.
+The generic CC0 corpus accounts for all 8,061 pairs (5,284 direct, 2,760
+Lab-family lightness/chroma/hue normalization updates, 17 non-passes).
+Literal WPT ports account for 4,598 assertions (4,401 passes, 197 non-passes)
+plus one unported expectation. Forty-three literal standard-space Color.js
+conversion vectors pass at their independent tolerances; 212 other objects
+are inventoried outside that specific absolute CSS contract. Imported
+resources/licenses/revisions/byte hashes are retained. Both derived JSON
+files reproduce exactly. Restricted reference decoding never uses the
+engine to create expected values. No upstream JS/pages, CSSOM text, layout
+or rendering are executed. `color_eval` exits **1**, preserving all gaps:
+195 math expressions, two substitutions, six custom-profile values,
+eleven device colors and one unported array-of-serializations expectation.
+
+Performance work uses a bounded, allocation-free conversion worker that
+returns counts after at most 4,096 colors per step. Cancellation is checked
+at least every four; completed work survives cancellation. Homogeneous
+linear RGB/XYZ batches use safe `wide` f64 lanes, with target-specific SIMD
+or scalar fallback. All 225 space pairs, masks, mixed batches and tails
+compare exactly to scalar conversion in native tests, including f64 storage.
+No unsafe engine code, threads, timers, UI activity or GPU dispatch added.
+
+The first SIMD attempt regressed nonlinear throughput (OKLab→sRGB median
+9.984 ms scalar versus 14.660 ms attempted SIMD). Profiling/disassembly
+showed an extra input Color copy in one build where the scalar control
+elided it. Borrowing directly inside the worker removes that dependence.
+Profiling also exposed repeated vector-row helper calls; explicit inlined
+rows remove those calls. Earlier observations are retained with their
+scope; intermediate source snapshots are not presented as rebuildable revisions.
+
+Final release measurements: Core Ultra 7 356H, CPU 0, three sequential
+alternating runs per mode, 20 warm conversions of 262,144 values per
+workload, with no concurrent checks launched by this session. Clocks,
+thermals and other machine load are uncontrolled. Median-of-run medians
+for scalar control → default:
+
+- Same-space sRGB materialization: **0.690 → 0.124 ms**.
+- Linear Display P3 → linear sRGB: **3.257 → 0.896 ms**.
+- XYZ D50 → linear Display P3: **3.258 → 0.895 ms**.
+- Nonlinear OKLab → sRGB: **11.279 → 8.295 ms**;
+  Display P3 → sRGB: **17.244 → 16.151 ms**. These scalar-fallback
+  differences include compiler/code-layout effects, not SIMD arithmetic.
+- Observed default first-step medians: **2.565–249.907 µs**; largest
+  sampled default step **262.549 µs**. These are synthetic CPU worker
+  latencies, not worst-case guarantees or input/UI latency.
+- Color storage **40 → 20 bytes**, Value **40 → 24 bytes**, 10,000
+  absolute values **400,000 → 240,000 reserved bytes**, compared with
+  the f64 storage control. The sample conditional arena uses 208 versus
+  368 bytes, excluding its Value/allocator bookkeeping. f64 is slightly
+  faster for the two linear conversions (0.750/0.746 ms), so the retained
+  f32 choice is an explicit memory/throughput tradeoff at CSS precision.
+- Entire synthetic benchmark peak RSS: default **18,448–18,652 KiB**,
+  f64 **33,676–33,964 KiB**. Includes generated/reset vectors and allocator
+  retention; it is not webpage or browser memory. Typed parsing from
+  prebuilt Syntax is separately measured; lexical/source costs are excluded.
+
+Raw measurements, source/binary hashes, controls and commands:
+`measurements/2026-11-05-colors.json`; per-file coverage/non-passes:
+`measurements/2026-11-05-color-coverage.json`. Native release tests pass
+all **66 engine tests**, including eight color groups, 256 byte/alpha
+endpoints, changing/lazy context, source lifetime, extreme finite output,
+limits, cancellation/resumption, 10,000-deep hostile syntax and 10,000
+malformed values. Color tests also pass separately with f64 storage and
+scalar conversion controls. Default/all-feature release clippy and
+format/diff checks pass. Full workspace release build passes (2.62 s;
+existing GPUI warnings and proc-macro-error2 future-compatibility notice).
+
+No GUI launched or personal session changed. No visible change requires
+a screenshot journal yet. Website evidence remains **0/3,000 cases,
+0/100 sites**; there is no usable browser. The full goal stays active.
+Next: property/style compilation and color integration, substitution/math,
+stylesheet contexts/rule indexing and remaining selector/HTML integrations;
+layout, painting, V8, native shell, Olo integration and actual site journeys
+remain substantial required work.

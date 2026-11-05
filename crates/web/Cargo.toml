@@ -22,12 +22,17 @@ baseline-css-byte-copy = []
 baseline-utf8-errors = []
 # Reproduce per-candidate sibling scans instead of query-local nth indices.
 baseline-selector-nth = []
+# Storage/precision measurement control for typed color channels.
+baseline-color-f64 = []
+# Reproduce scalar batches and repacking of already converted colors.
+baseline-color-conversion = []
 
 [dependencies]
 memchr = "2"
 encoding_rs = "0.8"
 simdutf8 = "0.1"
 smallvec = "1"
+wide = "1.7"
 
 [dev-dependencies]
 serde_json.workspace = true

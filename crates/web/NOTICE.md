@@ -55,3 +55,27 @@ results from Olo. Its README and byte hashes distinguish literal native
 ports/static XML models from upstream Python/JS, XML loading, CSSOM,
 HTML parsing, rendering or full selector conformance. Production selector
 compilation/matching is original Rust; no cssselect2 engine is embedded.
+
+`src/css/color/named.rs` and `matrices.rs` contain normative named-color
+and matrix facts from [CSS Color 4](https://drafts.csswg.org/css-color-4/),
+sections 6.1 and 19, retrieved 2026-11-05 (source HTML SHA-256 recorded in
+both files). Attribution: W3C and the CSS Working Group, under the
+[W3C permissive document license](https://www.w3.org/copyright/document-license/).
+The numeric tables are extracted facts; parsing, contextual resolution,
+conversion control and SIMD batching are original Rust, not an embedded
+color engine.
+`tools/browser/generate-color-data.py` reproduces both fact tables from
+the exact pinned HTML. It accepts only numeric/list arithmetic data,
+never executes JS, and does not inspect engine outputs or test references.
+Format its output with the repository's rustfmt.toml before comparison.
+
+`tests/color-fixtures` contains thirteen unmodified color resources from
+the pinned CC0 css-parsing-tests revision above, nine unmodified WPT color
+resources from the pinned BSD-3-Clause WPT revision above, and an unmodified
+MIT-licensed Color.js conversion test resource at
+`dbbaf2de8ee5a6ac82a335711230d24dd44fc16a` (Copyright (c) 2021 Lea Verou,
+Chris Lilley).
+The three licenses are included. Its README, SOURCE.json and local
+literal-only extractor describe the numeric native ports, reviewed
+current-spec clamping, selections and explicit non-passes. No upstream
+Python/JS library, CSSOM or WPT page is executed by these comparisons.

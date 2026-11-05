@@ -2,7 +2,8 @@
 
 The engine crate is `olo-web`. It parses supported static HTML into its
 own compact document storage, constructs generic CSS syntax and compiles/matches
-selectors against a stable borrowed tree. It has no
+selectors against a stable borrowed tree, and compiles/resolves typed colors.
+It has no
 network, style calculation/layout, JavaScript execution, browser shell or
 demonstrated website compatibility.
 
@@ -380,3 +381,90 @@ these selector tests. Primary references consulted 2026-11-05:
 [An+B syntax](https://drafts.csswg.org/css-syntax/#anb-microsyntax),
 [HTML selector case rules](https://html.spec.whatwg.org/multipage/semantics-other.html#case-sensitivity-of-selectors),
 [HTML language determination](https://html.spec.whatwg.org/multipage/dom.html#language).
+
+
+## Typed CSS colors
+
+`css::color::Value::parse(Components, Limits, cancellation)` compiles a
+complete color value on a worker. It validates named/hex colors, legacy
+and modern RGB/HSL, HWB, Lab/LCH, OKLab/OKLCH, predefined `color()` spaces,
+`currentColor`, system colors and nested `light-dark()`. Components borrow
+generic Syntax only while compiling. Retained values own no source strings;
+absolute/current/system colors need no additional heap allocation. Conditional
+expressions use a shared flat node arena, with bounded compilation and
+iterative selection/drop. Both conditional branches are grammar-checked.
+Work/node/depth limits and cancellation stay explicit; nesting has a hard
+maximum of 128 even if a caller requests more.
+
+`Color` holds finite f32 coordinates and alpha, a color-space tag and a
+separate four-bit missing-component mask. Alpha clamps to [0,1]; the parser
+applies each grammar's specified channel clamps/percentage ranges/hue
+normalization. The raw constructor permits out-of-range coordinates for
+conversion, clamps finite magnitude to f32::MAX in both measurement modes,
+maps NaN to zero and canonicalizes negative zero. `none` remains distinct
+from numeric zero until a caller explicitly requests absolute conversion.
+On the measured x86-64 build Color occupies 20 bytes and Value 24, compared
+with 40/40 for the `baseline-color-f64` storage control. This is retained
+value storage, not page or browser memory.
+
+`resolve(&Context, …)` obtains the element's actual used light/dark scheme,
+inherited/current color and system palette from the host. It walks only the
+selected conditional branch; unselected context is never queried. It returns
+`ContextUnavailable` rather than guessing an Olo palette. A night palette
+can use the dark branch with host-supplied night colors. Legacy HSL/HWB with
+no missing components compute to clipped sRGB; other identities/missing
+components remain represented. There is no actual style host or all-site
+dark/night adaptation yet. Author color-scheme selection/inheritance,
+`prefers-color-scheme`, palette invalidation and forced adaptation still
+need implementation and independent rendering checks.
+
+`convert_absolute(Space)` uses f64 arithmetic and normative colorimetric
+matrices/transfer functions across 15 RGB/XYZ/Lab/OKLab/hue spaces. Input
+missing components become zero, while newly powerless output hues are
+marked missing. Out-of-gamut coordinates remain unbounded; this is not
+CSS interpolation's analogous missing-component propagation or destination
+gamut mapping. `srgb8_clipped()` explicitly clips/quantizes and must not
+be used as a substitute for the eventual renderer's profile/gamut policy.
+
+`Conversion::new(&mut [Color], Space)` allocates nothing. `step(limit,
+cancellation)` performs at most 4,096 colors, checks cancellation at least
+every four, and returns converted/total progress. Completed work remains
+converted after cancellation. Workers can yield/report counts between
+steps and throttle UI notifications. Homogeneous batches in linear sRGB,
+linear Display P3 and XYZ D50/D65 use safe four-lane f64 operations through
+the Rust `wide` crate. Build-target AVX, paired SSE2/NEON or scalar fallback
+preserve scalar operation order; mixed/nonlinear batches use the original
+scalar conversion. No engine unsafe code, GPU dispatch, thread, timer,
+polling or idle work is introduced. Batch result tests compare all 225
+space pairs, masks, mixed spaces and short/tail lengths exactly.
+
+Independent grammar/coordinate data accounts for **12,703 cases: 9,728
+direct passes, 2,760 reviewed current-spec passes, 215 explicit non-passes**.
+This includes 43 independent absolute conversion vectors, not just
+round-trip tests. The fixture README documents licenses, literal extraction,
+selection, numeric tolerances, current-spec changes and full non-pass
+reasons. The remaining cases include math/substitution, profiles, device
+colors and one unported WPT assertion. Known unsupported grammar returns
+`Unsupported`/`RequiresSubstitution`, separately from invalid input/resource
+errors. Relative colors, mixing/interpolation, gamut mapping, CSSOM,
+property compilation, cascade and painting remain unfinished. The native
+ports do not execute WPT JS/pages, CSSOM serialization or rendering.
+
+```sh
+cargo test --release -p olo-web --test colors
+cargo run --release -p olo-web --example color_eval -- /var/tmp/colors.json
+# Exits 1 while any case remains unsupported.
+cargo build --release -p olo-web --example color_bench
+taskset -c 0 /usr/bin/time -v target/release/examples/color_bench 20
+# Repeat with baseline-color-conversion or baseline-color-f64 controls.
+```
+
+Release observations, first-step latency, storage, RSS, controls, build
+identity and raw samples are in `measurements/2026-11-05-colors.json`.
+These are CPU microbenchmarks, not GPU/UI/Chrome performance. Native tests
+also check 256 byte/alpha endpoints, changing/lazy host context, source
+lifetime, deep flat expressions, finite extreme conversions, limits,
+cancellation/resumption and 10,000 deterministic malformed values. Primary
+references consulted 2026-11-05: [CSS Color 4](https://www.w3.org/TR/2026/CRD-css-color-4-20261103/),
+[CSS Color 5](https://drafts.csswg.org/css-color-5/),
+[CSS Values 4 precision](https://drafts.csswg.org/css-values-4/#range).

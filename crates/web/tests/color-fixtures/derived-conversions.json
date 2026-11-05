@@ -1,0 +1,1332 @@
+{
+  "scope": "Literal standard-space absolute conversion vectors, not Color.js execution or missing-component propagation",
+  "cases": [
+    {
+      "line": 27,
+      "input": "slategray",
+      "target": "lch",
+      "expected": [
+        52.69734985816035,
+        11.234156441150068,
+        253.00263766910288
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 31,
+      "input": "papayawhip",
+      "target": "lch",
+      "expected": [
+        95.22890204788412,
+        14.894161408435306,
+        80.18569512775224
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 35,
+      "input": "white",
+      "target": "lch",
+      "expected": [
+        100.0,
+        0.0,
+        null
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 39,
+      "input": "gray",
+      "target": "lch",
+      "expected": [
+        {
+          "skip": true
+        },
+        0.0,
+        null
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 43,
+      "input": "darkgray",
+      "target": "lch",
+      "expected": [
+        {
+          "skip": true
+        },
+        0.0,
+        null
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 47,
+      "input": "black",
+      "target": "lch",
+      "expected": [
+        0.0,
+        0.0,
+        null
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 59,
+      "input": "white",
+      "target": "xyz-d65",
+      "expected": [
+        0.9504559270516717,
+        1.0,
+        1.0890577507598784
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 71,
+      "input": "hwb(0 20% 40%)",
+      "target": "srgb",
+      "expected": [
+        0.6,
+        0.2,
+        0.2
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 75,
+      "input": "hwb(90 30% 5%)",
+      "target": "srgb",
+      "expected": [
+        0.625,
+        0.95,
+        0.3
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 79,
+      "input": "hwb(30 0% 80%)",
+      "target": "srgb",
+      "expected": [
+        0.2,
+        0.1,
+        0.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 83,
+      "input": "hwb(720 20% 40%)",
+      "target": "srgb",
+      "expected": [
+        0.6,
+        0.2,
+        0.2
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 87,
+      "input": "hwb(-270 30% 5%)",
+      "target": "srgb",
+      "expected": [
+        0.625,
+        0.95,
+        0.3
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 91,
+      "input": "hwb(0 40% 80%)",
+      "target": "srgb",
+      "expected": [
+        0.3333333,
+        0.3333333,
+        0.3333333
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 95,
+      "input": "hwb(0 50% 50%)",
+      "target": "srgb",
+      "expected": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 107,
+      "input": "rgb(60% 20% 20%)",
+      "target": "hwb",
+      "expected": [
+        0.0,
+        20.0,
+        40.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 111,
+      "input": "black",
+      "target": "hwb",
+      "expected": [
+        null,
+        0.0,
+        100.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 115,
+      "input": "white",
+      "target": "hwb",
+      "expected": [
+        null,
+        100.0,
+        0.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 124,
+      "input": "color(rec2020 0 0 1)",
+      "target": "hwb",
+      "expected": [
+        230.63914728691736,
+        -29.9212950204808,
+        -5.0489461007690295
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 128,
+      "input": "color(rec2020 0 0 1)",
+      "target": "hsl",
+      "expected": [
+        230.63914728691736,
+        179.65454686851365,
+        37.563825540144116
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 144,
+      "input": "black",
+      "target": "hsl",
+      "expected": [
+        null,
+        0.0,
+        0.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 148,
+      "input": "white",
+      "target": "hsl",
+      "expected": [
+        null,
+        0.0,
+        100.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 152,
+      "input": "oklch(100% 0 0)",
+      "target": "hsl",
+      "expected": [
+        null,
+        0.0,
+        100.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 217,
+      "input": "color(display-p3 0.47 0.47 0.47)",
+      "target": "srgb",
+      "expected": [
+        0.47,
+        0.47,
+        0.47
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 221,
+      "input": "color(display-p3 1 1 1)",
+      "target": "srgb",
+      "expected": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 225,
+      "input": "color(display-p3 -0.1 -0.1 -0.1)",
+      "target": "srgb",
+      "expected": [
+        -0.1,
+        -0.1,
+        -0.1
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 229,
+      "input": "color(display-p3 0.238 0.532 0.611)",
+      "target": "srgb",
+      "expected": [
+        0.019595,
+        0.54027,
+        0.621351
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 233,
+      "input": "color(display-p3 1 0 0)",
+      "target": "srgb",
+      "expected": [
+        1.09299,
+        -0.226745,
+        -0.150155
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 237,
+      "input": "color(display-p3 0 1 0)",
+      "target": "srgb",
+      "expected": [
+        -0.511567,
+        1.018276,
+        -0.310711
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 241,
+      "input": "color(display-p3 0 0 1)",
+      "target": "srgb",
+      "expected": [
+        0.0,
+        0.0,
+        1.0420216193529395
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 447,
+      "input": "white",
+      "target": "oklab",
+      "expected": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 452,
+      "input": "red",
+      "target": "oklab",
+      "expected": [
+        0.627955,
+        0.224863,
+        0.125846
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 457,
+      "input": "lime",
+      "target": "oklab",
+      "expected": [
+        0.86644,
+        -0.233888,
+        0.179498
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 462,
+      "input": "blue",
+      "target": "oklab",
+      "expected": [
+        0.452014,
+        -0.032457,
+        -0.311528
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 467,
+      "input": "cyan",
+      "target": "oklab",
+      "expected": [
+        0.905399,
+        -0.149444,
+        -0.039398
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 472,
+      "input": "magenta",
+      "target": "oklab",
+      "expected": [
+        0.701674,
+        0.274566,
+        -0.169156
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 477,
+      "input": "yellow",
+      "target": "oklab",
+      "expected": [
+        0.967983,
+        -0.071369,
+        0.19857
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 482,
+      "input": "black",
+      "target": "oklab",
+      "expected": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 495,
+      "input": "white",
+      "target": "oklch",
+      "expected": [
+        1.0,
+        0.0,
+        null
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 500,
+      "input": "red",
+      "target": "oklch",
+      "expected": [
+        0.6279553639214311,
+        0.2576833038053608,
+        29.23388027962784
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 505,
+      "input": "lime",
+      "target": "oklch",
+      "expected": [
+        0.8664396175234368,
+        0.2948272245426958,
+        142.4953450414439
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 510,
+      "input": "blue",
+      "target": "oklch",
+      "expected": [
+        0.45201371817442365,
+        0.3132143886344849,
+        264.0520226163699
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 740,
+      "input": "white",
+      "target": "srgb-linear",
+      "expected": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "epsilon": 0.0001
+    },
+    {
+      "line": 745,
+      "input": "rgb(50% 50% 50%)",
+      "target": "srgb-linear",
+      "expected": [
+        0.21404114,
+        0.21404114,
+        0.21404114
+      ],
+      "epsilon": 0.0001
+    }
+  ],
+  "excluded": [
+    {
+      "line": 132,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 169,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 173,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 177,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 181,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 185,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 197,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 201,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 205,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 253,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 257,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 261,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 265,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 269,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 273,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 277,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 281,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 285,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 298,
+      "reason": "non-CSS source function"
+    },
+    {
+      "line": 302,
+      "reason": "non-CSS source function"
+    },
+    {
+      "line": 306,
+      "reason": "non-CSS source function"
+    },
+    {
+      "line": 310,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 314,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 318,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 322,
+      "reason": "non-CSS source function"
+    },
+    {
+      "line": 326,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 330,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 334,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 338,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 350,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 354,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 358,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 362,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 366,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 378,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 383,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 388,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 393,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 398,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 403,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 408,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 413,
+      "reason": "non-CSS source function"
+    },
+    {
+      "line": 421,
+      "reason": "non-CSS source function"
+    },
+    {
+      "line": 429,
+      "reason": "non-CSS source function"
+    },
+    {
+      "line": 528,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 533,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 538,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 543,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 548,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 553,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 558,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 563,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 579,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 584,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 589,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 605,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 610,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 615,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 620,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 625,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 630,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 635,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 640,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 656,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 661,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 666,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 671,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 684,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 689,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 694,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 699,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 712,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 717,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 722,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 727,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 758,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 763,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 768,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 773,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 778,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 783,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 788,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 801,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 806,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 811,
+      "reason": "source outside CSS Color 4 predefined spaces"
+    },
+    {
+      "line": 824,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 829,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 834,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 839,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 844,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 849,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 854,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 859,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 872,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 877,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 882,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 887,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 892,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 897,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 902,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 907,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 920,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 925,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 930,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 935,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 940,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 945,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 950,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 955,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 960,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 965,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 970,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 975,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 980,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 993,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 998,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1003,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1008,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1013,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1018,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1023,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1028,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1033,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1038,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1043,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1056,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1060,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1064,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1068,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1080,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1085,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1090,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1095,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1100,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1105,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1110,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1115,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1120,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1125,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1138,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1142,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1146,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1150,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1162,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1167,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1172,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1177,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1182,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1187,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1192,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1197,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1202,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1207,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1212,
+      "reason": "missing-component propagation differs from explicit absolute conversion"
+    },
+    {
+      "line": 1225,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1229,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1233,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1237,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1249,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1254,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1259,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1264,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1269,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1274,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1279,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1284,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1297,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1302,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1307,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1312,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1317,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1322,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1335,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1340,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1345,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1352,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1357,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1370,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1375,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1380,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1387,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1392,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1397,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1410,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1415,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1420,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1425,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1430,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1435,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1448,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1453,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1458,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1464,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1469,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1482,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1487,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1492,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1497,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1502,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1507,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1557,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1562,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1567,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1572,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1577,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1582,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1587,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1592,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1605,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1618,
+      "reason": "library custom-space aliases without CSS profile context"
+    },
+    {
+      "line": 1631,
+      "reason": "non-CSS/unsupported target or JS conversion hook"
+    },
+    {
+      "line": 1644,
+      "reason": "library custom-space aliases without CSS profile context"
+    }
+  ]
+}
