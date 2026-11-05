@@ -1880,6 +1880,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         let was = self.floats(w);
         for m in self.groups.mates(w).iter().chain(std::iter::once(w)) {
             Self::restore_float_override(m, floating);
+            // (On purpose: what a restart saved isn't put back over it.
+            // Floated by an agent, a window that came back as a tile was
+            // put back in its old tile's place, floating, 11 s later.)
+            m.meta().moved_on_purpose.set(true);
         }
         if self.floats(w) && !was && self.auto_tiled(w) {
             let own = w.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());

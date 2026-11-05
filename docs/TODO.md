@@ -333,7 +333,12 @@ of Finished; a new one goes where its priority puts it.
   failures the load's, or sessions past the 32 display names a runtime
   directory had: now 256). *Left*, with `--reloads` (a wave of 22): seed
   14 at step 22 (a Tracker settled, then moved, after a drag) and 16 at
-  step 54 (one look out of step mid-drag).
+  step 54 (one look out of step mid-drag). *14 fixed* (2026-11-05): 11 s
+  after a restart app_server checks the windows that came back against
+  what was saved, and puts back those moved since, unless moved on
+  purpose; a tile floated by an agent (`set_floating` over IPC) wasn't
+  counted as on purpose, so it was put back in its old tile's place.
+  Floating or tiling a window now is. 16 passes by itself (the load's).
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery
