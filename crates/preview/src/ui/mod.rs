@@ -412,6 +412,34 @@ impl PreviewView {
         self.video.as_ref().is_some_and(|v| v.playing())
     }
 
+    /// A video or a sound is showing: ← and → move its time
+    /// (`skip`) rather than go to the next file.
+    pub fn has_media_time(&self) -> bool {
+        self.failed.is_none() && (self.video.is_some() || self.player.is_some())
+    }
+
+    /// How far a press of ← or → moves a video or a sound.
+    pub const SKIP_SECS: f64 = 10.0;
+
+    /// Move the video's or sound's time by `secs` (Ben, 2026-11-05: "the
+    /// left and right arrows should skip back and forward 10s in the
+    /// video"), held at its start and end; false if nothing plays here.
+    pub fn skip(&mut self, secs: f64, cx: &mut Context<Self>) -> bool {
+        let done = if let Some(v) = &self.video {
+            v.seek((v.position() + secs).clamp(0.0, v.duration()));
+            true
+        } else if let Some(p) = &self.player {
+            let at = p.state.position_ms.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1000.0;
+            let end = p.state.duration_ms.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1000.0;
+            p.seek((at + secs).clamp(0.0, end.max(0.0)));
+            true
+        } else {
+            false
+        };
+        cx.notify();
+        done
+    }
+
     /// Toggle sound or video playback (Space or P in a viewer).
     pub fn toggle_playback(&mut self, cx: &mut Context<Self>) -> bool {
         let done = if let Some(v) = &self.video {

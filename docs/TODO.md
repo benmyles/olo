@@ -1673,18 +1673,6 @@ of Finished; a new one goes where its priority puts it.
   headless with a fixture vault and an `sshd` of the test's own on a
   local port (or a Rust SSH server in-process).
 
-- **Arrow keys skip 10 s in a video, in Viewer and Quick Look** (Ben,
-  2026-11-05, for later): "when watching a video in viewer or quick look,
-  the left and right arrows should skip back and forward 10s in the video
-  (right now they go to the next file in the tracker)". Viewer's keys
-  (`apps/viewer/src/main.rs`, ~1189 and ~1224) and Quick Look's step to
-  the folder's next or previous file on ←/→; with a video showing they
-  seek it by 10 s instead (clamped at its start and end; held, they keep
-  seeking), ↑/↓ (or ⌘←/⌘→, say) still going to the next file, shown in
-  the window's menu and its keys' help, and told to agents (the player's
-  position in its widget tree). Tried headless with a video: ← and →
-  move its time by 10 s, the file stays.
-
 - **Viewer: select and copy text in PDFs and other documents** (Ben,
   2026-11-05, for later): "Viewer needs to support selecting and copying
   text in PDFs and any other relevant document type". In a PDF (and
@@ -1789,6 +1777,21 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Arrow keys skip 10 s in a video, in Viewer and Quick Look**~~ (done
+  2026-11-05, HACKING's Viewer: ← and → seek a video or a sound by 10 s,
+  ↑ and ↓ the next file; tried headless with a test clip: 4 → 14 → 24 →
+  14 s, the same file) (Ben,
+  2026-11-05, for later): "when watching a video in viewer or quick look,
+  the left and right arrows should skip back and forward 10s in the video
+  (right now they go to the next file in the tracker)". Viewer's keys
+  (`apps/viewer/src/main.rs`, ~1189 and ~1224) and Quick Look's step to
+  the folder's next or previous file on ←/→; with a video showing they
+  seek it by 10 s instead (clamped at its start and end; held, they keep
+  seeking), ↑/↓ (or ⌘←/⌘→, say) still going to the next file, shown in
+  the window's menu and its keys' help, and told to agents (the player's
+  position in its widget tree). Tried headless with a video: ← and →
+  move its time by 10 s, the file stays.
 
 - ~~**Passwords: Copy Reference**~~ (done 2026-11-05, HACKING's op: in
   the item's right-click menu and Edit menu (its password, else its first

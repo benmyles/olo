@@ -6596,6 +6596,14 @@ panels. The document has the keyboard from the moment its window opens
   pan), formatted documents in `RichView`, sheets in `TableView`, and
   text, listings, fonts, sound and video. The window opens at the size
   its content asks (`ideal_size`) for the display it opens on.
+- A video or a sound showing: ← and → move its time by 10 s
+  (`PreviewView::skip`, `SKIP_SECS`, held at its start and end), ↑ and
+  ↓ go to the next file; Space or P plays and pauses. Quick Look's keys
+  are the same (Tracker's `quicklook.rs`, and Viewer following a panel,
+  `follow_keys`, leaves ← and → to it). Tried headless with a clip of
+  Olo's own making (`cargo run -p olo-video --example test_clip OUT.mp4`:
+  each second its own colour): paused at second 4, → 14, → 24, ← 14,
+  the same file.
 - Pictures: Image ▸ Rotate, Flip, Crop… (⌘K: `crop.rs`'s `CropFrame`,
   an overlay pinned over the preview with `.inset_0()`, its pointer's
   shape set as it paints; drag out a frame, move it or its edges, Return

@@ -1189,6 +1189,10 @@ impl Doc {
         if !follow || e.keystroke.modifiers.modified() || !matches!(key, "up" | "down" | "left" | "right") {
             return;
         }
+        // (← and → move a video's or a sound's time: `keys`.)
+        if matches!(key, "left" | "right") && matches!(&self.content, Content::Other(p) if p.read(cx).has_media_time()) {
+            return;
+        }
         use std::io::Write as _;
         let by = if matches!(key, "up" | "left") { -1 } else { 1 };
         let mut out = std::io::stdout().lock();
@@ -1220,7 +1224,16 @@ impl Doc {
         }
         match &self.content {
             Content::Other(prev) if plain && prev.read(cx).arrows_free() => {
+                // A video or a sound: ← and → move its time by 10 s, ↑ and ↓
+                // go to the next file.
+                let media = prev.read(cx).has_media_time();
                 match key {
+                    "left" if media => {
+                        prev.update(cx, |p, cx| p.skip(-olo_preview::ui::PreviewView::SKIP_SECS, cx));
+                    }
+                    "right" if media => {
+                        prev.update(cx, |p, cx| p.skip(olo_preview::ui::PreviewView::SKIP_SECS, cx));
+                    }
                     "left" | "up" => self.step(-1, window, cx),
                     "right" | "down" => self.step(1, window, cx),
                     "space" | "p" => {
