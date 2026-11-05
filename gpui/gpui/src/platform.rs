@@ -549,6 +549,7 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// Olo: whether a layer surface takes the keyboard (as its
     /// `LayerShellOptions::keyboard`), changed after it opened.
     fn set_layer_keyboard(&self, _keyboard: LayerKeyboard) {}
+    fn set_layer_margin(&self, _margin: (i32, i32, i32, i32)) {}
     /// Olo: where the window takes what's dragged over it now (None:
     /// nowhere), as its last frame found.
     fn set_drop_accept(&self, _accept: Option<DropAccept>) {}

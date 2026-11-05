@@ -383,6 +383,7 @@ socket.
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
+| `crates/camera` | `olo-camera`: cameras in process: listed from sysfs (nothing opened till one is asked for), a V4L2 stream (MJPEG decoded by zune-jpeg, or YUYV converted) as BGRA frames; `OLO_CAMERA_FAKE=1` puts a stand-in first ("Test Camera", a moving pattern at 30 frames a second) for tests and headless sessions, which never open a real camera. For a recording's camera bubble (Screenshot's `bubble.rs`), later face sign-in. |
 | `crates/fido` | `olo-fido`: FIDO2 security keys (a YubiKey) natively: CTAPHID over hidraw, the CTAP2 Olo uses, and the account password sealed by a key's `hmac-secret`, so a touch can stand for typing it. See "Security keys". |
 | `crates/eld` | `olo-eld`: an AAC-ELD decoder in Rust (AirPods' microphone stream: mono, 480 samples a frame, no SBR). Huffman tables vendored from Symphonia (MPL-2.0), the standard's band, TNS and window tables transcribed (`tables.rs`); checked against libfdk-aac's decode of a libfdk-made stream (`tests/fdk.rs`: 85 dB) and, with `--ignored`, of a real capture. |
 | `crates/voice` | `olo-voice`: what Olo does to every microphone, 10 ms at a time: echo cancellation (its own fullband Kalman filter), noise suppression (DeepFilterNet3, vendored in `vendor/deep_filter`), level normalization (WebRTC's AGC2, vendored in `vendor/sonora`). See "Voice processing". |
@@ -6041,6 +6042,26 @@ Screens' Export Video uses too).
   recorded, 4 s): the pointer still, 0.5% of a core and 12 wakeups a
   second, smoothed or not; jumping twice a second, 0.8% plain and 2.5%
   smoothed (the frames of the glides, 100 wakeups a second).
+- **The camera bubble** (Screenshot's `bubble.rs`, `olo_camera`;
+  `--camera [ID]`, Record… ▸ Show Camera, `ScreenRecordingSettings::camera`
+  "" / "auto" / a node): the camera in a circle 176 points across, low in
+  the screen's right corner (24 points in), a ring in the panel's colour
+  and a soft shadow, over everything. Its own process
+  (`olo-screenshot --camera-bubble`, a kit layer window on the overlay
+  layer), started by the recorder before the countdown (so you see
+  yourself while it counts) and ended after: it says `ready` and the
+  camera's name once its first frame is up, or why not (then the video
+  is made without, `camera_note` saying why). On the screen, so a
+  recording of the screen or a region has it; a window's recording is
+  only the window (`camera_note` says so). Dragged, it moves: its layer
+  surface's margins (GPUI's new `Window::set_layer_margin`), kept on the
+  screen. Frames on a worker: the camera's middle square mirrored (as a
+  mirror shows you), only the latest waiting for the window (a
+  `RenderImage` each, the last dropped). Agents read it as an Image named
+  "Camera: NAME". Measured with the stand-in (`tools/dev/cost`, 4 s): the
+  window 30 frames a second at 374 µs each; the process 7.2% of a core,
+  5.2% of it the stand-in drawing its pattern (a real camera's MJPEG
+  decoding instead).
 - **Zoom** (app_server `zoom.rs`; `SetShowing`'s `zoom`, `Request::ZoomTo`):
   `--zoom-follow` (Record… ▸ Zoom on Clicks; a whole display's recording
   only, not a region's or a window's) zooms the recording in twice

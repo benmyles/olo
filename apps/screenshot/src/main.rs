@@ -11,6 +11,7 @@
 //! it is saved, the file's path goes on the clipboard.
 
 mod backdrop;
+mod bubble;
 mod capture;
 mod recording;
 mod region;
@@ -268,6 +269,7 @@ impl Screenshot {
             "pointer-size" => r.pointer_size = if r.pointer_size > 1.0 { 1.0 } else { 1.5 },
             "smooth-pointer" => r.smooth_pointer = !r.smooth_pointer,
             "zoom-follow" => r.zoom_follow = !r.zoom_follow,
+            "camera" => r.camera = if r.camera.is_empty() { "auto".into() } else { String::new() },
             _ => return,
         }
         let mine = r.clone();
@@ -371,6 +373,8 @@ impl Screenshot {
                     .checked(r.smooth_pointer)
                     .item("Zoom on Clicks", "zoom-follow")
                     .checked(r.zoom_follow)
+                    .item("Show Camera", "camera")
+                    .checked(!r.camera.is_empty())
                     .item("Window on a Background", "background")
                     .checked(r.background)
                     .separator()
@@ -382,7 +386,7 @@ impl Screenshot {
 
     fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let what = match command {
-            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" => {
+            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" | "camera" => {
                 self.toggle(command);
                 cx.notify();
                 return;
@@ -825,6 +829,9 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--zoom-to") {
         std::process::exit(recording::zoom_to(&args));
+    }
+    if args.iter().any(|a| a == "--camera-bubble") {
+        std::process::exit(bubble::run(&args));
     }
     // The Screenshot portal's PickColor: "R G B" (0–255), nothing if
     // cancelled.

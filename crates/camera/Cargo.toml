@@ -1,0 +1,11 @@
+[package]
+name = "olo-camera"
+description = "Cameras, in process: V4L2 streams (MJPEG or YUYV) as BGRA frames, for the recording's camera bubble and face sign-in; a stand-in for tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+v4l = "0.14"
+zune-jpeg = "0.4"
+zune-core = "0.4"

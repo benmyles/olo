@@ -1518,6 +1518,10 @@ pub struct ScreenRecordingSettings {
     /// A screen's recording zooms in around each click, following the
     /// pointer, and out when nothing has been done for three seconds.
     pub zoom_follow: bool,
+    /// The camera shown in a bubble while recording the screen or a
+    /// region: "" (none), "auto" (the first colour camera) or a camera's
+    /// id ("video0").
+    pub camera: String,
 }
 
 impl Default for ScreenRecordingSettings {
@@ -1533,6 +1537,7 @@ impl Default for ScreenRecordingSettings {
             pointer_size: 1.0,
             smooth_pointer: false,
             zoom_follow: false,
+            camera: String::new(),
         }
     }
 }

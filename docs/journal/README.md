@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### The camera in a bubble while recording
+
+*06:57* — Record… ▸ Show Camera (or --camera): the camera in a circle low in the screen's right corner while you record, so a recording of the screen has you in it; it's there before the countdown, so you can frame yourself, and drags anywhere. The camera is read natively (V4L2, in process); here a stand-in camera's pattern.
+
+![The camera in a bubble while recording](2026-11-05/065745-the-camera-in-a-bubble-while-recording.png)
+
 ### Recordings zoom in on clicks
 
 *06:45* — Record… ▸ Zoom on Clicks (or --zoom-follow): a recording of the screen glides in around each click (twice), pans to keep the pointer in view, holds while you click and type, and glides out three seconds after; a shortcut's key cap stays in its place, unzoomed. Agents zoom to a detail themselves (olo-screen zoom-video NAME X,Y,W,H, then out). The GPU draws the capture magnified, so it costs the recorder nothing; screenshots and the screen are as they are.

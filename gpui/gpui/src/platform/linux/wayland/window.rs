@@ -2265,6 +2265,14 @@ impl PlatformWindow for WaylandWindow {
         }
     }
 
+    fn set_layer_margin(&self, (top, right, bottom, left): (i32, i32, i32, i32)) {
+        let state = self.borrow();
+        if let Some(layer) = &state.layer_surface {
+            layer.set_margin(top, right, bottom, left);
+            state.surface.commit();
+        }
+    }
+
     fn place_externals(&self, places: &[(u64, Bounds<Pixels>)]) {
         let mut state = self.borrow_mut();
         let state = &mut *state;

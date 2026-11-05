@@ -5466,6 +5466,13 @@ impl Window {
         self.platform_window.set_layer_keyboard(keyboard);
     }
 
+    /// Olo: this layer surface's margins (top, right, bottom, left, in
+    /// points), changed after it opened: it moves (a recording's camera
+    /// bubble, dragged).
+    pub fn set_layer_margin(&self, margin: (i32, i32, i32, i32)) {
+        self.platform_window.set_layer_margin(margin);
+    }
+
     /// Olo: draws `font`'s printable characters at `font_size` for this
     /// window ahead of need, off its thread, so the frame that shows
     /// them only copies them (drawing a glyph the first time costs a

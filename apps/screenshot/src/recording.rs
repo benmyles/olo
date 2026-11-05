@@ -14,7 +14,8 @@
 //!                [--seconds N] [--fps N] [--no-pointer]
 //!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
 //!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--background]
-//!                [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--to PATH]
+//!                [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--camera [ID]]
+//!                [--to PATH]
 //! olo-screenshot --zoom-to X,Y,W,H|out [--display NAME]
 //! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
 //! olo-screenshot --trim VIDEO.mp4 --start S --end E [--to PATH]
@@ -43,6 +44,14 @@
 //! `--show-clicks` and `--show-keys` (or the settings', Record…'s ticks)
 //! have app_server show clicks (a ring) and shortcuts (a key cap) while
 //! it records (`Request::SetShowing`), and stop after.
+//!
+//! `--camera [ID]` (or the settings', Record… ▸ Show Camera) shows the
+//! camera in a bubble low in the screen's right corner while it records
+//! (`bubble.rs`, its own process: on the screen, so a recording of the
+//! screen or a region has it; a window's doesn't), started before the
+//! countdown and ended after; `camera` in what's printed names it,
+//! `camera_note` says why there's none. ID: a camera's node ("video0"),
+//! else the first colour camera.
 //!
 //! `--zoom-follow` (or the settings', Record… ▸ Zoom on Clicks) has a
 //! display's recording zoom in twice around each click, follow the
@@ -177,6 +186,12 @@ pub struct Made {
     /// Made a GIF: its frames and size in bytes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gif: Option<GifMade>,
+    /// The camera shown in its bubble, if one was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub camera: Option<String>,
+    /// Why there's none, when one was asked for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub camera_note: Option<String>,
 }
 
 /// A GIF made of a recording.
@@ -436,14 +451,33 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     if showing {
         set_showing(show_clicks, show_keys, pointer_size, smooth_pointer, zoom);
     }
+    // The camera in its bubble, on the screen from before the countdown
+    // till the end (a window's recording is only the window: not there).
+    let camera_wanted: Option<String> = match args.iter().position(|a| a == "--camera") {
+        Some(i) => Some(args.get(i + 1).filter(|v| !v.starts_with("--")).cloned().unwrap_or_else(|| "auto".into())),
+        None => settings.as_ref().map(|s| s.camera.clone()).filter(|c| !c.is_empty()),
+    };
+    let (bubble, camera, camera_note) = match camera_wanted {
+        None => (None, None, None),
+        Some(_) if matches!(source, Source::Window { .. }) => (None, None, Some("a window's recording is only the window: the camera bubble shows in recordings of the screen or a region".to_owned())),
+        Some(id) => match CameraBubble::start(&id) {
+            Ok((b, name)) => (Some(b), Some(name), None),
+            Err(e) => {
+                eprintln!("olo-screenshot: recording without the camera: {e}");
+                (None, None, Some(e))
+            }
+        },
+    };
     let result = record_into(&mut capture, &path, fps, seconds, choice, crop, backdrop, sound, countdown.min(10), &g, woken.as_raw_fd());
     if showing {
         set_showing(false, false, 1.0, false, 0.0);
     }
+    drop(bubble);
     let _ = std::fs::remove_file(going_path());
     WAKE.store(-1, Ordering::SeqCst);
     drop(waker);
     let mut made = result?;
+    (made.camera, made.camera_note) = (camera, camera_note);
     if as_gif {
         // Made a GIF beside it, the video gone (a stop now stops this).
         STOP.store(false, Ordering::SeqCst);
@@ -632,7 +666,19 @@ fn record_into(
     let (frames, (width, height), encoder) = made?;
     // The file finished by the worker, then put where it goes.
     std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(Made { path: path.to_path_buf(), seconds: (total.as_millis() as f64 / 1000.0), frames, width, height, encoder: encoder.to_owned(), sound: sounded, sound_note, gif: None })
+    Ok(Made {
+        path: path.to_path_buf(),
+        seconds: (total.as_millis() as f64 / 1000.0),
+        frames,
+        width,
+        height,
+        encoder: encoder.to_owned(),
+        sound: sounded,
+        sound_note,
+        gif: None,
+        camera: None,
+        camera_note: None,
+    })
 }
 
 /// Wait until `fd` has something to read, a signal came (`woken`, the
@@ -762,6 +808,49 @@ fn encode(
     let made = mp4.size();
     mp4.finish().map_err(|e| e.to_string())?;
     Ok((frames, made, enc.name()))
+}
+
+/// The camera bubble's process (`bubble.rs`), while a recording shows
+/// the camera; ended when dropped.
+struct CameraBubble(std::process::Child);
+
+impl CameraBubble {
+    /// Started for camera `id` ("auto": the first colour camera), once
+    /// its first frame is on the screen; and the camera's name.
+    fn start(id: &str) -> Result<(CameraBubble, String), String> {
+        use std::io::BufRead as _;
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let mut child = std::process::Command::new(exe)
+            .args(["--camera-bubble", "--camera", id])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("the camera bubble: {e}"))?;
+        let Some(out) = child.stdout.take() else { return Err("the camera bubble said nothing".into()) };
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            let _ = std::io::BufReader::new(out).read_line(&mut line);
+            let _ = tx.send(line);
+        });
+        let bubble = CameraBubble(child);
+        match rx.recv_timeout(Duration::from_secs(6)) {
+            Ok(line) => match line.trim().strip_prefix("ready") {
+                Some(name) => Ok((bubble, name.trim().to_owned())),
+                None if line.trim().is_empty() => Err("the camera bubble quit".into()),
+                None => Err(line.trim().to_owned()),
+            },
+            Err(_) => Err("the camera took too long to start".into()),
+        }
+    }
+}
+
+impl Drop for CameraBubble {
+    fn drop(&mut self) {
+        // SAFETY: a signal to our own child.
+        unsafe { libc::kill(self.0.id() as i32, libc::SIGTERM) };
+        let _ = self.0.wait();
+    }
 }
 
 /// The sound's description, and its access units as they come.

@@ -1531,8 +1531,12 @@ of Finished; a new one goes where its priority puts it.
   `--pointer-size`, `--smooth-pointer`; a window's recording has the
   pointer. *Zoom* (2026-11-05): Record… ▸ Zoom on Clicks,
   `--zoom-follow`; `--zoom-to` and `olo-screen zoom-video` for agents.
-  *Left*: CleanShot X's
-  polish (a webcam bubble), and
+  *The camera bubble* (2026-11-05): Record… ▸ Show Camera, `--camera`,
+  `olo-camera` (V4L2 in process), checked with the stand-in camera.
+  *Left*: the camera bubble on a real camera (Ben's first try: Show
+  Camera, then a recording of the screen; the laptop's camera and the
+  Studio Display's were never opened here) and in a window's recording
+  (on its background's corner), and
   the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
   4K: 111 ms a frame).
