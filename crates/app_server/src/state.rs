@@ -1385,8 +1385,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         self.space.elements().for_each(|window| {
             if self.space.outputs_for_element(window).contains(output) {
                 // (One come to the front of its group, shown once it has
-                // drawn: as if it were already.)
-                if window.decorated() && window.decoration().fronting.is_some() {
+                // drawn: as if it were already. And one a drag's round
+                // waits for: under a float, it counts as not shown, and
+                // its callbacks came once a second, so the round ran out
+                // of time and its neighbours went on without it, over it.)
+                let in_round = self.round.as_ref().is_some_and(|r| window.wl_surface().is_some_and(|s| r.waits_for(&s)));
+                if window.decorated() && window.decoration().fronting.is_some() || in_round {
                     window.send_frame(output, time, None, |_, _| Some(output.clone()));
                 } else {
                     window.send_frame(output, time, throttle, surface_primary_scanout_output);

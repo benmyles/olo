@@ -1067,9 +1067,14 @@ fn layout_path(display: &str) -> PathBuf {
     run_file(format!("olo-layout-{display}.json"))
 }
 
+/// How many `wayland-N` names are tried (libwayland's own clients stop at
+/// 32): a fuzzer's sweep runs 50 sessions in one runtime directory, and
+/// the 33rd found none.
+const DISPLAY_NAMES: u32 = 256;
+
 fn bind_wayland() -> std::io::Result<(String, UnixListener, std::fs::File)> {
     let dir = runtime_dir();
-    for n in 1..33 {
+    for n in 1..=DISPLAY_NAMES {
         let name = format!("wayland-{n}");
         let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join(format!("{name}.lock")))?;
         // SAFETY: flock on an fd we own.

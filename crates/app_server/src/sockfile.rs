@@ -53,10 +53,15 @@ pub struct Wayland {
     pub _files: [Owned; 2],
 }
 
+/// How many `wayland-N` names are tried (libwayland's own clients stop at
+/// 32): a fuzzer's sweep runs 50 sessions in one runtime directory, and
+/// the 33rd found none.
+const DISPLAY_NAMES: u32 = 256;
+
 pub fn bind_wayland() -> std::io::Result<Wayland> {
     use std::os::fd::AsRawFd;
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).ok_or_else(|| std::io::Error::other("XDG_RUNTIME_DIR is not set"))?;
-    for n in 1..33 {
+    for n in 1..=DISPLAY_NAMES {
         let name = format!("wayland-{n}");
         let lock_path = dir.join(format!("{name}.lock"));
         let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path)?;

@@ -131,7 +131,13 @@ fn start(kind: &str, name: &str) -> Result<Running, String> {
     let home = home.display().to_string();
     match tsession(&["start", name, size, "--scale", scale, "--session", "--shell", "--home", &home]) {
         Ok(o) if o.status.success() => Ok(running),
-        Ok(o) => Err(format!("the session didn't start: {}", String::from_utf8_lossy(&o.stderr).trim())),
+        Ok(o) => {
+            // (What app_server said last: its folder goes with `running`.)
+            let log = std::fs::read_to_string(Path::new(BASE).join(name).join("app_server.log")).unwrap_or_default();
+            let last: Vec<&str> = log.lines().filter(|l| !l.trim().is_empty()).rev().take(3).collect();
+            let last: Vec<&str> = last.into_iter().rev().collect();
+            Err(format!("the session didn't start: {}\n    {}", String::from_utf8_lossy(&o.stderr).trim(), last.join("\n    ")))
+        }
         Err(e) => Err(format!("tsession: {e}")),
     }
 }

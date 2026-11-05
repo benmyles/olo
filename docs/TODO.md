@@ -321,6 +321,19 @@ of Finished; a new one goes where its priority puts it.
   10 (102), 12 (75), 14 (95), 19 (70), 21 (38), 23 (67), 25 (88), 28
   (101, 2.8 s of it), 44 (118), 47 (101, 236 px), 48 (94) and 50 (92).
   Nine more failed only under the load of 50 at once.
+  *All thirteen fixed* (2026-11-05): a window a drag's round waited for
+  could be under a float, so counted as not shown, and Smithay sent its
+  frame callbacks once a second; GPUI's resize waits for one, so the
+  round ran out of time (50 ms) and its neighbours went on over it for
+  up to a second. Windows in a round now get theirs every frame. And
+  GPUI acknowledged a resize's configure held for the next frame after
+  a newer one (the drag's end): a protocol error, and app_server ended
+  the Terminal ("wrong configure serial"); the held one is dropped once
+  a newer one is acknowledged. A wave of 38 then: no faults (the 8
+  failures the load's, or sessions past the 32 display names a runtime
+  directory had: now 256). *Left*, with `--reloads` (a wave of 22): seed
+  14 at step 22 (a Tracker settled, then moved, after a drag) and 16 at
+  step 54 (one look out of step mid-drag).
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery

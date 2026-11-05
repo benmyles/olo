@@ -189,7 +189,7 @@ fn init_run(plan: &Plan, args: &[String]) -> i32 {
         ("PATH".into(), format!("{}:/usr/local/bin:/usr/bin:/bin", plan.repo.join("target/release").display())),
         ("XDG_RUNTIME_DIR".into(), runtime),
     ];
-    for keep in ["LANG", "LC_ALL", "LC_CTYPE", "TERM", "RUST_LOG", "RUST_BACKTRACE", "RUST_LIB_BACKTRACE", "TZ", "NO_COLOR"] {
+    for keep in ["LANG", "LC_ALL", "LC_CTYPE", "TERM", "RUST_LOG", "RUST_BACKTRACE", "RUST_LIB_BACKTRACE", "TZ", "NO_COLOR", "WAYLAND_DEBUG"] {
         if let Ok(v) = std::env::var(keep) {
             env.push((keep.into(), v));
         }

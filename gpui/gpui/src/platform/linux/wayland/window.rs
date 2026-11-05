@@ -1511,6 +1511,13 @@ impl WaylandWindowStatePtr {
             let Some(xdg_surface) = state.xdg_surface.clone() else {
                 return;
             };
+            // (Olo: a resize's configure held for the next frame came
+            // before this one, which says all it did. Acknowledged after
+            // this, it would go back a serial: a protocol error, and the
+            // compositor ends the client. A Terminal lost its window so as
+            // a fast drag of its edge ended, the configure saying it had
+            // ended acknowledged before the one held.)
+            state.throttled_configure = None;
             xdg_surface.ack_configure(serial);
             set_geometry(&state);
 
