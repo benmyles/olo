@@ -3823,7 +3823,17 @@ opened, its own `panel::State` and text fields).
   NetworkManager on any bus, saved networks from `--network
   SSID:PASSWORD` and `--enterprise SSID`, what it holds written to
   `--dump FILE`) and `OLO_NM_BUS=ADDRESS` test the D-Bus side without
-  touching this computer's networks. No
+  touching this computer's networks. It has links too: `--wired` (an
+  Ethernet adapter connected), `--wifi SSID` (an adapter joined to it),
+  `--ap SSID:STRENGTH` (more in range), with addresses, routers and DNS,
+  the default route where the lowest route metric is, profiles' `Update2`
+  and devices' `Reapply`, signalled as NetworkManager does; `nm-fake
+  --address A --tell "wired down"` (`wired up`, `wifi down`, `wifi up
+  SSID`, `strength N`, `state`) changes the world under a test. Run
+  Deskbar or Preferences against one with `tsession run NAME
+  OLO_NM_BUS=ADDRESS olo-deskbar`, and `cargo run -p olo-system
+  --example links` prints the links as the watch sees them (`--time`:
+  how long a read takes). No
   login keyring: no secret is read or put back, and the vaults stay.
   app_server keeps its settings in memory, so the backup's
   `app_server.json` is sent to it as `SetSettings`. Both run on a
@@ -4102,12 +4112,27 @@ workspace's: a click opens the modes for that display's workspace
 `arrange_menu`), `menu_output` and `menu_workspace` saying which. Agents
 find the headings as `Button`s ("D1 Workspace 2", `selected` for the
 one showing).
-The tray's status icons (upgrade, agent screens, battery, Wi-Fi,
-volume, notifications, the Caffeinated cup and the approval key,
+The tray's status icons (upgrade, agent screens, battery, Ethernet,
+Wi-Fi, volume, notifications, the Caffeinated cup and the approval key,
 `status::draw_key`, `approve.rs`: see "Approving without asking") sit on
 a 22 px grid in a recessed well, in as many rows as they need, shared
 out evenly among them and each row centred (eight are two rows of
 four).
+
+The links: Ethernet (a port, `status::draw_ethernet`, its notch and
+contacts centred in device pixels at every scale) while a wired link is
+connected, Wi-Fi while there's an adapter. With both connected, the one
+not carrying the traffic (NetworkManager's primary connection, where
+the default route goes) is drawn faint (`with_element_opacity`), its
+tooltip saying it stands by. A click opens Preferences ▸ Network; a
+right-click the link's menu (`link_menu`), as a Mac's Option-click on
+Wi-Fi: what it's joined to, In Use for Internet Traffic or Standing By,
+the signal and rate (Wi-Fi) or speed (Ethernet), IP address, router,
+DNS servers, interface, hardware address, bytes received and sent
+(`network::traffic`, the interface's counters, read as it opens), and
+Network Preferences…. The addresses and rates aren't in `Status` (the
+tray doesn't draw them, and a rate changes every few seconds): the
+watch keeps them aside (`status::links`) for the menu to read.
 
 Other programs' tray icons come first in the well (`sni.rs`): Deskbar is
 the session's StatusNotifierWatcher (`org.kde.StatusNotifierWatcher`,
@@ -9714,14 +9739,22 @@ Balanced, Power Saver, checked as the daemon says) and Power
 Preferences…. Olo Doctor's bag shows while its last look found
 something to fix (`olo_protocol::doctor::DoctorFound`, followed by
 inotify); a click opens Olo Doctor. The speaker's menu has None first
-among the outputs (below). The tray's battery and Wi-Fi
+among the outputs (below). The tray's battery and links
 follow UPower's display device and NetworkManager's signals
-(`olo_system::battery::watch`, `network::watch_wifi`, each on a thread
-that sleeps until one comes; Wi-Fi on a bus connection of its own that
-the bus sends only device state changes, NetworkManager's own, and while
-connected the adapter's and its access point's properties: a scanning
-adapter's access points come and go several times a second here), so
-idle it wakes 0 times a second (it was 7–9, polling every 4 s).
+(`olo_system::battery::watch`, `network::watch_links`, each on a thread
+that sleeps until one comes; the links on a bus connection of their own
+that the bus sends only device state changes, NetworkManager's own (the
+default route moving), and for each link connected its properties, its
+addresses' and its access point's: a scanning adapter's access points
+come and go several times a second here, and aren't asked for), so idle
+it wakes 0 times a second (it was 7–9, polling every 4 s). A signal
+that says only the access point's strength or the adapter's rate (what
+comes every few seconds) is taken from the signal's own values
+(`network::quick`); anything else reads the links again (about two dozen
+calls, 3.5 ms here) and asks for the signals of what's connected again
+only if that changed. Measured beside the old Wi-Fi-only watch over
+60 s, idle on Ben's machine (Ethernet and Wi-Fi both up): under one
+wakeup a second, against about two.
 
 ## The lock screen (crates/app_server/src/lock.rs, apps/lock)
 

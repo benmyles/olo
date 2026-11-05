@@ -1651,6 +1651,16 @@ of Finished; a new one goes where its priority puts it.
   in Rust), and what else a network panel wants (proxies, VPNs listed
   and switched, a hotspot). Agents read and change all of it through
   IPC as the person does.
+  *Deskbar done* 2026-11-05: an Ethernet port beside Wi-Fi while a wired
+  link is connected, the link not carrying the default route faint, and
+  a right-click menu on each (joined to, in use or standing by, signal
+  and rate or speed, addresses, router, DNS, interface, hardware
+  address, bytes in and out, Network Preferences…), following
+  NetworkManager's signals (`network::watch_links`; a strength or rate
+  change taken from the signal, under a wakeup a second idle). `nm-fake`
+  is a whole stand-in now (links, routes, profiles, Reapply, `--tell`).
+  Left: Preferences ▸ Network's tabs (Ethernet, Service Order, DNS,
+  Hosts, Shaping).
 
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a

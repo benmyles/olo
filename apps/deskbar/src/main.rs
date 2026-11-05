@@ -1465,6 +1465,83 @@ fn supervisor_menu(sup: &status::Supervisor) -> Menu {
     m.separator().item("Show in Activity Monitor", "run:olo-activity --section supervisor").item("Performance Settings…", "pref:performance")
 }
 
+/// A link's tray icon: a click opens Network's preferences, a right
+/// click the link's menu, read as it opens.
+fn link_hit(h: olo_ui::gpui::Stateful<olo_ui::gpui::Div>, r: Bounds<Pixels>, kind: olo_system::network::Kind, model: &Entity<Deskbar>, view: &Entity<BarView>) -> AnyElement {
+    let (m, v) = (model.clone(), view.clone());
+    h.on_any_button(move |e, window, cx| match button(e) {
+        MouseButton::Left => m.update(cx, |d, cx| d.run_command("pref:network", cx)),
+        MouseButton::Right => {
+            let mm = m.clone();
+            let key = if kind == olo_system::network::Kind::Wifi { "tray:wifi" } else { "tray:ethernet" };
+            open_menu(window, cx, &v, key, r, link_menu(kind, &status::links()), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+        }
+        _ => {}
+    })
+    .into_any_element()
+}
+
+/// A link's menu: what it's joined to, whether it carries the traffic
+/// (the default route) or stands by, its addresses, router, DNS servers,
+/// rate and what has gone through it (the interface's counters, read as
+/// it opens), as a Mac's Option-click on Wi-Fi shows; and Network's
+/// preferences.
+fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) -> Menu {
+    use olo_system::network::{self as net, Kind};
+    let row = |m: Menu, text: String| m.item(text, "").enabled(false);
+    let (name, other, dev) = match kind {
+        Kind::Wifi => ("Wi-Fi", "Ethernet", l.wifi_device.as_ref()),
+        _ => ("Ethernet", "Wi-Fi", l.wired.as_ref()),
+    };
+    let mut m = Menu::new(name);
+    let joined = match kind {
+        Kind::Wifi => l.wifi.as_ref().and_then(|w| w.ssid.clone()),
+        _ => dev.and_then(|d| d.connection.clone()),
+    };
+    m = row(
+        m,
+        match &joined {
+            Some(j) => format!("{name}: {j}"),
+            None => format!("{name}: Not Connected"),
+        },
+    );
+    if let Some(d) = dev.filter(|d| d.connected()) {
+        match l.primary {
+            Some(p) if p == kind => m = row(m, "In Use for Internet Traffic".into()),
+            Some(_) => m = row(m, format!("Standing By: {other} Is in Use")),
+            None => {}
+        }
+        m = m.separator();
+        if kind == Kind::Wifi
+            && let Some(w) = &l.wifi
+        {
+            m = row(m, format!("Signal: {}%", w.strength));
+        }
+        if let Some(s) = d.speed {
+            m = row(m, format!("{}: {}", if kind == Kind::Wifi { "Rate" } else { "Speed" }, net::speed_text(s)));
+        }
+        let bare: Vec<&str> = d.addresses.iter().map(|a| a.split('/').next().unwrap_or(a)).collect();
+        if !bare.is_empty() {
+            m = row(m, format!("IP Address: {}", bare.join(", ")));
+        }
+        if let Some(g) = &d.gateway {
+            m = row(m, format!("Router: {g}"));
+        }
+        if !d.dns.is_empty() {
+            m = row(m, format!("DNS: {}", d.dns.join(", ")));
+        }
+        m = row(m, format!("Interface: {}", d.interface));
+        if !d.hw_address.is_empty() {
+            m = row(m, format!("Hardware Address: {}", d.hw_address));
+        }
+        if let Some((received, sent)) = net::traffic(&d.interface) {
+            use olo_ui::files::format_size;
+            m = row(m, format!("Received: {}, Sent: {}", format_size(received), format_size(sent)));
+        }
+    }
+    m.separator().item("Network Preferences…", "pref:network")
+}
+
 /// The bell's menu.
 fn notifications_menu(quiet: bool) -> Menu {
     Menu::new("Notifications")
@@ -1809,6 +1886,7 @@ impl Deskbar {
                 // (Olo Doctor's bag, while it has found something.)
                 !st.doctor.issues.is_empty(),
                 st.battery.is_some(),
+                st.wired.is_some(),
                 st.wifi.is_some(),
                 st.volume.is_some(),
                 st.notifications.is_some(),
@@ -2156,22 +2234,29 @@ impl Deskbar {
                 .into_any_element(),
             );
         }
+        // The links: Ethernet while a cable's connected, Wi-Fi while
+        // there's an adapter. With both, the one not carrying the traffic
+        // (the default route) is drawn faint. Click for Network's
+        // preferences; right-click for the link's addresses and rates.
+        use olo_system::network::Kind;
+        let standing_by = |kind: Kind| st.wired.is_some() && st.wifi.as_ref().is_some_and(|w| w.ssid.is_some()) && st.primary.is_some_and(|p| p != kind);
+        let faint = |on: bool| if on { Some(0.45) } else { None };
+        if let Some(w) = st.wired.clone() {
+            let by = standing_by(Kind::Ethernet);
+            let speed = w.speed.map(|s| format!(", {}", olo_system::network::speed_text(s))).unwrap_or_default();
+            let tip_text = format!("Ethernet{speed}{}. Right-click for details.", if by { ", standing by: Wi-Fi is in use" } else { "" });
+            let (r, h) = tray_item(&mut d, "ethernet", tip_text, Box::new(move |window, cx, r| window.with_element_opacity(faint(by), |window| status::draw_ethernet(window, r, &theme::palette(cx)))));
+            d.hits.push(link_hit(h, r, Kind::Ethernet, &model, &view));
+        }
         if let Some(w) = st.wifi.clone() {
+            let by = standing_by(Kind::Wifi);
             let tip_text = match &w.ssid {
-                Some(s) => format!("{s} ({}%)", w.signal),
+                Some(s) => format!("{s} ({}%){}. Right-click for details.", w.signal, if by { ", standing by: Ethernet is in use" } else { "" }),
                 None => "Not connected".into(),
             };
             let signal = w.ssid.as_ref().map(|_| w.signal);
-            let (_, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |window, cx, r| status::draw_wifi(window, r, &theme::palette(cx), signal)));
-            let m = model.clone();
-            d.hits.push(
-                h.on_any_button(move |e, _, cx| {
-                    if button(e) == MouseButton::Left {
-                        m.update(cx, |d, cx| d.run_command("pref:network", cx));
-                    }
-                })
-                .into_any_element(),
-            );
+            let (r, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |window, cx, r| window.with_element_opacity(faint(by), |window| status::draw_wifi(window, r, &theme::palette(cx), signal))));
+            d.hits.push(link_hit(h, r, Kind::Wifi, &model, &view));
         }
         if let Some(vol) = st.volume {
             let tip_text = if vol.muted {

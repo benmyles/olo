@@ -67,42 +67,112 @@ pub fn wifi() -> Result<Option<Wifi>> {
     Ok(None)
 }
 
-/// [`wifi`], and the objects whose changes change it: NetworkManager,
-/// the adapter, its access point.
-fn wifi_and_paths() -> Result<(Option<Wifi>, Vec<String>)> {
-    let conn = conn()?;
-    let mut paths = vec![NM_PATH.to_owned()];
-    for dev in devices_paths()? {
-        let kind: u32 = bus::property(conn, DEST, dev.as_str(), DEVICE, "DeviceType")?;
-        if kind != TYPE_WIFI {
-            continue;
-        }
-        paths.push(dev.as_str().to_owned());
-        let ap: OwnedObjectPath = bus::property(conn, DEST, dev.as_str(), WIRELESS, "ActiveAccessPoint")?;
-        if ap.as_str() == "/" {
-            return Ok((Some(Wifi { ssid: None, strength: 0 }), paths));
-        }
-        paths.push(ap.as_str().to_owned());
-        let ssid: Vec<u8> = bus::property(conn, DEST, ap.as_str(), AP, "Ssid")?;
-        let strength: u8 = bus::property(conn, DEST, ap.as_str(), AP, "Strength")?;
-        return Ok((Some(Wifi { ssid: Some(String::from_utf8_lossy(&ssid).into_owned()), strength: strength.min(100) as u32 }), paths));
-    }
-    Ok((None, paths))
+/// The links Deskbar's tray shows (Ben, 2026-11-05: "when ethernet is
+/// connected it should also show an ethernet icon ... if both are
+/// connected at once the one that is the default route/link should be
+/// shown as "stronger""): Wi-Fi ([`wifi`]) and its adapter, the first
+/// wired link that's up, and which kind carries the default route.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Links {
+    pub wifi: Option<Wifi>,
+    /// The Wi-Fi adapter: its addresses, gateway, DNS and rate.
+    pub wifi_device: Option<Device>,
+    /// The first wired link that's connected.
+    pub wired: Option<Device>,
+    /// What carries the default route (NetworkManager's primary
+    /// connection): None for neither (a VPN, nothing).
+    pub primary: Option<Kind>,
 }
 
-/// Calls `changed` with the first Wi-Fi adapter's state ([`wifi`]) now
-/// and whenever it changes, on threads of its own, following
+/// [`Links`] now, and the objects whose changes change them besides
+/// NetworkManager's own: each link connected and its addresses, the
+/// access point joined.
+fn links_and_paths() -> Result<(Links, Vec<String>)> {
+    let c = conn()?;
+    let mut links = Links::default();
+    let mut paths = vec![NM_PATH.to_owned()];
+    for p in devices_paths()? {
+        let Ok(d) = device(&p) else { continue };
+        let first_wifi = d.kind == Kind::Wifi && links.wifi_device.is_none();
+        if !first_wifi && !(d.kind == Kind::Ethernet && links.wired.is_none() && d.connected()) {
+            continue;
+        }
+        if d.connected() {
+            paths.push(d.path.clone());
+            let ip4: OwnedObjectPath = bus::property(c, DEST, p.as_str(), DEVICE, "Ip4Config")?;
+            if ip4.as_str() != "/" {
+                paths.push(ip4.as_str().to_owned());
+            }
+        }
+        if !first_wifi {
+            links.wired = Some(d);
+            continue;
+        }
+        let ap: OwnedObjectPath = bus::property(c, DEST, p.as_str(), WIRELESS, "ActiveAccessPoint")?;
+        links.wifi = Some(if ap.as_str() == "/" {
+            Wifi { ssid: None, strength: 0 }
+        } else {
+            paths.push(ap.as_str().to_owned());
+            let ssid: Vec<u8> = bus::property(c, DEST, ap.as_str(), AP, "Ssid")?;
+            let strength: u8 = bus::property(c, DEST, ap.as_str(), AP, "Strength")?;
+            Wifi { ssid: Some(String::from_utf8_lossy(&ssid).into_owned()), strength: strength.min(100) as u32 }
+        });
+        links.wifi_device = Some(d);
+    }
+    let primary: String = bus::property(c, DEST, NM_PATH, NM, "PrimaryConnectionType").unwrap_or_default();
+    links.primary = match primary.as_str() {
+        "802-11-wireless" => Some(Kind::Wifi),
+        "802-3-ethernet" => Some(Kind::Ethernet),
+        _ => None,
+    };
+    Ok((links, paths))
+}
+
+/// [`Links`] now.
+pub fn links() -> Result<Links> {
+    links_and_paths().map(|(l, _)| l)
+}
+
+/// A link's rate in words: "1 Gb/s", "866 Mb/s".
+pub fn speed_text(mbps: u32) -> String {
+    if mbps >= 1000 && mbps % 1000 == 0 {
+        format!("{} Gb/s", mbps / 1000)
+    } else if mbps >= 1000 {
+        format!("{:.1} Gb/s", mbps as f32 / 1000.0)
+    } else {
+        format!("{mbps} Mb/s")
+    }
+}
+
+/// A link's bytes received and sent so far (its interface's counters).
+pub fn traffic(interface: &str) -> Option<(u64, u64)> {
+    let read = |what: &str| std::fs::read_to_string(format!("/sys/class/net/{interface}/statistics/{what}")).ok()?.trim().parse::<u64>().ok();
+    Some((read("rx_bytes")?, read("tx_bytes")?))
+}
+
+/// [`watch_links`] for Wi-Fi alone.
+pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()> {
+    watch_links(move |l| changed(l.wifi))
+}
+
+/// Calls `changed` with the links ([`Links`]) now and whenever they
+/// change, on threads of its own, following
 /// NetworkManager's signals (nothing polled), on a bus connection of its
 /// own that the bus sends only these: any device's state changing,
-/// NetworkManager's own (devices coming and going), and while connected,
-/// the adapter's properties (moving to another access point) and its
-/// access point's (the strength). An adapter that isn't connected scans
+/// NetworkManager's own (devices coming and going, the default route
+/// moving), and for each link connected, its properties (moving to
+/// another access point), its addresses' and its access point's (the
+/// strength). An adapter that isn't connected scans
 /// often, its list of access points changing several times a second:
 /// those aren't asked for. Quick runs of changes come together. Err if
 /// NetworkManager can't be reached.
-pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()> {
+pub fn watch_links(changed: impl Fn(Links) + Send + 'static) -> Result<()> {
     use zbus::{MatchRule, message::Type};
-    let conn = zbus::blocking::Connection::system()?;
+    // A connection of its own (it hears every signal asked for).
+    let conn = match std::env::var("OLO_NM_BUS") {
+        Ok(address) if !address.is_empty() => zbus::blocking::connection::Builder::address(address.as_str())?.build()?,
+        _ => zbus::blocking::Connection::system()?,
+    };
     let dbus = zbus::blocking::fdo::DBusProxy::new(&conn)?;
     let props = |path: &str| -> Result<MatchRule<'static>> {
         Ok(MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.path(path.to_owned())?.interface("org.freedesktop.DBus.Properties")?.member("PropertiesChanged")?.build())
@@ -113,42 +183,54 @@ pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()>
     let messages = zbus::blocking::MessageIterator::from(&conn);
     dbus.add_match_rule(states)?;
     dbus.add_match_rule(own)?;
-    let (first, paths) = wifi_and_paths()?;
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
-    std::thread::Builder::new().name("wifi-signals".into()).spawn(move || {
+    let (first, paths) = links_and_paths()?;
+    let (tx, rx) = std::sync::mpsc::channel::<zbus::Message>();
+    std::thread::Builder::new().name("network-signals".into()).spawn(move || {
         for m in messages.flatten() {
-            if m.message_type() == Type::Signal && m.header().sender().is_some_and(|s| s.as_str() != "org.freedesktop.DBus") && tx.send(()).is_err() {
+            if m.message_type() == Type::Signal && m.header().sender().is_some_and(|s| s.as_str() != "org.freedesktop.DBus") && tx.send(m).is_err() {
                 return;
             }
         }
     })?;
-    std::thread::Builder::new().name("wifi".into()).spawn(move || {
-        // What's asked for while connected: the adapter and its access
-        // point's properties.
-        let mut asked: Vec<MatchRule<'static>> = Vec::new();
-        let mut follow = |now: &Option<Wifi>, paths: &[String]| {
+    std::thread::Builder::new().name("network".into()).spawn(move || {
+        // What's asked for besides: the links connected, their addresses
+        // and the access point's properties (nothing while none is),
+        // asked again only when those change.
+        let (mut asked, mut followed): (Vec<MatchRule<'static>>, Vec<String>) = (Vec::new(), Vec::new());
+        let mut follow = |paths: &[String]| {
+            if paths == followed.as_slice() {
+                return;
+            }
             for rule in asked.drain(..) {
                 let _ = dbus.remove_match_rule(rule);
             }
-            if now.as_ref().is_some_and(|w| w.ssid.is_some()) {
-                for path in paths.iter().skip(1) {
-                    if let Ok(rule) = props(path)
-                        && dbus.add_match_rule(rule.clone()).is_ok()
-                    {
-                        asked.push(rule);
-                    }
+            for path in paths.iter().skip(1) {
+                if let Ok(rule) = props(path)
+                    && dbus.add_match_rule(rule.clone()).is_ok()
+                {
+                    asked.push(rule);
                 }
             }
+            followed = paths.to_vec();
         };
-        follow(&first, &paths);
+        follow(&paths);
         let mut last = first;
         changed(last.clone());
-        while rx.recv().is_ok() {
+        while let Ok(m) = rx.recv() {
             // Let a burst finish (joining changes a dozen properties).
             std::thread::sleep(std::time::Duration::from_millis(80));
-            while rx.try_recv().is_ok() {}
-            let Ok((now, paths)) = wifi_and_paths() else { continue };
-            follow(&now, &paths);
+            let mut burst = vec![m];
+            burst.extend(rx.try_iter());
+            // The strength or the rate alone (every few seconds) is in
+            // the signal; anything else is read again (two dozen calls).
+            let now = match quick(&last, &burst) {
+                Some(now) => now,
+                None => {
+                    let Ok((now, paths)) = links_and_paths() else { continue };
+                    follow(&paths);
+                    now
+                }
+            };
             if now != last {
                 changed(now.clone());
                 last = now;
@@ -156,6 +238,34 @@ pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()>
         }
     })?;
     Ok(())
+}
+
+/// `last` as `burst` changes it, if all it says is the access point's
+/// strength or the adapter's rate (`PropertiesChanged` carries the new
+/// values): None if anything else, to read them all again.
+fn quick(last: &Links, burst: &[zbus::Message]) -> Option<Links> {
+    let mut now = last.clone();
+    for m in burst {
+        let h = m.header();
+        if h.member()?.as_str() != "PropertiesChanged" {
+            return None;
+        }
+        let (iface, changed, invalidated): (String, HashMap<String, OwnedValue>, Vec<String>) = m.body().deserialize().ok()?;
+        if !invalidated.is_empty() {
+            return None;
+        }
+        for (name, v) in &changed {
+            match (iface.as_str(), name.as_str()) {
+                (AP, "Strength") => now.wifi.as_mut().filter(|w| w.ssid.is_some())?.strength = u8::try_from(v).ok()?.min(100) as u32,
+                (WIRELESS, "Bitrate") => {
+                    let d = now.wifi_device.as_mut().filter(|d| h.path().is_some_and(|p| p.as_str() == d.path))?;
+                    d.speed = Some(u32::try_from(v).ok()? / 1000).filter(|s| *s > 0);
+                }
+                _ => return None,
+            }
+        }
+    }
+    Some(now)
 }
 
 fn devices_paths() -> Result<Vec<OwnedObjectPath>> {
@@ -721,5 +831,62 @@ mod enterprise_tests {
         let e = Enterprise { eap: Eap::Ttls, identity: "a".into(), password: "p".into(), inner: "gtc".into(), ..Default::default() };
         assert!(!e.ready());
         assert!(Enterprise { inner: "pap".into(), ..e }.ready());
+    }
+}
+
+#[cfg(test)]
+mod links_tests {
+    use super::*;
+
+    fn changed(path: &str, iface: &str, name: &str, v: Value<'_>, invalidated: &[&str]) -> zbus::Message {
+        let props: HashMap<&str, Value> = HashMap::from([(name, v)]);
+        zbus::Message::signal(path, "org.freedesktop.DBus.Properties", "PropertiesChanged").unwrap().build(&(iface, props, invalidated.to_vec())).unwrap()
+    }
+
+    fn joined() -> Links {
+        let wlan = Device {
+            path: "/nm/Devices/2".into(),
+            interface: "wlan0".into(),
+            kind: Kind::Wifi,
+            state: 100,
+            reason: 0,
+            hw_address: String::new(),
+            connection: Some("Home".into()),
+            addresses: vec!["10.0.0.4/24".into()],
+            gateway: None,
+            dns: Vec::new(),
+            speed: Some(866),
+        };
+        Links { wifi: Some(Wifi { ssid: Some("Home".into()), strength: 80 }), wifi_device: Some(wlan), wired: None, primary: Some(Kind::Wifi) }
+    }
+
+    /// A strength or a rate is taken from the signal (every few seconds,
+    /// and nothing read again for it); anything else is read again.
+    #[test]
+    fn strength_and_rate_from_the_signal() {
+        let last = joined();
+        let now = quick(&last, &[changed("/nm/AccessPoint/7", AP, "Strength", Value::U8(31), &[])]).expect("a strength alone");
+        assert_eq!(now.wifi.as_ref().map(|w| w.strength), Some(31));
+        let now = quick(&now, &[changed("/nm/Devices/2", WIRELESS, "Bitrate", Value::U32(144_000), &[])]).expect("a rate alone");
+        assert_eq!(now.wifi_device.as_ref().and_then(|d| d.speed), Some(144));
+        // Another adapter's rate, another property, a value only named,
+        // a state change: read again.
+        assert!(quick(&last, &[changed("/nm/Devices/9", WIRELESS, "Bitrate", Value::U32(1), &[])]).is_none());
+        assert!(quick(&last, &[changed("/nm/Devices/2", WIRELESS, "ActiveAccessPoint", Value::from("/"), &[])]).is_none());
+        assert!(quick(&last, &[changed("/nm/AccessPoint/7", AP, "Strength", Value::U8(5), &["Ssid"])]).is_none());
+        let state = zbus::Message::signal("/nm/Devices/2", DEVICE, "StateChanged").unwrap().build(&(30u32, 100u32, 39u32)).unwrap();
+        assert!(quick(&last, &[changed("/nm/AccessPoint/7", AP, "Strength", Value::U8(5), &[]), state]).is_none());
+        // Not joined: no strength to change.
+        let off = Links { wifi: Some(Wifi { ssid: None, strength: 0 }), ..joined() };
+        assert!(quick(&off, &[changed("/nm/AccessPoint/7", AP, "Strength", Value::U8(5), &[])]).is_none());
+    }
+
+    #[test]
+    fn rates_and_counters() {
+        assert_eq!(speed_text(1000), "1 Gb/s");
+        assert_eq!(speed_text(2500), "2.5 Gb/s");
+        assert_eq!(speed_text(866), "866 Mb/s");
+        assert!(traffic("lo").is_some());
+        assert!(traffic("no-such-link").is_none());
     }
 }

@@ -720,7 +720,7 @@ fn details(ui: &mut Ui, st: &mut State, status: &Status) {
         ("Router:", d.gateway.clone().unwrap_or_else(|| none.clone())),
         ("DNS servers:", if d.dns.is_empty() { none.clone() } else { d.dns.join(", ") }),
         ("Hardware address:", if d.hw_address.is_empty() { none.clone() } else { d.hw_address.clone() }),
-        ("Speed:", d.speed.map_or(none.clone(), |s| if s >= 1000 && s % 1000 == 0 { format!("{} Gb/s", s / 1000) } else { format!("{s} Mb/s") })),
+        ("Speed:", d.speed.map_or(none.clone(), nm::speed_text)),
     ];
     let lines = rows.into_iter().map(|(label, value)| {
         // The label right-aligned in its column, as form rows have it.

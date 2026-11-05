@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Deskbar: Ethernet beside Wi-Fi, with each link's details
+
+*15:01* — An Ethernet port shows in the tray while a wired link is connected. With both connected, the link not carrying the traffic (NetworkManager's default route) is drawn faint. A right-click on either shows what it's joined to, whether it's in use, its signal and rate or speed, addresses, router, DNS servers, interface, hardware address and traffic, then Network Preferences…. Here Wi-Fi stands by while Ethernet carries the traffic (nm-fake, a stand-in NetworkManager).
+
+![Deskbar: Ethernet beside Wi-Fi, with each link's details](2026-11-05/150134-deskbar-ethernet-beside-wi-fi-with-each-link-s-d.png)
+
 ### Passwords is the SSH agent
 
 *14:02* — Preferences ▸ Security ▸ Be the SSH agent (on by default): ssh and git sign in with the SSH keys in Passwords, each terminal allowed the first time; where ~/.ssh/config sends ssh to another agent (1Password's app's), it says so and offers the switch once the session has Passwords' agent.
