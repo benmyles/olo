@@ -90,6 +90,18 @@ impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug>
 pub struct Exact<E> {
     inner: E,
     rect: Rectangle<i32, Physical>,
+    /// What its texture holds, if not sRGB (`with_color`).
+    color: Option<smithay::backend::renderer::ColorSource>,
+}
+
+impl<E> Exact<E> {
+    /// Its texture holds `color` (an HDR wallpaper's linear light, above
+    /// SDR's white): drawn converted into the frame's colours, never put
+    /// on a plane as it is.
+    pub fn with_color(mut self, color: smithay::backend::renderer::ColorSource) -> Self {
+        self.color = Some(color);
+        self
+    }
 }
 
 impl<E: Element> Element for Exact<E> {
@@ -137,9 +149,18 @@ impl<R: Renderer, E: RenderElement<R>> RenderElement<R> for Exact<E> {
         opaque_regions: &[Rectangle<i32, Physical>],
         cache: Option<&UserDataMap>,
     ) -> Result<(), R::Error> {
-        self.inner.draw(frame, src, dst, damage, opaque_regions, cache)
+        let Some(color) = self.color else {
+            return self.inner.draw(frame, src, dst, damage, opaque_regions, cache);
+        };
+        smithay::backend::renderer::Frame::set_texture_color(frame, Some(color));
+        let drawn = self.inner.draw(frame, src, dst, damage, opaque_regions, cache);
+        smithay::backend::renderer::Frame::set_texture_color(frame, None);
+        drawn
     }
     fn underlying_storage(&self, renderer: &mut R) -> Option<UnderlyingStorage<'_>> {
+        if self.color.is_some() {
+            return None;
+        }
         self.inner.underlying_storage(renderer)
     }
 }
@@ -155,7 +176,7 @@ where
     let from = Rectangle::from_size((src.0 as f64, src.1 as f64).into());
     let size: Size<i32, Logical> = (rect.size.w, rect.size.h).into();
     let inner = MemoryRenderBufferRenderElement::from_buffer(renderer, rect.loc.to_f64(), buffer, alpha, Some(from), Some(size), kind).ok()?;
-    Some(Exact { inner, rect })
+    Some(Exact { inner, rect, color: None })
 }
 
 /// [`exact`] for a picture drawn at its own size, `size` device pixels,

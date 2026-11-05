@@ -276,6 +276,7 @@ dependencies = [
  "bitflags 2.13.2",
  "cosmic-text",
  "fast_image_resize",
+ "half",
  "image",
  "input",
  "libc",
@@ -7154,6 +7155,7 @@ version = "0.1.0"
 dependencies = [
  "avif-parse",
  "filmcraft-vp9",
+ "half",
  "heifer",
  "image",
  "jxl-oxide",

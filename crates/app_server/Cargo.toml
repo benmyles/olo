@@ -16,6 +16,8 @@ olo-crash.workspace = true
 olo-sync.workspace = true
 olo-system.workspace = true
 olo-color.workspace = true
+# HDR wallpapers' half floats.
+half = "2"
 zeroize = "1"
 olo-hvif.workspace = true
 libc = "0.2"

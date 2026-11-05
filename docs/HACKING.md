@@ -3850,9 +3850,25 @@ opened, its own `panel::State` and text fields).
   install-session.sh and by upgrades (cloned on btrfs), and found in
   the recorded build tree's `data/` too (`data_dirs`). Choose… opens a
   FilePanel (picture types only) as a child window for your own file;
-  its text field follows the setting when it changes elsewhere. app_server draws the wallpaper (`wallpaper.rs`):
+  its text field follows the setting when it changes elsewhere. Each
+  pack picture has an HDR version: a gain map beside it
+  (`NAME.gain.png`, `olo_images::gain`), greyscale at half size, how
+  many stops brighter each point is (0 to `MAX_STOPS`, 2: 4× SDR's
+  white), made from the picture by `wallpaper-hdr` (points that stand
+  out from what's around them, light sources, LEDs, the moon, glints,
+  shine most; near-white glows some; large bright surfaces stay at SDR's
+  white or within a quarter stop, so nothing glares). 7.5 MB for all 56,
+  against gigabytes for 16-bit HDR copies. Backgrounds says when the
+  chosen picture has one (`wallpapers::has_hdr`). app_server draws the wallpaper (`wallpaper.rs`):
   each output's picture is decoded (JPEG XL too, via jxl-oxide), scaled
-  to cover and cropped on a worker thread (one picture at a time, only
+  to cover and cropped on a worker thread (on a display in HDR, its gain
+  map scaled and cropped alike and multiplied in, `gain::apply` through
+  a 64K-entry table, into half floats of linear light, 1.0 SDR's white,
+  drawn with that colour source, `Exact::with_color`: its lights shine
+  up to the display's peak and "Everything else's brightness" moves the
+  rest with no new texture; at 3200 × 2000, 94 ms and 48 MB against SDR's
+  73 ms and 24 MB, off the loop, `wallpaper_cost`; `hdr-check` reads its
+  lights above SDR's white on the signal) (one picture at a time, only
   the latest asked for each output), kept in the output's user
   data and drawn under every surface; the workspace colour shows until
   it is ready or if the file can't be read. The worker cuts it into

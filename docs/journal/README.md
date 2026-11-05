@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### HDR wallpapers: what shines (tinted red)
+
+*12:09* — The gain maps wallpaper-hdr made, shown as a red tint where each picture goes above SDR's white in HDR: the sun's glow and LEDs, the moon, glints, the neon grid, speculars; the large blue and yellow surfaces and the skies stay at SDR's white.
+
+![HDR wallpapers: what shines (tinted red)](2026-11-05/120922-hdr-wallpapers-what-shines-tinted-red.png)
+
+### Backgrounds: the pack's pictures have HDR versions
+
+*12:09* — On a display in HDR the chosen pack picture shows in HDR, its lights above everything else's white (a gain map beside each picture, made from it); Backgrounds says so under the pictures.
+
+![Backgrounds: the pack's pictures have HDR versions](2026-11-05/120921-backgrounds-the-pack-s-pictures-have-hdr-version.png)
+
 ### Display: Everything else's brightness up to 600 cd/m², on its track
 
 *10:20* — The SDR-in-HDR slider went to 480 while app_server took 600 (and a built-in panel's now follows its brightness, near 600 on the ThinkPad's OLED), so its knob was drawn past the track's end (Ben: it 'runs off the side'). One range for both, in protocol; the kit's Slider draws a value outside its range at the end; the note under it level with the label. At 2×, 1.5× and 1×.

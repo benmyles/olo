@@ -69,6 +69,13 @@ pub fn resolve(setting: &str, size: (u32, u32), dark: bool) -> Option<PathBuf> {
     dark.then(|| file(&format!("{name}-dark"))).flatten().or_else(|| file(name))
 }
 
+/// `picture` has an HDR version (its gain map beside it,
+/// `olo_images::gain::path_for`: `NAME.gain.png`), shown on a display in
+/// HDR.
+pub fn has_hdr(picture: &Path) -> bool {
+    picture.with_extension("gain.png").is_file()
+}
+
 /// A pack picture's preview (light, or dark).
 pub fn thumbnail(name: &str, dark: bool) -> Option<PathBuf> {
     let dir = dir()?.join("thumbs");

@@ -7,28 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **HDR versions of the wallpapers, shown in HDR** (Ben, 2026-11-05,
-  after HDR and the tab-title bug): "generate and add hdr versions of
-  all the olo wallpapers that are used when in hdr mode". Every
-  picture in the pack (`data/wallpapers/pack.txt`; each `4k/`,
-  `ultrawide/` and `-dark`) gets an HDR version beside it, its
-  highlights (light sources, glints, the sky's brightest) brighter than
-  SDR's white and its colours past sRGB where the scene has them, kept
-  as a deep format app_server reads natively (16-bit PNG in PQ with
-  BT.2020, or JPEG XL HDR, which jxl-oxide decodes). Made from the
-  SDR originals by a tool of our own in Rust (`tools/` or a `bin`, no
-  outside programs), so it's repeatable as the pack grows: the
-  picture's own SDR look kept (SDR white at the display's SDR white),
-  only what's brightest lifted into the headroom, smoothly; checked by
-  eye on the built-in OLED in HDR. `wallpapers::resolve` picks the HDR
-  file for a display in HDR (the effective theme and screen shape as
-  now), app_server's `wallpaper.rs` decodes it into the HDR blending
-  buffer's scale (cd/m² relative to SDR white, not clipped to 1) and
-  draws it there, and switches with HDR on and off live; a display in
-  SDR (or a picture with no HDR version) is unchanged. Backgrounds says
-  which pictures have HDR. Measure: decode and upload time and memory
-  of a 4K deep picture against the SDR one (the worker, the strips).
-
 - **Terminal's suggestions see the session's recent commands and
   output, after a restore too** (Ben, 2026-11-05, after the items
   above): "the olo terminal autocomplete model should be able to also
@@ -1744,6 +1722,25 @@ of Finished; a new one goes where its priority puts it.
     what it can encode in Preferences; the frames as dmabufs (CUDA's
     external memory) rather than copied.
 
+- **Faster Rust builds: the low-hanging fruit** (Ben, 2026-11-05): "see
+  if there's any low hanging fruit to speed up the rust compilation.
+  maybe lto = "fat" → "thin" and incremental = true if they're not
+  already set?" As it is: `[profile.release]` sets only `debug =
+  "line-tables-only"` (no `lto`, so Cargo's default, thin-local; no
+  `incremental`, off for release; 16 codegen units), dev builds dependencies
+  at opt-level 3, and there's no linker setting (the system's `ld`). A
+  release build of the workspace after a small change takes 1–3 min here
+  (2m 55s after a change to olo-session and Terminal, 7–55 s for one
+  crate). Measure each candidate on the same change (a kit file, an
+  app_server file, a leaf app), clean and incremental, and keep what
+  helps without making the result slower (runtime measured, as Olo's
+  rule asks): `incremental = true` for release; a faster linker (mold
+  or wild; linking app_server and the GPUI apps is a large part of an
+  incremental build); `split-debuginfo = "unpacked"`; codegen-units;
+  the dependency tree (duplicate versions, heavy proc-macros, features
+  nobody uses); `cargo build --timings` to see where the time goes.
+  Numbers in HACKING.
+
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a
   markdown file StyledEdit should natively support the Markdown and be
@@ -1833,6 +1830,37 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**HDR versions of the wallpapers, shown in HDR**~~ (done 2026-11-05,
+  HACKING's Backgrounds: a gain map beside each of the pack's 56
+  pictures, made from it in Rust (`olo_images::gain`, `wallpaper-hdr`:
+  what stands out shines up to two stops, plain bright surfaces stay put),
+  7.5 MB in all; app_server multiplies it in on a display in HDR into
+  half floats of linear light, drawn with that colour source; Backgrounds
+  says so. `hdr-check`: the BeBox's lights at code 185 on the signal (SDR's
+  white is 148), its median 141; 94 ms and 48 MB at 3200 × 2000 against
+  SDR's 73 ms and 24 MB, off the loop. Rather than 16-bit HDR copies (GBs
+  in Git LFS) or JPEG XL HDR (no encoder in Rust), the Ultra HDR way) (Ben, 2026-11-05,
+  after HDR and the tab-title bug): "generate and add hdr versions of
+  all the olo wallpapers that are used when in hdr mode". Every
+  picture in the pack (`data/wallpapers/pack.txt`; each `4k/`,
+  `ultrawide/` and `-dark`) gets an HDR version beside it, its
+  highlights (light sources, glints, the sky's brightest) brighter than
+  SDR's white and its colours past sRGB where the scene has them, kept
+  as a deep format app_server reads natively (16-bit PNG in PQ with
+  BT.2020, or JPEG XL HDR, which jxl-oxide decodes). Made from the
+  SDR originals by a tool of our own in Rust (`tools/` or a `bin`, no
+  outside programs), so it's repeatable as the pack grows: the
+  picture's own SDR look kept (SDR white at the display's SDR white),
+  only what's brightest lifted into the headroom, smoothly; checked by
+  eye on the built-in OLED in HDR. `wallpapers::resolve` picks the HDR
+  file for a display in HDR (the effective theme and screen shape as
+  now), app_server's `wallpaper.rs` decodes it into the HDR blending
+  buffer's scale (cd/m² relative to SDR white, not clipped to 1) and
+  draws it there, and switches with HDR on and off live; a display in
+  SDR (or a picture with no HDR version) is unchanged. Backgrounds says
+  which pictures have HDR. Measure: decode and upload time and memory
+  of a 4K deep picture against the SDR one (the worker, the strips).
 
 - ~~**Other programs survive Olo's upgrades**~~ (done 2026-11-05,
   HACKING's olo-wlproxy notes: two causes, both at the proxy's replay

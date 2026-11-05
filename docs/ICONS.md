@@ -242,7 +242,12 @@ python3 tools/genwallpaper.py toybox --promote data/wallpapers/src/toybox-dark-1
 `--promote` writes the 4K picture, the 3840×1648 ultrawide band (from
 `--crop-y`, default the middle; keep the hero inside it) and the 320×180
 thumbnail. `cargo test -p olo-xdg` checks every theme has all six
-(`themes::tests::every_theme_has_its_wallpaper`).
+(`themes::tests::every_theme_has_its_wallpaper`). Then give it its HDR
+version: `cargo run --release -p olo-images --bin wallpaper-hdr` makes
+`NAME.gain.png` beside each picture in `4k/` and `ultrawide/` that's
+newer than its map (`olo_images::gain`; `--preview DIR` writes each
+picture with what shines tinted red, to look at), and the maps go in
+with the pictures.
 
 ## Using icons in code
 

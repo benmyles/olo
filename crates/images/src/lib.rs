@@ -57,6 +57,7 @@ fn avif(data: &[u8]) -> Result<DynamicImage, String> {
     image::RgbaImage::from_raw(w, h, rgba).map(DynamicImage::ImageRgba8).ok_or_else(|| "bad image size".into())
 }
 
+pub mod gain;
 pub mod hdr;
 
 /// AV1 through rav1d's dav1d API (stills and video), and YUV to RGB.
