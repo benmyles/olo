@@ -112,7 +112,13 @@ fn record(args: &[String]) -> Result<Made, String> {
     };
     let fps: u32 = option(args, "--fps").map_or(Ok(30), str::parse).map_err(|_| "--fps takes a number")?;
     let fps = fps.clamp(1, 60);
-    let choice = match option(args, "--encoder") {
+    // As asked, else as Preferences ▸ GPUs has it, else the most
+    // powerful there is.
+    let chosen = option(args, "--encoder").map(str::to_owned).or_else(|| match olo_protocol::Client::connect().ok()?.request(&olo_protocol::Request::GetSettings).ok()? {
+        olo_protocol::Reply::Settings { settings } => Some(settings.screen_recording.encoder),
+        _ => None,
+    });
+    let choice = match chosen.as_deref() {
         Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu or nvidia")?,
         None => olo_video::Choice::Auto,
     };

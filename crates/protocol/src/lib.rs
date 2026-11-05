@@ -1316,6 +1316,8 @@ pub struct Settings {
     pub shortcuts: Option<ShortcutSettings>,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
+    /// Screen recordings (Preferences ▸ GPUs ▸ Screen Recordings).
+    pub screen_recording: ScreenRecordingSettings,
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
@@ -1428,6 +1430,21 @@ impl Default for PasswordsSecurity {
 pub struct TrackerSettings {
     /// How a folder window shows its folder when it opens.
     pub default_view: FolderView,
+}
+
+/// What screen recordings are encoded on (olo-screenshot's recorder).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ScreenRecordingSettings {
+    /// "auto" (the most powerful there is: an NVIDIA GPU's encoder
+    /// where it opens, else the processor), "nvidia" or "cpu".
+    pub encoder: String,
+}
+
+impl Default for ScreenRecordingSettings {
+    fn default() -> Self {
+        ScreenRecordingSettings { encoder: "auto".into() }
+    }
 }
 
 /// Terminal's settings (Preferences ▸ Terminal).
@@ -1992,6 +2009,7 @@ impl Default for Settings {
             shortcuts: None,
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
+            screen_recording: ScreenRecordingSettings::default(),
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),

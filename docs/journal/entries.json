@@ -3136,5 +3136,11 @@
   "title": "Screen recording from a shortcut: Deskbar's record light, then the notification",
   "caption": "Shift-Cmd-6 records the screen; Deskbar's tray shows a red record light with Stop Recording while it goes; finished, a notification says it was saved, with Show in Tracker.",
   "image": "2026-11-04/184621-screen-recording-from-a-shortcut-deskbar-s-recor.png"
+ },
+ {
+  "time": "2026-11-04T18:55:14",
+  "title": "Preferences \u25b8 GPUs: what screen recordings encode on",
+  "caption": "The most powerful there is by default (here the NVIDIA RTX PRO 2000's encoder, NVENC), that GPU, or the processor (OpenH264); the recorder reads it unless told.",
+  "image": "2026-11-04/185514-preferences-gpus-what-screen-recordings-encode-o.png"
  }
 ]

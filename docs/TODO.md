@@ -1221,9 +1221,11 @@ of Finished; a new one goes where its priority puts it.
     *Started* (2026-11-04): NVIDIA's NVENC (H.264, `olo_video::nvenc`,
     its library opened at run time so nothing links it), the recorder's
     `--encoder auto|cpu|nvidia`, auto taking NVENC where it opens: 4K in
-    13.4 ms a frame against the processor's 111. *Left*: the setting in
-    the recorder's window and Preferences (the encoders found, by name,
-    what each can encode), Intel's and AMD's (VA-API or Vulkan Video),
+    13.4 ms a frame against the processor's 111; the setting in
+    Preferences ▸ GPUs ▸ Screen Recordings (the most powerful by
+    default, named; the NVIDIA GPU; the processor). *Left*: each encoder
+    with what it can encode (sizes, H.264/HEVC/AV1), Intel's and AMD's
+    (VA-API or Vulkan Video),
     HEVC and AV1 (NVENC has both on this RTX 50 part), the frames as
     dmabufs (CUDA's external memory) rather than copied, and falling back
     mid-recording.

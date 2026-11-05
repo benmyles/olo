@@ -5598,7 +5598,10 @@ Screens' Export Video uses too).
   starts and records on the processor; H.264 at preset P4 tuned for
   quality, VBR at `olo_video::bitrate`, a key frame every two seconds,
   no B-frames, the parameter sets with each key frame), else the
-  processor (OpenH264). A frame at 4K: 13.4 ms on the GPU (an RTX 50
+  processor (OpenH264); unless told, as Preferences ▸ GPUs ▸ Screen
+  Recordings has it (`Settings::screen_recording.encoder`: the most
+  powerful there is, named, by default; the NVIDIA GPU, offered where
+  there is one; or the processor). A frame at 4K: 13.4 ms on the GPU (an RTX 50
   laptop part, `nvenc_makes_h264_that_decodes`, each frame decoded back
   by OpenH264), 111 ms on the processor (AVX2, one thread; 16 ms at
   1440 × 900, 56 at 2560 × 1600: `encode_cost`), so 4K keeps up at 30 or

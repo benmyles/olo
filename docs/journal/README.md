@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Preferences ▸ GPUs: what screen recordings encode on
+
+*18:55* — The most powerful there is by default (here the NVIDIA RTX PRO 2000's encoder, NVENC), that GPU, or the processor (OpenH264); the recorder reads it unless told.
+
+![Preferences ▸ GPUs: what screen recordings encode on](2026-11-04/185514-preferences-gpus-what-screen-recordings-encode-o.png)
+
 ### Screen recording from a shortcut: Deskbar's record light, then the notification
 
 *18:46* — Shift-Cmd-6 records the screen; Deskbar's tray shows a red record light with Stop Recording while it goes; finished, a notification says it was saved, with Show in Tracker.

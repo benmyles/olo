@@ -161,6 +161,32 @@ fn run_tune(tuning: &Tuning) -> Result<String, String> {
 }
 
 /// What a GPU drives, said plainly.
+/// What screen recordings encode on: the most powerful there is (an
+/// NVIDIA GPU's encoder where there's one), that GPU, or the processor
+/// (`Settings::screen_recording`, read by olo-screenshot's recorder).
+fn recordings(ui: &mut Ui, gpus: &[Entry]) {
+    let nvidia = gpus.iter().find(|e| e.gpu.vendor == 0x10de).map(|e| e.gpu.name.clone());
+    let current = ui.s.screen_recording.encoder.clone();
+    let most = match &nvidia {
+        Some(n) => format!("The most powerful ({n})"),
+        None => "The most powerful (the processor)".to_owned(),
+    };
+    let on_gpu = nvidia.as_ref().map(|n| format!("{n} (NVENC)"));
+    let mut choices: Vec<(String, &str)> = vec![("auto".into(), most.as_str())];
+    if let Some(n) = &on_gpu {
+        choices.push(("nvidia".into(), n.as_str()));
+    }
+    choices.push(("cpu".into(), "The processor (OpenH264)"));
+    ui.bbox("Screen Recordings", |ui| {
+        ui.choose("recording-encoder", &choices, &current, |f| f.label("Encode on:").divider(100.0), |s, v| s.screen_recording.encoder = v);
+        ui.note(if nvidia.is_some() {
+            "A GPU's encoder takes a 4K screen in about 13 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor."
+        } else {
+            "Recordings are encoded on the processor (OpenH264): a 4K screen takes about 110 ms a frame, so a recording of a lot of motion keeps about nine a second."
+        });
+    });
+}
+
 fn drives(g: &Gpu) -> String {
     if g.connectors.is_empty() {
         return "no display ports".into();
@@ -222,6 +248,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 (false, None) => StringView::new("Kept for this computer and set again at every start.").dim(true).wrap(true),
             })),
     );
+    // (Below Apply: it's taken at once, not applied with the tuning.)
+    recordings(ui, &gpus);
 }
 
 /// Change GPU `pci`'s tuning by hand (its preset becomes Custom).
