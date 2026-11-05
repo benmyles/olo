@@ -18,9 +18,14 @@ signal, not the sRGB picture screenshots are. Then checks, within a code:
   HDR (PQ, BT.2020):   the untagged grey at 46 cd/m² (110), the PQ
                         window at its own 100 cd/m² (130), SDR's white
                         at 203 cd/m² (148) and nothing above it.
+  A GPUI window in HDR10 (the kit's `hdr_probe`, `Gamut::Hdr10`): its
+                        sRGB white at SDR's white (148), its HDR10
+                        pictures (`RenderImage::deep`) at their own
+                        1,000 cd/m² (192) and 100 (130).
 
 Build first: `cargo build --release -p app_server --bin olo-app-server
---example color_probe`. Exits 1 on a mismatch.
+--example color_probe` and `cargo build --release -p olo-ui --example
+hdr_probe`. Exits 1 on a mismatch.
 """
 
 import json
@@ -32,6 +37,7 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TSESSION = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
 PROBE = os.path.join(ROOT, "target/release/examples/color_probe")
+GPUI_PROBE = os.path.join(ROOT, "target/release/examples/hdr_probe")
 NAME = "hdrc"
 OUT = "/var/tmp/olo-hdr-check"
 
@@ -65,8 +71,8 @@ def most(img, n=4):
 
 
 def main():
-    if not os.path.exists(PROBE):
-        sys.exit("build the probe first: cargo build --release -p app_server --example color_probe")
+    if not os.path.exists(PROBE) or not os.path.exists(GPUI_PROBE):
+        sys.exit("build the probes first: cargo build --release -p app_server --example color_probe; cargo build --release -p olo-ui --example hdr_probe")
     os.makedirs(OUT, exist_ok=True)
     ts("stop", NAME)
     ts("start", NAME, "1280x800", env={"OLO_HEADLESS_COLOR": "p3-hdr"})
@@ -113,6 +119,22 @@ def main():
         # white, which the tabs' and wallpaper's brightest reach.)
         top = max(max(c) for c in set(pixels(hdr)))
         near((top,), (148,), "the most light: SDR's white at 203 cd/m²")
+
+        print("A GPUI window drawing in HDR10:")
+        ts("run", NAME, GPUI_PROBE)
+        time.sleep(3.0)
+        w = next((w for w in ipc({"type": "list_windows"}).get("windows", []) if w.get("app_id") == "olo.hdr-probe"), None)
+        if w is None:
+            print("  BAD the probe's window didn't come")
+            failures.append("the GPUI probe")
+        else:
+            img = shot("gpui", True)
+            # (The screen's device pixels against its logical ones.)
+            scale = img.size[0] / 1280 * 2
+            c = w["content"]
+            for i, (what, want) in enumerate([("its sRGB white at SDR's 203 cd/m²", 148), ("an HDR10 picture at its own 1,000 cd/m²", 192), ("an HDR10 picture at 100 cd/m²", 130)]):
+                at = (int((c["x"] + c["width"] * (i + 0.5) / 3) * scale), int((c["y"] + c["height"] / 2) * scale))
+                near(img.getpixel(at)[:3], (want,) * 3, what)
     finally:
         ts("stop", NAME)
     if failures:

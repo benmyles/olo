@@ -319,6 +319,9 @@ impl super::Context {
                         vk::ColorSpaceKHR::SRGB_NONLINEAR
                     }
                 }
+                (crate::TextureFormat::Rgb10a2Unorm, crate::ColorSpace::Hdr10) => {
+                    vk::ColorSpaceKHR::HDR10_ST2084_EXT
+                }
                 _ => panic!(
                     "Unexpected format {:?} under color space {:?}",
                     format, config.color_space
@@ -395,10 +398,29 @@ impl super::Context {
                         )
                     }
                 }
+                // Ten bits of PQ (eight would band), or sRGB.
+                crate::ColorSpace::Hdr10 => {
+                    let hdr10 = vk::SurfaceFormatKHR {
+                        format: vk::Format::A2B10G10R10_UNORM_PACK32,
+                        color_space: vk::ColorSpaceKHR::HDR10_ST2084_EXT,
+                    };
+                    if supported_formats.contains(&hdr10) {
+                        (crate::TextureFormat::Rgb10a2Unorm, hdr10)
+                    } else {
+                        (
+                            crate::TextureFormat::Bgra8Unorm,
+                            vk::SurfaceFormatKHR {
+                                format: vk::Format::B8G8R8A8_UNORM,
+                                color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
+                            },
+                        )
+                    }
+                }
             }
         };
         let got_color_space = match surface_format.color_space {
             vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT => crate::ColorSpace::DisplayP3,
+            vk::ColorSpaceKHR::HDR10_ST2084_EXT => crate::ColorSpace::Hdr10,
             vk::ColorSpaceKHR::SRGB_NONLINEAR
                 if config.color_space != crate::ColorSpace::Linear =>
             {

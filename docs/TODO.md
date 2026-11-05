@@ -487,9 +487,11 @@ of Finished; a new one goes where its priority puts it.
     drawing in Display P3 while it shows a wide photo (GPUI's
     `Window::set_gamut`, tried headless), night light in HDR, and HDR
     video (HDR10, HLG) shown for SDR screens, and wide video (HDR's
-    too) drawn in Display P3 rather than clipped to sRGB (2026-11-05).
-    Left besides the panel: HDR video as HDR on an HDR display (its
-    pictures handed over in PQ).
+    too) drawn in Display P3 rather than clipped to sRGB, and HDR video
+    shown as HDR on a display whose HDR is on (Viewer's window in HDR10,
+    its pictures PQ's in half floats; checked on a pretend HDR screen by
+    `tools/dev/hdr-check`) (2026-11-05). Left: the panel's HDR, after
+    Ben's restart.
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole

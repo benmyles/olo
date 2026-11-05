@@ -452,7 +452,9 @@ pub struct BladeRenderer {
     rendering_parameters: RenderingParameters,
     /// Olo: the window draws in Display P3 (`Window::set_gamut`):
     /// the shaders convert sRGB's colours into P3's numbers.
-    display_p3: bool,
+    /// Olo: what the window draws in (`set_gamut`): sRGB, Display P3 or
+    /// HDR10, as the surface took it.
+    gamut: crate::Gamut,
     /// Olo: the window drawn into, to make its surface again when it's
     /// lost (`remake_surface`), and when that was last tried.
     window: Option<RawHandles>,
@@ -510,11 +512,13 @@ impl BladeRenderer {
     /// Olo: draw in Display P3 (`on`) or sRGB from the next frame, the
     /// swapchain made again in that colour space (Mesa's WSI tells the
     /// compositor); whether it is (a surface not offering P3: sRGB).
-    pub fn set_display_p3(&mut self, on: bool) -> bool {
-        let space = if on {
-            gpu::ColorSpace::DisplayP3
-        } else {
-            gpu::ColorSpace::Srgb
+    /// Olo: draw in `gamut` (`Window::set_gamut`), where the surface
+    /// offers it; whether it does.
+    pub fn set_gamut(&mut self, gamut: crate::Gamut) -> bool {
+        let space = match gamut {
+            crate::Gamut::DisplayP3 => gpu::ColorSpace::DisplayP3,
+            crate::Gamut::Hdr10 => gpu::ColorSpace::Hdr10,
+            crate::Gamut::Srgb => gpu::ColorSpace::Srgb,
         };
         if space != self.surface_config.color_space {
             self.wait_for_gpu();
@@ -535,18 +539,22 @@ impl BladeRenderer {
                 self.destroy_path_targets();
             }
         }
-        self.display_p3 = self.surface.color_space() == gpu::ColorSpace::DisplayP3;
-        if on {
+        self.gamut = match self.surface.color_space() {
+            gpu::ColorSpace::DisplayP3 => crate::Gamut::DisplayP3,
+            gpu::ColorSpace::Hdr10 => crate::Gamut::Hdr10,
+            _ => crate::Gamut::Srgb,
+        };
+        if gamut != crate::Gamut::Srgb {
             log::info!(
-                "asked to draw in Display P3: {}",
-                if self.display_p3 {
+                "asked to draw in {gamut:?}: {}",
+                if self.gamut == gamut {
                     "drawing in it"
                 } else {
                     "the surface doesn't offer it, sRGB"
                 }
             );
         }
-        self.display_p3
+        self.gamut == gamut
     }
 
     pub fn new<I: raw_window_handle::HasWindowHandle + raw_window_handle::HasDisplayHandle>(
@@ -624,7 +632,7 @@ impl BladeRenderer {
             path_targets: None,
             subpixel_sprites: None,
             rendering_parameters,
-            display_p3: false,
+            gamut: crate::Gamut::Srgb,
             window: handles,
             remade: None,
         })
@@ -1085,7 +1093,12 @@ impl BladeRenderer {
                 gpu::AlphaMode::Ignored | gpu::AlphaMode::PostMultiplied => 0,
                 gpu::AlphaMode::PreMultiplied => 1,
             },
-            pad: u32::from(self.display_p3),
+            // (Bit 0: the window draws in Display P3; bit 2, in HDR10.)
+            pad: match self.gamut {
+                crate::Gamut::DisplayP3 => 1,
+                crate::Gamut::Hdr10 => 4,
+                crate::Gamut::Srgb => 0,
+            },
         };
 
         let mut pass = self.command_encoder.render(

@@ -298,6 +298,19 @@ impl PreviewView {
         &self.image
     }
 
+    /// Whether the video it plays is HDR (as far as it has been seen).
+    pub fn video_is_hdr(&self) -> bool {
+        self.video.as_ref().is_some_and(|v| v.is_hdr())
+    }
+
+    /// Its video's HDR pictures drawn as HDR10 (a window drawing in it),
+    /// or mapped for SDR.
+    pub fn draw_video_hdr(&self, on: bool) {
+        if let Some(v) = &self.video {
+            v.draw_hdr(on);
+        }
+    }
+
     /// What its picture's numbers are in: a wide photo's or video's
     /// Display P3 (the window may draw in it, `Window::set_gamut`), else
     /// sRGB.
@@ -846,13 +859,20 @@ impl PreviewView {
             if let Some(pic) = frame {
                 let gamut = if pic.p3() { olo_ui::gpui::Gamut::DisplayP3 } else { olo_ui::gpui::Gamut::Srgb };
                 let img = match pic {
-                    video::Picture::Bgra { size: [w, h], data, .. } => image::RgbaImage::from_raw(w as u32, h as u32, (*data).clone()),
-                    video::Picture::Rgba(b) => image::RgbaImage::from_raw(b.size[0] as u32, b.size[1] as u32, b.to_bgra_unmultiplied()),
+                    video::Picture::Bgra { size: [w, h], data, .. } => {
+                        image::RgbaImage::from_raw(w as u32, h as u32, (*data).clone()).map(|img| RenderImage::new([image::Frame::new(img)]).with_gamut(gamut))
+                    }
+                    video::Picture::Rgba(b) => {
+                        image::RgbaImage::from_raw(b.size[0] as u32, b.size[1] as u32, b.to_bgra_unmultiplied()).map(|img| RenderImage::new([image::Frame::new(img)]).with_gamut(gamut))
+                    }
+                    // (HDR10's, for a window drawing in it.)
+                    video::Picture::Deep { size: [w, h], data } => Some(RenderImage::deep(w as u32, h as u32, &data, olo_ui::gpui::Gamut::Hdr10)),
                 };
                 if let Some(img) = img {
                     let was = self.frame.as_ref().map(|f| f.gamut());
-                    self.dropped.extend(self.frame.replace(Arc::new(RenderImage::new([image::Frame::new(img)]).with_gamut(gamut))));
-                    if was != Some(gamut) {
+                    let now = img.gamut();
+                    self.dropped.extend(self.frame.replace(Arc::new(img)));
+                    if was != Some(now) {
                         cx.emit(PreviewEvent::Gamut);
                     }
                 }

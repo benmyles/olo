@@ -139,6 +139,91 @@ impl Mapping {
     }
 }
 
+/// How one picture's signal becomes HDR10's (PQ in BT.2020), for a
+/// window drawing in it: its light as it is (no roll-off: the display
+/// shows it, or its compositor maps it), in BT.2020. A PQ picture in
+/// BT.2020 goes through as its own numbers.
+pub struct ToPq {
+    /// Its own PQ in BT.2020: each step as it is.
+    same: bool,
+    light: Vec<f32>,
+    hlg_gain: Option<Vec<f32>>,
+    weights: [f32; 3],
+    matrix: Option<[[f32; 3]; 3]>,
+    /// Light (in SDR whites, 0–`PQ_TOP`, by its square root in `STEPS`)
+    /// to PQ's signal.
+    pq: Vec<f32>,
+}
+
+/// The most light `ToPq` keeps, in SDR whites (10,000 cd/m²: PQ's top).
+const PQ_TOP: f32 = 10_000.0 / olo_color::SDR_WHITE_NITS as f32;
+
+impl ToPq {
+    pub fn new(primaries: u32, transfer: u32) -> ToPq {
+        let shown = Mapping::new(primaries, transfer, 0.0, false);
+        let from = match primaries {
+            PRI_BT2020 => olo_color::Primaries::BT2020,
+            PRI_P3_D65 => olo_color::Primaries::DISPLAY_P3,
+            _ => olo_color::Primaries::SRGB,
+        };
+        let m = from.to(&olo_color::Primaries::BT2020);
+        let matrix = (!m.is_identity(1e-6)).then(|| m.0.map(|row| row.map(|v| v as f32)));
+        let pq = (0..STEPS)
+            .map(|i| {
+                let t = i as f64 / (STEPS - 1) as f64;
+                olo_color::pq_encode((t * t * f64::from(PQ_TOP)) * olo_color::SDR_WHITE_NITS / 10_000.0) as f32
+            })
+            .collect();
+        ToPq { same: transfer == TRC_PQ && primaries == PRI_BT2020, light: shown.light, hlg_gain: shown.hlg_gain, weights: shown.weights, matrix, pq }
+    }
+
+    /// One sample: its R′G′B′ signal as table steps to PQ's (0–1).
+    #[inline(always)]
+    pub fn map(&self, r: usize, g: usize, b: usize) -> [f32; 3] {
+        let n = (STEPS - 1) as f32;
+        if self.same {
+            return [r as f32 / n, g as f32 / n, b as f32 / n];
+        }
+        let (mut r, mut g, mut b) = (self.light[r], self.light[g], self.light[b]);
+        if let Some(gain) = &self.hlg_gain {
+            let ys = (self.weights[0] * r + self.weights[1] * g + self.weights[2] * b).clamp(0.0, 1.0);
+            let k = gain[(ys * n) as usize];
+            (r, g, b) = (r * k, g * k, b * k);
+        }
+        if let Some(m) = &self.matrix {
+            (r, g, b) = (m[0][0] * r + m[0][1] * g + m[0][2] * b, m[1][0] * r + m[1][1] * g + m[1][2] * b, m[2][0] * r + m[2][1] * g + m[2][2] * b);
+        }
+        // (By the square root, between two steps.)
+        let at = |v: f32| {
+            let x = (v.clamp(0.0, PQ_TOP) / PQ_TOP).sqrt() * n;
+            let i = (x as usize).min(STEPS - 2);
+            let f = x - i as f32;
+            self.pq[i] + (self.pq[i + 1] - self.pq[i]) * f
+        };
+        [at(r), at(g), at(b)]
+    }
+}
+
+/// `v` (0–1) as an IEEE 754 half float's bits (rounded to nearest).
+#[inline(always)]
+pub fn half(v: f32) -> u16 {
+    let v = v.clamp(0.0, 1.0);
+    if v < 6.103_515_6e-5 {
+        // Subnormal: in 2^-24ths.
+        return (v * 16_777_216.0).round() as u16;
+    }
+    let bits = v.to_bits();
+    let exp = ((bits >> 23) & 0xFF) as i32 - 127 + 15;
+    let mant = bits & 0x7F_FFFF;
+    let mut h = ((exp as u32) << 10) | (mant >> 13);
+    // Round half to even on the dropped bits.
+    let rest = mant & 0x1FFF;
+    if rest > 0x1000 || (rest == 0x1000 && h & 1 == 1) {
+        h += 1;
+    }
+    h as u16
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +276,24 @@ mod tests {
         let grey = m.map(half, half, half);
         assert!(grey[0].abs_diff(grey[1]) <= 1 && grey[1].abs_diff(grey[2]) <= 1, "{grey:?}");
         assert!(!needed(PRI_BT709, 1) && needed(PRI_BT2020, 1) && needed(PRI_BT709, TRC_PQ));
+    }
+
+    /// To HDR10: a PQ picture in BT.2020 goes through as it is; an SDR
+    /// sRGB white lands at 203 cd/m²; HLG's reference white near it.
+    #[test]
+    fn to_hdr10() {
+        let top = STEPS - 1;
+        let same = ToPq::new(PRI_BT2020, TRC_PQ);
+        assert_eq!(same.map(top / 2, top, 0), [(top / 2) as f32 / top as f32, 1.0, 0.0]);
+        let white = olo_color::pq_encode(olo_color::SDR_WHITE_NITS / 10_000.0) as f32;
+        let sdr = ToPq::new(PRI_BT709, 1).map(top, top, top);
+        assert!(sdr.iter().all(|v| (v - white).abs() < 0.002), "{sdr:?} against {white}");
+        let s = (0.75 * top as f64) as usize;
+        let hlg = ToPq::new(PRI_BT2020, TRC_HLG).map(s, s, s);
+        assert!(hlg.iter().all(|v| (v - white).abs() < 0.02), "{hlg:?} against {white}");
+        // Half floats: exact where they can be, rounded to the nearest.
+        assert_eq!((half(0.0), half(1.0), half(0.5)), (0, 0x3C00, 0x3800));
+        assert_eq!(half(0.580_078_1), 0x38A4);
     }
 
     /// To Display P3, BT.2020's green keeps more of itself than in sRGB

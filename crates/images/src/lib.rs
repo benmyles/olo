@@ -314,12 +314,7 @@ pub mod av1 {
         }
 
         fn rgba(&self, p3: bool) -> Vec<u8> {
-            let shift = (self.bpc - 8) as i32;
-            let max = ((1u32 << self.bpc) - 1) as f32;
-            let half = (1u32 << (self.bpc - 1)) as f32;
-            let (y0, ys, cs) = if self.full_range { (0.0, max, max) } else { ((16 << shift) as f32, (219 << shift) as f32, (224 << shift) as f32) };
-            let (kr, kb) = self.coefficients();
-            let kg = 1.0 - kr - kb;
+            let ((y0, ys, cs, half), (kr, kb, kg)) = self.ycc();
             let (w, h) = (self.width, self.height);
             if let Some(chroma) = self.chroma
                 && !matches!(self.matrix, DAV1D_MC_IDENTITY | DAV1D_MC_SMPTE_YCGCO)
@@ -358,14 +353,54 @@ pub mod av1 {
             self.to_rgba_exact()
         }
 
-        /// HDR or wide-gamut video for an sRGB screen (`hdr::Mapping`):
-        /// Y′CbCr to R′G′B′ by tables in 16.16 fixed point, as the plain
-        /// path does but to the mapping's steps, then each sample mapped;
-        /// rows split over up to eight threads for a picture of a
-        /// megapixel or more.
-        fn to_rgba_mapped(&self, (sx, sy): (u32, u32), (y0, ys, cs, half): (f32, f32, f32, f32), (kr, kb, kg): (f32, f32, f32), p3: bool) -> Vec<u8> {
-            use super::hdr::{Mapping, STEPS};
-            let mapping = Mapping::new(self.primaries, self.transfer, self.peak, p3);
+        /// HDR or wide-gamut video for an sRGB screen (`hdr::Mapping`).
+        fn to_rgba_mapped(&self, chroma: (u32, u32), consts: (f32, f32, f32, f32), k: (f32, f32, f32), p3: bool) -> Vec<u8> {
+            let mapping = super::hdr::Mapping::new(self.primaries, self.transfer, self.peak, p3);
+            self.each_sample(chroma, consts, k, |r, g, b| {
+                let [r, g, b] = mapping.map(r, g, b);
+                [r, g, b, 255]
+            })
+        }
+
+        /// RGBA as half floats (IEEE 754 binary16 bits) of HDR10's PQ in
+        /// BT.2020, for a window drawing in HDR10: an HDR picture's light
+        /// as it is (`hdr::ToPq`). None for a layout the fast path doesn't
+        /// take (monochrome, GBR, YCgCo: no HDR video is).
+        pub fn to_pq_half(&self) -> Option<Vec<u16>> {
+            use rav1d::include::dav1d::headers::{DAV1D_MC_IDENTITY, DAV1D_MC_SMPTE_YCGCO};
+            let chroma = self.chroma.filter(|_| !matches!(self.matrix, DAV1D_MC_IDENTITY | DAV1D_MC_SMPTE_YCGCO))?;
+            let (consts, k) = self.ycc();
+            let to = super::hdr::ToPq::new(self.primaries, self.transfer);
+            let one = super::hdr::half(1.0);
+            Some(self.each_sample(chroma, consts, k, |r, g, b| {
+                let [r, g, b] = to.map(r, g, b);
+                [super::hdr::half(r), super::hdr::half(g), super::hdr::half(b), one]
+            }))
+        }
+
+        /// What Y′CbCr's numbers mean here: (black, luma's range,
+        /// chroma's range, chroma's middle) and (Kr, Kb, Kg).
+        fn ycc(&self) -> ((f32, f32, f32, f32), (f32, f32, f32)) {
+            let shift = (self.bpc - 8) as i32;
+            let max = ((1u32 << self.bpc) - 1) as f32;
+            let half = (1u32 << (self.bpc - 1)) as f32;
+            let (y0, ys, cs) = if self.full_range { (0.0, max, max) } else { ((16 << shift) as f32, (219 << shift) as f32, (224 << shift) as f32) };
+            let (kr, kb) = self.coefficients();
+            ((y0, ys, cs, half), (kr, kb, 1.0 - kr - kb))
+        }
+
+        /// Each sample's R′G′B′ as `hdr::STEPS` table steps, by tables in
+        /// 16.16 fixed point as the plain path does, made into four of a
+        /// `T` by `f`; rows split over up to eight threads for a picture
+        /// of a megapixel or more.
+        fn each_sample<T: Copy + Send + Default>(
+            &self,
+            (sx, sy): (u32, u32),
+            (y0, ys, cs, half): (f32, f32, f32, f32),
+            (kr, kb, kg): (f32, f32, f32),
+            f: impl Fn(usize, usize, usize) -> [T; 4] + Sync,
+        ) -> Vec<T> {
+            use super::hdr::STEPS;
             let n = 1usize << self.bpc;
             let scale = (STEPS - 1) as f32 * 65536.0;
             let fix = |v: f32| (v * scale).round() as i32;
@@ -376,20 +411,17 @@ pub mod av1 {
             let top = n - 1;
             let step = |v: i32| (v >> 16).clamp(0, STEPS as i32 - 1) as usize;
             let (w, h) = (self.width as usize, self.height as usize);
-            let mut out = vec![255u8; w * h * 4];
-            let rows = |first: usize, chunk: &mut [u8]| {
+            let mut out = vec![T::default(); w * h * 4];
+            let rows = |first: usize, chunk: &mut [T]| {
                 for (i, row) in chunk.chunks_exact_mut(w * 4).enumerate() {
                     let y = first + i;
                     let ly = &self.planes[0][y * self.stride[0]..][..w];
                     let cy = (y >> sy) * self.stride[1];
                     let (us, vs) = (&self.planes[1][cy..], &self.planes[2][cy..]);
-                    for (x, (px, &l)) in row.as_chunks_mut::<4>().0.iter_mut().zip(ly).enumerate() {
+                    for (x, (px, &l)) in row.chunks_exact_mut(4).zip(ly).enumerate() {
                         let (u, v) = (us[x >> sx] as usize & top, vs[x >> sx] as usize & top);
                         let l = luma[l as usize & top];
-                        let [r, g, b] = mapping.map(step(l + cr_r[v]), step(l + cr_g[v] + cb_g[u]), step(l + cb_b[u]));
-                        px[0] = r;
-                        px[1] = g;
-                        px[2] = b;
+                        px.copy_from_slice(&f(step(l + cr_r[v]), step(l + cr_g[v] + cb_g[u]), step(l + cb_b[u])));
                     }
                 }
             };
@@ -838,7 +870,7 @@ mod tests {
         let frame = av1::Frame::synthetic(w, h, 10, (0, 0), [plane(0), plane(1), plane(2)], 9, false);
         let colour = hevc::Colour { primaries: Some(PRI_BT2020), transfer: Some(TRC_PQ), peak: Some(1000.0), ..Default::default() };
         let hdr = frame.with_colour(&colour);
-        assert!(hdr.is_hdr());
+        assert!(hdr.is_hdr() && hdr.is_wide());
         let rgba = hdr.to_rgba();
         let px = |i: usize| [rgba[i * 8], rgba[i * 8 + 1], rgba[i * 8 + 2]];
         let [white, dim, red, bright] = [px(0), px(1), px(2), px(3)];
@@ -847,6 +879,14 @@ mod tests {
         assert!(dim.iter().all(|&v| (i32::from(v) - want).abs() <= 3), "50 cd/m² {dim:?}, not {want}");
         assert!(red[0] > 200 && red[1] < 60 && red[2] < 60, "red {red:?}");
         assert_eq!(bright, [255, 255, 255], "4,000 cd/m²");
+        // For a window drawing in HDR10: the stream's own PQ, as half
+        // floats (a 12-bit step of it at most).
+        let deep = hdr.to_pq_half().unwrap();
+        let unhalf = |h: u16| f32::from_bits(((u32::from(h >> 10) + 112) << 23) | (u32::from(h & 0x3FF) << 13));
+        let got = unhalf(deep[0]);
+        let pq203 = pq(203.0) as f32;
+        assert!((got - pq203).abs() < 0.003, "{got} against {pq203}");
+        assert!((unhalf(deep[3]) - 1.0).abs() < 1e-6);
         // Without: paper white came out a mid grey (PQ's 0.58), dull.
         let plain = av1::Frame::synthetic(w, h, 10, (0, 0), [plane(0), plane(1), plane(2)], 9, false).to_rgba();
         assert!(plain[0] < 160, "{}", plain[0]);

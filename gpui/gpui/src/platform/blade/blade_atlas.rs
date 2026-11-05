@@ -159,6 +159,10 @@ impl BladeAtlasState {
                 format = gpu::TextureFormat::Rgba8Unorm;
                 usage = gpu::TextureUsage::COPY | gpu::TextureUsage::RESOURCE;
             }
+            AtlasTextureKind::Deep => {
+                format = gpu::TextureFormat::Rgba16Float;
+                usage = gpu::TextureUsage::COPY | gpu::TextureUsage::RESOURCE;
+            }
         }
 
         let raw = self.gpu.create_texture(gpu::TextureDesc {
@@ -258,6 +262,7 @@ struct BladeAtlasStorage {
     monochrome_textures: AtlasTextureList<BladeAtlasTexture>,
     polychrome_textures: AtlasTextureList<BladeAtlasTexture>,
     subpixel_textures: AtlasTextureList<BladeAtlasTexture>,
+    deep_textures: AtlasTextureList<BladeAtlasTexture>,
 }
 
 impl ops::Index<AtlasTextureKind> for BladeAtlasStorage {
@@ -267,6 +272,7 @@ impl ops::Index<AtlasTextureKind> for BladeAtlasStorage {
             crate::AtlasTextureKind::Monochrome => &self.monochrome_textures,
             crate::AtlasTextureKind::Polychrome => &self.polychrome_textures,
             crate::AtlasTextureKind::Subpixel => &self.subpixel_textures,
+            crate::AtlasTextureKind::Deep => &self.deep_textures,
         }
     }
 }
@@ -277,6 +283,7 @@ impl ops::IndexMut<AtlasTextureKind> for BladeAtlasStorage {
             crate::AtlasTextureKind::Monochrome => &mut self.monochrome_textures,
             crate::AtlasTextureKind::Polychrome => &mut self.polychrome_textures,
             crate::AtlasTextureKind::Subpixel => &mut self.subpixel_textures,
+            crate::AtlasTextureKind::Deep => &mut self.deep_textures,
         }
     }
 }
@@ -288,6 +295,7 @@ impl ops::Index<AtlasTextureId> for BladeAtlasStorage {
             crate::AtlasTextureKind::Monochrome => &self.monochrome_textures,
             crate::AtlasTextureKind::Polychrome => &self.polychrome_textures,
             crate::AtlasTextureKind::Subpixel => &self.subpixel_textures,
+            crate::AtlasTextureKind::Deep => &self.deep_textures,
         };
         textures[id.index as usize].as_ref().unwrap()
     }

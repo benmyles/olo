@@ -663,6 +663,11 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn set_gamut(&mut self, _space: crate::Gamut) -> bool {
         false
     }
+    /// Olo: whether it's on a display whose HDR is on
+    /// (`crate::set_display_hdr`).
+    fn on_hdr_display(&self) -> bool {
+        false
+    }
     fn map_window(&mut self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -1104,6 +1109,7 @@ impl AtlasKey {
                 }
             }
             AtlasKey::Svg(_) | AtlasKey::Outline(_) => AtlasTextureKind::Monochrome,
+            AtlasKey::Image(params) if params.deep => AtlasTextureKind::Deep,
             AtlasKey::Image(_) => AtlasTextureKind::Polychrome,
         }
     }
@@ -1202,6 +1208,8 @@ pub(crate) enum AtlasTextureKind {
     Polychrome = 1,
     /// Olo: glyphs with a coverage for each colour stripe (RGBA).
     Subpixel = 2,
+    /// Olo: deep pictures, half floats a channel (`RenderImage::deep`).
+    Deep = 3,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

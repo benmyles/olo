@@ -51,6 +51,12 @@ pub enum Picture {
         data: Arc<Vec<u8>>,
         p3: bool,
     },
+    /// An HDR picture as HDR10 (PQ in BT.2020), RGBA half floats, for a
+    /// window drawing in it ([`Video::draw_hdr`]).
+    Deep {
+        size: [usize; 2],
+        data: Arc<Vec<u16>>,
+    },
 }
 
 impl Picture {
@@ -59,6 +65,7 @@ impl Picture {
         match self {
             Picture::Rgba(i) => i,
             Picture::Bgra { size, data, p3 } => Arc::new(Bitmap { p3, ..Bitmap::from_bgra_unmultiplied(size, &data) }),
+            Picture::Deep { size, data } => Arc::new(Bitmap::from_rgba_unmultiplied(size, &deep_to_srgb(&data))),
         }
     }
 
@@ -67,8 +74,30 @@ impl Picture {
         match self {
             Picture::Rgba(i) => i.p3,
             Picture::Bgra { p3, .. } => *p3,
+            Picture::Deep { .. } => false,
         }
     }
+}
+
+/// An HDR10 picture's half floats (PQ, BT.2020) as sRGB RGBA, its light
+/// to SDR's white (what's brighter clipped): for whoever wants an
+/// ordinary picture of one (a still, a copy).
+fn deep_to_srgb(rgba: &[u16]) -> Vec<u8> {
+    let unhalf = |h: u16| {
+        let (exp, mant) = (u32::from(h >> 10) & 0x1F, u32::from(h & 0x3FF));
+        if exp == 0 { mant as f32 / 16_777_216.0 } else { f32::from_bits(((exp + 112) << 23) | (mant << 13)) }
+    };
+    let m = olo_color::Primaries::BT2020.to(&olo_color::Primaries::SRGB).0;
+    rgba.chunks_exact(4)
+        .flat_map(|p| {
+            let light = [0, 1, 2].map(|i| (olo_color::pq_decode(f64::from(unhalf(p[i]))) * 10_000.0 / olo_color::SDR_WHITE_NITS).min(1.0));
+            let srgb = [0, 1, 2].map(|r| {
+                let v = m[r][0] * light[0] + m[r][1] * light[1] + m[r][2] * light[2];
+                (olo_color::Transfer::Srgb.encode(v.clamp(0.0, 1.0)) * 255.0).round() as u8
+            });
+            [srgb[0], srgb[1], srgb[2], 255]
+        })
+        .collect()
 }
 
 /// A decoded picture: compact as decoded, or ready to show.
@@ -95,11 +124,18 @@ impl Pic {
             Pic::Planes(f) => f.width as usize * f.height as usize * 6,
             Pic::Ready(Picture::Rgba(i)) => i.rgba.len(),
             Pic::Ready(Picture::Bgra { data, .. }) => data.len(),
+            Pic::Ready(Picture::Deep { data, .. }) => data.len() * 2,
         }
     }
 
-    fn picture(&self, bgra: bool) -> Picture {
+    /// As a picture to show; `hdr`, an HDR picture as HDR10
+    /// (`Picture::Deep`).
+    fn picture(&self, bgra: bool, hdr: bool) -> Picture {
         match self {
+            Pic::Planes(f) if hdr && f.is_hdr() => match f.to_pq_half() {
+                Some(data) => Picture::Deep { size: [f.width as usize, f.height as usize], data: Arc::new(data) },
+                None => Pic::Planes(f.clone()).picture(bgra, false),
+            },
             Pic::H264(p) if bgra => Picture::Bgra { size: [p.width, p.height], data: Arc::new(p.bgra()), p3: false },
             Pic::H264(p) => Picture::Rgba(p.image()),
             // (A wide video's in Display P3: drawn so in a window drawing
@@ -189,6 +225,11 @@ struct Shared {
     ahead: usize,
     /// Make pictures BGRA (for pages) rather than RGBA.
     bgra: bool,
+    /// Make an HDR picture HDR10's (`Video::draw_hdr`: a window drawing
+    /// in HDR10 shows it), rather than mapped for SDR.
+    hdr: bool,
+    /// A picture of the stream so far was HDR (`Video::is_hdr`).
+    stream_hdr: bool,
     seek: Option<f64>,
     stop: bool,
     /// The stream ended and the queue holds its last frames.
@@ -358,6 +399,18 @@ impl Video {
         (p.map(Picture::into_image), next)
     }
 
+    /// Whether the stream's pictures are HDR (PQ or HLG), as far as it
+    /// has been seen.
+    pub fn is_hdr(&self) -> bool {
+        self.shared.0.lock().unwrap().stream_hdr
+    }
+
+    /// HDR pictures drawn as HDR10 (`Picture::Deep`) from now, for a
+    /// window drawing in it, or mapped for SDR as they otherwise are.
+    pub fn draw_hdr(&self, on: bool) {
+        self.shared.0.lock().unwrap().hdr = on;
+    }
+
     /// [`Video::tick`] in the form asked for at the start
     /// ([`Options::bgra`]).
     pub fn tick_picture(&self) -> (Option<Picture>, Option<Duration>) {
@@ -410,10 +463,11 @@ impl Video {
         // Playing, or waiting for the picture a seek asked for.
         let idle = if self.picture { Duration::from_millis(15) } else { Duration::from_millis(100) };
         let next = if c.since.is_some() || (c.show_next && !sh.eof) { Some(next.unwrap_or(idle)) } else { None };
+        let hdr = sh.hdr;
         drop(sh);
         drop(c);
         // Ready unless the worker fell behind.
-        (due.map(|f| f.pic.ready().cloned().unwrap_or_else(|| f.pic.picture(self.bgra))), next)
+        (due.map(|f| f.pic.ready().cloned().unwrap_or_else(|| f.pic.picture(self.bgra, hdr))), next)
     }
 }
 
@@ -438,15 +492,16 @@ pub struct Options {
 /// Make the picture at the front of the queue ready to show (outside the
 /// lock: the UI may be waiting on it).
 fn ripen(m: &Mutex<Shared>) {
-    let (pts, pic, bgra) = {
+    let (pts, pic, bgra, hdr) = {
         let sh = m.lock().unwrap();
         match sh.queue.front() {
-            Some(f) if f.pic.ready().is_none() => (f.pts, f.pic.clone(), sh.bgra),
+            Some(f) if f.pic.ready().is_none() => (f.pts, f.pic.clone(), sh.bgra, sh.hdr),
             _ => return,
         }
     };
-    let image = pic.picture(bgra);
+    let image = pic.picture(bgra, hdr);
     let mut sh = m.lock().unwrap();
+    sh.stream_hdr |= matches!(&pic, Pic::Planes(f) if f.is_hdr());
     if let Some(f) = sh.queue.front_mut()
         && f.pts == pts
         && f.pic.ready().is_none()
@@ -503,7 +558,7 @@ pub fn picture_at(input: &Input, at: f64) -> Result<Image, String> {
     while sh.queue.is_empty() && !sh.eof && sh.error.is_none() && !worker.is_finished() {
         sh = cv.wait_timeout(sh, Duration::from_millis(10)).unwrap().0;
     }
-    let first = sh.queue.front().map(|f| f.pic.picture(false));
+    let first = sh.queue.front().map(|f| f.pic.picture(false, false));
     sh.stop = true;
     drop(sh);
     cv.notify_all();

@@ -3056,8 +3056,12 @@ rather than sRGB (`Frame::to_rgba_wide`, tagged so: `Picture::p3`,
 shows (`PreviewEvent::Gamut` from its first picture), as for a wide
 photo: on a P3 panel its colours aren't clipped to sRGB's. Viewer's
 facts say it ("Colour: HDR (PQ), BT.2020, mastered to 1,000 cd/m²").
-Not yet: HDR shown as HDR on an HDR display (the picture handed to
-app_server in PQ, `wp_color_management_v1`).
+On a display whose HDR is on, Viewer draws an HDR video's window in
+HDR10 (GPUI's, below) and the player makes its pictures HDR10's
+(`Video::draw_hdr`: `Frame::to_pq_half`, half floats of PQ in BT.2020,
+the stream's own PQ as it is, HLG and SDR converted): its highlights
+shine as mastered, its paper white at SDR's; where the window can't, P3
+or sRGB as above.
 
 The display hardware's own colour stages (the CRTC's degamma, CTM and
 gamma LUTs; Intel's per-plane pipelines, `COLOR_PIPELINE`) aren't used:
@@ -3112,9 +3116,23 @@ and an image marked P3 (`RenderImage::with_gamut`, a kit `Rgba`'s
 `gamut()`) drawn as it is; in an sRGB window a P3 image is converted.
 Viewer draws in P3 while it shows a photo wider than sRGB
 (`olo_images::open_wide` keeps it in P3), so an iPhone photo's reds and
-greens show whole on a P3 panel. A window not asking costs nothing (one
-uniform). GPUI never makes colour management objects itself: Mesa's
-WSI makes the one a surface may have. Night light in HDR scales each channel's light
+greens show whole on a P3 panel. A window can draw in HDR10 too
+(`Gamut::Hdr10`: Vulkan's `HDR10_ST2084_EXT`, ten bits, which Mesa's
+WSI offers on app_server's surfaces): every colour encoded in PQ in
+BT.2020 by the shaders (sRGB's white at SDR's 203 cd/m²), a P3 image
+converted, and an HDR10 picture drawn as it is: `RenderImage::deep`,
+half floats a channel in an atlas of their own (`AtlasTextureKind::
+Deep`, `Rgba16Float`: eight bits of PQ would band). In another window an
+HDR10 picture is shown to SDR's white. The kit tells GPUI which
+displays' HDR is on (`gpui::set_display_hdr`, from app_server's
+`OutputInfo::hdr`), and `Window::on_hdr_display` says whether a window
+is on one (once it has entered its display, after its first frame).
+`tools/dev/hdr-check` reads a GPUI window in HDR10 back from a pretend
+HDR screen (the kit's `hdr_probe` example): its sRGB white at 203
+cd/m², its HDR10 pictures at their own 1,000 and 100. A window not
+asking costs nothing (one uniform: bench's frames the same before and
+after, StyledEdit and Viewer at 1×). GPUI never makes colour management
+objects itself: Mesa's WSI makes the one a surface may have. Night light in HDR scales each channel's light
 and encodes PQ again (`night::ramps_pq`), the gamma ramp's input being
 PQ's code (evenly spaced to the eye: the LUT holds it well).
 `tools/dev/layout-check NAME [--auto] [--unplug]` checks this quickly:

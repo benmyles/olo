@@ -2190,12 +2190,18 @@ impl PlatformWindow for WaylandWindow {
         state.app_id = Some(app_id.to_owned());
     }
 
+    fn on_hdr_display(&self) -> bool {
+        self.borrow().outputs.values().any(|o| {
+            o.name
+                .as_deref()
+                .is_some_and(crate::text_system::display_hdr)
+        })
+    }
+
     fn set_gamut(&mut self, space: crate::Gamut) -> bool {
         // (The swapchain's colour space: Mesa's WSI tells the compositor,
         // through its own wp_color_management_v1 object for the surface.)
-        self.borrow_mut()
-            .renderer
-            .set_display_p3(space == crate::Gamut::DisplayP3)
+        self.borrow_mut().renderer.set_gamut(space)
     }
 
     fn activation_token(&self, done: Box<dyn FnOnce(Option<String>)>) {

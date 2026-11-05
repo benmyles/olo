@@ -2174,10 +2174,17 @@ impl Window {
         self.platform_window.set_title(title);
     }
 
+    /// Olo: whether the window is on a display whose HDR is on: an HDR
+    /// picture may then be drawn as HDR (`set_gamut(Gamut::Hdr10)`).
+    pub fn on_hdr_display(&self) -> bool {
+        self.platform_window.on_hdr_display()
+    }
+
     /// Olo: draw this window in `space` (Display P3, while it shows a
-    /// photo wider than sRGB, say): its sRGB colours converted as drawn,
-    /// images in that space as they are. Whether it does: the compositor
-    /// must take the window's colours (wp_color_management_v1).
+    /// photo wider than sRGB, say; HDR10, an HDR video): its sRGB colours
+    /// converted as drawn, images in that space as they are. Whether it
+    /// does: the compositor must take the window's colours
+    /// (wp_color_management_v1).
     pub fn set_gamut(&mut self, space: crate::Gamut) -> bool {
         let drawn = self.platform_window.set_gamut(space);
         self.refresh();
@@ -4306,6 +4313,7 @@ impl Window {
         let params = RenderImageParams {
             image_id: data.id,
             frame_index: 0,
+            deep: data.is_deep(),
         };
         let tile = self
             .sprite_atlas
@@ -4364,6 +4372,7 @@ impl Window {
         let params = RenderImageParams {
             image_id: data.id,
             frame_index,
+            deep: data.is_deep(),
         };
 
         let tile = self
@@ -4384,12 +4393,12 @@ impl Window {
 
         self.next_frame.scene.insert_primitive(PolychromeSprite {
             order: 0,
-            // (Bit 1: the image is Display P3's numbers.)
+            // (Bit 1: the image is Display P3's numbers; bit 2, HDR10's.)
             nearest: u32::from(nearest)
-                | if data.color_space == crate::Gamut::DisplayP3 {
-                    2
-                } else {
-                    0
+                | match data.color_space {
+                    crate::Gamut::DisplayP3 => 2,
+                    crate::Gamut::Hdr10 => 4,
+                    crate::Gamut::Srgb => 0,
                 },
             grayscale,
             bounds: bounds
@@ -4429,6 +4438,7 @@ impl Window {
             let params = RenderImageParams {
                 image_id: data.id,
                 frame_index,
+                deep: data.is_deep(),
             };
 
             self.sprite_atlas.remove(&params.clone().into());

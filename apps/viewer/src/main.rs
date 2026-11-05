@@ -456,6 +456,35 @@ impl Doc {
         }
     }
 
+    /// As `set_gamut`, for what `gamut` its picture is in; and with
+    /// `hdr_video` (a preview playing HDR video), in HDR10 when the window
+    /// is on a display whose HDR is on and can draw in it, the video's
+    /// pictures then HDR10's; else as the picture is (P3 for a wide one),
+    /// the video's mapped for SDR.
+    fn set_video_gamut(&mut self, gamut: olo_ui::gpui::Gamut, hdr_video: Option<Entity<PreviewView>>, cx: &mut Context<Self>) {
+        use olo_ui::gpui::Gamut;
+        let Some(win) = self.win else { return };
+        cx.defer(move |cx| {
+            let _ = win.update(cx, |_, window, cx| {
+                let hdr = hdr_video.is_some() && window.on_hdr_display() && window.set_gamut(Gamut::Hdr10);
+                if let Some(p) = &hdr_video {
+                    p.read(cx).draw_video_hdr(hdr);
+                }
+                if !hdr {
+                    // (Wide still: an HDR video's pictures are BT.2020's.)
+                    let gamut = if hdr_video.is_some() {
+                        Gamut::DisplayP3
+                    } else if gamut == Gamut::Hdr10 {
+                        Gamut::DisplayP3
+                    } else {
+                        gamut
+                    };
+                    window.set_gamut(gamut);
+                }
+            });
+        });
+    }
+
     /// The window's title, and the file it shows (its tab's Open in
     /// Tracker).
     fn set_title(&self, cx: &mut Context<Self>) {
@@ -481,10 +510,14 @@ impl Doc {
                     // A photo wider than sRGB shown whole: the window draws
                     // in Display P3 while it shows one (`Gamut`).
                     // A video wider than sRGB (BT.2020, P3) too, from its
-                    // first picture.
+                    // first picture; an HDR one in HDR10 on a display
+                    // whose HDR is on.
                     if matches!(*e, PreviewEvent::Shown | PreviewEvent::Gamut) {
-                        let gamut = prev.read(cx).gamut(cx);
-                        d.set_gamut(gamut, cx);
+                        let (gamut, hdr) = {
+                            let p = prev.read(cx);
+                            (p.gamut(cx), p.video_is_hdr())
+                        };
+                        d.set_video_gamut(gamut, hdr.then(|| prev.clone()), cx);
                     }
                     if *e == PreviewEvent::Shown && !d.sized {
                         d.sized = true;
