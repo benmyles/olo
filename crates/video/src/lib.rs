@@ -4,6 +4,8 @@
 //! comes, with its own duration, the index at the end), for the screen
 //! recorder (olo-screenshot) and Agent Screens' Export Video.
 
+pub mod nvenc;
+
 use std::{
     fs::File,
     io::{BufWriter, Seek, SeekFrom, Write},
@@ -12,7 +14,7 @@ use std::{
 
 use openh264::{
     OpenH264API,
-    encoder::{BitRate, Complexity, Encoder, EncoderConfig, FrameRate, FrameType, IntraFramePeriod, RateControlMode, UsageType},
+    encoder::{BitRate, Complexity, Encoder as OpenH264Encoder, EncoderConfig, FrameRate, FrameType, IntraFramePeriod, RateControlMode, UsageType},
     formats::{BgraSliceU8, RgbaSliceU8, YUVBuffer},
 };
 
@@ -52,9 +54,91 @@ pub enum Order {
     Rgba,
 }
 
+/// The bitrate a screen's video is given: about a tenth of a bit a pixel
+/// a frame (a 4K screen at 30 a second: 25 Mbit/s), 1 to 80 Mbit/s.
+pub fn bitrate(width: u32, height: u32, fps: u32) -> u32 {
+    (f64::from(width) * f64::from(height) * f64::from(fps) * 0.1).clamp(1e6, 80e6) as u32
+}
+
+/// Which encoder a recording uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    /// The most powerful there is: NVIDIA's (NVENC) where it opens, else
+    /// the processor.
+    Auto,
+    /// The processor (OpenH264).
+    Cpu,
+    /// NVIDIA's GPU (NVENC), or an error saying why not.
+    Nvidia,
+}
+
+impl Choice {
+    pub fn parse(s: &str) -> Option<Choice> {
+        match s {
+            "auto" => Some(Choice::Auto),
+            "cpu" => Some(Choice::Cpu),
+            "nvidia" | "nvenc" | "gpu" => Some(Choice::Nvidia),
+            _ => None,
+        }
+    }
+}
+
+/// An H.264 encoder: the GPU's or the processor's ([`Choice`]).
+pub enum Encoder {
+    Cpu(H264),
+    Nvidia(nvenc::Nvenc, Vec<u8>),
+}
+
+impl Encoder {
+    /// One for `width` × `height` (even) pictures at up to `fps` a second.
+    pub fn new(width: u32, height: u32, fps: u32, choice: Choice) -> Result<Encoder, String> {
+        let nvidia = || nvenc::Nvenc::new(width, height, fps.clamp(1, 120), bitrate(width, height, fps)).map(|e| Encoder::Nvidia(e, Vec::new()));
+        match choice {
+            Choice::Cpu => H264::new(width, height, fps).map(Encoder::Cpu),
+            Choice::Nvidia => nvidia(),
+            Choice::Auto => nvidia().or_else(|_| H264::new(width, height, fps).map(Encoder::Cpu)),
+        }
+    }
+
+    /// What it is, as said to a person ("NVIDIA's GPU (NVENC)").
+    pub fn name(&self) -> &'static str {
+        match self {
+            Encoder::Cpu(_) => "the processor (OpenH264)",
+            Encoder::Nvidia(..) => "NVIDIA's GPU (NVENC)",
+        }
+    }
+
+    pub fn size(&self) -> (u32, u32) {
+        match self {
+            Encoder::Cpu(e) => e.size(),
+            Encoder::Nvidia(e, _) => e.size(),
+        }
+    }
+
+    /// One picture encoded: its Annex B bytes, and whether it's a key
+    /// frame.
+    pub fn encode(&mut self, data: &[u8], stride: usize, order: Order) -> Result<(Vec<u8>, bool), String> {
+        match self {
+            Encoder::Cpu(e) => e.encode(data, stride, order),
+            Encoder::Nvidia(e, swapped) => match order {
+                Order::Bgra => e.encode(data, stride),
+                // (NVENC is given BGRA: red and blue swapped first.)
+                Order::Rgba => {
+                    swapped.clear();
+                    swapped.extend_from_slice(data);
+                    for px in swapped.chunks_exact_mut(4) {
+                        px.swap(0, 2);
+                    }
+                    e.encode(swapped, stride)
+                }
+            },
+        }
+    }
+}
+
 /// An H.264 encoder for pictures of one size (even: H.264's; [`even`]).
 pub struct H264 {
-    encoder: Encoder,
+    encoder: OpenH264Encoder,
     width: usize,
     height: usize,
     /// One picture's rows, packed (a capture's may be wider).
@@ -79,7 +163,7 @@ impl H264 {
             return Err(format!("{w}×{h} isn't an even size"));
         }
         let fps = fps.clamp(1, 120);
-        let bps = ((w * h) as f64 * fps as f64 * 0.1).clamp(1e6, 80e6) as u32;
+        let bps = bitrate(width, height, fps);
         let config = EncoderConfig::new()
             .usage_type(UsageType::ScreenContentRealTime)
             .rate_control_mode(RateControlMode::Quality)
@@ -90,7 +174,7 @@ impl H264 {
             .skip_frames(false)
             // (OpenH264 says nothing of its own on stderr.)
             .debug(false);
-        let encoder = Encoder::with_api_config(OpenH264API::from_source(), config).map_err(|e| e.to_string())?;
+        let encoder = OpenH264Encoder::with_api_config(OpenH264API::from_source(), config).map_err(|e| e.to_string())?;
         Ok(H264 { encoder, width: w, height: h, packed: vec![0; w * h * 4] })
     }
 
@@ -377,6 +461,49 @@ mod tests {
             }
             times.sort();
             eprintln!("{w}×{h}: median {:?}, max {:?} a frame (the first, a key frame, among them)", times[15], times[29]);
+        }
+    }
+
+    /// NVIDIA's encoder, where there is one: its H.264 decodes, an MP4 of
+    /// it reads back, and what a 4K frame costs against the processor's
+    /// (`--ignored`: it needs the GPU).
+    #[test]
+    #[ignore]
+    fn nvenc_makes_h264_that_decodes() {
+        if !nvenc::available() {
+            eprintln!("no NVIDIA encoder here: nothing to try");
+            return;
+        }
+        for (w, h) in [(640u32, 360u32), (3840, 2160)] {
+            let mut e = Encoder::new(w, h, 30, Choice::Nvidia).unwrap();
+            assert_eq!(e.name(), "NVIDIA's GPU (NVENC)");
+            let mut dec = openh264::decoder::Decoder::new().unwrap();
+            let mut px: Vec<u8> = (0..(w * h))
+                .flat_map(|p| {
+                    let (x, y) = (p % w, p / w);
+                    let ink = if (y / 24) % 2 == 0 && (x / 7) % 3 != 0 { 40 } else { 235 };
+                    [ink, ink, ink, 255]
+                })
+                .collect();
+            let (mut times, mut decoded, mut keys) = (Vec::new(), 0, 0);
+            for i in 0..30u32 {
+                let y0 = (i * 8) % (h - 16);
+                for y in y0..y0 + 16 {
+                    for x in 10..300 {
+                        px[((y * w + x) * 4) as usize] = (i * 8) as u8;
+                    }
+                }
+                let t = std::time::Instant::now();
+                let (bits, key) = e.encode(&px, w as usize * 4, Order::Bgra).unwrap();
+                times.push(t.elapsed());
+                keys += usize::from(key);
+                if dec.decode(&bits).unwrap().is_some() {
+                    decoded += 1;
+                }
+            }
+            times.sort();
+            eprintln!("NVENC {w}×{h}: median {:?}, max {:?} a frame; {decoded} of 30 decoded, {keys} key", times[15], times[29]);
+            assert!(decoded >= 29 && keys >= 1);
         }
     }
 }

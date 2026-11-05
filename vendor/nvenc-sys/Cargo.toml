@@ -1,0 +1,9 @@
+[package]
+name = "nvenc-sys"
+description = "NVIDIA's NVENC API declarations (nvEncodeAPI.h): types, the function table, GUIDs and versions, from nvidia-video-codec-sdk 0.4.0's bindgen output (MIT), without linking the library"
+version = "0.4.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"

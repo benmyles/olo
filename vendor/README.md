@@ -29,6 +29,13 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   keeps its folder for what it runs, not as its own process's, so
   `/proc/PID/cwd` said where it started). Drop it if upstream takes
   hooks like these (and changes its own folder on `cd`).
+- **nvenc-sys/** (MIT): NVIDIA's NVENC API (nvEncodeAPI.h, Video Codec
+  SDK 12) as declarations only: nvidia-video-codec-sdk 0.4.0's bindgen
+  output (types, the function table, GUIDs, structure versions) with
+  its `extern` block and build script left out, so nothing links
+  libnvidia-encode and Olo builds and starts without NVIDIA's driver.
+  olo-video's `nvenc` opens the library at run time and calls it through
+  its function table.
 - **bebook/**: the Be Book as Markdown, for reference (see its README).
 
 # Vendored libraries

@@ -7,6 +7,9 @@ license.workspace = true
 
 [dependencies]
 openh264 = "0.9"
+libc = "0.2"
+# NVENC's declarations, nothing linked (nvenc.rs opens the library).
+nvenc-sys = { path = "../../vendor/nvenc-sys" }
 
 [dev-dependencies]
 mp4 = "0.14"

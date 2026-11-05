@@ -10,14 +10,17 @@
 //!
 //! ```text
 //! olo-screenshot --record [--window ID] [--display NAME] [--seconds N]
-//!                [--fps N] [--no-pointer] [--to PATH]
+//!                [--fps N] [--no-pointer] [--encoder auto|cpu|nvidia] [--to PATH]
 //! olo-screenshot --stop          the recording on this display, finished
 //! olo-screenshot --recording     whether one is going, as JSON
 //! ```
 //!
 //! `--record` records until `--stop` (or SIGINT/SIGTERM), N seconds, or
 //! the window closing, then prints what it made as JSON (`path`,
-//! `seconds`, `frames`, `width`, `height`); by default into the Videos
+//! `seconds`, `frames`, `width`, `height`, `encoder`). It encodes on the
+//! most powerful encoder there is unless told (`--encoder`): NVIDIA's
+//! GPU (NVENC: 4K in 13 ms a frame) where it opens, else the processor
+//! (OpenH264: 4K in 111 ms); by default into the Videos
 //! folder as "Screen Recording 2026-11-04 at 18.30.05.mp4", written as
 //! `.part` until whole. One at a time on each display: what's going is
 //! in `$XDG_RUNTIME_DIR/olo-recording-<display>.json` (so an Agent
@@ -103,6 +106,8 @@ pub struct Made {
     pub frames: usize,
     pub width: u32,
     pub height: u32,
+    /// What encoded it ("NVIDIA's GPU (NVENC)").
+    pub encoder: String,
 }
 
 /// `--record`: record until told to stop; what it made printed. Exit 0
@@ -130,6 +135,10 @@ fn record(args: &[String]) -> Result<Made, String> {
     };
     let fps: u32 = option(args, "--fps").map_or(Ok(30), str::parse).map_err(|_| "--fps takes a number")?;
     let fps = fps.clamp(1, 60);
+    let choice = match option(args, "--encoder") {
+        Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu or nvidia")?,
+        None => olo_video::Choice::Auto,
+    };
     let seconds: Option<f64> = option(args, "--seconds").map(str::parse).transpose().map_err(|_| "--seconds takes a number")?;
     let path = option(args, "--to").map_or_else(default_path, PathBuf::from);
     if let Some(dir) = path.parent() {
@@ -149,12 +158,12 @@ fn record(args: &[String]) -> Result<Made, String> {
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what };
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
-    let result = record_into(&mut capture, &path, fps, seconds);
+    let result = record_into(&mut capture, &path, fps, seconds, choice);
     let _ = std::fs::remove_file(going_path());
     result
 }
 
-fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64>) -> Result<Made, String> {
+fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64>, choice: olo_video::Choice) -> Result<Made, String> {
     let start = Instant::now();
     let fd = capture.fd()?;
     let every = Duration::from_secs_f64(1.0 / f64::from(fps));
@@ -164,7 +173,7 @@ fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64
     let part = path.with_extension("mp4.part");
     let worker = {
         let (slot, ended, part) = (slot.clone(), ended.clone(), part.clone());
-        std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &part, fps)).map_err(|e| e.to_string())?
+        std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &part, fps, choice)).map_err(|e| e.to_string())?
     };
     let mut asked_at: Option<Instant> = None;
     let result: Result<(), String> = (|| {
@@ -211,10 +220,10 @@ fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64
     slot.1.notify_one();
     let made = worker.join().map_err(|_| "the encoder failed".to_string())?;
     result?;
-    let (frames, (width, height)) = made?;
+    let (frames, (width, height), encoder) = made?;
     // The file finished by the worker, then put where it goes.
     std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(Made { path: path.to_path_buf(), seconds: (total.as_millis() as f64 / 1000.0), frames, width, height })
+    Ok(Made { path: path.to_path_buf(), seconds: (total.as_millis() as f64 / 1000.0), frames, width, height, encoder: encoder.to_owned() })
 }
 
 /// Wait until `fd` has something to read, or `timeout`.
@@ -227,10 +236,10 @@ fn wait_fd(fd: i32, timeout: Duration) {
 /// The encoder's loop: each picture as it's handed over, held until the
 /// next; at the end, the last held till then and the file finished.
 /// Frames encoded, and the video's size.
-fn encode(slot: &(Mutex<Option<Waiting>>, std::sync::Condvar), ended: &AtomicBool, part: &Path, fps: u32) -> Result<(usize, (u32, u32)), String> {
+fn encode(slot: &(Mutex<Option<Waiting>>, std::sync::Condvar), ended: &AtomicBool, part: &Path, fps: u32, choice: olo_video::Choice) -> Result<(usize, (u32, u32), &'static str), String> {
     let (m, cv) = slot;
     // Milliseconds: durations as they came.
-    let mut video: Option<(olo_video::H264, olo_video::Mp4, Vec<u8>)> = None;
+    let mut video: Option<(olo_video::Encoder, olo_video::Mp4, Vec<u8>)> = None;
     let mut held: Option<(Vec<u8>, bool, Duration)> = None;
     let mut frames = 0usize;
     let started = Instant::now();
@@ -250,7 +259,7 @@ fn encode(slot: &(Mutex<Option<Waiting>>, std::sync::Condvar), ended: &AtomicBoo
         let Some(w) = next else { break };
         if video.is_none() {
             let (vw, vh) = olo_video::even(w.width, w.height);
-            let enc = olo_video::H264::new(vw, vh, fps)?;
+            let enc = olo_video::Encoder::new(vw, vh, fps, choice)?;
             let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
             video = Some((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]));
         }
@@ -267,7 +276,7 @@ fn encode(slot: &(Mutex<Option<Waiting>>, std::sync::Condvar), ended: &AtomicBoo
         }
         held = Some((bits, key, w.at));
     }
-    let Some((_, mut mp4, _)) = video else { return Err("nothing was shown to record".into()) };
+    let Some((enc, mut mp4, _)) = video else { return Err("nothing was shown to record".into()) };
     if let Some((b, k, at)) = held {
         let ms = started.elapsed().saturating_sub(at).as_millis().max(1) as u32;
         mp4.add(&b, k, ms).map_err(|e| e.to_string())?;
@@ -275,7 +284,7 @@ fn encode(slot: &(Mutex<Option<Waiting>>, std::sync::Condvar), ended: &AtomicBoo
     }
     let made = mp4.size();
     mp4.finish().map_err(|e| e.to_string())?;
-    Ok((frames, made))
+    Ok((frames, made, enc.name()))
 }
 
 /// `w`'s picture into `canvas` (`vw` × `vh`, BGRA): cut, or padded black.

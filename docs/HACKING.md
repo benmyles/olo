@@ -5589,11 +5589,24 @@ Screens' Export Video uses too).
   video still keeps its time (the Viewer shows such a video's average,
   "13 fps").
 - **Encoded on a worker** as frames come; one that comes while the last
-  is still being encoded waits in its place, a newer taking it. Encoding
-  on this x86 (AVX2, one thread): 16 ms a frame at 1440 × 900, 56 at
-  2560 × 1600, 111 at 4K (`cargo test -p olo-video encode_cost --
-  --ignored`): a 4K recording of much motion keeps about 9 a second,
-  which a GPU's encoder is for (TODO). A window that changes size is cut
+  is still being encoded waits in its place, a newer taking it, on the
+  most powerful encoder there is unless told (`--encoder auto|cpu|
+  nvidia`; `olo_video::Encoder`, `Choice`): NVIDIA's GPU where its
+  encoder opens (`olo_video::nvenc`: NVENC's API through vendor/
+  nvenc-sys's declarations, `libnvidia-encode.so.1` and `libcuda.so.1`
+  opened at run time, nothing linked, so a machine without them builds,
+  starts and records on the processor; H.264 at preset P4 tuned for
+  quality, VBR at `olo_video::bitrate`, a key frame every two seconds,
+  no B-frames, the parameter sets with each key frame), else the
+  processor (OpenH264). A frame at 4K: 13.4 ms on the GPU (an RTX 50
+  laptop part, `nvenc_makes_h264_that_decodes`, each frame decoded back
+  by OpenH264), 111 ms on the processor (AVX2, one thread; 16 ms at
+  1440 × 900, 56 at 2560 × 1600: `encode_cost`), so 4K keeps up at 30 or
+  60 a second on the GPU and about 9 on the processor. NVENC's
+  structures are filled from zeroed memory through raw pointers and read
+  as Rust values only once every field is valid (an enum whose zero
+  isn't one of its values set first, or filled by the driver). The JSON
+  says which encoded it (`encoder`). A window that changes size is cut
   or shown on black at the size it began.
 - **Ends** on `olo-screenshot --stop` (SIGTERM to the recorder, which
   finishes the file; `--stop` waits for it on a pidfd, then prints the

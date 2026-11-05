@@ -6522,6 +6522,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nvenc-sys"
+version = "0.4.0"
+
+[[package]]
 name = "nvml-wrapper"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7769,7 +7773,9 @@ dependencies = [
 name = "olo-video"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "mp4",
+ "nvenc-sys",
  "openh264",
 ]
 

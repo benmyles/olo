@@ -40,7 +40,8 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen archive NAME            a stopped screen out of the way (listed as archived)
        olo-screen unarchive NAME          back among the stopped ones
        olo-screen delete NAME             a screen and everything it kept, to the Trash
-       olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--no-pointer] [--to PATH]
+       olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--no-pointer]
+                          [--encoder auto|cpu|nvidia] [--to PATH]
                                              a video of the screen (or one window), into ~/Videos
                                              unless told; prints its path (JSON) at once
        olo-screen stop-video NAME         the video finished; prints where it went
@@ -266,7 +267,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 None => video_path(&s.name),
             };
             let mut argv: Vec<String> = vec!["olo-screenshot".into(), "--record".into(), "--to".into(), to.display().to_string()];
-            for flag in ["--seconds", "--fps", "--window"] {
+            for flag in ["--seconds", "--fps", "--window", "--encoder"] {
                 if let Some(v) = option(rest, flag) {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }
