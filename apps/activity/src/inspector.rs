@@ -606,7 +606,7 @@ impl Render for Inspector {
             .flex_shrink_0()
             .child(Button::new("Send Signal…").min_width(120.0).enabled(alive).on_click_at(move |b, window, cx| {
                 let to = signal_me.clone();
-                menu::popup(window, cx, signal_menu(pid), b, Corner::BottomLeft, move |cmd, window, cx| Inspector::run(&to, cmd, window, cx));
+                menu::popup(window, cx, signal_menu(&[pid]), b, Corner::BottomLeft, move |cmd, window, cx| Inspector::run(&to, cmd, window, cx));
             }))
             .child(div().flex_1())
             .child(Button::new("Quit").min_width(bw).enabled(alive).on_click(move |window, cx| Inspector::run(&quit_me, &format!("quit:{pid}"), window, cx)))

@@ -6599,6 +6599,22 @@ SIGTERM, Force Quit asks first. `actions.rs` does all of it (nice and
 affinity for every thread; tunables only those in `TUNABLES`, governors
 only those the CPU offers).
 
+Processes chooses several the usual way (⇧-click a range, ⌘-click one
+more, ⌘A all shown, ⇧ with the arrows): `Activity::selected` holds their
+pids, following them as rows move, each leaving as its row leaves the
+list (quit, filtered out), so an action never reaches a process not
+shown chosen; in Tree a collapsed row stands for everything under it
+(`chosen_pids`). The row menu, right-clicked on a chosen row, acts on
+all of them ("Quit 3 Processes", Force Quit with one alert naming them:
+"Force 3 processes to quit (sleep ×3)?", Send Signal, Priority checked
+where all agree, Show Programs in Tracker each program once, Copy
+Process IDs and Command Lines one a line), Inspect on the first; on a
+row not chosen it chooses that one alone. The buttons under the list
+and the Process menu act on the same set. Commands carry the pids
+("quit:12,40,41", `pid_list`), so an agent's menu choice does the same;
+refusals are said once (`act_all`), those wanting full access asked about
+once.
+
 Full access: `helper.rs` runs Activity Monitor's own program as root
 (`olo-activity --helper`, through pkexec, which asks for the password
 with Olo's polkit agent), and the sampler runs there, streaming samples,

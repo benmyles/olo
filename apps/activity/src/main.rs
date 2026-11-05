@@ -446,7 +446,9 @@ pub struct Activity {
     /// CPU and memory of inspected processes over time.
     pub proc_history: HashMap<i32, std::rc::Rc<VecDeque<(f64, f64)>>>,
     pub list: Entity<ListModel>,
-    pub selected: Option<i32>,
+    /// The processes chosen in the table, in its order: what its row
+    /// menu, the buttons under it and the Process menu act on.
+    pub selected: Vec<i32>,
     pub collapsed: HashSet<i32>,
     pub rows_cache: Option<(u64, processes::RowsKey, std::rc::Rc<processes::Rows>)>,
     /// Where each tree row's triangle was drawn, for a press on it (kept
@@ -797,6 +799,48 @@ impl Activity {
         }
     }
 
+    /// Several actions (one for each process chosen): those refused for
+    /// want of access asked about once, the rest's refusals said once.
+    pub fn act_all(&mut self, actions: Vec<Action>, cx: &mut Context<Self>) {
+        if actions.len() == 1 {
+            return self.act(actions.into_iter().next().expect("one"), cx);
+        }
+        if let (Some(h), Access::Full) = (&self.helper, self.access) {
+            for action in actions {
+                self.next_action += 1;
+                h.send(&ToHelper::Act { id: self.next_action, action });
+            }
+            return;
+        }
+        let (mut needs, mut other) = (Vec::new(), Vec::new());
+        for action in actions {
+            match action.run() {
+                Ok(()) => {}
+                Err(Refusal { needs_access: true, .. }) if helper::way() != Way::Off => needs.push(action),
+                Err(r) => other.push(r.message),
+            }
+        }
+        self.refresh_soon();
+        if let Some(first) = other.first() {
+            let message = if other.len() == 1 { first.clone() } else { format!("{first} ({} more were refused too.)", other.len() - 1) };
+            self.alert(&message, cx);
+        }
+        if !needs.is_empty() {
+            let message = format!("{} of them belong to someone else. Activity Monitor can act on those once you give it full access, with an administrator's password.", needs.len());
+            let me = cx.entity();
+            cx.defer(move |cx| {
+                open_alert(cx, "Activity Monitor", "authentication", &message, &["Cancel", "Get Full Access…"], move |choice, cx| {
+                    if choice == Some(1) {
+                        me.update(cx, |a, cx| {
+                            a.after_access.extend(needs.iter().cloned());
+                            a.get_full_access(cx);
+                        });
+                    }
+                });
+            });
+        }
+    }
+
     fn alert(&mut self, message: &str, cx: &mut Context<Self>) {
         let message = message.to_owned();
         cx.defer(move |cx| {
@@ -804,8 +848,48 @@ impl Activity {
         });
     }
 
+    /// The first process chosen (the one Inspect opens).
     pub fn selected_proc(&self) -> Option<&Proc> {
-        self.selected.and_then(|pid| self.processes.iter().find(|p| p.pid == pid))
+        self.selected.first().and_then(|&pid| self.processes.iter().find(|p| p.pid == pid))
+    }
+
+    /// The processes an action on the chosen ones reaches: those chosen
+    /// and still running, and in Tree, a collapsed one's children with
+    /// it (its row stands for them).
+    pub fn chosen_pids(&self) -> Vec<i32> {
+        let mut out: Vec<i32> = self.selected.iter().copied().filter(|&pid| self.proc(pid).is_some()).collect();
+        if self.settings.tree {
+            // A collapsed row stands for everything under it.
+            let mut stack: Vec<i32> = out.iter().copied().filter(|p| self.collapsed.contains(p)).collect();
+            while let Some(parent) = stack.pop() {
+                for p in &self.processes {
+                    if p.ppid == parent && p.pid != parent && !out.contains(&p.pid) {
+                        out.push(p.pid);
+                        stack.push(p.pid);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The nice values of `pids` (those still running).
+    pub fn nices(&self, pids: &[i32]) -> Vec<i32> {
+        pids.iter().filter_map(|&pid| self.proc(pid).map(|p| p.nice)).collect()
+    }
+
+    /// "chrome ×11, olo-fuzz": what `pids` are, by name, most first.
+    pub fn names_of(&self, pids: &[i32]) -> String {
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for pid in pids {
+            let name = self.proc(*pid).map_or_else(|| pid.to_string(), |p| p.name.clone());
+            match counts.iter_mut().find(|(n, _)| *n == name) {
+                Some((_, c)) => *c += 1,
+                None => counts.push((name, 1)),
+            }
+        }
+        counts.sort_by(|a, b| b.1.cmp(&a.1));
+        counts.into_iter().map(|(n, c)| if c > 1 { format!("{n} ×{c}") } else { n }).collect::<Vec<_>>().join(", ")
     }
 
     pub fn proc(&self, pid: i32) -> Option<&Proc> {
@@ -813,16 +897,27 @@ impl Activity {
     }
 
     pub fn quit_process(&mut self, pid: i32, force: bool, cx: &mut Context<Self>) {
-        let name = self.proc(pid).map_or_else(|| pid.to_string(), |p| p.name.clone());
-        if !force {
-            return self.act(Action::Signal { pid, signal: libc::SIGTERM }, cx);
+        self.quit_processes(vec![pid], force, cx);
+    }
+
+    /// Quit `pids` (SIGTERM), or force them to (SIGKILL), asked first:
+    /// one alert naming them all.
+    pub fn quit_processes(&mut self, pids: Vec<i32>, force: bool, cx: &mut Context<Self>) {
+        if pids.is_empty() {
+            return;
         }
-        let message = format!("Force “{name}” ({pid}) to quit? Any unsaved work in it will be lost.");
+        if !force {
+            return self.act_all(pids.into_iter().map(|pid| Action::Signal { pid, signal: libc::SIGTERM }).collect(), cx);
+        }
+        let message = match pids.as_slice() {
+            [pid] => format!("Force “{}” ({pid}) to quit? Any unsaved work in it will be lost.", self.names_of(&pids)),
+            _ => format!("Force {} processes to quit ({})? Any unsaved work in them will be lost.", pids.len(), self.names_of(&pids)),
+        };
         let me = cx.entity();
         cx.defer(move |cx| {
             open_alert(cx, "Activity Monitor", "warning", &message, &["Cancel", "Force Quit"], move |choice, cx| {
                 if choice == Some(1) {
-                    me.update(cx, |a, cx| a.act(Action::Signal { pid, signal: libc::SIGKILL }, cx));
+                    me.update(cx, |a, cx| a.act_all(pids.iter().map(|&pid| Action::Signal { pid, signal: libc::SIGKILL }).collect(), cx));
                 }
             });
         });
@@ -932,20 +1027,21 @@ impl Activity {
         {
             return self.set_section(s, cx);
         }
-        // A process's commands: "signal:PID:N", "nice:PID:N".
+        // A process's commands, each for one or several: "signal:PIDS:N",
+        // "nice:PIDS:N", PIDS being "12" or "12,40,41".
         if let Some(rest) = command.strip_prefix("signal:")
-            && let Some((pid, sig)) = rest.split_once(':')
-            && let (Ok(pid), Ok(signal)) = (pid.parse(), sig.parse())
+            && let Some((pids, sig)) = rest.split_once(':')
+            && let (Some(pids), Ok(signal)) = (pid_list(pids), sig.parse())
         {
-            return self.act(Action::Signal { pid, signal }, cx);
+            return self.act_all(pids.into_iter().map(|pid| Action::Signal { pid, signal }).collect(), cx);
         }
         if let Some(rest) = command.strip_prefix("nice:")
-            && let Some((pid, n)) = rest.split_once(':')
-            && let (Ok(pid), Ok(nice)) = (pid.parse(), n.parse())
+            && let Some((pids, n)) = rest.split_once(':')
+            && let (Some(pids), Ok(nice)) = (pid_list(pids), n.parse())
         {
-            return self.act(Action::Nice { pid, nice }, cx);
+            return self.act_all(pids.into_iter().map(|pid| Action::Nice { pid, nice }).collect(), cx);
         }
-        if let Some(pid) = command.strip_prefix("inspect:").and_then(|p| p.parse().ok()) {
+        if let Some(pid) = command.strip_prefix("inspect:").and_then(pid_list).and_then(|p| p.first().copied()) {
             return self.inspect(pid, cx);
         }
         if command == "supervisor-preferences" {
@@ -954,22 +1050,31 @@ impl Activity {
         if let Some(name) = command.strip_prefix("supervisor-ignore:") {
             return sections::supervise(sections::Supervise::Ignore(name.to_owned()));
         }
-        if let Some(pid) = command.strip_prefix("quit:").and_then(|p| p.parse().ok()) {
-            return self.quit_process(pid, false, cx);
+        if let Some(pids) = command.strip_prefix("quit:").and_then(pid_list) {
+            return self.quit_processes(pids, false, cx);
         }
-        if let Some(pid) = command.strip_prefix("force-quit:").and_then(|p| p.parse().ok()) {
-            return self.quit_process(pid, true, cx);
+        if let Some(pids) = command.strip_prefix("force-quit:").and_then(pid_list) {
+            return self.quit_processes(pids, true, cx);
         }
-        if let Some(pid) = command.strip_prefix("copy-pid:").and_then(|p| p.parse::<i32>().ok()) {
-            return cx.write_to_clipboard(ClipboardItem::new_string(pid.to_string()));
-        }
-        if let Some(pid) = command.strip_prefix("copy-command:").and_then(|p| p.parse::<i32>().ok()) {
-            let text = self.proc(pid).map(|p| p.command.clone()).unwrap_or_default();
+        // Copied one a line.
+        if let Some(pids) = command.strip_prefix("copy-pid:").and_then(pid_list) {
+            let text = pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("\n");
             return cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
-        if let Some(pid) = command.strip_prefix("show-program:").and_then(|p| p.parse::<i32>().ok()) {
-            if let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) {
-                let _ = olo_ui::tracker::open(&exe);
+        if let Some(pids) = command.strip_prefix("copy-command:").and_then(pid_list) {
+            let text = pids.iter().filter_map(|&pid| self.proc(pid).map(|p| p.command.clone())).collect::<Vec<_>>().join("\n");
+            return cx.write_to_clipboard(ClipboardItem::new_string(text));
+        }
+        // Each program once, however many of its processes.
+        if let Some(pids) = command.strip_prefix("show-program:").and_then(pid_list) {
+            let mut shown = Vec::new();
+            for pid in pids {
+                if let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe"))
+                    && !shown.contains(&exe)
+                {
+                    let _ = olo_ui::tracker::open(&exe);
+                    shown.push(exe);
+                }
             }
             return;
         }
@@ -984,26 +1089,20 @@ impl Activity {
             return self.tune(name, cx);
         }
         if let Some(pid) = command.strip_prefix("select:").and_then(|p| p.parse::<i32>().ok()) {
-            self.selected = Some(pid);
+            self.selected = vec![pid];
             self.reveal_selected = true;
             return self.set_section(Section::Processes, cx);
         }
-        let pid = self.selected.filter(|_| self.settings.section == Section::Processes);
+        let in_processes = self.settings.section == Section::Processes;
+        let pids = if in_processes { self.chosen_pids() } else { Vec::new() };
+        let pid = pids.first().copied();
         match command {
             "add-graph" => {
                 self.settings.views.push(vec!["cpu".into()]);
                 self.set_section(Section::Graphs, cx);
             }
-            "quit-process" => {
-                if let Some(pid) = pid {
-                    self.quit_process(pid, false, cx);
-                }
-            }
-            "force-quit-process" => {
-                if let Some(pid) = pid {
-                    self.quit_process(pid, true, cx);
-                }
-            }
+            "quit-process" => self.quit_processes(pids, false, cx),
+            "force-quit-process" => self.quit_processes(pids, true, cx),
             "inspect-process" => {
                 if let Some(pid) = pid {
                     self.inspect(pid, cx);
@@ -1087,8 +1186,11 @@ impl Activity {
             .separator()
             .submenu(span)
             .submenu(interval);
-        let pid = inspected.or(self.selected.filter(|_| self.settings.section == Section::Processes && self.selected_proc().is_some()));
+        let chosen = if self.settings.section == Section::Processes { self.chosen_pids() } else { Vec::new() };
+        let pid = inspected.or(chosen.first().copied());
         let any = pid.is_some();
+        // (An inspector's window: its process; else those chosen.)
+        let pids = if inspected.is_some() { pid.into_iter().collect() } else { chosen };
         let mut process = Menu::new("Process")
             .item("Inspect", "inspect-process")
             .key("i")
@@ -1098,8 +1200,8 @@ impl Activity {
             .enabled(any)
             .item("Force Quit…", "force-quit-process")
             .enabled(any);
-        if let Some(pid) = pid {
-            process = process.separator().submenu(processes::signal_menu(pid)).submenu(processes::priority_menu(pid, self.proc(pid).map_or(0, |p| p.nice)));
+        if !pids.is_empty() {
+            process = process.separator().submenu(processes::signal_menu(&pids)).submenu(processes::priority_menu(&pids, &self.nices(&pids)));
         }
         let full = match self.access {
             Access::Full => "Full Access",
@@ -1427,7 +1529,8 @@ fn main() {
         let ask = settings.ask_full_access;
         let search_text = settings.search.clone();
         let app = cx.new(|cx| {
-            let list = ListModel::new(cx, false);
+            // (Several processes may be chosen, and acted on at once.)
+            let list = ListModel::new(cx, true);
             let search = search_field(cx, "Search: name, command, user:, state:, kind:");
             search.update(cx, |s, cx| s.set_text(search_text, cx));
             let connections_search = text_field(cx, |f| f.name("Search").hint("Address, port, program or state"));
@@ -1466,7 +1569,7 @@ fn main() {
                 drill: None,
                 proc_history: HashMap::new(),
                 list,
-                selected: None,
+                selected: Vec::new(),
                 collapsed: HashSet::new(),
                 rows_cache: None,
                 triangles: Default::default(),
@@ -1547,4 +1650,22 @@ fn main() {
 /// Whether `args` ask for a process's inspector (`--inspect PID`).
 fn inspecting(args: &[String]) -> bool {
     args.iter().any(|a| a == "--inspect")
+}
+
+/// "12" or "12,40,41": the pids a command is for (none: not one).
+fn pid_list(text: &str) -> Option<Vec<i32>> {
+    let pids: Vec<i32> = text.split(',').map(|p| p.trim().parse().ok()).collect::<Option<_>>()?;
+    (!pids.is_empty()).then_some(pids)
+}
+
+#[cfg(test)]
+mod pid_tests {
+    #[test]
+    fn commands_for_several() {
+        assert_eq!(super::pid_list("12"), Some(vec![12]));
+        assert_eq!(super::pid_list("12,40,41"), Some(vec![12, 40, 41]));
+        assert_eq!(super::pid_list("12,x"), None);
+        assert_eq!(super::pid_list(""), None);
+        assert_eq!(crate::processes::pids_text(&[12, 40]), "12,40");
+    }
 }
