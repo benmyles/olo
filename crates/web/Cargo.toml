@@ -1,0 +1,16 @@
+[package]
+name = "olo-web"
+description = "Olo's original Rust web engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# Measurement baseline, same token semantics without memchr's SIMD scans.
+scalar-scans = []
+
+[dependencies]
+memchr = "2"
+
+[dev-dependencies]
+serde_json.workspace = true

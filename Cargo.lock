@@ -7826,6 +7826,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-web"
+version = "0.1.0"
+dependencies = [
+ "memchr",
+ "serde_json",
+]
+
+[[package]]
 name = "olo-wifi-heal"
 version = "0.1.0"
 dependencies = [

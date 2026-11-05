@@ -7,7 +7,9 @@ item means implemented and verified; a partial implementation stays open.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
 - [ ] Build a reproducible 100-site corpus with explicit provenance,
   journeys, independent baselines and fail-closed reporting.
-- [ ] Hand-write HTML tokenizer; validate against independent tokenizer tests.
+- [ ] Complete HTML tokenizer conformance (initial token implementation
+  matches 7,042 html5lib cases; four UTF-16 cases unsupported; parse-error
+  diagnostics and streaming byte-input interface remain).
 - [ ] Implement complete HTML tree construction and compact mutable DOM.
 - [ ] Add network/encoding/cache/cookies with security and memory bounds.
 - [ ] Implement CSS tokenizer/parser, selectors, cascade, media queries,
@@ -36,5 +38,6 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: implement and measure the tokenizer and establish an evaluation
-runner which cannot silently turn missing observations into passes.
+Next: establish an evaluation runner which cannot silently turn missing
+observations into passes; implement DOM/tree construction and complete
+tokenizer diagnostics/input handling.

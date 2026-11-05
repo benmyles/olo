@@ -1,0 +1,444 @@
+{
+  "machine": {
+    "cpu": "Intel Core Ultra 7 356H",
+    "architecture": "x86_64",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "scope": "Tokenizer only; synthetic in-memory input. Not page-load, DOM, rendering, UI latency, or Chrome comparison. First-token latency is lexical only. CPU clock/load not controlled.",
+  "linear_duplicate_scan_before": {
+    "results": [
+      {
+        "borrowed_text_tokens_per_round": 1,
+        "case": "text",
+        "first_token_us": 49.416000000000004,
+        "input_bytes": 1032192,
+        "mib_per_second": 19321.007536444205,
+        "parse_us": 50.94843,
+        "rounds": 100,
+        "tokens_per_round": 1,
+        "total_seconds": 0.005094843
+      },
+      {
+        "borrowed_text_tokens_per_round": 40960,
+        "case": "article",
+        "first_token_us": 0.585,
+        "input_bytes": 1097728,
+        "mib_per_second": 291.9591454703653,
+        "parse_us": 3585.69004,
+        "rounds": 100,
+        "tokens_per_round": 106496,
+        "total_seconds": 0.358569004
+      },
+      {
+        "borrowed_text_tokens_per_round": 0,
+        "case": "references",
+        "first_token_us": 1.02,
+        "input_bytes": 421888,
+        "mib_per_second": 69.30083648502738,
+        "parse_us": 5805.756039999999,
+        "rounds": 100,
+        "tokens_per_round": 12288,
+        "total_seconds": 0.580575604
+      },
+      {
+        "borrowed_text_tokens_per_round": 0,
+        "case": "attributes",
+        "first_token_us": 12773.031,
+        "input_bytes": 72624,
+        "mib_per_second": 4.502642687125266,
+        "parse_us": 15381.998609999999,
+        "rounds": 100,
+        "tokens_per_round": 1,
+        "total_seconds": 1.5381998609999998
+      }
+    ],
+    "scalar_scans": false
+  },
+  "hashed_duplicate_scan_after": {
+    "results": [
+      {
+        "borrowed_text_tokens_per_round": 1,
+        "case": "text",
+        "first_token_us": 39.842000000000006,
+        "input_bytes": 1032192,
+        "mib_per_second": 24332.45944528296,
+        "parse_us": 40.45522,
+        "rounds": 300,
+        "tokens_per_round": 1,
+        "total_seconds": 0.012136566
+      },
+      {
+        "borrowed_text_tokens_per_round": 40960,
+        "case": "article",
+        "first_token_us": 0.221,
+        "input_bytes": 1097728,
+        "mib_per_second": 560.9869562193231,
+        "parse_us": 1866.1307333333332,
+        "rounds": 300,
+        "tokens_per_round": 106496,
+        "total_seconds": 0.55983922
+      },
+      {
+        "borrowed_text_tokens_per_round": 0,
+        "case": "references",
+        "first_token_us": 0.61,
+        "input_bytes": 421888,
+        "mib_per_second": 95.37505869740389,
+        "parse_us": 4218.54262,
+        "rounds": 300,
+        "tokens_per_round": 12288,
+        "total_seconds": 1.265562786
+      },
+      {
+        "borrowed_text_tokens_per_round": 0,
+        "case": "attributes",
+        "first_token_us": 235.937,
+        "input_bytes": 72624,
+        "mib_per_second": 286.63588508281197,
+        "parse_us": 241.6293533333333,
+        "rounds": 300,
+        "tokens_per_round": 1,
+        "total_seconds": 0.072488806
+      }
+    ],
+    "scalar_scans": false
+  },
+  "pinned_scan_comparisons": [
+    {
+      "results": [
+        {
+          "borrowed_text_tokens_per_round": 1,
+          "case": "text",
+          "first_token_us": 27.168000000000003,
+          "input_bytes": 1032192,
+          "mib_per_second": 45164.87294923374,
+          "parse_us": 21.795146,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.010897573
+        },
+        {
+          "borrowed_text_tokens_per_round": 40960,
+          "case": "article",
+          "first_token_us": 0.288,
+          "input_bytes": 1097728,
+          "mib_per_second": 508.7176233031416,
+          "parse_us": 2057.87052,
+          "rounds": 500,
+          "tokens_per_round": 106496,
+          "total_seconds": 1.02893526
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "references",
+          "first_token_us": 0.568,
+          "input_bytes": 421888,
+          "mib_per_second": 94.36612321281736,
+          "parse_us": 4263.646065999999,
+          "rounds": 500,
+          "tokens_per_round": 12288,
+          "total_seconds": 2.131823033
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "attributes",
+          "first_token_us": 239.642,
+          "input_bytes": 72624,
+          "mib_per_second": 282.037673938906,
+          "parse_us": 245.568766,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.122784383
+        }
+      ],
+      "scalar_scans": false,
+      "repeat": 0,
+      "cpu": 0
+    },
+    {
+      "results": [
+        {
+          "borrowed_text_tokens_per_round": 1,
+          "case": "text",
+          "first_token_us": 578.235,
+          "input_bytes": 1032192,
+          "mib_per_second": 1710.6410714804692,
+          "parse_us": 575.4421639999999,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.287721082
+        },
+        {
+          "borrowed_text_tokens_per_round": 40960,
+          "case": "article",
+          "first_token_us": 0.254,
+          "input_bytes": 1097728,
+          "mib_per_second": 575.2020952884733,
+          "parse_us": 1820.012494,
+          "rounds": 500,
+          "tokens_per_round": 106496,
+          "total_seconds": 0.910006247
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "references",
+          "first_token_us": 0.49800000000000005,
+          "input_bytes": 421888,
+          "mib_per_second": 93.80483669736871,
+          "parse_us": 4289.157832,
+          "rounds": 500,
+          "tokens_per_round": 12288,
+          "total_seconds": 2.144578916
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "attributes",
+          "first_token_us": 235.972,
+          "input_bytes": 72624,
+          "mib_per_second": 305.6897009294511,
+          "parse_us": 226.568456,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.113284228
+        }
+      ],
+      "scalar_scans": true,
+      "repeat": 0,
+      "cpu": 0
+    },
+    {
+      "results": [
+        {
+          "borrowed_text_tokens_per_round": 1,
+          "case": "text",
+          "first_token_us": 591.691,
+          "input_bytes": 1032192,
+          "mib_per_second": 1610.1157327716808,
+          "parse_us": 611.369096,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.305684548
+        },
+        {
+          "borrowed_text_tokens_per_round": 40960,
+          "case": "article",
+          "first_token_us": 0.158,
+          "input_bytes": 1097728,
+          "mib_per_second": 595.5418159770709,
+          "parse_us": 1757.853054,
+          "rounds": 500,
+          "tokens_per_round": 106496,
+          "total_seconds": 0.878926527
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "references",
+          "first_token_us": 0.5740000000000001,
+          "input_bytes": 421888,
+          "mib_per_second": 96.2755260402737,
+          "parse_us": 4179.086488,
+          "rounds": 500,
+          "tokens_per_round": 12288,
+          "total_seconds": 2.089543244
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "attributes",
+          "first_token_us": 228.67100000000002,
+          "input_bytes": 72624,
+          "mib_per_second": 305.6649448277562,
+          "parse_us": 226.58680600000002,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.113293403
+        }
+      ],
+      "scalar_scans": true,
+      "repeat": 1,
+      "cpu": 0
+    },
+    {
+      "results": [
+        {
+          "borrowed_text_tokens_per_round": 1,
+          "case": "text",
+          "first_token_us": 25.177999999999997,
+          "input_bytes": 1032192,
+          "mib_per_second": 45713.62574635984,
+          "parse_us": 21.533514,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.010766757
+        },
+        {
+          "borrowed_text_tokens_per_round": 40960,
+          "case": "article",
+          "first_token_us": 0.295,
+          "input_bytes": 1097728,
+          "mib_per_second": 609.5568896651716,
+          "parse_us": 1717.436088,
+          "rounds": 500,
+          "tokens_per_round": 106496,
+          "total_seconds": 0.858718044
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "references",
+          "first_token_us": 0.513,
+          "input_bytes": 421888,
+          "mib_per_second": 99.30374845306496,
+          "parse_us": 4051.6471559999995,
+          "rounds": 500,
+          "tokens_per_round": 12288,
+          "total_seconds": 2.025823578
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "attributes",
+          "first_token_us": 255.053,
+          "input_bytes": 72624,
+          "mib_per_second": 271.51910985983756,
+          "parse_us": 255.08202200000002,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.127541011
+        }
+      ],
+      "scalar_scans": false,
+      "repeat": 1,
+      "cpu": 0
+    },
+    {
+      "results": [
+        {
+          "borrowed_text_tokens_per_round": 1,
+          "case": "text",
+          "first_token_us": 26.022,
+          "input_bytes": 1032192,
+          "mib_per_second": 31080.86484039741,
+          "parse_us": 31.671416,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.015835708
+        },
+        {
+          "borrowed_text_tokens_per_round": 40960,
+          "case": "article",
+          "first_token_us": 0.206,
+          "input_bytes": 1097728,
+          "mib_per_second": 513.4605366279937,
+          "parse_us": 2038.861656,
+          "rounds": 500,
+          "tokens_per_round": 106496,
+          "total_seconds": 1.019430828
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "references",
+          "first_token_us": 0.519,
+          "input_bytes": 421888,
+          "mib_per_second": 97.48017954884129,
+          "parse_us": 4127.441618,
+          "rounds": 500,
+          "tokens_per_round": 12288,
+          "total_seconds": 2.063720809
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "attributes",
+          "first_token_us": 244.215,
+          "input_bytes": 72624,
+          "mib_per_second": 292.2507198438429,
+          "parse_us": 236.987076,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.118493538
+        }
+      ],
+      "scalar_scans": false,
+      "repeat": 2,
+      "cpu": 0
+    },
+    {
+      "results": [
+        {
+          "borrowed_text_tokens_per_round": 1,
+          "case": "text",
+          "first_token_us": 565.919,
+          "input_bytes": 1032192,
+          "mib_per_second": 1786.5716326774093,
+          "parse_us": 550.9854640000001,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.275492732
+        },
+        {
+          "borrowed_text_tokens_per_round": 40960,
+          "case": "article",
+          "first_token_us": 0.143,
+          "input_bytes": 1097728,
+          "mib_per_second": 598.4396546685787,
+          "parse_us": 1749.34096,
+          "rounds": 500,
+          "tokens_per_round": 106496,
+          "total_seconds": 0.87467048
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "references",
+          "first_token_us": 0.531,
+          "input_bytes": 421888,
+          "mib_per_second": 97.60294812980494,
+          "parse_us": 4122.24997,
+          "rounds": 500,
+          "tokens_per_round": 12288,
+          "total_seconds": 2.061124985
+        },
+        {
+          "borrowed_text_tokens_per_round": 0,
+          "case": "attributes",
+          "first_token_us": 221.633,
+          "input_bytes": 72624,
+          "mib_per_second": 318.60272634939207,
+          "parse_us": 217.385596,
+          "rounds": 500,
+          "tokens_per_round": 1,
+          "total_seconds": 0.108692798
+        }
+      ],
+      "scalar_scans": true,
+      "repeat": 2,
+      "cpu": 0
+    }
+  ],
+  "rss_command": "/usr/bin/time -v target/release/examples/tokenize_bench 100",
+  "rss_observation": "\tCommand being timed: \"target/release/examples/tokenize_bench 100\"\n\tUser time (seconds): 0.61\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.61\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 5180\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 938\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 20\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n",
+  "token_comparison": {
+    "diagnostics_checked": false,
+    "failed": 0,
+    "failures": [],
+    "passed": 7042,
+    "unsupported": [
+      {
+        "file": "unicodeCharsProblematic.test",
+        "reason": "non-scalar input requires a UTF-16 tokenizer interface",
+        "test": "Invalid Unicode character U+DFFF"
+      },
+      {
+        "file": "unicodeCharsProblematic.test",
+        "reason": "non-scalar input requires a UTF-16 tokenizer interface",
+        "test": "Invalid Unicode character U+D800"
+      },
+      {
+        "file": "unicodeCharsProblematic.test",
+        "reason": "non-scalar input requires a UTF-16 tokenizer interface",
+        "test": "Invalid Unicode character U+DFFF with valid preceding character"
+      },
+      {
+        "file": "unicodeCharsProblematic.test",
+        "reason": "non-scalar input requires a UTF-16 tokenizer interface",
+        "test": "Invalid Unicode character U+D800 with valid following character"
+      }
+    ]
+  }
+}
