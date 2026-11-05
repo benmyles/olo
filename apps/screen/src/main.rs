@@ -41,6 +41,7 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen unarchive NAME          back among the stopped ones
        olo-screen delete NAME             a screen and everything it kept, to the Trash
        olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
+                               [--show-clicks] [--show-keys] [--sound computer|microphone|both|none] [--as-gif]
                           [--no-pointer] [--encoder auto|cpu|nvidia] [--to PATH]
                                              a video of the screen (or one window, or part), into
                                              ~/Videos unless told; prints its path (JSON) at once
@@ -277,11 +278,33 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }
             }
-            if has(rest, "--no-pointer") {
-                argv.push("--no-pointer".into());
+            for flag in ["--no-pointer", "--show-clicks", "--show-keys", "--as-gif"] {
+                if has(rest, flag) {
+                    argv.push(flag.into());
+                }
+            }
+            if let Some(v) = option(rest, "--sound") {
+                argv.extend(["--sound".to_owned(), v.to_owned()]);
             }
             let pid = s.run(&argv)?;
-            let v = json!({ "pid": pid, "path": to });
+            // Said once it's recording (its encoder open: NVENC takes a
+            // couple of seconds), so what's done next is in it.
+            let display = std::path::Path::new(&s.wayland_display).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            loop {
+                let g = olo_protocol::recording::going_on(&display).filter(|g| g.pid == pid);
+                if g.as_ref().is_some_and(|g| g.recording) {
+                    break;
+                }
+                if g.is_none() && !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                    return Err("the recording didn't start (olo-screenshot's log on the screen says why)".into());
+                }
+                if std::time::Instant::now() > until {
+                    return Err("the recording hasn't started after 15 seconds".into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            let v = json!({ "pid": pid, "path": to, "recording": true });
             println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
             answered(v);
             Ok(())

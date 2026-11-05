@@ -332,7 +332,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Source::Output(_) => "display".into(),
     };
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false };
+    let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false, recording: false };
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
     // Clicks and keys shown while it records, and not after.
     let showing = show_clicks || show_keys;
@@ -402,6 +402,9 @@ fn record_into(
         return Err(e);
     }
     let start = Instant::now();
+    // Said where Deskbar and agents look: recording from now.
+    let going = &Going { recording: true, ..going.clone() };
+    let _ = std::fs::write(going_path(), serde_json::to_vec(going).unwrap_or_default());
     // The sound from now, if any asked for and there's a way.
     let (sound, sound_note) = match which {
         crate::sound::Which::Nothing => (None, None),

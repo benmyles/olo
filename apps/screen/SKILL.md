@@ -42,7 +42,7 @@ is `running`. Delete only screens you made, and only when asked.
 
 ```sh
 olo-screen start demo --size 1920x1080 --scale 2   # a 4K screen (3840 × 2160 pixels)
-olo-screen record-video demo                       # prints {"path": …, "pid": …} at once
+olo-screen record-video demo --show-clicks --show-keys   # prints {"path": …, "pid": …} once it's recording
 # … do what the video shows, at a person's pace …
 olo-screen pause-video demo                        # set up the next part off camera…
 olo-screen resume-video demo                       # …the pause is cut out of the video
@@ -54,7 +54,14 @@ It records only when something changes (a still screen costs nothing),
 up to 30 frames a second (`--fps`), into ~/Videos unless `--to PATH`;
 `--window ID` records one window, `--region X,Y,W,H` part of the screen
 (points from its top left, as `windows` gives frames), `--seconds N`
-stops by itself (counting only what's recorded). For a polished demo:
+stops by itself (counting only what's recorded). `record-video` answers
+once the recording has started (opening the GPU's encoder takes a couple
+of seconds): what you do after it is in the video. `--show-clicks` puts
+a ring where each click lands and `--show-keys` each shortcut on a key
+cap (typing is never shown), so a viewer can follow what you do; `--sound
+computer` records what the screen plays (screens are silent unless
+started with `--sound`), and `--as-gif` makes it a GIF (no sound) for a
+short loop. For a polished demo:
 rehearse it first (without recording), then record it in one go; move
 the pointer deliberately (`move` before `click`), pause a moment after
 each step so it can be seen, and pause the recording (not the demo)
