@@ -10,6 +10,7 @@ openh264 = "0.9"
 libc = "0.2"
 # NVENC's declarations, nothing linked (nvenc.rs opens the library).
 nvenc-sys = { path = "../../vendor/nvenc-sys" }
-
-[dev-dependencies]
+# Recordings made GIFs (gif.rs).
 mp4 = "0.14"
+gif = "0.14"
+color_quant = "1.1"

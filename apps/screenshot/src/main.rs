@@ -59,9 +59,9 @@ enum Msg {
     /// A recording asked for from the window started (it goes on by
     /// itself: we're done), or why not.
     Recording(Result<(), String>),
-    /// The sound recordings take, as the settings have it
-    /// (`ScreenRecordingSettings::sound`).
-    Sound(String),
+    /// The sound recordings take, and whether they're saved as GIFs, as
+    /// the settings have it (`ScreenRecordingSettings`).
+    Sound(String, bool),
 }
 
 /// What the window's Record… records.
@@ -109,6 +109,8 @@ struct Screenshot {
     /// The sound a recording takes ("computer", "microphone", "both",
     /// "none"), for Record…'s ticks.
     sound: String,
+    /// Recordings saved as GIFs.
+    gif: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -228,6 +230,7 @@ impl Screenshot {
             holding: false,
             focus: cx.focus_handle(),
             sound: "computer".into(),
+            gif: false,
         }
     }
 
@@ -236,7 +239,20 @@ impl Screenshot {
         let proxy = olo_ui::proxy(cx);
         std::thread::spawn(move || {
             if let Some(s) = olo_ui::settings::current() {
-                proxy.send(Msg::Sound(s.screen_recording.sound));
+                proxy.send(Msg::Sound(s.screen_recording.sound, s.screen_recording.gif));
+            }
+        });
+    }
+
+    /// Record…'s Save as GIF turned over: kept in the settings.
+    fn toggle_gif(&mut self) {
+        self.gif = !self.gif;
+        let gif = self.gif;
+        std::thread::spawn(move || {
+            let Some(mut settings) = olo_ui::settings::current() else { return };
+            settings.screen_recording.gif = gif;
+            if let Ok(mut c) = olo_protocol::Client::connect() {
+                let _ = c.request(&olo_protocol::Request::SetSettings { settings });
             }
         });
     }
@@ -341,8 +357,13 @@ impl Screenshot {
                     .separator()
                     .item("Record the Computer's Sound", "sound-computer")
                     .checked(computer)
+                    .enabled(!self.gif)
                     .item("Record the Microphone", "sound-microphone")
                     .checked(mic)
+                    .enabled(!self.gif)
+                    .separator()
+                    .item("Save as GIF", "gif")
+                    .checked(self.gif)
             }
         }
     }
@@ -351,6 +372,11 @@ impl Screenshot {
         let what = match command {
             "sound-computer" | "sound-microphone" => {
                 self.toggle_sound(command == "sound-microphone");
+                cx.notify();
+                return;
+            }
+            "gif" => {
+                self.toggle_gif();
                 cx.notify();
                 return;
             }
@@ -593,7 +619,7 @@ impl Screenshot {
                 self.open_main(cx);
                 self.show_error(format!("Couldn't start recording.\n\n{e}"), cx);
             }
-            Msg::Sound(s) => self.sound = s,
+            Msg::Sound(s, gif) => (self.sound, self.gif) = (s, gif),
         }
         cx.notify();
     }
@@ -771,6 +797,9 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--stop") {
         std::process::exit(recording::stop());
+    }
+    if args.iter().any(|a| a == "--gif") {
+        std::process::exit(recording::gif(&args));
     }
     if args.iter().any(|a| a == "--toggle-record") {
         std::process::exit(recording::toggle(&args));

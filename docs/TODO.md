@@ -1517,10 +1517,11 @@ of Finished; a new one goes where its priority puts it.
   The recorder no longer wakes on a timer (a still or paused recording:
   only NVIDIA's driver threads wake). *Sound* (2026-11-05): the
   computer's and the microphone's, either or both (Record…'s ticks,
-  `--sound`), AAC beside the video. *Left*: CleanShot X's
+  `--sound`), AAC beside the video. *GIF* (2026-11-05): Record… ▸
+  Save as GIF, `--as-gif`, `--gif VIDEO`. *Left*: CleanShot X's
   polish (pointer drawn larger and smoothed, clicks and keys shown, zoom
   following the action, a background and frame, a webcam bubble), a
-  countdown (Screenshot's Delay), the trimming editor, GIF, and the GPU
+  countdown (Screenshot's Delay), the trimming editor, and the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
   4K: 111 ms a frame).
   - **Encoding on the best GPU, chosen in its settings** (Ben,

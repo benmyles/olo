@@ -5964,6 +5964,21 @@ Screens' Export Video uses too).
   2.4% with both, the AAC encoding 0.5% of it, the rest the two
   streams' client threads, woken for each piece (every 10 ms from the
   stand-in; a real server's are 40 ms).
+- **GIFs** (`olo_video::gif`): `--as-gif` (or the settings' `gif`,
+  Record… ▸ Save as GIF, which dims the sound ticks) makes the recording
+  a GIF when it's done, the MP4 gone; `olo-screenshot --gif VIDEO
+  [--to PATH] [--fps N] [--width N]` makes any of Olo's recordings one.
+  The video decoded by OpenH264 in two passes: the first trains one
+  palette for the whole GIF (NeuQuant, 255 colours and a transparent
+  one, on 16 pictures from across it, so colours don't shift between
+  frames), the second writes a frame for each change at 10 frames a
+  second (a picture held longer is one frame, longer: delays counted in
+  hundredths from the start, so they don't drift), each only the
+  rectangle that changed with what stayed the same transparent, at most
+  960 pixels wide by area averages. Colours are looked up by their 15
+  bits, cached. Written as `.gif.part`, then put in place; SIGINT and
+  SIGTERM stop it as they stop a recording. A 4 s recording of
+  Terminal at 1280 × 800: 11 frames, 960 × 600, 294 KB.
 - **A region** is cut from each frame of its display as it comes (the
   display copied whole into a buffer kept for the next, then the rows
   of the part), so the encoder sees only the part: 400 × 300 points at

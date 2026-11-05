@@ -5,6 +5,7 @@
 //! recorder (olo-screenshot) and Agent Screens' Export Video.
 
 pub mod aac;
+pub mod gif;
 pub mod nvenc;
 
 use std::{

@@ -7818,6 +7818,8 @@ dependencies = [
 name = "olo-video"
 version = "0.1.0"
 dependencies = [
+ "color_quant",
+ "gif 0.14.2",
  "libc",
  "mp4",
  "nvenc-sys",

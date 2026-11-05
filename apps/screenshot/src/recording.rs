@@ -13,7 +13,8 @@
 //! olo-screenshot --record [--window ID] [--display NAME] [--region [X,Y,W,H]]
 //!                [--seconds N] [--fps N] [--no-pointer]
 //!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
-//!                [--to PATH]
+//!                [--as-gif] [--to PATH]
+//! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
 //! olo-screenshot --stop          the recording on this display, finished
 //! olo-screenshot --pause         nothing recorded till --resume
 //! olo-screenshot --resume
@@ -25,6 +26,11 @@
 //! settings say (the computer's, by default). With no sound server or no
 //! AAC encoder, the video is made without, and says so (`sound` null,
 //! `sound_note` why).
+//!
+//! `--as-gif` (or the settings' `gif`: Screenshot's Record… ▸ Save as GIF)
+//! makes the recording a GIF once it's done (no sound), the MP4 gone;
+//! `--gif` makes any of Olo's recordings one (`olo_video::gif`: 10 frames
+//! a second, at most 960 wide, one palette, each frame what changed).
 //!
 //! `--region X,Y,W,H` records that part of the display (points from its
 //! top left, as windows' frames are given); `--region` alone has it
@@ -136,6 +142,60 @@ pub struct Made {
     /// Why there's none, when some was asked for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sound_note: Option<String>,
+    /// Made a GIF: its frames and size in bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gif: Option<GifMade>,
+}
+
+/// A GIF made of a recording.
+#[derive(Debug, Clone, Serialize)]
+pub struct GifMade {
+    pub frames: usize,
+    pub width: u32,
+    pub height: u32,
+    pub bytes: u64,
+}
+
+/// `--gif VIDEO`: a recording made a GIF; what was made printed.
+pub fn gif(args: &[String]) -> i32 {
+    let Some(src) = option(args, "--gif").map(PathBuf::from) else {
+        eprintln!("olo-screenshot: --gif takes the video to make a GIF of");
+        return 2;
+    };
+    let dst = option(args, "--to").map_or_else(|| src.with_extension("gif"), PathBuf::from);
+    let mut opts = olo_video::gif::Options::default();
+    if let Some(fps) = option(args, "--fps").and_then(|v| v.parse().ok()) {
+        opts.fps = fps;
+    }
+    if let Some(w) = option(args, "--width").and_then(|v| v.parse().ok()) {
+        opts.width = w;
+    }
+    match make_gif(&src, &dst, &opts) {
+        Ok(g) => {
+            println!("{}", serde_json::json!({ "path": dst, "frames": g.frames, "width": g.width, "height": g.height, "bytes": g.bytes }));
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: the GIF failed: {e}");
+            1
+        }
+    }
+}
+
+/// `src` made a GIF at `dst` (written beside it, then put in place);
+/// stopped by SIGINT/SIGTERM as a recording is.
+fn make_gif(src: &Path, dst: &Path, opts: &olo_video::gif::Options) -> Result<GifMade, String> {
+    let part = dst.with_extension("gif.part");
+    let made = olo_video::gif::from_mp4(src, &part, opts, &STOP, &|_| {});
+    let made = match made {
+        Ok(m) => m,
+        Err(e) => {
+            let _ = std::fs::remove_file(&part);
+            return Err(e);
+        }
+    };
+    std::fs::rename(&part, dst).map_err(|e| format!("{}: {e}", dst.display()))?;
+    Ok(GifMade { frames: made.frames, width: made.width, height: made.height, bytes: made.bytes })
 }
 
 /// `--record`: record until told to stop; what it made printed. Exit 0
@@ -223,10 +283,13 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         olo_protocol::Reply::Settings { settings } => Some(settings.screen_recording),
         _ => None,
     });
+    let as_gif = args.iter().any(|a| a == "--as-gif") || settings.as_ref().is_some_and(|s| s.gif);
     let sound = match option(args, "--sound").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.sound.clone())) {
         Some(s) => crate::sound::Which::parse(&s).ok_or("--sound is computer, microphone, both or none")?,
         None => crate::sound::Which::Computer,
     };
+    // (A GIF has no sound: none recorded.)
+    let sound = if as_gif { crate::sound::Which::Nothing } else { sound };
     let choice = match chosen.as_deref() {
         Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu or nvidia")?,
         None => olo_video::Choice::Auto,
@@ -269,7 +332,18 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let _ = std::fs::remove_file(going_path());
     WAKE.store(-1, Ordering::SeqCst);
     drop(waker);
-    result.map(Some)
+    let mut made = result?;
+    if as_gif {
+        // Made a GIF beside it, the video gone (a stop now stops this).
+        STOP.store(false, Ordering::SeqCst);
+        let gif_path = made.path.with_extension("gif");
+        let g = make_gif(&made.path, &gif_path, &olo_video::gif::Options::default())?;
+        let _ = std::fs::remove_file(&made.path);
+        made.path = gif_path;
+        (made.width, made.height) = (g.width, g.height);
+        made.gif = Some(g);
+    }
+    Ok(Some(made))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -409,7 +483,7 @@ fn record_into(
     let (frames, (width, height), encoder) = made?;
     // The file finished by the worker, then put where it goes.
     std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(Made { path: path.to_path_buf(), seconds: (total.as_millis() as f64 / 1000.0), frames, width, height, encoder: encoder.to_owned(), sound: sounded, sound_note })
+    Ok(Made { path: path.to_path_buf(), seconds: (total.as_millis() as f64 / 1000.0), frames, width, height, encoder: encoder.to_owned(), sound: sounded, sound_note, gif: None })
 }
 
 /// Wait until `fd` has something to read, a signal came (`woken`, the

@@ -1465,11 +1465,13 @@ pub struct ScreenRecordingSettings {
     /// The sound recorded with the screen: "computer" (what it plays),
     /// "microphone", "both" or "none".
     pub sound: String,
+    /// Recordings saved as GIFs (no sound) rather than MP4s.
+    pub gif: bool,
 }
 
 impl Default for ScreenRecordingSettings {
     fn default() -> Self {
-        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into() }
+        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into(), gif: false }
     }
 }
 
