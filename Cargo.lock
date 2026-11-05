@@ -7007,6 +7007,7 @@ dependencies = [
  "liblzma",
  "memchr",
  "olo-crash",
+ "olo-fido",
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",

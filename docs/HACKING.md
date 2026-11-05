@@ -5480,6 +5480,11 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   `cargo run -p olo-fido --example info` asks every key plugged in what it
   is, without a touch. `cargo test -p olo-fido` (both PIN protocols
   against the soft key, cancelling, sealing).
+* **Olo Doctor** (`security_keys`): a key plugged in whose FIDO node isn't
+  the person's to open is a finding, its fix
+  `/etc/udev/rules.d/74-olo-security-keys.rules` (systemd's `fido_id`
+  and `uaccess`, for systems whose own rules don't), applied to the keys
+  there with a `change`; one that is, a fine line.
 
 ## Each display on its own GPU (app_server udev.rs; Preferences ▸ Display ▸ Graphics)
 

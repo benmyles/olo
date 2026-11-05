@@ -112,9 +112,9 @@ of Finished; a new one goes where its priority puts it.
   hmac-secret, no PIN set, a key agreement in protocol 2). *Left*: Ben's
   setup with his key (its two touches), then sudo, Passwords, polkit and
   the lock screen touched for real, and a stray touch and three in a row
-  in a text field; a key with a PIN that wants it (not asked for yet);
-  Olo Doctor saying when a key's FIDO node isn't the person's to open
-  (uaccess: his is).
+  in a text field; a key with a PIN that wants it (not asked for yet).
+  Olo Doctor says when a key's FIDO node isn't the person's to open, and
+  offers the rule (2026-11-05).
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the

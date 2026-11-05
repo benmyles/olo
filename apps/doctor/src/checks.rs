@@ -42,6 +42,10 @@ const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
 const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
 const IDLE_GPU_RULE_PATH: &str = "etc/udev/rules.d/72-olo-idle-gpu.rules";
+/// A FIDO security key's node for the person at the seat (`security_keys`).
+pub const SECURITY_KEY_RULE: &str = include_str!("../../../data/udev/74-olo-security-keys.rules");
+const SECURITY_KEY_RULE_PATH: &str = "etc/udev/rules.d/74-olo-security-keys.rules";
+
 /// The presence sensor's buffer for the session (`presence_rule`).
 pub const PRESENCE_RULE: &str = include_str!("../../../data/udev/73-olo-presence.rules");
 const PRESENCE_RULE_PATH: &str = "etc/udev/rules.d/73-olo-presence.rules";
@@ -429,6 +433,7 @@ pub fn scan(roots: &Roots) -> Report {
     thunderbolt(roots, &mut r);
     login_keyring(roots, &mut r);
     presence_rule(roots, &mut r);
+    security_keys(roots, &mut r);
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
@@ -1098,6 +1103,65 @@ fn presence_rule(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// Each FIDO security key plugged in (its hidraw node, found by its
+/// report descriptor): one the person can't open can't approve anything
+/// (olo-fido, Preferences ▸ Security). systemd's rules give it to the
+/// person at the seat (fido_id, uaccess); Olo's rule does where they
+/// don't.
+fn security_keys(roots: &Roots, r: &mut Report) {
+    let hidraw = roots.fs.join("sys/class/hidraw");
+    let keys: Vec<(String, String)> = std::fs::read_dir(&hidraw)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| std::fs::read(e.path().join("device/report_descriptor")).is_ok_and(|rd| olo_fido::hid::is_fido(&rd)))
+        .map(|e| {
+            let node = e.file_name().to_string_lossy().into_owned();
+            let name = read(&e.path().join("device/uevent")).and_then(|u| u.lines().find_map(|l| l.strip_prefix("HID_NAME=").map(str::to_owned))).unwrap_or_else(|| node.clone());
+            (node, name)
+        })
+        .collect();
+    if keys.is_empty() {
+        return;
+    }
+    let shut: Vec<&(String, String)> = keys.iter().filter(|(node, _)| !can_read_write(&roots.fs.join("dev").join(node))).collect();
+    if shut.is_empty() {
+        let n = keys.len();
+        r.fine.push(Fine {
+            title: if n == 1 { "The security key plugged in can be used".into() } else { format!("The {n} security keys plugged in can be used") },
+            detail: format!(
+                "Its FIDO interface is yours to open, so a touch can approve sudo, Passwords and the lock screen ({}).",
+                keys.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(", ")
+            ),
+        });
+        return;
+    }
+    let names = shut.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(", ");
+    r.findings.push(Finding {
+        id: "rule:security-keys".into(),
+        severity: Severity::Advice,
+        title: "A security key plugged in can't be used".into(),
+        detail: format!(
+            "Its FIDO interface isn't yours to open ({names}), so it can't be set up in Preferences ▸ Security or approve anything with a touch. The fix installs /etc/udev/rules.d/74-olo-security-keys.rules, which gives a security key to the person at the computer, as systemd's own rules do elsewhere."
+        ),
+        fix: Some(Fix {
+            label: "Install the Rule".into(),
+            root: true,
+            steps: std::iter::once(Step::WriteFile { path: PathBuf::from("/").join(SECURITY_KEY_RULE_PATH), content: SECURITY_KEY_RULE.into(), mode: 0o644 })
+                // (A "change" applies it to the keys already there.)
+                .chain(shut.iter().map(|(node, _)| Step::WriteSysfs { path: PathBuf::from("/sys/class/hidraw").join(node).join("uevent"), value: "change".into() }))
+                .collect(),
+        }),
+    });
+}
+
+/// Whether this process may read and write `path`.
+fn can_read_write(path: &Path) -> bool {
+    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else { return false };
+    // SAFETY: a valid C string.
+    unsafe { libc::access(c.as_ptr(), libc::R_OK | libc::W_OK) == 0 }
+}
+
 /// A built-in HDR panel whose HDR the kernel doesn't drive: Intel's driver
 /// uses an eDP panel's own HDR interface (its PQ decoding, its brightness
 /// in nits) only if the firmware asks, the EDID has HDR static metadata,
@@ -1514,6 +1578,38 @@ mod tests {
                 "Olo is on the login screen",
             ]
         );
+        let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    #[test]
+    fn a_security_key_the_person_cant_open() {
+        let (fs, roots) = machine("fido");
+        let w = |p: &str, c: &[u8]| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // A YubiKey's FIDO interface, and its OTP keyboard (not a key's).
+        w("sys/class/hidraw/hidraw4/device/report_descriptor", &[0x06, 0xD0, 0xF1, 0x09, 0x01, 0xA1, 0x01]);
+        w("sys/class/hidraw/hidraw4/device/uevent", b"HID_ID=0003:00001050:00000407\nHID_NAME=Yubico YubiKey OTP+FIDO+CCID\n");
+        w("sys/class/hidraw/hidraw3/device/report_descriptor", &[0x05, 0x01, 0x09, 0x06, 0xA1, 0x01]);
+        w("dev/hidraw4", b"");
+        w("dev/hidraw3", b"");
+        let ours = |r: &Report| r.findings.iter().any(|f| f.id == "rule:security-keys");
+        // Its node the person's: fine.
+        let r = scan(&roots);
+        assert!(!ours(&r) && r.fine.iter().any(|f| f.title == "The security key plugged in can be used"), "{:#?}", r.fine);
+        // Root's alone (as a test, not root): the rule, applied to it.
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(fs.join("dev/hidraw4"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let r = scan(&roots);
+        if unsafe { libc::geteuid() } != 0 {
+            let f = r.findings.iter().find(|f| f.id == "rule:security-keys").expect("the rule offered");
+            let steps = &f.fix.as_ref().unwrap().steps;
+            assert!(matches!(&steps[0], Step::WriteFile { content, .. } if content == SECURITY_KEY_RULE));
+            assert!(matches!(&steps[1], Step::WriteSysfs { path, .. } if path == Path::new("/sys/class/hidraw/hidraw4/uevent")));
+            assert_eq!(steps.len(), 2);
+        }
         let _ = std::fs::remove_dir_all(&fs);
     }
 
