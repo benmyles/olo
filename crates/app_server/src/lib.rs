@@ -53,6 +53,7 @@ pub mod saver;
 pub mod screenshot;
 pub mod scroll;
 pub mod security_key;
+pub mod showing;
 pub mod sockfile;
 pub mod spotlight;
 pub mod tabtip;

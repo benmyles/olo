@@ -3214,5 +3214,11 @@
   "title": "The lock screen: touch your security key",
   "caption": "Asked as the screen locks, again three times, then whenever someone is there.",
   "image": "2026-11-05/043302-the-lock-screen-touch-your-security-key.png"
+ },
+ {
+  "time": "2026-11-05T05:36:03",
+  "title": "Clicks and shortcuts shown while recording",
+  "caption": "Record\u2026 \u25b8 Show Clicks and Show Shortcuts (or --show-clicks, --show-keys): a ring spreads where a button is pressed, and a shortcut shows on a key cap low on the screen, written as the keyboard profile writes it; typing never shows. Drawn by app_server, so recordings, screen sharing and agents' demos have them.",
+  "image": "2026-11-05/053603-clicks-and-shortcuts-shown-while-recording.png"
  }
 ]

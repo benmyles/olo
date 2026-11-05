@@ -277,6 +277,13 @@ pub enum Request {
     /// another length needs none. It ends at the time, when the screen
     /// locks (sleeping locks first) and when app_server restarts. Not
     /// persisted.
+    /// Clicks and keys shown on screen (app_server's `showing`: a ring
+    /// where a button is pressed, a chord on a key cap), for a recording
+    /// or a demo; both off by default, not kept.
+    SetShowing {
+        clicks: bool,
+        keys: bool,
+    },
     SetAutoApprove {
         minutes: Option<u32>,
         #[serde(default)]
@@ -1467,11 +1474,15 @@ pub struct ScreenRecordingSettings {
     pub sound: String,
     /// Recordings saved as GIFs (no sound) rather than MP4s.
     pub gif: bool,
+    /// Clicks shown while recording (a ring where a button is pressed).
+    pub show_clicks: bool,
+    /// Shortcuts shown while recording (a chord on a key cap).
+    pub show_keys: bool,
 }
 
 impl Default for ScreenRecordingSettings {
     fn default() -> Self {
-        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into(), gif: false }
+        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into(), gif: false, show_clicks: false, show_keys: false }
     }
 }
 

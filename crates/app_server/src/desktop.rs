@@ -1656,6 +1656,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             || self.hints.active()
             || crate::spotlight::active()
             || self.space.outputs().any(crate::osd::showing)
+            || crate::showing::active()
             || self.space.elements().any(|w| (0.0..1.0).contains(&w.meta().glow_strength()) && w.meta().glow.get().is_some())
     }
 

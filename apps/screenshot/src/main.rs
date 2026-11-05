@@ -59,9 +59,8 @@ enum Msg {
     /// A recording asked for from the window started (it goes on by
     /// itself: we're done), or why not.
     Recording(Result<(), String>),
-    /// The sound recordings take, and whether they're saved as GIFs, as
-    /// the settings have it (`ScreenRecordingSettings`).
-    Sound(String, bool),
+    /// The recording settings Record…'s ticks show.
+    Recordings(olo_protocol::ScreenRecordingSettings),
 }
 
 /// What the window's Record… records.
@@ -106,11 +105,9 @@ struct Screenshot {
     holding: bool,
     /// The window's keys (Return saves) when no field has them.
     focus: gpui::FocusHandle,
-    /// The sound a recording takes ("computer", "microphone", "both",
-    /// "none"), for Record…'s ticks.
-    sound: String,
-    /// Recordings saved as GIFs.
-    gif: bool,
+    /// The recording settings, for Record…'s ticks (the sound, GIF,
+    /// clicks and keys shown).
+    recordings: olo_protocol::ScreenRecordingSettings,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -229,8 +226,7 @@ impl Screenshot {
             folders,
             holding: false,
             focus: cx.focus_handle(),
-            sound: "computer".into(),
-            gif: false,
+            recordings: Default::default(),
         }
     }
 
@@ -239,44 +235,41 @@ impl Screenshot {
         let proxy = olo_ui::proxy(cx);
         std::thread::spawn(move || {
             if let Some(s) = olo_ui::settings::current() {
-                proxy.send(Msg::Sound(s.screen_recording.sound, s.screen_recording.gif));
+                proxy.send(Msg::Recordings(s.screen_recording));
             }
         });
     }
 
-    /// Record…'s Save as GIF turned over: kept in the settings.
-    fn toggle_gif(&mut self) {
-        self.gif = !self.gif;
-        let gif = self.gif;
-        std::thread::spawn(move || {
-            let Some(mut settings) = olo_ui::settings::current() else { return };
-            settings.screen_recording.gif = gif;
-            if let Ok(mut c) = olo_protocol::Client::connect() {
-                let _ = c.request(&olo_protocol::Request::SetSettings { settings });
+    /// One of Record…'s ticks turned over: kept in the settings (off the
+    /// UI thread).
+    fn toggle(&mut self, what: &str) {
+        let r = &mut self.recordings;
+        match what {
+            "sound-computer" | "sound-microphone" => {
+                let (mut computer, mut mic) = sound_parts(&r.sound);
+                if what == "sound-microphone" {
+                    mic = !mic;
+                } else {
+                    computer = !computer;
+                }
+                r.sound = match (computer, mic) {
+                    (true, true) => "both",
+                    (true, false) => "computer",
+                    (false, true) => "microphone",
+                    (false, false) => "none",
+                }
+                .into();
             }
-        });
-    }
-
-    /// Record…'s tick for the computer's sound or the microphone turned
-    /// over: kept in the settings (off the UI thread).
-    fn toggle_sound(&mut self, microphone: bool) {
-        let (mut computer, mut mic) = sound_parts(&self.sound);
-        if microphone {
-            mic = !mic;
-        } else {
-            computer = !computer;
+            "gif" => r.gif = !r.gif,
+            "show-clicks" => r.show_clicks = !r.show_clicks,
+            "show-keys" => r.show_keys = !r.show_keys,
+            _ => return,
         }
-        self.sound = match (computer, mic) {
-            (true, true) => "both",
-            (true, false) => "computer",
-            (false, true) => "microphone",
-            (false, false) => "none",
-        }
-        .into();
-        let sound = self.sound.clone();
+        let mine = r.clone();
         std::thread::spawn(move || {
             let Some(mut settings) = olo_ui::settings::current() else { return };
-            settings.screen_recording.sound = sound;
+            // (The encoder is Preferences', left as it is there.)
+            settings.screen_recording = olo_protocol::ScreenRecordingSettings { encoder: settings.screen_recording.encoder, ..mine };
             if let Ok(mut c) = olo_protocol::Client::connect() {
                 let _ = c.request(&olo_protocol::Request::SetSettings { settings });
             }
@@ -349,7 +342,8 @@ impl Screenshot {
                 menu.item("Stop Recording", "stop")
             }
             None => {
-                let (computer, mic) = sound_parts(&self.sound);
+                let r = &self.recordings;
+                let (computer, mic) = sound_parts(&r.sound);
                 Menu::new("Record")
                     .item("Record Screen", "screen")
                     .item("Record Active Window", "window")
@@ -357,26 +351,26 @@ impl Screenshot {
                     .separator()
                     .item("Record the Computer's Sound", "sound-computer")
                     .checked(computer)
-                    .enabled(!self.gif)
+                    .enabled(!r.gif)
                     .item("Record the Microphone", "sound-microphone")
                     .checked(mic)
-                    .enabled(!self.gif)
+                    .enabled(!r.gif)
+                    .separator()
+                    .item("Show Clicks", "show-clicks")
+                    .checked(r.show_clicks)
+                    .item("Show Shortcuts", "show-keys")
+                    .checked(r.show_keys)
                     .separator()
                     .item("Save as GIF", "gif")
-                    .checked(self.gif)
+                    .checked(r.gif)
             }
         }
     }
 
     fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let what = match command {
-            "sound-computer" | "sound-microphone" => {
-                self.toggle_sound(command == "sound-microphone");
-                cx.notify();
-                return;
-            }
-            "gif" => {
-                self.toggle_gif();
+            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" => {
+                self.toggle(command);
                 cx.notify();
                 return;
             }
@@ -619,7 +613,7 @@ impl Screenshot {
                 self.open_main(cx);
                 self.show_error(format!("Couldn't start recording.\n\n{e}"), cx);
             }
-            Msg::Sound(s, gif) => (self.sound, self.gif) = (s, gif),
+            Msg::Recordings(r) => self.recordings = r,
         }
         cx.notify();
     }

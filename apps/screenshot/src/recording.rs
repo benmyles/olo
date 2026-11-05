@@ -13,7 +13,7 @@
 //! olo-screenshot --record [--window ID] [--display NAME] [--region [X,Y,W,H]]
 //!                [--seconds N] [--fps N] [--no-pointer]
 //!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
-//!                [--as-gif] [--to PATH]
+//!                [--as-gif] [--show-clicks] [--show-keys] [--to PATH]
 //! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
 //! olo-screenshot --stop          the recording on this display, finished
 //! olo-screenshot --pause         nothing recorded till --resume
@@ -31,6 +31,10 @@
 //! makes the recording a GIF once it's done (no sound), the MP4 gone;
 //! `--gif` makes any of Olo's recordings one (`olo_video::gif`: 10 frames
 //! a second, at most 960 wide, one palette, each frame what changed).
+//!
+//! `--show-clicks` and `--show-keys` (or the settings', Record…'s ticks)
+//! have app_server show clicks (a ring) and shortcuts (a key cap) while
+//! it records (`Request::SetShowing`), and stop after.
 //!
 //! `--region X,Y,W,H` records that part of the display (points from its
 //! top left, as windows' frames are given); `--region` alone has it
@@ -284,6 +288,8 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         _ => None,
     });
     let as_gif = args.iter().any(|a| a == "--as-gif") || settings.as_ref().is_some_and(|s| s.gif);
+    let show_clicks = args.iter().any(|a| a == "--show-clicks") || settings.as_ref().is_some_and(|s| s.show_clicks);
+    let show_keys = args.iter().any(|a| a == "--show-keys") || settings.as_ref().is_some_and(|s| s.show_keys);
     let sound = match option(args, "--sound").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.sound.clone())) {
         Some(s) => crate::sound::Which::parse(&s).ok_or("--sound is computer, microphone, both or none")?,
         None => crate::sound::Which::Computer,
@@ -328,7 +334,20 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false };
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
+    // Clicks and keys shown while it records, and not after.
+    let showing = show_clicks || show_keys;
+    let set_showing = |clicks: bool, keys: bool| {
+        if let Ok(mut c) = olo_protocol::Client::connect() {
+            let _ = c.request(&olo_protocol::Request::SetShowing { clicks, keys });
+        }
+    };
+    if showing {
+        set_showing(show_clicks, show_keys);
+    }
     let result = record_into(&mut capture, &path, fps, seconds, choice, crop, sound, &g, woken.as_raw_fd());
+    if showing {
+        set_showing(false, false);
+    }
     let _ = std::fs::remove_file(going_path());
     WAKE.store(-1, Ordering::SeqCst);
     drop(waker);
@@ -358,6 +377,30 @@ fn record_into(
     going: &Going,
     woken: i32,
 ) -> Result<Made, String> {
+    // The encoder opened first, on its worker (NVENC's CUDA context takes
+    // over two seconds to make, and belongs to the thread that made it):
+    // till it's ready, frames would only replace each other. The video's
+    // size as the capture says it'll be (a part of it, for a region).
+    let size = capture.size().map(|(w, h)| {
+        let [_, _, cw, ch] = crop_within(crop, w, h);
+        olo_video::even(cw, ch)
+    });
+    // (The sound's description, once it's started, for the file.)
+    let sound_in: Arc<Mutex<Option<SoundIn>>> = Arc::default();
+    let slot: Arc<(Mutex<Option<Waiting>>, std::sync::Condvar)> = Arc::default();
+    let ended = Arc::new(AtomicBool::new(false));
+    // Where the video ends (milliseconds of it), for its last frame.
+    let end = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let part = path.with_extension("mp4.part");
+    let (ready_tx, ready) = std::sync::mpsc::channel::<Result<(), String>>();
+    let worker = {
+        let (slot, ended, end, part, sound_in) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone());
+        std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &end, &part, fps, choice, size, &ready_tx, &sound_in)).map_err(|e| e.to_string())?
+    };
+    if let Ok(Err(e)) = ready.recv() {
+        let _ = worker.join();
+        return Err(e);
+    }
     let start = Instant::now();
     // The sound from now, if any asked for and there's a way.
     let (sound, sound_note) = match which {
@@ -370,19 +413,9 @@ fn record_into(
             }
         },
     };
-    let sound_track = sound.as_ref().map(|s| (s.track().clone(), s.units()));
+    *sound_in.lock().unwrap_or_else(|e| e.into_inner()) = sound.as_ref().map(|s| (s.track().clone(), s.units()));
     let fd = capture.fd()?;
     let every = Duration::from_secs_f64(1.0 / f64::from(fps));
-    // The encoder's: one picture waiting at most (a newer takes its place).
-    let slot: Arc<(Mutex<Option<Waiting>>, std::sync::Condvar)> = Arc::default();
-    let ended = Arc::new(AtomicBool::new(false));
-    // Where the video ends (milliseconds of it), for its last frame.
-    let end = Arc::new(std::sync::atomic::AtomicU64::new(0));
-    let part = path.with_extension("mp4.part");
-    let worker = {
-        let (slot, ended, end, part) = (slot.clone(), ended.clone(), end.clone(), part.clone());
-        std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &end, &part, fps, choice, sound_track)).map_err(|e| e.to_string())?
-    };
     let mut asked_at: Option<Instant> = None;
     // Time paused, left out of the video; and since when, if it is now.
     let mut paused_for = Duration::ZERO;
@@ -505,6 +538,7 @@ fn wait(fd: i32, woken: i32, timeout: Option<Duration>) {
 /// next; at the end, the last held till then and the file finished.
 /// Frames encoded, and the video's size.
 /// (`end`: where the video ends, in milliseconds of it, once `ended`.)
+#[allow(clippy::too_many_arguments)]
 fn encode(
     slot: &(Mutex<Option<Waiting>>, std::sync::Condvar),
     ended: &AtomicBool,
@@ -512,11 +546,19 @@ fn encode(
     part: &Path,
     fps: u32,
     choice: olo_video::Choice,
-    sound: Option<SoundIn>,
+    size: Option<(u32, u32)>,
+    ready: &std::sync::mpsc::Sender<Result<(), String>>,
+    sound: &Mutex<Option<SoundIn>>,
 ) -> Result<(usize, (u32, u32), &'static str), String> {
-    // The sound's access units so far, into the file beside the pictures.
-    let add_sound = |mp4: &mut olo_video::Mp4| -> Result<(), String> {
-        if let Some((_, units)) = &sound {
+    // The sound's access units so far, into the file beside the pictures
+    // (its description given the file the first time).
+    let mut described = false;
+    let mut add_sound = |mp4: &mut olo_video::Mp4| -> Result<(), String> {
+        let s = sound.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((track, units)) = s.as_ref() {
+            if !std::mem::replace(&mut described, true) {
+                mp4.with_sound(track, olo_system::recording::RATE, crate::sound::BITRATE);
+            }
             let got = std::mem::take(&mut *units.lock().unwrap_or_else(|e| e.into_inner()));
             for au in got {
                 mp4.add_sound(&au).map_err(|e| e.to_string())?;
@@ -527,6 +569,22 @@ fn encode(
     let (m, cv) = slot;
     // Milliseconds: durations as they came.
     let mut video: Option<(olo_video::Encoder, olo_video::Mp4, Vec<u8>)> = None;
+    // Opened now, at the size the capture says (before the recording
+    // starts: the recorder waits for this); else at the first picture.
+    if let Some((vw, vh)) = size {
+        let opened = olo_video::Encoder::new(vw, vh, fps, choice).and_then(|enc| {
+            let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
+            Ok((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]))
+        });
+        match opened {
+            Ok(v) => video = Some(v),
+            Err(e) => {
+                let _ = ready.send(Err(e.clone()));
+                return Err(e);
+            }
+        }
+    }
+    let _ = ready.send(Ok(()));
     let mut held: Option<(Vec<u8>, bool, Duration)> = None;
     let mut frames = 0usize;
     loop {
@@ -546,10 +604,7 @@ fn encode(
         if video.is_none() {
             let (vw, vh) = olo_video::even(w.width, w.height);
             let enc = olo_video::Encoder::new(vw, vh, fps, choice)?;
-            let mut mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
-            if let Some((track, _)) = &sound {
-                mp4.with_sound(track, olo_system::recording::RATE, crate::sound::BITRATE);
-            }
+            let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
             video = Some((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]));
         }
         let (enc, mp4, canvas) = video.as_mut().unwrap();

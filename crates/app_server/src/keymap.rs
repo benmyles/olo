@@ -362,6 +362,12 @@ impl Keymap {
         self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s)
     }
 
+    /// `key` with the modifiers held now, as the person pressed it (for
+    /// showing keys: `showing`).
+    pub fn chord_now(&self, key: u32) -> Chord {
+        self.chord(key)
+    }
+
     /// The key with the modifiers held now (physically: Cmd is Super, Alt
     /// is Alt, whichever is the command key).
     fn chord(&self, key: u32) -> Chord {

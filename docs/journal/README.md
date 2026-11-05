@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Clicks and shortcuts shown while recording
+
+*05:36* — Record… ▸ Show Clicks and Show Shortcuts (or --show-clicks, --show-keys): a ring spreads where a button is pressed, and a shortcut shows on a key cap low on the screen, written as the keyboard profile writes it; typing never shows. Drawn by app_server, so recordings, screen sharing and agents' demos have them.
+
+![Clicks and shortcuts shown while recording](2026-11-05/053603-clicks-and-shortcuts-shown-while-recording.png)
+
 ### The lock screen: touch your security key
 
 *04:33* — Asked as the screen locks, again three times, then whenever someone is there.

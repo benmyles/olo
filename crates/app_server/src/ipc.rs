@@ -603,6 +603,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.lock_screen();
                 Reply::Ok
             }
+            Request::SetShowing { clicks, keys } => {
+                crate::showing::set(clicks, keys);
+                Reply::Ok
+            }
             Request::Rescue { on } => {
                 if on {
                     self.enter_rescue();

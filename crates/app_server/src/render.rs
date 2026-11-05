@@ -576,12 +576,17 @@ where
     let indicator = crate::osd::element(renderer, output, screen).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
     // A tab's cut title, whole (`tabtip`), as high.
     let tab_tip = crate::tabtip::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
+    // Clicks and keys shown (`showing`), as high: in captures too.
+    let shown: Vec<_> = crate::showing::elements(renderer, output, screen).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))).collect();
     // Locked: nothing but what the caller passed (the pointer and the lock
     // screen) over an opaque background.
     if locked {
         let [r, g, b, a] = crate::lock::BACKGROUND;
         let mut elements: Vec<_> = custom_elements.into_iter().map(OutputRenderElements::from).collect();
         add_indicator(&mut elements, indicator);
+        for e in shown {
+            add_indicator(&mut elements, Some(e));
+        }
         return (elements, Color32F::new(r, g, b, a));
     }
     // (In Rescue a full-screen window is put away with the rest.)
@@ -592,6 +597,9 @@ where
         let elements = custom_elements.into_iter().map(OutputRenderElements::from).chain(window_render_elements.into_iter().map(|e| OutputRenderElements::Window(Wrap::from(e)))).collect::<Vec<_>>();
         let mut elements = elements;
         add_indicator(&mut elements, indicator);
+        for e in shown {
+            add_indicator(&mut elements, Some(e));
+        }
         (elements, CLEAR_COLOR_FULLSCREEN)
     } else {
         let mut output_render_elements = custom_elements.into_iter().map(OutputRenderElements::from).collect::<Vec<_>>();
@@ -599,6 +607,9 @@ where
         output_render_elements.extend(crate::identify::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
         add_indicator(&mut output_render_elements, indicator);
         add_indicator(&mut output_render_elements, tab_tip);
+        for e in shown {
+            add_indicator(&mut output_render_elements, Some(e));
+        }
 
         crate::shell::groups::mark_behind(space);
         crate::shell::modes::mark_covered(space);

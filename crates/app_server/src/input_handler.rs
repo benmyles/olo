@@ -152,11 +152,46 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.physical_key(key, pressed, Event::time(&evt))
     }
 
+    /// A ring where the pointer is, when clicks are shown (`showing`).
+    fn show_click(&mut self) {
+        if !crate::showing::clicks() {
+            return;
+        }
+        let at = self.pointer.current_location();
+        if let Some(o) = self.space.output_under(at).next()
+            && let Some(g) = self.space.output_geometry(o)
+        {
+            crate::showing::click(o, at - g.loc.to_f64());
+        }
+        self.backend_data.wake(None);
+    }
+
+    /// Physical `key` pressed while keys are shown (`showing`): its chord
+    /// put up as the keyboard profile writes it, if it's one (⌃, ⌥ or ⌘
+    /// held) or a key shown alone; typing never.
+    fn show_chord(&mut self, key: u32) {
+        let chord = self.keymap.chord_now(key);
+        let modified = chord.ctrl || chord.alt || chord.cmd;
+        let modifier = matches!(key, 29 | 97 | 42 | 54 | 56 | 100 | 125 | 126 | 58);
+        if modifier || !olo_protocol::Chord::known_key(key) || !(modified || crate::showing::shown_alone(key)) {
+            return;
+        }
+        let label = chord.label(self.settings.keyboard.profile.platform);
+        let at = self.pointer.current_location();
+        if let Some(o) = self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned() {
+            crate::showing::chord(&o, label);
+        }
+        self.backend_data.wake(None);
+    }
+
     /// A key from a device (or a test): map it (⌘, Caps Lock, …), act on
     /// app_server's own chords and send the rest to the focused client.
     fn physical_key(&mut self, key: u32, pressed: bool, time: InputTime) -> KeyAction {
         if pressed {
             crate::contacts::note_key();
+            if crate::showing::keys() {
+                self.show_chord(key);
+            }
         }
         // Escape while something is dragged: the drag ends, nothing
         // dropped (and the Escape reaches nobody).
@@ -607,6 +642,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
 
         if wl_pointer::ButtonState::Pressed == state {
+            self.show_click();
             // Clicking puts keyboard hints away.
             if self.hints.active() {
                 self.hints.close();
@@ -1463,6 +1499,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     return;
                 }
                 if pressed {
+                    // (An agent's clicks shown too: its demo's.)
+                    self.show_click();
                     self.update_keyboard_focus(pointer.current_location(), serial);
                 }
                 let state = if pressed { smithay::backend::input::ButtonState::Pressed } else { smithay::backend::input::ButtonState::Released };

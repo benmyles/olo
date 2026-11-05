@@ -461,6 +461,18 @@ mod tests {
 
     /// A few pictures encoded and written, held for their durations: the
     /// file's boxes where they should be, its samples and times as given.
+    /// How long opening an encoder takes (NVENC's CUDA context), run by
+    /// hand: `cargo test -p olo-video encoder_opening -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn encoder_opening() {
+        for choice in [Choice::Nvidia, Choice::Cpu] {
+            let t = std::time::Instant::now();
+            let e = Encoder::new(1280, 800, 30, choice);
+            eprintln!("{choice:?}: {:?} in {:?}", e.as_ref().map(|e| e.name()), t.elapsed());
+        }
+    }
+
     #[test]
     fn an_mp4_with_sound() {
         let Ok(mut aac) = aac::Aac::new(48_000, 2, 160_000) else { return eprintln!("no libfdk-aac here") };

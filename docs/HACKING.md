@@ -5964,6 +5964,27 @@ Screens' Export Video uses too).
   2.4% with both, the AAC encoding 0.5% of it, the rest the two
   streams' client threads, woken for each piece (every 10 ms from the
   stand-in; a real server's are 40 ms).
+- **Clicks and shortcuts shown** (app_server `showing.rs`,
+  `Request::SetShowing { clicks, keys }`): a ring spreading from where a
+  button is pressed (an agent's synthetic clicks too) and the chord just
+  pressed on a key cap low on the screen, written as the keyboard
+  profile writes it (`Chord::label`: ⇧⌘4 on the Mac profile), from the
+  physical keys (`Keymap::chord_now`), before the profile maps them for
+  apps. Only chords with ⌃, ⌥ or ⌘ and a few keys alone (Return,
+  Escape, Tab, Delete, the arrows): never typing, so a password typed
+  while recording never shows. Drawn over everything but the pointer
+  (see-through: no opaque region), so recordings and screen shares
+  have them; the displays stay awake only while a ring spreads (450 ms)
+  or a key cap fades (1.6 s). The recorder turns them on for a
+  recording that asks (`--show-clicks`, `--show-keys`, or the settings:
+  Record… ▸ Show Clicks, Show Shortcuts) and off after.
+- **The encoder opened first**: NVENC takes 2.5 s to open (its CUDA
+  context), and while it did, the frames that came only replaced each
+  other: every GPU recording's first seconds were one picture. The
+  worker now opens the encoder at the size the capture gives (a
+  region's part of it) before the recording's clock starts, and the
+  recorder waits for it (`ready`); the sound's description reaches the
+  file once the sound has started.
 - **GIFs** (`olo_video::gif`): `--as-gif` (or the settings' `gif`,
   Record… ▸ Save as GIF, which dims the sound ticks) makes the recording
   a GIF when it's done, the MP4 gone; `olo-screenshot --gif VIDEO
