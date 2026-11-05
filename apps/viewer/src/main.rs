@@ -52,6 +52,9 @@ enum Msg {
     OnDisk(Vec<PathBuf>),
     /// A look following a file panel (`--follow`): the file to show now.
     LookAt(PathBuf),
+    /// A video trimmed (`Doc::trim`): where the trimmed copy went, or why
+    /// not.
+    Trimmed(EntityId, Result<PathBuf, String>),
 }
 
 enum Content {
@@ -125,6 +128,8 @@ struct Doc {
     focus: FocusHandle,
     /// A press on the picture while cropping, and whether it has dragged.
     crop_press: Option<bool>,
+    /// A video being trimmed into a copy, on a worker.
+    trimming: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -196,6 +201,7 @@ impl Viewer {
             after_save: After::Nothing,
             awake: false,
             edit: None,
+            trimming: false,
             on_disk: None,
             focus: cx.focus_handle(),
             crop_press: None,
@@ -384,6 +390,23 @@ impl Viewer {
             Msg::Edit(id, ev) => {
                 if let Some(doc) = self.doc_of(id) {
                     doc.update(cx, |d, cx| d.edit_event(ev, cx));
+                }
+            }
+            Msg::Trimmed(id, result) => {
+                if let Some(doc) = self.doc_of(id) {
+                    doc.update(cx, |d, cx| {
+                        d.trimming = false;
+                        match result {
+                            // The trimmed copy shown in this window.
+                            Ok(path) => d.load(path, cx),
+                            Err(e) => {
+                                if let Some(v) = d.viewer.upgrade() {
+                                    v.update(cx, |v, cx| v.show_error(format!("The video couldn’t be trimmed.\n\n{e}"), cx));
+                                }
+                            }
+                        }
+                        cx.notify();
+                    });
                 }
             }
             Msg::Siblings(id, path, list) => {
@@ -811,6 +834,22 @@ impl Doc {
         }
         file = file.item(olo_ui::tracker::LABEL, olo_ui::tracker::COMMAND).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
         let mut menus = vec![file];
+        // A video: Trim… (and while trimming, Cancel and Trim there too).
+        if let Content::Other(prev) = &self.content
+            && prev.read(cx).is_video()
+        {
+            let trimming = prev.read(cx).trimming().is_some();
+            menus.push(
+                Menu::new("Edit")
+                    .item("Trim…", "trim")
+                    .key("t")
+                    .enabled(!trimming && !self.trimming)
+                    .item("Trim to Selection", "trim-save")
+                    .enabled(trimming)
+                    .item("Cancel Trimming", "trim-cancel")
+                    .enabled(trimming),
+            );
+        }
         if picture {
             menus.push(Menu::new("Edit").item("Undo", "undo").key("z").enabled(editor.is_some_and(|e| e.can_undo())).item("Redo", "redo").shift_key("z").enabled(editor.is_some_and(|e| e.can_redo())));
         }
@@ -966,6 +1005,9 @@ impl Doc {
                 });
             }
             return;
+        }
+        if matches!(command, "trim" | "trim-cancel" | "trim-save") {
+            return self.trim_command(command, cx);
         }
         if matches!(command, "rotate-left" | "rotate-right" | "flip-h" | "flip-v" | "crop" | "crop-cancel" | "resize" | "revert") || (self.edit.is_some() && matches!(command, "undo" | "redo")) {
             return self.picture_command(command, window, cx);
@@ -1236,6 +1278,71 @@ impl Doc {
         div().relative().h(px(m::TOOLBAR_HEIGHT)).w_full().px(px(m::SPACING)).flex().items_center().gap(px(m::SPACING)).child(ground).child(left).child(info).child(right).into_any_element()
     }
 
+    /// Trim… (a video): handles on its timeline (the player's own,
+    /// `PreviewView::set_trimming`), Cancel and Trim over it; Trim copies
+    /// the stretch kept into "NAME (trimmed).mp4" beside it on a worker
+    /// (`olo_video::trim`: nothing encoded again) and shows that.
+    fn trim_command(&mut self, command: &str, cx: &mut Context<Self>) {
+        let Content::Other(prev) = &self.content else { return };
+        let prev = prev.clone();
+        match command {
+            "trim" => prev.update(cx, |p, cx| p.set_trimming(true, cx)),
+            "trim-cancel" => prev.update(cx, |p, cx| p.set_trimming(false, cx)),
+            _ => {
+                let Some((from, to)) = prev.read(cx).trimming() else { return };
+                prev.update(cx, |p, cx| {
+                    p.stop();
+                    p.set_trimming(false, cx);
+                });
+                self.trimming = true;
+                let (src, id, proxy) = (self.path.clone(), cx.entity_id(), olo_ui::proxy(cx));
+                std::thread::spawn(move || {
+                    let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                    let dst = src.with_file_name(format!("{stem} (trimmed).mp4"));
+                    let part = dst.with_extension("mp4.part");
+                    let r = olo_video::trim::trim(&src, &part, from, to).and_then(|_| std::fs::rename(&part, &dst).map_err(|e| e.to_string()));
+                    if r.is_err() {
+                        let _ = std::fs::remove_file(&part);
+                    }
+                    proxy.send(Msg::Trimmed(id, r.map(|()| dst)));
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    /// While trimming: Cancel and Trim, floating over the bottom of the
+    /// picture, above the timeline.
+    fn trim_bar(&self, prev: &Entity<PreviewView>, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (from, to) = prev.read(cx).trimming()?;
+        let (trim_doc, cancel_doc) = (cx.entity(), cx.entity());
+        let bw = m::BUTTON_MIN_WIDTH;
+        let kept = format!("{} kept", olo_preview::media::format_duration(to - from));
+        let p = theme::palette(cx);
+        Some(
+            div()
+                .absolute()
+                .bottom(px(olo_preview::ui::UNDER_VIDEO + m::SPACING))
+                .left_0()
+                .right_0()
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(m::SPACING))
+                        .p(px(6.0))
+                        .rounded(px(6.0))
+                        .bg(style::c(p.scrim))
+                        .child(olo_ui::widgets::StringView::new(kept).color(style::c(p.desktop_text)))
+                        .child(Button::new("Cancel").min_width(bw).on_click(move |_, cx| cancel_doc.update(cx, |d, cx| d.trim_command("trim-cancel", cx))))
+                        .child(Button::new("Trim").default(true).min_width(bw).enabled(to - from >= 0.1).on_click(move |_, cx| trim_doc.update(cx, |d, cx| d.trim_command("trim-save", cx)))),
+                )
+                .into_any_element(),
+        )
+    }
+
     /// The picture's crop frame, over the preview, and its Crop and
     /// Cancel buttons.
     fn crop_overlay(&self, prev: &Entity<PreviewView>, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -1357,6 +1464,9 @@ impl Render for Doc {
                 let mut area = div().relative().size_full().child(prev.clone());
                 if let Some(overlay) = self.crop_overlay(&prev, cx) {
                     area = area.child(overlay);
+                }
+                if let Some(bar) = self.trim_bar(&prev, cx) {
+                    area = area.child(bar);
                 }
                 if self.edit.as_ref().is_some_and(|e| e.editor.busy || e.editor.saving) {
                     let spin = canvas(

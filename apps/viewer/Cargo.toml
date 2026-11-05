@@ -13,6 +13,7 @@ olo-crash.workspace = true
 olo-ui.workspace = true
 olo-xdg.workspace = true
 olo-preview = { workspace = true, features = ["gpui"] }
+olo-video.workspace = true
 image = { version = "0.25", default-features = false }
 serde.workspace = true
 serde_json.workspace = true

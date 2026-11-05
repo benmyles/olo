@@ -15,6 +15,7 @@
 //!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
 //!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--to PATH]
 //! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
+//! olo-screenshot --trim VIDEO.mp4 --start S --end E [--to PATH]
 //! olo-screenshot --stop          the recording on this display, finished
 //! olo-screenshot --pause         nothing recorded till --resume
 //! olo-screenshot --resume
@@ -163,6 +164,41 @@ pub struct GifMade {
     pub width: u32,
     pub height: u32,
     pub bytes: u64,
+}
+
+/// `--trim VIDEO --start S --end E`: a recording cut to that stretch,
+/// copied (nothing encoded again: `olo_video::trim`), beside it as
+/// "NAME (trimmed).mp4" unless `--to`; what was made printed.
+pub fn trim(args: &[String]) -> i32 {
+    let run = || -> Result<serde_json::Value, String> {
+        let src = PathBuf::from(option(args, "--trim").ok_or("--trim takes the video to trim")?);
+        let secs = |flag: &str| option(args, flag).map(str::parse::<f64>).transpose().map_err(|_| format!("{flag} takes seconds"));
+        let start = secs("--start")?.unwrap_or(0.0);
+        let end = secs("--end")?.ok_or("--end takes where it ends (seconds)")?;
+        let dst = option(args, "--to").map_or_else(
+            || {
+                let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                src.with_file_name(format!("{stem} (trimmed).mp4"))
+            },
+            PathBuf::from,
+        );
+        let part = dst.with_extension("mp4.part");
+        let t = olo_video::trim::trim(&src, &part, start, end).inspect_err(|_| {
+            let _ = std::fs::remove_file(&part);
+        })?;
+        std::fs::rename(&part, &dst).map_err(|e| format!("{}: {e}", dst.display()))?;
+        Ok(serde_json::json!({ "path": dst, "seconds": t.seconds, "frames": t.frames, "sound": t.sound }))
+    };
+    match run() {
+        Ok(v) => {
+            println!("{v}");
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: the trim failed: {e}");
+            1
+        }
+    }
 }
 
 /// `--gif VIDEO`: a recording made a GIF; what was made printed.

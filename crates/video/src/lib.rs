@@ -7,6 +7,7 @@
 pub mod aac;
 pub mod gif;
 pub mod nvenc;
+pub mod trim;
 
 use std::{
     fs::File,
@@ -227,6 +228,9 @@ pub struct Mp4 {
     mdat_size_at: u64,
     /// A sound track (AAC), if there is one.
     audio: Option<Audio>,
+    /// Where playback starts in the first picture (ticks), by an edit
+    /// list: a trimmed video's (`trim`).
+    start: u32,
 }
 
 /// An MP4's sound track: AAC access units of `aac::FRAME` samples each.
@@ -270,6 +274,7 @@ impl Mp4 {
             at,
             mdat_size_at,
             audio: None,
+            start: 0,
         })
     }
 
@@ -331,6 +336,13 @@ impl Mp4 {
         Ok(())
     }
 
+    /// Played from `ticks` into the video (an edit list), what's before
+    /// kept only to decode from (a trimmed recording starts at its key
+    /// frame before).
+    pub fn start_at(&mut self, ticks: u32) {
+        self.start = ticks;
+    }
+
     /// The last sample shown `duration` ticks longer (a still screen: its
     /// last picture held to the end).
     pub fn extend_last(&mut self, duration: u32) {
@@ -353,13 +365,15 @@ impl Mp4 {
             let samples = (a.sizes.len() as u64 * aac::FRAME as u64).saturating_sub(u64::from(a.delay));
             (samples * u64::from(self.timescale) / u64::from(a.rate.max(1))).min(u64::from(u32::MAX)) as u32
         });
-        let movie = duration.max(sound.unwrap_or(0));
+        // (What's before an edit list's start isn't shown.)
+        let shown = duration.saturating_sub(self.start);
+        let movie = shown.max(sound.unwrap_or(0));
         let next_track = if sound.is_some() { 3 } else { 2 };
         let mvhd = full(b"mvhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(movie), u32b(0x10000), u16b(0x100), vec![0; 10], matrix.clone(), vec![0; 24], u32b(next_track)].concat());
         let tkhd = full(
             b"tkhd",
             3,
-            &[u32b(0), u32b(0), u32b(1), u32b(0), u32b(duration), vec![0; 8], u16b(0), u16b(0), u16b(0), u16b(0), matrix.clone(), u32b(self.width << 16), u32b(self.height << 16)].concat(),
+            &[u32b(0), u32b(0), u32b(1), u32b(0), u32b(shown), vec![0; 8], u16b(0), u16b(0), u16b(0), u16b(0), matrix.clone(), u32b(self.width << 16), u32b(self.height << 16)].concat(),
         );
         let mdhd = full(b"mdhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(duration), u16b(0x55c4), u16b(0)].concat());
         let hdlr = full(b"hdlr", 0, &[u32b(0), b"vide".to_vec(), vec![0; 12], b"Olo video\0".to_vec()].concat());
@@ -390,7 +404,8 @@ impl Mp4 {
         let dinf = bx(b"dinf", &full(b"dref", 0, &[u32b(1), full(b"url ", 1, &[])].concat()));
         let minf = bx(b"minf", &[vmhd, dinf, stbl].concat());
         let mdia = bx(b"mdia", &[mdhd, hdlr, minf].concat());
-        let trak = bx(b"trak", &[tkhd, mdia].concat());
+        let edts = if self.start > 0 { bx(b"edts", &full(b"elst", 0, &[u32b(1), u32b(shown), u32b(self.start), u16b(1), u16b(0)].concat())) } else { Vec::new() };
+        let trak = bx(b"trak", &[tkhd, edts, mdia].concat());
         let sound_trak = match (&self.audio, sound) {
             (Some(a), Some(length)) => sound_track(a, length, &matrix),
             _ => Vec::new(),

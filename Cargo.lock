@@ -7836,6 +7836,7 @@ dependencies = [
  "olo-crash",
  "olo-preview",
  "olo-ui",
+ "olo-video",
  "olo-xdg",
  "serde",
  "serde_json",

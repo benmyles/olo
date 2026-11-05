@@ -5991,6 +5991,22 @@ Screens' Export Video uses too).
   region's part of it) before the recording's clock starts, and the
   recorder waits for it (`ready`); the sound's description reaches the
   file once the sound has started.
+- **Trimming** (`olo_video::trim`; the Viewer's Edit ▸ Trim…, ⌘T;
+  `olo-screenshot --trim VIDEO --start S --end E [--to PATH]`): nothing
+  encoded again. The pictures are copied from the key frame at or
+  before the start to the one showing at the end (the last cut short),
+  an edit list starting playback exactly at the start (`Mp4::start_at`);
+  the sound (AAC) from the frame before the one holding the start (the
+  decoder's overlap) to the one holding the end, its edit list cutting
+  what's before (the source's own read from its boxes, `edit_starts`:
+  the mp4 crate doesn't give it). A video with reordered frames
+  (B-frames) is refused. Olo's player honours the edit lists: a trimmed
+  copy at 0 s is pixel for pixel the original at its start. In the
+  Viewer the player's timeline gets a handle at each end of what's kept
+  (`PreviewView::set_trimming`; what's cut dimmed; dragging one shows
+  the picture there; its two handles are what agents see of the bar
+  then), Cancel and Trim over the picture; Trim writes "NAME
+  (trimmed).mp4" beside it on a worker and shows it.
 - **GIFs** (`olo_video::gif`): `--as-gif` (or the settings' `gif`,
   Record… ▸ Save as GIF, which dims the sound ticks) makes the recording
   a GIF when it's done, the MP4 gone; `olo-screenshot --gif VIDEO

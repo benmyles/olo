@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### The Viewer's Trim…
+
+*05:57* — Edit ▸ Trim… on a video puts a handle at each end of its timeline (what's cut dimmed, the picture where a handle is dragged shown); Trim copies the stretch kept into “NAME (trimmed).mp4” beside it, nothing encoded again, and shows it. olo-screenshot --trim does the same for agents.
+
+![The Viewer's Trim…](2026-11-05/055739-the-viewer-s-trim.png)
+
 ### Clicks and shortcuts shown while recording
 
 *05:36* — Record… ▸ Show Clicks and Show Shortcuts (or --show-clicks, --show-keys): a ring spreads where a button is pressed, and a shortcut shows on a key cap low on the screen, written as the keyboard profile writes it; typing never shows. Drawn by app_server, so recordings, screen sharing and agents' demos have them.

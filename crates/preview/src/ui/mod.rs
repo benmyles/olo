@@ -53,6 +53,9 @@ const GUTTER_PAD: f32 = 10.0;
 /// Below a video: its title and facts, and the transport when it plays.
 const VIDEO_INFO: f32 = 2.0 * m::LABEL_ROW + 2.0 * m::SPACING;
 const TRANSPORT: f32 = 34.0;
+/// What's under a video's picture (its transport and what it is), for a
+/// window's own controls to go over (the Viewer's trim bar).
+pub const UNDER_VIDEO: f32 = VIDEO_INFO + TRANSPORT;
 /// A sound's cover, a side at most.
 const ART: f32 = 160.0;
 
@@ -95,6 +98,10 @@ pub struct PreviewView {
     /// Whether the video played when last drawn (what keeps the screen
     /// awake follows it).
     video_played: bool,
+    /// Trimming (the Viewer's Trim…): the stretch kept (seconds), and
+    /// which end is being dragged (true: the end).
+    trim: Option<(f64, f64)>,
+    trim_drag: Option<bool>,
     text_scroll: ScrollHandle,
     list: Entity<ListModel>,
     sheet: usize,
@@ -142,6 +149,8 @@ impl PreviewView {
             dropped: Vec::new(),
             tick: None,
             video_played: false,
+            trim: None,
+            trim_drag: None,
             text_scroll: ScrollHandle::new(),
             list: ListModel::new(cx, false),
             sheet: 0,
@@ -326,6 +335,29 @@ impl PreviewView {
     }
 
     /// Whether a picture is shown (so zoom commands apply).
+    /// Whether it shows a video that plays.
+    pub fn is_video(&self) -> bool {
+        self.video.is_some()
+    }
+
+    /// The stretch kept while trimming (seconds), if trimming.
+    pub fn trimming(&self) -> Option<(f64, f64)> {
+        self.trim
+    }
+
+    /// Trimming begun (all of it kept, the handles at its ends) or ended.
+    pub fn set_trimming(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.trim = match (on, &self.video) {
+            (true, Some(v)) => {
+                let dur = self.body.as_ref().and_then(|b| if let Body::Media(md) = b { md.duration } else { None }).unwrap_or_else(|| Transport::duration(v));
+                Some((0.0, dur.max(0.0)))
+            }
+            _ => None,
+        };
+        self.trim_drag = None;
+        cx.notify();
+    }
+
     pub fn is_image(&self) -> bool {
         self.failed.is_none() && matches!(self.body, Some(Body::Image { .. }))
     }
@@ -800,7 +832,8 @@ struct TransportAt {
 
 /// Play/pause, elapsed time, a seek bar and the time left, centred on
 /// `y` between `x` and `right`.
-fn paint_transport(window: &mut Window, cx: &mut App, x: Pixels, right: Pixels, y: Pixels, t: &dyn Transport, duration: Option<f64>, pressed: bool) -> TransportAt {
+#[allow(clippy::too_many_arguments)]
+fn paint_transport(window: &mut Window, cx: &mut App, x: Pixels, right: Pixels, y: Pixels, t: &dyn Transport, duration: Option<f64>, pressed: bool, trim: Option<(f64, f64)>) -> TransportAt {
     let p = theme::palette(cx);
     let dim = style::disabled_text(&p);
     if let Some(e) = t.error() {
@@ -841,11 +874,32 @@ fn paint_transport(window: &mut Window, cx: &mut App, x: Pixels, right: Pixels, 
     window.paint_quad(gpui::fill(bar, style::c(p.document_background)));
     let frac = (pos / dur).clamp(0.0, 1.0) as f32;
     window.paint_quad(gpui::fill(Bounds::new(bar.origin, size(bar.size.width * frac, bar.size.height)), style::c(p.keyboard_navigation)));
-    agent::record(
-        window,
-        cx,
-        agent::Node { role: "Slider", name: Some("Position".into()), value: Some(media::format_duration(pos).into()), bounds: bar, enabled: true, clickable: true, ..Default::default() },
-    );
+    // Trimming: what's cut dimmed, a handle at each end of what's kept.
+    if let Some((from, to)) = trim {
+        let at = |s: f64| bar.left() + bar.size.width * (s / dur).clamp(0.0, 1.0) as f32;
+        let (a, b) = (at(from), at(to));
+        let scrim = style::c(p.scrim);
+        window.paint_quad(gpui::fill(Bounds::from_corners(bar.origin, point(a, bar.bottom())), scrim));
+        window.paint_quad(gpui::fill(Bounds::from_corners(point(b, bar.top()), bar.bottom_right()), scrim));
+        for (x, name, s) in [(a, "Trim Start", from), (b, "Trim End", to)] {
+            let h = style::snap_centred(window, point(x, bar.center().y), 6.0, 18.0);
+            window.paint_quad(gpui::fill(h, style::c(p.frame_focused[0])));
+            window.paint_quad(gpui::fill(h.dilate(px(-1.0)), style::c(p.tab_focused)));
+            agent::record(
+                window,
+                cx,
+                agent::Node { role: "Slider", name: Some(name.into()), value: Some(media::format_duration(s).into()), bounds: h, enabled: true, clickable: true, ..Default::default() },
+            );
+        }
+    }
+    // (While trimming, the bar is the trim's: its two handles say it.)
+    if trim.is_none() {
+        agent::record(
+            window,
+            cx,
+            agent::Node { role: "Slider", name: Some("Position".into()), value: Some(media::format_duration(pos).into()), bounds: bar, enabled: true, clickable: true, ..Default::default() },
+        );
+    }
     TransportAt { button: br, bar }
 }
 
@@ -938,6 +992,17 @@ impl PreviewView {
                         _ => None,
                     };
                     let Some(transport) = transport else { return };
+                    // Trimming: a press on (or by) a handle takes it.
+                    if let Some((from, to)) = v.trim {
+                        let dur = v.body.as_ref().and_then(|b| if let Body::Media(md) = b { md.duration } else { None }).unwrap_or_else(|| transport.duration()).max(0.001);
+                        let x = |s: f64| t.bar.left() + t.bar.size.width * (s / dur).clamp(0.0, 1.0) as f32;
+                        let near = |s: f64| (e.position.x - x(s)).abs() < px(8.0) && (e.position.y - t.bar.center().y).abs() < px(14.0);
+                        if near(to) || near(from) {
+                            v.trim_drag = Some(near(to) && (!near(from) || (e.position.x - x(to)).abs() < (e.position.x - x(from)).abs()));
+                            cx.notify();
+                            return;
+                        }
+                    }
                     if t.button.contains(&e.position) {
                         transport.toggle();
                     } else if Bounds::from_corners(t.bar.origin - point(px(0.0), px(6.0)), t.bar.bottom_right() + point(px(0.0), px(6.0))).contains(&e.position) {
@@ -955,9 +1020,21 @@ impl PreviewView {
             )
             .on_mouse_move(cx.listener(move |v, e: &MouseMoveEvent, _, cx| {
                 if e.pressed_button != Some(MouseButton::Left) {
+                    v.trim_drag = None;
                     return;
                 }
                 let t = seek.get();
+                // A handle dragged: that end of what's kept, the picture
+                // there shown.
+                if let (Some(end), Some((from, to)), Some(vid)) = (v.trim_drag, v.trim, &v.video) {
+                    let dur = Transport::duration(vid).max(0.001);
+                    let f = (f32::from(e.position.x - t.bar.left()) / f32::from(t.bar.size.width).max(1.0)).clamp(0.0, 1.0) as f64;
+                    let s = f * dur;
+                    v.trim = Some(if end { (from, s.max(from + 0.1)) } else { (s.min(to - 0.1).max(0.0), to) });
+                    Transport::seek(vid, if end { s.max(from + 0.1) } else { s.min(to - 0.1).max(0.0) });
+                    cx.notify();
+                    return;
+                }
                 if t.bar.size.width > px(0.0) && t.bar.left() <= e.position.x && e.position.x <= t.bar.right() && (e.position.y - t.bar.center().y).abs() < px(12.0) {
                     let transport: Option<&dyn Transport> = match (&v.video, &v.player) {
                         (Some(vid), _) => Some(vid),
@@ -1006,7 +1083,7 @@ impl PreviewView {
             let mut y = area.bottom();
             if let Some(t) = &self.video {
                 y += px(TRANSPORT / 2.0 + 2.0);
-                placed = paint_transport(window, cx, r.left() + px(m::WINDOW_INSET), r.right() - px(m::WINDOW_INSET), y, t, md.duration, false);
+                placed = paint_transport(window, cx, r.left() + px(m::WINDOW_INSET), r.right() - px(m::WINDOW_INSET), y, t, md.duration, false, self.trim);
                 y += px(TRANSPORT / 2.0 - 2.0);
             }
             y += px(m::SPACING + m::LABEL_ROW / 2.0);
@@ -1062,7 +1139,7 @@ impl PreviewView {
         }
         if let Some(player) = &self.player {
             let ty = y - px(m::LABEL_ROW / 2.0) + px(m::SPACING * 2.0 + 11.0);
-            placed = paint_transport(window, cx, x, right, ty, player, md.duration, false);
+            placed = paint_transport(window, cx, x, right, ty, player, md.duration, false, None);
         }
         placed
     }

@@ -795,6 +795,9 @@ fn main() -> std::process::ExitCode {
     if args.iter().any(|a| a == "--gif") {
         std::process::exit(recording::gif(&args));
     }
+    if args.iter().any(|a| a == "--trim") {
+        std::process::exit(recording::trim(&args));
+    }
     if args.iter().any(|a| a == "--toggle-record") {
         std::process::exit(recording::toggle(&args));
     }

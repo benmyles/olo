@@ -3220,5 +3220,11 @@
   "title": "Clicks and shortcuts shown while recording",
   "caption": "Record\u2026 \u25b8 Show Clicks and Show Shortcuts (or --show-clicks, --show-keys): a ring spreads where a button is pressed, and a shortcut shows on a key cap low on the screen, written as the keyboard profile writes it; typing never shows. Drawn by app_server, so recordings, screen sharing and agents' demos have them.",
   "image": "2026-11-05/053603-clicks-and-shortcuts-shown-while-recording.png"
+ },
+ {
+  "time": "2026-11-05T05:57:39",
+  "title": "The Viewer's Trim\u2026",
+  "caption": "Edit \u25b8 Trim\u2026 on a video puts a handle at each end of its timeline (what's cut dimmed, the picture where a handle is dragged shown); Trim copies the stretch kept into \u201cNAME (trimmed).mp4\u201d beside it, nothing encoded again, and shows it. olo-screenshot --trim does the same for agents.",
+  "image": "2026-11-05/055739-the-viewer-s-trim.png"
  }
 ]
