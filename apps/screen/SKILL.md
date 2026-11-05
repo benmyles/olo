@@ -63,7 +63,9 @@ a ring where each click lands and `--show-keys` each shortcut on a key
 cap (typing is never shown), so a viewer can follow what you do; `--sound
 computer` records what the screen plays (screens are silent unless
 started with `--sound`), `--as-gif` makes it a GIF (no sound) for a
-short loop, `--background` (with `--window ID`) shows the window on
+short loop, `--codec hevc` makes the file about half the size (it plays in Olo and
+most players; H.264, the default, plays everywhere), `--background`
+(with `--window ID`) shows the window on
 the blurred wallpaper with rounded corners and a shadow, as a polished
 demo of one app usually is, and `--smooth-pointer` makes your pointer's
 jumps (each `move`) glide in the video, as a hand moves it; with

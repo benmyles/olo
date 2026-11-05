@@ -1539,7 +1539,9 @@ of Finished; a new one goes where its priority puts it.
   (on its background's corner), and
   the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
-  4K: 111 ms a frame).
+  4K: 111 ms a frame). *HEVC and AV1* (2026-11-05): `--codec`,
+  Preferences ▸ GPUs ▸ Format; every codec now at a measured constant
+  quality (H.264's recordings a third smaller for the same picture).
   - **Encoding on the best GPU, chosen in its settings** (Ben,
     2026-11-04): "the screen recording app should also take advantage
     of a discrete graphics card for encoding when available (and make it

@@ -1495,6 +1495,10 @@ pub struct ScreenRecordingSettings {
     /// "auto" (the most powerful there is: an NVIDIA GPU's encoder
     /// where it opens, else the processor), "nvidia" or "cpu".
     pub encoder: String,
+    /// What recordings are coded as: "h264" (plays everywhere), "hevc"
+    /// or "av1" (smaller, on NVIDIA's encoder; the processor makes
+    /// H.264 whatever this says).
+    pub codec: String,
     /// The sound recorded with the screen: "computer" (what it plays),
     /// "microphone", "both" or "none".
     pub sound: String,
@@ -1528,6 +1532,7 @@ impl Default for ScreenRecordingSettings {
     fn default() -> Self {
         ScreenRecordingSettings {
             encoder: "auto".into(),
+            codec: "h264".into(),
             sound: "computer".into(),
             gif: false,
             show_clicks: false,

@@ -4,7 +4,9 @@
 //! starting playback exactly at the start; its sound (AAC) copied from a
 //! frame before the start (the decoder's overlap) with its own edit list.
 //! As fast as copying the file; nothing lost. For Olo's recordings and
-//! any H.264 MP4 without reordered frames (B-frames: refused).
+//! any H.264, HEVC or AV1 MP4 without reordered frames (B-frames:
+//! refused): the samples and the video's sample entry are copied as they
+//! are.
 
 use std::{fs::File, io::BufReader, path::Path};
 
@@ -28,15 +30,11 @@ pub fn trim(src: &Path, dst: &Path, start: f64, end: f64) -> Result<Trimmed, Str
     let mut r = mp4::Mp4Reader::read_header(BufReader::new(f), size).map_err(|e| format!("not a video Olo can read: {e}"))?;
     let starts = edit_starts(src).unwrap_or_default();
     let (&vt, video) = r.tracks().iter().find(|(_, t)| t.track_type().ok() == Some(mp4::TrackType::Video)).ok_or("no video in it")?;
-    if video.media_type().ok() != Some(mp4::MediaType::H264) {
-        return Err("only H.264 videos can be trimmed".into());
-    }
-    let (w, h, vscale, vcount) = (u32::from(video.width()), u32::from(video.height()), video.timescale(), video.sample_count());
-    let mut params = Vec::new();
-    for set in [video.sequence_parameter_set().ok(), video.picture_parameter_set().ok()].into_iter().flatten() {
-        params.extend_from_slice(&[0, 0, 0, 1]);
-        params.extend_from_slice(set);
-    }
+    let entry = video_entry(src).ok_or("no video Olo can trim in it (H.264, HEVC or AV1)")?;
+    let (vscale, vcount) = (video.timescale(), video.sample_count());
+    // (The entry's width and height: the mp4 crate knows them only for
+    // the codecs it reads.)
+    let (w, h) = (u32::from(u16::from_be_bytes([entry[32], entry[33]])), u32::from(u16::from_be_bytes([entry[34], entry[35]])));
     let sound = r.tracks().iter().find(|(_, t)| t.track_type().ok() == Some(mp4::TrackType::Audio) && t.media_type().ok() == Some(mp4::MediaType::AAC)).map(|(&id, t)| {
         let aot = t.audio_profile().map(|p| p as u8).unwrap_or(2);
         let freq = t.sample_freq_index().map(|f| f as u8).unwrap_or(3);
@@ -73,7 +71,7 @@ pub fn trim(src: &Path, dst: &Path, start: f64, end: f64) -> Result<Trimmed, Str
     samples.drain(..first_key);
     let Some(first) = samples.first() else { return Err("nothing between the start and the end".into()) };
     let lead = from_ticks.saturating_sub(first.start_time).min(u64::from(u32::MAX)) as u32;
-    let mut mp4 = Mp4::create(dst, w, h, vscale).map_err(|e| e.to_string())?;
+    let mut mp4 = Mp4::copying(dst, w, h, vscale, entry).map_err(|e| e.to_string())?;
     let has_sound = sound.is_some();
     let audio_samples = match &sound {
         Some((at, ascale, acount, config, chans, bitrate)) => {
@@ -98,27 +96,15 @@ pub fn trim(src: &Path, dst: &Path, start: f64, end: f64) -> Result<Trimmed, Str
         }
         None => Vec::new(),
     };
-    // Written: the pictures (Annex B for the writer, the parameter sets
-    // first), each shown its time, the last cut at the end; the sound
-    // between them.
+    // Written: the pictures as they were, each shown its time, the last
+    // cut at the end; the sound between them.
     let n = samples.len();
     let mut sound = audio_samples.into_iter();
     let per = sound.len().div_ceil(n.max(1)).max(1);
     for (k, s) in samples.iter().enumerate() {
-        let mut annex_b = if k == 0 { params.clone() } else { Vec::new() };
-        let mut b = &s.bytes[..];
-        while b.len() >= 4 {
-            let len = u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize;
-            if b.len() < 4 + len {
-                break;
-            }
-            annex_b.extend_from_slice(&[0, 0, 0, 1]);
-            annex_b.extend_from_slice(&b[4..4 + len]);
-            b = &b[4 + len..];
-        }
         let shown_till = (s.start_time + u64::from(s.duration)).min(to_ticks);
         let duration = shown_till.saturating_sub(s.start_time).max(1) as u32;
-        mp4.add(&annex_b, k == 0 || s.is_sync, duration).map_err(|e| e.to_string())?;
+        mp4.add_sample(&s.bytes, k == 0 || s.is_sync, duration).map_err(|e| e.to_string())?;
         for au in sound.by_ref().take(per) {
             mp4.add_sound(&au).map_err(|e| e.to_string())?;
         }
@@ -129,6 +115,30 @@ pub fn trim(src: &Path, dst: &Path, start: f64, end: f64) -> Result<Trimmed, Str
     mp4.start_at(lead);
     mp4.finish().map_err(|e| e.to_string())?;
     Ok(Trimmed { seconds: end - start, frames: n, sound: has_sound })
+}
+
+/// The video track's sample entry (the whole box: `avc1`, `hvc1`, `av01`,
+/// …), read from the file's boxes.
+pub(crate) fn video_entry(path: &Path) -> Option<Vec<u8>> {
+    let data = std::fs::read(path).ok()?;
+    let moov = find(&data, b"moov")?;
+    let mut at = 0;
+    while let Some((kind, body, next)) = child(moov, at) {
+        at = next;
+        if kind != *b"trak" {
+            continue;
+        }
+        let mdia = find(body, b"mdia")?;
+        if find(mdia, b"hdlr").and_then(|h| h.get(8..12)) != Some(b"vide") {
+            continue;
+        }
+        let stsd = find(mdia, b"minf").and_then(|m| find(m, b"stbl")).and_then(|s| find(s, b"stsd"))?;
+        // Version, flags and the count, then the first entry, whole.
+        let size = u32::from_be_bytes(stsd.get(8..12)?.try_into().ok()?) as usize;
+        let entry = stsd.get(8..8 + size)?;
+        return (crate::Codec::of_entry(entry.get(4..8)?).is_some() && entry.len() >= 36 + 8).then(|| entry.to_vec());
+    }
+    None
 }
 
 /// Each track's edit list's media start (`elst`'s first media time), by
@@ -159,7 +169,7 @@ fn edit_starts(path: &Path) -> Option<std::collections::HashMap<u8, u32>> {
 }
 
 /// The first box `kind` among `data`'s children: its body.
-fn find<'a>(data: &'a [u8], kind: &[u8; 4]) -> Option<&'a [u8]> {
+pub(crate) fn find<'a>(data: &'a [u8], kind: &[u8; 4]) -> Option<&'a [u8]> {
     let mut at = 0;
     while let Some((k, body, next)) = child(data, at) {
         if k == *kind {

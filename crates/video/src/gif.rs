@@ -1,5 +1,6 @@
 //! A recording made a GIF (`olo-screenshot --gif`, Screenshot's Save as
-//! GIF): the MP4's pictures decoded (OpenH264), made smaller by area
+//! GIF): the MP4's pictures decoded (OpenH264; HEVC and AV1 by
+//! `olo_images`), made smaller by area
 //! averages to at most `Options::width`, shown at `Options::fps`, in one
 //! palette for the whole GIF (NeuQuant trained on pictures from across
 //! it, so colours don't shift from frame to frame), each frame only the
@@ -154,7 +155,7 @@ fn changed(was: &[u8], now: &[u8], w: usize, h: usize) -> Option<[usize; 4]> {
     (x0 <= x1 && y0 <= y1).then(|| [x0, y0, x1 - x0 + 1, y1 - y0 + 1])
 }
 
-/// An MP4's H.264 track, read sample by sample.
+/// An MP4's video track (H.264, HEVC or AV1), read sample by sample.
 struct Video {
     path: std::path::PathBuf,
     track: u32,
@@ -163,8 +164,18 @@ struct Video {
     timescale: u32,
     samples: u32,
     duration: u64,
-    /// The parameter sets, as Annex B, sent before the first sample.
-    params: Vec<u8>,
+    /// What its decoder starts from.
+    start: Start,
+}
+
+/// A decoder's start: H.264's parameter sets (Annex B, sent before the
+/// first sample), HEVC's `hvcC`, AV1's configOBUs (its sequence header,
+/// sent before the first sample).
+#[derive(Clone)]
+enum Start {
+    H264(Vec<u8>),
+    Hevc(Vec<u8>),
+    Av1(Vec<u8>),
 }
 
 impl Video {
@@ -173,16 +184,25 @@ impl Video {
         let size = f.metadata().map_err(|e| e.to_string())?.len();
         let reader = mp4::Mp4Reader::read_header(std::io::BufReader::new(f), size).map_err(|e| format!("not a video Olo can read: {e}"))?;
         let (&track, t) = reader.tracks().iter().find(|(_, t)| t.track_type().ok() == Some(mp4::TrackType::Video)).ok_or("no video in it")?;
-        if t.media_type().ok() != Some(mp4::MediaType::H264) {
-            return Err("only H.264 videos (Olo's recordings) are made GIFs".into());
-        }
-        let mut params = Vec::new();
-        for set in [t.sequence_parameter_set().ok(), t.picture_parameter_set().ok()].into_iter().flatten() {
-            params.extend_from_slice(&[0, 0, 0, 1]);
-            params.extend_from_slice(set);
-        }
-        let (width, height, timescale, samples, duration) = (u32::from(t.width()), u32::from(t.height()), t.timescale(), t.sample_count(), t.duration().as_millis() as u64);
-        Ok(Video { path: path.to_path_buf(), track, width, height, timescale, samples, duration, params })
+        let entry = crate::trim::video_entry(path).ok_or("not a video Olo makes GIFs of (H.264, HEVC or AV1)")?;
+        // (A visual sample entry: 8 bytes of header and 78 of fields, then
+        // its boxes.)
+        let config = |kind: &[u8; 4]| entry.get(86..).and_then(|b| crate::trim::find(b, kind)).map(<[u8]>::to_vec);
+        let start = match &entry[4..8] {
+            b"hvc1" | b"hev1" => Start::Hevc(config(b"hvcC").ok_or("an HEVC video without its configuration")?),
+            b"av01" => Start::Av1(config(b"av1C").and_then(|c| c.get(4..).map(<[u8]>::to_vec)).ok_or("an AV1 video without its configuration")?),
+            _ => {
+                let mut params = Vec::new();
+                for set in [t.sequence_parameter_set().ok(), t.picture_parameter_set().ok()].into_iter().flatten() {
+                    params.extend_from_slice(&[0, 0, 0, 1]);
+                    params.extend_from_slice(set);
+                }
+                Start::H264(params)
+            }
+        };
+        let (width, height) = (u32::from(u16::from_be_bytes([entry[32], entry[33]])), u32::from(u16::from_be_bytes([entry[34], entry[35]])));
+        let (timescale, samples, duration) = (t.timescale(), t.sample_count(), t.duration().as_millis() as u64);
+        Ok(Video { path: path.to_path_buf(), track, width, height, timescale, samples, duration, start })
     }
 
     fn seconds(&self) -> f64 {
@@ -195,7 +215,7 @@ impl Video {
     fn each_shown(&self, fps: u32, ow: u32, oh: u32, cancel: &AtomicBool, f: &mut dyn FnMut(usize, &[u8]) -> Result<(), String>) -> Result<(), String> {
         // (A reader of its own: the file read again from the start.)
         let mut r = self.reopen()?;
-        let mut dec = openh264::decoder::Decoder::new().map_err(|e| e.to_string())?;
+        let mut dec = Decoder::new(&self.start)?;
         let shown = ((self.seconds() * f64::from(fps)).ceil() as usize).max(1);
         let mut rgb = vec![0u8; self.width as usize * self.height as usize * 3];
         let mut small = vec![0u8; ow as usize * oh as usize * 4];
@@ -206,25 +226,9 @@ impl Video {
                 return Err("cancelled".into());
             }
             let Some(s) = r.read_sample(self.track, i).map_err(|e| e.to_string())? else { break };
-            let mut annex_b = if i == 1 { self.params.clone() } else { Vec::new() };
-            let mut b = &s.bytes[..];
-            while b.len() >= 4 {
-                let n = u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize;
-                if b.len() < 4 + n {
-                    break;
-                }
-                annex_b.extend_from_slice(&[0, 0, 0, 1]);
-                annex_b.extend_from_slice(&b[4..4 + n]);
-                b = &b[4 + n..];
-            }
-            if let Some(yuv) = dec.decode(&annex_b).map_err(|e| e.to_string())? {
-                use openh264::formats::YUVSource as _;
-                let (w, h) = yuv.dimensions();
-                if (w, h) == (self.width as usize, self.height as usize) {
-                    yuv.write_rgb8(&mut rgb);
-                    shrink(&rgb, self.width as usize, self.height as usize, &mut small, ow as usize, oh as usize);
-                    have = true;
-                }
+            if dec.decode(&s.bytes, i == 1, (self.width, self.height), &mut rgb)? {
+                shrink(&rgb, self.width as usize, self.height as usize, &mut small, ow as usize, oh as usize);
+                have = true;
             }
             // The moments this sample is on screen till the next starts.
             let end = (s.start_time + u64::from(s.duration)) as f64 / f64::from(self.timescale.max(1));
@@ -233,7 +237,11 @@ impl Video {
                 k += 1;
             }
         }
-        // (The last held to the end.)
+        // (A picture the decoder still held, then the last held to the end.)
+        if dec.finish((self.width, self.height), &mut rgb) {
+            shrink(&rgb, self.width as usize, self.height as usize, &mut small, ow as usize, oh as usize);
+            have = true;
+        }
         while have && k < shown {
             f(k, &small)?;
             k += 1;
@@ -247,6 +255,92 @@ impl Video {
         let size = f.metadata().map_err(|e| e.to_string())?.len();
         mp4::Mp4Reader::read_header(std::io::BufReader::new(f), size).map_err(|e| e.to_string())
     }
+}
+
+/// A video's decoder, of its codec.
+enum Decoder {
+    H264(Box<openh264::decoder::Decoder>, Vec<u8>),
+    Hevc(Box<olo_images::hevc::Decoder>),
+    Av1(olo_images::av1::Decoder, Vec<u8>),
+}
+
+impl Decoder {
+    fn new(start: &Start) -> Result<Decoder, String> {
+        Ok(match start {
+            Start::H264(params) => Decoder::H264(Box::new(openh264::decoder::Decoder::new().map_err(|e| e.to_string())?), params.clone()),
+            Start::Hevc(record) => {
+                let config = olo_images::hevc::config(record).ok_or("an HEVC configuration Olo can't read")?;
+                // (One thread: each sample's picture out at once, none held.)
+                Decoder::Hevc(Box::new(olo_images::hevc::Decoder::new(config, olo_images::hevc::Colour::default(), 1)))
+            }
+            // (No frames held back: each sample's picture out at once.)
+            Start::Av1(obus) => Decoder::Av1(olo_images::av1::Decoder::new(0, 1)?, obus.clone()),
+        })
+    }
+
+    /// Sample `sample` (as the file holds it; `first`: the stream's
+    /// first) decoded into `rgb` (`size`, RGB) if it gave a picture of
+    /// that size.
+    fn decode(&mut self, sample: &[u8], first: bool, size: (u32, u32), rgb: &mut [u8]) -> Result<bool, String> {
+        let pictures = match self {
+            Decoder::H264(dec, params) => {
+                let mut annex_b = if first { params.clone() } else { Vec::new() };
+                let mut b = sample;
+                while b.len() >= 4 {
+                    let n = u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize;
+                    if b.len() < 4 + n {
+                        break;
+                    }
+                    annex_b.extend_from_slice(&[0, 0, 0, 1]);
+                    annex_b.extend_from_slice(&b[4..4 + n]);
+                    b = &b[4 + n..];
+                }
+                return Ok(match dec.decode(&annex_b).map_err(|e| e.to_string())? {
+                    Some(yuv) => {
+                        use openh264::formats::YUVSource as _;
+                        let ok = yuv.dimensions() == (size.0 as usize, size.1 as usize);
+                        if ok {
+                            yuv.write_rgb8(rgb);
+                        }
+                        ok
+                    }
+                    None => false,
+                });
+            }
+            Decoder::Hevc(dec) => {
+                let mut out = Vec::new();
+                dec.decode(sample, &mut out)?;
+                out
+            }
+            Decoder::Av1(dec, config) => {
+                let mut out = Vec::new();
+                let unit = if first { [config.as_slice(), sample].concat() } else { sample.to_vec() };
+                dec.decode(&unit, &mut out)?;
+                out
+            }
+        };
+        Ok(into_rgb(pictures, size, rgb))
+    }
+
+    /// At the end: a picture the decoder still held, into `rgb`.
+    fn finish(&mut self, size: (u32, u32), rgb: &mut [u8]) -> bool {
+        let mut out = Vec::new();
+        match self {
+            Decoder::H264(..) => return false,
+            Decoder::Hevc(dec) => dec.flush(&mut out),
+            Decoder::Av1(dec, _) => dec.flush(&mut out),
+        }
+        into_rgb(out, size, rgb)
+    }
+}
+
+/// The last of `pictures`, if it's `size`, into `rgb` (RGB).
+fn into_rgb(pictures: Vec<olo_images::av1::Frame>, size: (u32, u32), rgb: &mut [u8]) -> bool {
+    let Some(f) = pictures.into_iter().last().filter(|f| (f.width, f.height) == size) else { return false };
+    for (o, i) in rgb.as_chunks_mut::<3>().0.iter_mut().zip(f.to_rgba().as_chunks::<4>().0) {
+        o.copy_from_slice(&i[..3]);
+    }
+    true
 }
 
 /// `src` (RGB, `sw` × `sh`) into `dst` (RGBA, `dw` × `dh`): each pixel the
@@ -348,5 +442,32 @@ mod tests {
         let mut dst = vec![0u8; 2 * 4];
         shrink(&src, 4, 2, &mut dst, 2, 1);
         assert_eq!(dst, [200, 0, 0, 255, 0, 0, 100, 255]);
+    }
+}
+
+/// For tests: a video opened, and each of its pictures decoded (RGB, its
+/// size), in order.
+#[cfg(test)]
+pub(crate) struct Opened(Video);
+
+#[cfg(test)]
+pub(crate) fn tests_open(path: &Path) -> Result<Opened, String> {
+    Video::open(path).map(Opened)
+}
+
+#[cfg(test)]
+impl Opened {
+    pub(crate) fn each_decoded(&self, f: &mut dyn FnMut(&[u8]) -> Result<(), String>) -> Result<(), String> {
+        let v = &self.0;
+        let mut r = v.reopen()?;
+        let mut dec = Decoder::new(&v.start)?;
+        let mut rgb = vec![0u8; v.width as usize * v.height as usize * 3];
+        for i in 1..=v.samples {
+            let Some(s) = r.read_sample(v.track, i).map_err(|e| e.to_string())? else { break };
+            if dec.decode(&s.bytes, i == 1, (v.width, v.height), &mut rgb)? {
+                f(&rgb)?;
+            }
+        }
+        Ok(())
     }
 }

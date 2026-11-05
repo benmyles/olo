@@ -5921,9 +5921,10 @@ Screens' Export Video uses too).
   encoder opens (`olo_video::nvenc`: NVENC's API through vendor/
   nvenc-sys's declarations, `libnvidia-encode.so.1` and `libcuda.so.1`
   opened at run time, nothing linked, so a machine without them builds,
-  starts and records on the processor; H.264 at preset P4 tuned for
-  quality, VBR at `olo_video::bitrate`, a key frame every two seconds,
-  no B-frames, the parameter sets with each key frame), else the
+  starts and records on the processor; a constant quality, as many
+  bits as keep it, at most twice `olo_video::bitrate`, a key frame every
+  two seconds, no B-frames, no lookahead (a picture out for each in),
+  the parameter sets or sequence header with each key frame), else the
   processor (OpenH264); unless told, as Preferences ▸ GPUs ▸ Screen
   Recordings has it (`Settings::screen_recording.encoder`: the most
   powerful there is, named, by default; the NVIDIA GPU, offered where
@@ -5937,6 +5938,32 @@ Screens' Export Video uses too).
   isn't one of its values set first, or filled by the driver). The JSON
   says which encoded it (`encoder`). A window that changes size is cut
   or shown on black at the size it began.
+- **H.264, HEVC or AV1** (`--codec`, `Settings::screen_recording.codec`,
+  Preferences ▸ GPUs ▸ Format, which offers H.264 and HEVC;
+  `olo_video::Codec`): HEVC and AV1 on NVIDIA's encoder only (the
+  processor makes H.264: `--encoder auto` falling back to it says so in
+  `codec`). The MP4 gets the codec's sample entry made from the stream
+  (`olo_video::config`): `avc1`/`avcC`, `hvc1`/`hvcC` (profile, tier,
+  level, chroma format and bit depths read from the SPS, emulation
+  prevention taken out), `av01`/`av1C` (profile, level, tier and colour
+  layout read from the sequence header OBU, which goes in as its
+  configOBUs); parameter sets, sequence headers, access unit and
+  temporal delimiters and padding are kept out of the samples. Each
+  codec's quality was chosen by measuring (`codec_sizes`, a 1280 × 800
+  screen typed into, 3 s; luma PSNR of each picture decoded back, and
+  bytes): the bitrate H.264 had spent 277 KB for 48.6 dB; at constant
+  quality 20 it keeps 48.4 dB in 190 KB; HEVC at 26, 48.9 dB in 105 KB
+  on preset P6 (used up to 2560 × 1600; 4K on P6 took 29 ms a frame, so
+  P4 there: 145 KB); AV1 at 28, about 220 KB: NVIDIA's AV1 lacks the
+  screen content tools, so it isn't smaller on screens and the panel
+  doesn't offer it. Scrolling the same: H.264 249 KB (the bitrate's
+  319), HEVC 186. A real recording (5 s, typing, 1280 × 800): H.264 171
+  KB (262 before), HEVC 96, AV1 180. A 4K frame on P4: H.264 14.6 ms,
+  HEVC 13.9, AV1 10.9 (`nvenc_cost_by_codec`, the copy into NVENC's
+  buffer included). Trimming and GIFs take all three (the sample entry
+  copied whole; HEVC and AV1 decoded by `olo_images`, one thread so
+  each sample's picture comes out at once), and so do the Viewer and
+  `olo-screen video-frame`.
 - **Sound** (`sound.rs`, `--sound computer|microphone|both|none`, else
   `Settings::screen_recording.sound`, the computer's by default; Record…'s
   ticks in Screenshot, "Record the Computer's Sound" and "Record the

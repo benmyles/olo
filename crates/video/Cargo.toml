@@ -12,5 +12,10 @@ libc = "0.2"
 nvenc-sys = { path = "../../vendor/nvenc-sys" }
 # Recordings made GIFs (gif.rs).
 mp4 = "0.14"
+# HEVC's and AV1's pictures decoded (a GIF of such a recording).
+olo-images.workspace = true
 gif = "0.14"
 color_quant = "1.1"
+
+[dev-dependencies]
+png = "0.18"

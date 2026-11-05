@@ -3250,5 +3250,11 @@
   "title": "The camera in a bubble while recording",
   "caption": "Record\u2026 \u25b8 Show Camera (or --camera): the camera in a circle low in the screen's right corner while you record, so a recording of the screen has you in it; it's there before the countdown, so you can frame yourself, and drags anywhere. The camera is read natively (V4L2, in process); here a stand-in camera's pattern.",
   "image": "2026-11-05/065745-the-camera-in-a-bubble-while-recording.png"
+ },
+ {
+  "time": "2026-11-05T07:20:17",
+  "title": "Recordings in HEVC, and a third smaller in H.264",
+  "caption": "Preferences \u25b8 GPUs \u25b8 Format: H.264 (plays everywhere) or HEVC (about half the size), on NVIDIA's encoder; olo-screenshot --codec takes AV1 too. Each codec now keeps a constant, measured quality instead of a bitrate: the same screen typed into for 5 s was 262 KB in H.264 and is 171 now, 96 in HEVC, the text as sharp. Trimming, GIFs and the Viewer take all three.",
+  "image": "2026-11-05/072017-recordings-in-hevc-and-a-third-smaller-in-h-264.png"
  }
 ]

@@ -7856,7 +7856,9 @@ dependencies = [
  "libc",
  "mp4",
  "nvenc-sys",
+ "olo-images",
  "openh264",
+ "png 0.18.1",
 ]
 
 [[package]]

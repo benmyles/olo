@@ -43,7 +43,7 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
                                [--show-clicks] [--show-keys] [--sound computer|microphone|both|none] [--as-gif]
                           [--no-pointer] [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--background]
-                          [--camera ID] [--encoder auto|cpu|nvidia] [--to PATH]
+                          [--camera ID] [--encoder auto|cpu|nvidia] [--codec h264|hevc|av1] [--to PATH]
                                              a video of the screen (or one window, or part), into
                                              ~/Videos unless told; prints its path (JSON) at once
        olo-screen zoom-video NAME X,Y,W,H|out
@@ -277,7 +277,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 None => video_path(&s.name),
             };
             let mut argv: Vec<String> = vec!["olo-screenshot".into(), "--record".into(), "--to".into(), to.display().to_string()];
-            for flag in ["--seconds", "--fps", "--window", "--encoder", "--region", "--pointer-size", "--camera"] {
+            for flag in ["--seconds", "--fps", "--window", "--encoder", "--codec", "--region", "--pointer-size", "--camera"] {
                 if let Some(v) = option(rest, flag) {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }

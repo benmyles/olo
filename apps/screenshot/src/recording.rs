@@ -12,7 +12,8 @@
 //! ```text
 //! olo-screenshot --record [--window ID] [--display NAME] [--region [X,Y,W,H]]
 //!                [--seconds N] [--fps N] [--no-pointer]
-//!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
+//!                [--encoder auto|cpu|nvidia] [--codec h264|hevc|av1]
+//!                [--sound computer|microphone|both|none]
 //!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--background]
 //!                [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--camera [ID]]
 //!                [--to PATH]
@@ -24,6 +25,12 @@
 //! olo-screenshot --resume
 //! olo-screenshot --recording     whether one is going, as JSON
 //! ```
+//!
+//! `--codec` codes it as H.264 (plays everywhere: the default), HEVC
+//! (about half the size) or AV1 (for players that want it: no smaller on
+//! screens), the last two on NVIDIA's encoder only (`--encoder auto` on the processor makes H.264 then;
+//! `codec` in what's printed says which), as asked, else as Preferences ▸
+//! GPUs has it.
 //!
 //! `--sound` records what the computer plays, the microphone, both or
 //! neither (`sound.rs`: AAC beside the video), as asked, else as the
@@ -178,6 +185,8 @@ pub struct Made {
     pub height: u32,
     /// What encoded it ("NVIDIA's GPU (NVENC)").
     pub encoder: String,
+    /// What it's coded as: "H.264", "HEVC" or "AV1".
+    pub codec: &'static str,
     /// The sound in it ("computer", "microphone", "both"), if any.
     pub sound: Option<String>,
     /// Why there's none, when some was asked for.
@@ -405,6 +414,16 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu or nvidia")?,
         None => olo_video::Choice::Auto,
     };
+    // H.264, HEVC or AV1: as asked, else as Preferences ▸ GPUs has it (on
+    // the processor, H.264 whatever it says: the processor makes only that).
+    let codec = match option(args, "--codec") {
+        Some(c) => olo_video::Codec::parse(c).ok_or("--codec is h264, hevc or av1")?,
+        None => match settings.as_ref().and_then(|s| olo_video::Codec::parse(&s.codec)) {
+            Some(_) if choice == olo_video::Choice::Cpu => olo_video::Codec::H264,
+            Some(c) => c,
+            None => olo_video::Codec::H264,
+        },
+    };
     let seconds: Option<f64> = option(args, "--seconds").map(str::parse).transpose().map_err(|_| "--seconds takes a number")?;
     let path = option(args, "--to").map_or_else(default_path, PathBuf::from);
     if let Some(dir) = path.parent() {
@@ -468,7 +487,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
             }
         },
     };
-    let result = record_into(&mut capture, &path, fps, seconds, choice, crop, backdrop, sound, countdown.min(10), &g, woken.as_raw_fd());
+    let result = record_into(&mut capture, &path, fps, seconds, (choice, codec), crop, backdrop, sound, countdown.min(10), &g, woken.as_raw_fd());
     if showing {
         set_showing(false, false, 1.0, false, 0.0);
     }
@@ -497,7 +516,7 @@ fn record_into(
     path: &Path,
     fps: u32,
     seconds: Option<f64>,
-    choice: olo_video::Choice,
+    (choice, codec): (olo_video::Choice, olo_video::Codec),
     crop: Option<[u32; 4]>,
     backdrop: Option<crate::backdrop::Look>,
     which: crate::sound::Which,
@@ -525,7 +544,7 @@ fn record_into(
         let (slot, ended, end, part, sound_in) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone());
         std::thread::Builder::new()
             .name("recording encoder".into())
-            .spawn(move || encode(&slot, &ended, &end, &part, fps, choice, size, backdrop.as_ref(), &ready_tx, &sound_in))
+            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), &ready_tx, &sound_in))
             .map_err(|e| e.to_string())?
     };
     // The countdown meanwhile, a number a second (a stop ends it).
@@ -663,7 +682,7 @@ fn record_into(
     slot.1.notify_one();
     let made = worker.join().map_err(|_| "the encoder failed".to_string())?;
     result?;
-    let (frames, (width, height), encoder) = made?;
+    let (frames, (width, height), encoder, codec) = made?;
     // The file finished by the worker, then put where it goes.
     std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(Made {
@@ -673,6 +692,7 @@ fn record_into(
         width,
         height,
         encoder: encoder.to_owned(),
+        codec: codec.name(),
         sound: sounded,
         sound_note,
         gif: None,
@@ -707,12 +727,12 @@ fn encode(
     end: &std::sync::atomic::AtomicU64,
     part: &Path,
     fps: u32,
-    choice: olo_video::Choice,
+    (choice, codec): (olo_video::Choice, olo_video::Codec),
     size: Option<(u32, u32)>,
     look: Option<&crate::backdrop::Look>,
     ready: &std::sync::mpsc::Sender<Result<(), String>>,
     sound: &Mutex<Option<SoundIn>>,
-) -> Result<(usize, (u32, u32), &'static str), String> {
+) -> Result<(usize, (u32, u32), &'static str, olo_video::Codec), String> {
     // The sound's access units so far, into the file beside the pictures
     // (its description given the file the first time).
     let mut described = false;
@@ -745,8 +765,8 @@ fn encode(
             }
             None => olo_video::even(w, h),
         };
-        let enc = olo_video::Encoder::new(vw, vh, fps, choice)?;
-        let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
+        let enc = olo_video::Encoder::new(vw, vh, fps, choice, codec)?;
+        let mp4 = olo_video::Mp4::create_for(part, vw, vh, 1000, enc.codec()).map_err(|e| e.to_string())?;
         Ok((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]))
     };
     // Opened now, at the size the capture says (before the recording
@@ -807,7 +827,7 @@ fn encode(
     add_sound(&mut mp4)?;
     let made = mp4.size();
     mp4.finish().map_err(|e| e.to_string())?;
-    Ok((frames, made, enc.name()))
+    Ok((frames, made, enc.name(), enc.codec()))
 }
 
 /// The camera bubble's process (`bubble.rs`), while a recording shows

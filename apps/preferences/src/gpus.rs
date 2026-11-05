@@ -206,7 +206,6 @@ fn run_tune(tuning: &Tuning) -> Result<String, String> {
     }
 }
 
-/// What a GPU drives, said plainly.
 /// What screen recordings encode on: the most powerful there is (an
 /// NVIDIA GPU's encoder where there's one), that GPU, or the processor
 /// (`Settings::screen_recording`, read by olo-screenshot's recorder).
@@ -225,14 +224,22 @@ fn recordings(ui: &mut Ui, gpus: &[Entry]) {
     choices.push(("cpu".into(), "The processor (OpenH264)"));
     ui.bbox("Screen Recordings", |ui| {
         ui.choose("recording-encoder", &choices, &current, |f| f.label("Encode on:").divider(100.0), |s, v| s.screen_recording.encoder = v);
+        // (HEVC on NVIDIA's encoder only; AV1, no smaller on screens, is
+        // olo-screenshot's `--codec av1` only.)
+        if nvidia.is_some() && current != "cpu" {
+            let formats: Vec<(String, &str)> = vec![("h264".into(), "H.264 (plays everywhere)"), ("hevc".into(), "HEVC (about half the size)")];
+            let codec = ui.s.screen_recording.codec.clone();
+            ui.choose("recording-codec", &formats, &codec, |f| f.label("Format:").divider(100.0), |s, v| s.screen_recording.codec = v);
+        }
         ui.note(if nvidia.is_some() {
-            "A GPU's encoder takes a 4K screen in about 13 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor."
+            "A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor."
         } else {
             "Recordings are encoded on the processor (OpenH264): a 4K screen takes about 110 ms a frame, so a recording of a lot of motion keeps about nine a second."
         });
     });
 }
 
+/// What a GPU drives, said plainly.
 fn drives(g: &Gpu) -> String {
     if g.connectors.is_empty() {
         return "no display ports".into();
