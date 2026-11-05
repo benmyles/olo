@@ -1654,6 +1654,11 @@ pub trait Backend {
     fn color_changed(&mut self, _output: &Output) -> Result<(), String> {
         Ok(())
     }
+    /// Only HDR's SDR white moved (Preferences' slider, the brightness
+    /// keys): every pixel drawn again, nothing else changed.
+    fn sdr_white_changed(&mut self, output: &Output) -> Result<(), String> {
+        self.color_changed(output)
+    }
     /// A test session's screen on connector `name`, to unplug or plug in
     /// again (`Request::PlugDisplay`); real displays are only unplugged
     /// by hand.

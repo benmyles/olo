@@ -1594,6 +1594,14 @@ event reaches it.
   a whole BAlert (sized from its message and buttons before it opens;
   Return the last, Escape the first of several; `on_choose(None)` when
   closed from its tab).
+  `widgets::open_timed_alert(cx, title, icon, message, buttons,
+  Timeout { at, choice, says }, on_choose)`: one that answers itself
+  with `choice` at `at` (an `Rc<Cell<Instant>>`: set it later for more
+  time), the seconds left counted down in a line under the message
+  (`says(left)`: "Reverting in 12 seconds."), woken once a second while
+  it's open and not between: for a change that may have left the
+  person unable to answer (a display gone dark), undone unless kept.
+  Preferences ▸ Display asks so after a new resolution and HDR on.
 - `widgets::ScrollView::new(id, &handle)` (a `ScrollHandle` kept in the
   view's state): what it holds scrolled in a sunken frame with BeOS
   scroll bars (`horizontal`, `vertical`, `border`, `focused`,
@@ -3022,27 +3030,47 @@ Colour, kept per monitor in its `OutputConfig`):
   unconverted); the pointer still may.
 - *HDR*, on a display that takes it (its EDID says PQ, or a built-in
   panel gives an HDR luminance and its connector takes the metadata:
-  the ThinkPad P1 Gen 9's OLED, HDR through Intel's eDP HDR interface,
-  not its EDID): the frame is composed into a float buffer in BT.2020 at
-  gamma 2.2 relative to SDR's white (so blending and text look exactly
-  as in SDR, and highlights go above 1), then what changed is encoded
-  into PQ (`color::HdrFrame`, `HdrElement`); the connector gets HDR
-  metadata (the display's own primaries and luminance) and BT.2020
-  colorimetry in a modeset commit of its own (`set_connector_color`,
-  again at vblank if a flip was in flight), with the display off: the
-  next frame enables it whole, as after idle sleep. Intel's driver
-  switches an eDP panel's HDR decoding (DPCD 0x344) and sets its
-  brightness only as it enables the display; changed while it was on,
-  the ThinkPad's OLED kept decoding SDR from the PQ signal, then went
-  dark as HDR went off (tried on the machine, 2026-11-04). And it uses a
-  panel's HDR interface at all only if the VBT asks, the EDID has HDR
-  static metadata, or the kernel starts with `enable_dpcd_backlight=3`:
-  a built-in panel giving its HDR luminance in DisplayID alone (that
-  OLED) is offered HDR only once started so (`color::
-  kernel_drives_panel_hdr`); until then Preferences says it waits on a
-  setting at start, and Olo Doctor offers it (`AddKernelArgument`). SDR's white is
-  "Everything else's brightness" (203 cd/m², BT.2408's, unless set);
-  Preferences' band reverts HDR unless kept, as it does a resolution.
+  the ThinkPad P1 Gen 9's OLED, whose HDR is in DisplayID, not its
+  EDID's HDR block): the frame is composed into a float buffer in
+  BT.2020 at gamma 2.2 relative to SDR's white (so blending and text look exactly as in
+  SDR, and highlights go above 1), then what changed is encoded into PQ
+  (`color::HdrFrame`, `HdrElement`); the connector gets HDR metadata
+  (the display's own primaries and luminance) in a modeset commit of
+  its own (`set_connector_color`, again at vblank if a flip was in
+  flight), with the display off: the next frame enables it whole, as
+  after idle sleep. The signal's primaries (`color::signal_primaries`):
+  a monitor whose EDID says PQ takes BT.2020 and is told so
+  (colorimetry `BT2020_RGB`); a built-in panel takes the signal's RGB
+  as its own primaries whatever it's told, so it's sent in the panel's
+  own (DisplayID's) with colorimetry Default (BT.2020's numbers there
+  looked washed out: tried on the machine, 2026-11-05).
+  The ThinkPad's OLED (Samsung ATNA60KA02, eDP 1.5) decodes PQ itself
+  from the signal and its metadata. The kernel needs
+  `enable_dpcd_backlight=3` to offer the panel's HDR at all (the VBT
+  doesn't ask, the EDID has no HDR metadata), and with it Intel's
+  driver uses Intel's HDR interface (DPCD 0x340 on) only for eDP 1.4b
+  and older (`intel_dp_aux_init_backlight_funcs`): this panel gets
+  VESA's luminance control instead (0x721 = 0x82, the target in
+  millinits at 0x734; `intel_backlight`'s max is 656, in nits). In HDR
+  the panel ignores that target (the backlight does nothing: PQ says
+  how bright), ignores 0x344 written while it's on, and resets it as it
+  powers on (tried by hand through the AUX channel, 2026-11-05). So
+  app_server offers that panel's HDR only once the kernel started so
+  (`color::kernel_drives_panel_hdr`); until then Preferences says it
+  waits on a setting at start, and Olo Doctor offers it
+  (`AddKernelArgument`). SDR's white is "Everything else's brightness"
+  (80 to 600 cd/m², `color::MIN_SDR_NITS`/`MAX_SDR_NITS` in protocol,
+  shared by app_server and Preferences' slider); unset, a built-in
+  panel's follows its brightness (the panel's full-screen luminance
+  times the level), so SDR is as bright in HDR as out of it, and other
+  displays' is 203 cd/m², BT.2408's. Changing it only re-encodes the
+  whole frame (`Backend::sdr_white_changed`: no modeset, no new
+  buffers; the whole `color_changed` per step of a dragged slider
+  blanked the OLED), and the brightness keys step it on a display in
+  HDR (a log scale, 16 steps from end to end; `power::step_sdr_white`).
+  Turned on in Preferences, HDR is kept only if the person says so: an
+  alert asks, counting down, and turns it off again unless Keep is
+  pressed in 15 s (`widgets::open_timed_alert`), as a new resolution is.
 
 *HDR and wide-gamut video* (`olo_images::hdr`): a decoded picture knows
 its primaries and transfer (H.273's codes: AV1's sequence header; else
@@ -3097,11 +3125,15 @@ what's computed: greys kept and sRGB's blue as P3's numbers in Accurate
 SDR; in HDR, sRGB's grey at its light against SDR's 203 cd/m², PQ's 100
 cd/m² as it is, nothing above SDR's white.
 On the machine, `tools/dev/panel-hdr-check` checks a built-in panel's
-HDR as the panel itself has it (its registers over the AUX channel,
-through sudo; in the person's session, with their agreement): the
-kernel started with `enable_dpcd_backlight=3`, HDR on through
-app_server, the panel then decoding PQ in BT.2020 (DPCD 0x344), its
-brightness in nits following the backlight, HDR off again.
+HDR as the panel itself has it (in the person's session, with their
+agreement; sudo for the AUX channel): its HDR registers (DPCD
+0x340–0x35F, each bit named) in SDR, with HDR on through app_server and
+off again, and whether the panel showed a picture each time.
+`cargo run --release -p olo-ui --example hdr_card` opens a test card
+drawn in HDR10 for looking at a panel by eye: SDR's white beside 400,
+1,000 and 1,600 cd/m², and 0.1 to 10 cd/m² below (decoded, the top
+ones far brighter than the white and the first two below next to
+black; undecoded, PQ taken as gamma, all of them washed out).
 
 Programs say what colours their windows hold with `wp_color_management_v1`
 (`color_management.rs`, version 1): parametric image descriptions only

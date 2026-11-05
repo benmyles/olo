@@ -7,6 +7,152 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Agents can't set their Terminal tab's title** (Ben, 2026-11-05,
+  next after HDR): "it seems like in codex (and maybe claude code too)
+  setting the olo terminal title isn't working (the session most
+  definitely was/is running in olo terminal)". Codex in the tab at
+  ~/worktrees/olo/browser (group "olo") called
+  `olo-terminal.set_tab_title({"title": "Browser CSS syntax", "cwd":
+  "/home/ben/worktrees/olo/browser"})` and was told "This session isn't
+  in an Olo Terminal tab (or Terminal's setting for it is off)": so
+  `agent_title::find_tab` found no tab, even given the folder (Codex
+  runs the server in its daemon, so it goes by the folder; the group
+  context the hook gives that session lists the tab at that folder, so
+  the snapshot has it). Claude Code fails another way: in the tab at
+  ~/src/olo, after the conversation was compacted, the olo-terminal
+  server was "disconnected" and the tool gone for the rest of the
+  session (was the server's binary replaced by an upgrade under it, or
+  did it exit?). Find each cause (the snapshot the server reads and
+  where from: its environment in Codex's daemon, XDG_RUNTIME_DIR,
+  display; how `tab_of` matches a folder; what ends the server under
+  Claude Code), fix them, and keep tests that drive the server as each
+  agent runs it (Codex: from a daemon outside the tab, by folder;
+  Claude Code: under the tab's shell, across an upgrade of Terminal).
+
+- **HDR versions of the wallpapers, shown in HDR** (Ben, 2026-11-05,
+  after HDR and the tab-title bug): "generate and add hdr versions of
+  all the olo wallpapers that are used when in hdr mode". Every
+  picture in the pack (`data/wallpapers/pack.txt`; each `4k/`,
+  `ultrawide/` and `-dark`) gets an HDR version beside it, its
+  highlights (light sources, glints, the sky's brightest) brighter than
+  SDR's white and its colours past sRGB where the scene has them, kept
+  as a deep format app_server reads natively (16-bit PNG in PQ with
+  BT.2020, or JPEG XL HDR, which jxl-oxide decodes). Made from the
+  SDR originals by a tool of our own in Rust (`tools/` or a `bin`, no
+  outside programs), so it's repeatable as the pack grows: the
+  picture's own SDR look kept (SDR white at the display's SDR white),
+  only what's brightest lifted into the headroom, smoothly; checked by
+  eye on the built-in OLED in HDR. `wallpapers::resolve` picks the HDR
+  file for a display in HDR (the effective theme and screen shape as
+  now), app_server's `wallpaper.rs` decodes it into the HDR blending
+  buffer's scale (cd/m² relative to SDR white, not clipped to 1) and
+  draws it there, and switches with HDR on and off live; a display in
+  SDR (or a picture with no HDR version) is unchanged. Backgrounds says
+  which pictures have HDR. Measure: decode and upload time and memory
+  of a 4K deep picture against the SDR one (the worker, the strips).
+
+- **Other programs survive Olo's upgrades** (Ben, 2026-11-05, after the
+  HDR wallpapers): "every time i upgrade my non-olo apps, e.g. slack and
+  chrome, crash or are no longer shown in olo. please fix so that they
+  relliably survive upgrades." Olo's own apps reconnect as app_server
+  reloads in place (`olo_ui::on_upgrade`); other Wayland programs
+  (Chrome, Slack (Electron), GTK, Qt) either crash or keep running with
+  their windows gone. Known so far: at the 2026-11-04 upgrade Chrome and
+  xdg-desktop-portal-gnome crashed in GTK 4's
+  `pointer_surface_fractional_scale_preferred_scale_cb` (a
+  fractional-scale event for a pointer surface GTK had let go of). Find
+  what each of them sees across a reload (the socket, the globals, the
+  events in their order, WAYLAND_DEBUG on a test session's copy of each),
+  for each failure (the crash, the windows not shown), and fix it at the
+  cause on our side, so the person's other programs and their windows
+  are exactly where they were after every upgrade: keep the clients'
+  connections through the reload if that's what it takes (hand the
+  listening socket and the client fds to the new app_server, with their
+  state), or whatever makes it reliable. A test that upgrades a test
+  session with Chrome, an Electron app, a GTK 4 and a Qt program open
+  (windows, popups, a fractional scale), many times over, and checks
+  each is alive with its windows shown.
+
+- **Terminal's suggestions see the session's recent commands and
+  output, after a restore too** (Ben, 2026-11-05, after the items
+  above): "the olo terminal autocomplete model should be able to also
+  receive like the last n commands (maybe 10 idk whatever makes sense)
+  in the session the user wrote (and if it's a restored session after
+  e.g. a restart it should still see it from the captured scrollback)
+  and also the recent output so that it can take all that into account
+  when determining the completion prediction too". What it has now
+  (`crates/complete`): the daemon keeps each shell's last 8 commands in
+  memory (`index::Session`, keyed by brush's process id), and the
+  model sees them only as "after the last command", "two after", "uses
+  in this shell" and "in the last ten"; nothing of the output. A shell
+  restored after a restart or an upgrade (Terminal's scrollback brought
+  back, `replay.rs`) is a new process, so it starts with none. To do:
+  Suggest carries (or the daemon keeps per tab, not per process) the
+  session's last commands (about 10, measured: what helps most without
+  slowing a suggestion past its budget) and a digest of the recent
+  output (the last command's status and lines: an error naming a file,
+  a path, a branch, a test that failed, `git status`'s files), and a
+  restored tab's are taken from its saved scrollback (Terminal knows
+  each command's line and output from its prompt marks); the model gets
+  features from them (a candidate naming a word in the recent output,
+  repeating a command that just failed after an edit, the next step of
+  a sequence run before), trained from the history as it was typed
+  (the output kept for training only as those features, never stored
+  raw). Measure accepted-suggestion rate before and after (Activity
+  Monitor ▸ AI's numbers), and latency per suggestion (it's per key).
+  Ben's example (2026-11-05, a tab restored after a restart): the
+  scrollback ends with `claude --dangerously-skip-permissions` printing
+  "Resume this session with: claude --dangerously-skip-permissions
+  --resume 00000000-…", then `claude --allow-dangerously-skip-permissions
+  --dangerously-skip-permissions --resume 00000000-…` run, then
+  "Restored from Nov 5, 2026, 9:15 AM", `cd ~/src/notes`,
+  and `cl` typed: it suggested `claude --help|grep allow`; "here i would
+  expect the model's prediction to be that claude command to resume
+  with the session id etc". So the candidates can't come only from the
+  history index (`Index::candidates`): a command the output names (a
+  line that is a command, "Resume … with:", "run `…`", `git push
+  --set-upstream origin …`), and the last command of the restored
+  session (rerun as it was), are candidates too, scored with the rest.
+  Keep this as a test: that scrollback restored, `cl` typed, the resume
+  command suggested.
+
+- **Olo Doctor: programs' temporary files on disk, not in /tmp**
+  (Ben, 2026-11-05, after the items above): "have olo doctor check what
+  the env vars are for telling processes what temp dir path to use and
+  if they're not present or not set to /var/tmp then have it provide
+  that as a fix. /tmp is often in memory and not a good place for apps
+  to use as temp". Doctor reads the session's environment (and
+  systemd's user manager's, `systemctl --user show-environment`'s
+  D-Bus equivalent) for `TMPDIR`, and `TMP`/`TEMP` that some programs
+  read instead; when /tmp is a tmpfs (RAM: Fedora's default) and they
+  are unset or point there, it offers the fix: set them to /var/tmp for
+  everything the person runs from now on (an `environment.d` file of
+  Olo's in ~/.config, which systemd's user manager and olo-session
+  read, so apps started from Deskbar, Terminal's shells and user
+  services all get it; programs already running keep theirs until they
+  restart, which it says). Natively, no shelling out; undoable (the
+  file taken away). Look first at what breaks: a program that puts its
+  sockets in $TMPDIR (they work on disk too), and what systemd-tmpfiles
+  ages out of /var/tmp (30 days there, not at boot) against what /tmp
+  dropped at each restart; `XDG_RUNTIME_DIR` stays in RAM as it should.
+  A test with a session whose TMPDIR is unset, then set by the fix.
+
+- **Terminal tells coding agents to keep scratch in /var/tmp** (Ben,
+  2026-11-05, after the items above): "the olo terminal claude/codex
+  integration should also inject instructions to those coding harnesses
+  that if they need to write/use files to a temp location they should
+  use /var/tmp and not /tmp and explain why". Terminal's hook that
+  gives Claude Code and Codex the group context and the tab-title
+  instructions (`agent_context.rs`, `agent_title::INSTRUCTIONS`) also
+  says, when /tmp is a tmpfs: temporary files (scratch, build
+  directories, downloads, screenshots, copies of builds) go in a
+  directory of the agent's own under /var/tmp, removed when done, never
+  in /tmp, because /tmp is held in RAM and whatever goes there takes
+  the person's memory (as CLAUDE.md's rule for Olo's own agents says).
+  Said once at the start, short; checked by reading what each agent is
+  given (Claude Code's hook output, Codex's) in a test, and off with the
+  group context's setting.
+
 - **Viewer crashed when brought back from Deskbar after a video**
   (Ben, 2026-11-04): "i was watching a video in viewer, then left it
   open while i did some other stuff, then when i tried to click it in
@@ -501,10 +647,26 @@ of Finished; a new one goes where its priority puts it.
     2026-11-04 12:32), /etc/kernel/cmdline and GRUB's defaults, but the
     kernel running started before (2026-11-04 00:35) and the driver's
     parameter can't change till it starts again (read only in sysfs),
-    so app_server says the panel's HDR waits on a restart. Left: the
-    panel's HDR, after Ben's restart (Preferences ▸ Display ▸ Colour ▸
-    HDR, then `hdr-check`'s values looked at on the panel); and a real
-    HDR grading (phone footage, Ben's) looked at.
+    so app_server says the panel's HDR waits on a restart. After Ben's
+    restart (2026-11-05), HDR on the panel works: it went blank at
+    first, and Ben looked through each step with an HDR test card
+    (`hdr_card`, the kit's example) while the panel's registers were
+    tried by hand (`tools/dev/panel-hdr-check`). Found: with the
+    argument the kernel drives this eDP 1.5 panel by VESA's luminance
+    control, not Intel's HDR interface (that's for eDP 1.4b and older);
+    the panel decodes PQ itself from the signal and its metadata,
+    ignores the backlight in HDR and 0x344 written while on; it takes
+    the signal's RGB as its own primaries (BT.2020's numbers looked
+    washed out: now sent in the panel's own, colorimetry Default). The
+    blanks came from dragging "Everything else's brightness" (each step
+    a modeset: now only the frame re-encoded, 60 steps' IPC p50 1.39 →
+    0.45 ms headless) and from Preferences' 15-second revert, which Ben
+    didn't see (now an alert, Revert or Keep, counting down). SDR in HDR
+    was dim at BT.2408's 203 cd/m²: a built-in panel's SDR white now
+    follows its brightness unless set (80–600 cd/m²), and the
+    brightness keys move it in HDR. Ben: "hdr looked good", SDR "about
+    the same brightness now". Left: a real HDR grading (phone footage,
+    Ben's) looked at.
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole

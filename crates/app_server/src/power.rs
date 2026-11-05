@@ -815,12 +815,24 @@ impl<B: Backend> AnvilState<B> {
     }
 
     /// The brightness keys: the display under the pointer if we can set
-    /// its brightness, else the built-in one.
+    /// its brightness, else the built-in one. A display in HDR has its
+    /// SDR white moved instead (`step_sdr_white`).
     fn step_brightness(&mut self, delta: f32) {
         // Snap to the step grid so up then down returns exactly.
         let step = |level: f32| (((level + delta) / STEP).round() * STEP).clamp(0.0, 1.0);
         let pointer = self.pointer.current_location();
-        let under = self.space.output_under(pointer).next().map(|o| o.name());
+        let under_output = self.space.output_under(pointer).next().cloned();
+        let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
+        let hdr = |o: &smithay::output::Output| matches!(crate::color::drawing(o), crate::color::Drawing::Hdr { .. });
+        if let Some(o) = under_output.as_ref().filter(|o| hdr(o)) {
+            return self.step_sdr_white(&o.clone(), delta);
+        }
+        let under = under_output.map(|o| o.name());
+        if under.as_deref().is_none_or(|n| self.power.display_brightness(n).is_none())
+            && let Some(o) = internal.filter(|o| hdr(o))
+        {
+            return self.step_sdr_white(&o, delta);
+        }
         if let Some(name) = under
             && let Some(level) = self.power.display_brightness(&name)
         {
@@ -832,6 +844,30 @@ impl<B: Backend> AnvilState<B> {
             self.set_brightness(level);
             self.show_indicator(crate::osd::Indicator::Brightness(level));
         }
+    }
+
+    /// In HDR a display shows light as it's sent, and the built-in
+    /// panel's backlight does nothing (the ThinkPad's OLED ignored it):
+    /// the brightness keys move SDR's white instead, everything that isn't
+    /// HDR, as Preferences' "Everything else's brightness" does, by even
+    /// steps of light (a log scale from `MIN_SDR_NITS` to `MAX_SDR_NITS`),
+    /// shown on the brightness indicator and kept for the display.
+    fn step_sdr_white(&mut self, output: &smithay::output::Output, delta: f32) {
+        use crate::color::{MAX_SDR_NITS, MIN_SDR_NITS};
+        let (lo, hi) = (MIN_SDR_NITS.ln(), MAX_SDR_NITS.ln());
+        let now = crate::color::applied(output).sdr_nits.clamp(MIN_SDR_NITS, MAX_SDR_NITS);
+        let level = (now.ln() - lo) / (hi - lo);
+        let level = (((level + delta) / STEP).round() * STEP).clamp(0.0, 1.0);
+        let nits = (lo + (hi - lo) * level).exp().round();
+        let key = crate::desktop::display_key(output);
+        self.settings.display.config_mut(&key, &output.name()).sdr_nits = Some(nits);
+        if let Err(e) = self.apply_color(output) {
+            warn!("SDR's white on {}: {e}", output.name());
+        }
+        // Saved on the next tick (keys repeat).
+        self.power.unsaved = true;
+        self.show_indicator(crate::osd::Indicator::Brightness(level));
+        self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
     }
 
     fn step_keyboard(&mut self, delta: f32) {

@@ -83,8 +83,7 @@ pub fn apply(output: &Output, a: Applied) -> bool {
 }
 
 /// SDR's white in HDR, cd/m², at least and at most.
-pub const MIN_SDR_NITS: f32 = 80.0;
-pub const MAX_SDR_NITS: f32 = 600.0;
+pub use olo_protocol::color::{MAX_SDR_NITS, MIN_SDR_NITS};
 
 /// How a frame for a display is drawn.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -116,13 +115,32 @@ pub fn drawing_for(display: &DisplayColor, hdr_capable: bool, a: &Applied) -> Dr
         let sdr = a.sdr_nits.clamp(MIN_SDR_NITS, MAX_SDR_NITS);
         let max = peak_nits(display) / sdr;
         let blend = ColorTarget { primaries: Primaries::BT2020, transfer: Transfer::Gamma22, sdr_nits: sdr, max };
-        let signal = ColorTarget { primaries: Primaries::BT2020, transfer: Transfer::Pq, sdr_nits: sdr, max };
+        let signal = ColorTarget { primaries: signal_primaries(display), transfer: Transfer::Pq, sdr_nits: sdr, max };
         return Drawing::Hdr { blend, signal };
     }
     match display.primaries() {
         Some(p) if a.mode == ColorMode::Accurate && display.wide() => Drawing::Sdr(ColorTarget::sdr(p)),
         _ => Drawing::Plain,
     }
+}
+
+/// The primaries an HDR signal is sent in: BT.2020 to a display whose
+/// EDID says it takes PQ (an HDR monitor: it converts BT.2020 into its
+/// gamut, as the signal's colorimetry says); a built-in panel's own to
+/// one whose HDR is its panel's (DisplayID's luminance), which shows the
+/// signal's numbers as its own colours. The ThinkPad P1 Gen 9's OLED did
+/// (eDP 1.5: the kernel drives it through VESA's interface, never
+/// switching on its BT.2020 conversion, 0x344 bit 1): sRGB's colours in
+/// BT.2020's numbers came out washed out (Ben, 2026-11-05).
+pub fn signal_primaries(display: &DisplayColor) -> Primaries {
+    if display.pq { Primaries::BT2020 } else { display.primaries().unwrap_or(Primaries::BT2020) }
+}
+
+/// Whether the HDR signal is in BT.2020 (said to the display by the
+/// connector's colorimetry), else in the panel's own primaries
+/// (colorimetry Default).
+pub fn signal_is_bt2020(display: &DisplayColor) -> bool {
+    signal_primaries(display) == Primaries::BT2020
 }
 
 /// What HDR's blending buffer holds, as a texture drawn into the signal.
@@ -212,17 +230,24 @@ pub struct HdrFrame {
     damage: DamageBag<i32, Physical>,
     id: Id,
     size: Size<i32, Physical>,
+    scale: f64,
 }
 
 impl HdrFrame {
     /// Around a float texture of `size` (the display's, as it's turned).
     pub fn new(texture: GlesTexture, size: Size<i32, Physical>, scale: f64) -> HdrFrame {
         texture.set_color_source(Some(BLENDED));
-        HdrFrame { texture, tracker: OutputDamageTracker::new(size, scale, Transform::Normal), damage: DamageBag::new(4), id: Id::new(), size }
+        HdrFrame { texture, tracker: OutputDamageTracker::new(size, scale, Transform::Normal), damage: DamageBag::new(4), id: Id::new(), size, scale }
     }
 
     pub fn size(&self) -> Size<i32, Physical> {
         self.size
+    }
+
+    /// Composed whole at the next frame (SDR's white moved: what's in it
+    /// was counted in the old), the texture kept.
+    pub fn compose_whole(&mut self) {
+        self.tracker = OutputDamageTracker::new(self.size, self.scale, Transform::Normal);
     }
 
     /// What a frame drew into it (None: nothing new).
@@ -341,6 +366,19 @@ mod tests {
         assert!(matches!(drawing_for(&d, false, &Applied { hdr: true, ..Applied::default() }), Drawing::Sdr(_)));
         assert_eq!(drawing_for(&DisplayColor::default(), false, &Applied::default()), Drawing::Plain);
         assert!(!hdr.scanout() && Drawing::Plain.scanout());
+    }
+
+    #[test]
+    fn a_panels_hdr_in_its_own_colours_a_monitors_in_bt2020() {
+        let applied = Applied { hdr: true, ..Applied::default() };
+        let Drawing::Hdr { blend, signal } = drawing_for(&oled(), true, &applied) else { panic!("HDR") };
+        assert_eq!(blend.primaries, Primaries::BT2020, "blended in BT.2020 either way");
+        assert_eq!(Some(signal.primaries), oled().primaries(), "the panel's own");
+        assert!(!signal_is_bt2020(&oled()));
+        let monitor = DisplayColor { pq: true, ..oled() };
+        let Drawing::Hdr { signal, .. } = drawing_for(&monitor, true, &applied) else { panic!("HDR") };
+        assert_eq!(signal.primaries, Primaries::BT2020);
+        assert!(signal_is_bt2020(&monitor));
     }
 
     #[test]

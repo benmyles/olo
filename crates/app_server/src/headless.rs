@@ -38,7 +38,7 @@ use smithay::{
         presentation::Refresh,
     },
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::render::render_output;
 use crate::state::{AnvilState, Backend, take_presentation_feedback, update_primary_scanout_output};
@@ -196,6 +196,18 @@ impl Backend for HeadlessData {
         screen.damage_tracker = OutputDamageTracker::from_output(output);
         screen.hdr = None;
         info!(output = output.name(), drawing = ?crate::color::drawing(output), "colours (simulated)");
+        Ok(())
+    }
+
+    fn sdr_white_changed(&mut self, output: &Output) -> Result<(), String> {
+        // As udev's: the blending buffer composed whole again, nothing
+        // made anew.
+        let screen = self.screens.iter_mut().find(|s| s.output == *output).ok_or("no such screen")?;
+        match screen.hdr.as_mut() {
+            Some(hdr) => hdr.compose_whole(),
+            None => return self.color_changed(output),
+        }
+        debug!(output = output.name(), "SDR's white (simulated)");
         Ok(())
     }
 

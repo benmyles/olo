@@ -218,6 +218,28 @@ pub fn alert_height(cx: &App, message: &str, width: f32) -> f32 {
 
 type OnChoose = std::rc::Rc<dyn Fn(Option<usize>, &mut App)>;
 
+/// An alert that answers itself unless answered in time
+/// ([`open_timed_alert`]): new display settings, put back unless kept.
+#[derive(Clone)]
+pub struct Timeout {
+    /// When it answers itself. Set it later to give more time (what it
+    /// asks about changed again while it asked).
+    pub at: std::rc::Rc<std::cell::Cell<std::time::Instant>>,
+    /// The button it answers with then.
+    pub choice: usize,
+    /// The line under the message, given the seconds left (whole, rounded
+    /// up): "Reverting in 12 seconds."
+    pub says: std::rc::Rc<dyn Fn(u64) -> String>,
+}
+
+impl Timeout {
+    /// The seconds left now, rounded up (0: time's up).
+    fn left(&self) -> u64 {
+        let left = self.at.get().saturating_duration_since(std::time::Instant::now());
+        left.as_millis().div_ceil(1000) as u64
+    }
+}
+
 /// An alert's window: its message and buttons.
 struct Alert {
     icon: SharedString,
@@ -227,6 +249,9 @@ struct Alert {
     focus: gpui::FocusHandle,
     /// Answered (or closed): later clicks and keys do nothing.
     done: bool,
+    /// It answers itself in time, and a wake for its next second is set.
+    timeout: Option<Timeout>,
+    ticking: bool,
 }
 
 impl Alert {
@@ -264,7 +289,34 @@ impl gpui::Render for Alert {
                     a.choose(Some(0), window, cx)
                 }
             }))
-            .child(AlertFrame::new(self.icon.clone()).child(paragraph(self.message.clone())).child(div().flex_1()).child(row))
+            .child(AlertFrame::new(self.icon.clone()).child(paragraph(self.message.clone())).children(self.countdown(window, cx)).child(div().flex_1()).child(row))
+    }
+}
+
+impl Alert {
+    /// A timed alert's line counting down, with a wake set for when it
+    /// next changes (once a second while it's open, nothing between):
+    /// time up, it answers itself.
+    fn countdown(&mut self, window: &mut Window, cx: &mut gpui::Context<Self>) -> Option<impl IntoElement + use<>> {
+        let t = self.timeout.clone()?;
+        let left = t.left();
+        if !self.ticking && !self.done {
+            self.ticking = true;
+            // Until the seconds left go down by one (or at once, time up).
+            let wait = t.at.get().saturating_duration_since(std::time::Instant::now()).saturating_sub(std::time::Duration::from_secs(left.saturating_sub(1)));
+            cx.spawn_in(window, async move |alert, cx| {
+                cx.background_executor().timer(wait).await;
+                let _ = alert.update_in(cx, |a, window, cx| {
+                    a.ticking = false;
+                    match &a.timeout {
+                        Some(t) if t.left() == 0 => a.choose(Some(t.choice), window, cx),
+                        _ => cx.notify(),
+                    }
+                });
+            })
+            .detach();
+        }
+        Some(div().pt(px(m::SPACING)).child(paragraph((t.says)(left.max(1)))))
     }
 }
 
@@ -273,10 +325,35 @@ impl gpui::Render for Alert {
 /// one); `on_choose` gets the one chosen, or None if it was closed from
 /// its tab.
 pub fn open_alert(cx: &mut App, title: &str, icon: &str, message: &str, buttons: &[&str], on_choose: impl Fn(Option<usize>, &mut App) + 'static) -> Option<gpui::WindowHandle<crate::Frame>> {
+    open(cx, title, icon, message, buttons, None, std::rc::Rc::new(on_choose))
+}
+
+/// Opens a BAlert as [`open_alert`] does that answers itself with
+/// `timeout.choice` when its time is up, the seconds left counting down
+/// under the message ("Reverting in 12 seconds."): a change that may
+/// have left the person unable to answer (a display gone dark), undone
+/// unless they keep it. `on_choose` gets the choice either way.
+pub fn open_timed_alert(
+    cx: &mut App,
+    title: &str,
+    icon: &str,
+    message: &str,
+    buttons: &[&str],
+    timeout: Timeout,
+    on_choose: impl Fn(Option<usize>, &mut App) + 'static,
+) -> Option<gpui::WindowHandle<crate::Frame>> {
+    open(cx, title, icon, message, buttons, Some(timeout), std::rc::Rc::new(on_choose))
+}
+
+fn open(cx: &mut App, title: &str, icon: &str, message: &str, buttons: &[&str], timeout: Option<Timeout>, on_choose: OnChoose) -> Option<gpui::WindowHandle<crate::Frame>> {
     use gpui::AppContext as _;
     let width = alert_width(cx, buttons);
-    let height = alert_height(cx, message, width);
-    let on_choose: OnChoose = std::rc::Rc::new(on_choose);
+    // The countdown's line under the message, as long as it gets.
+    let shown = match &timeout {
+        Some(t) => format!("{message}\n{}", (t.says)(t.left().max(1))),
+        None => message.to_owned(),
+    };
+    let height = alert_height(cx, &shown, width) + if timeout.is_some() { m::SPACING } else { 0.0 };
     let alert = cx.new(|cx| Alert {
         icon: SharedString::from(icon.to_owned()),
         message: SharedString::from(message.to_owned()),
@@ -284,6 +361,8 @@ pub fn open_alert(cx: &mut App, title: &str, icon: &str, message: &str, buttons:
         on_choose: on_choose.clone(),
         focus: cx.focus_handle(),
         done: false,
+        timeout,
+        ticking: false,
     });
     let a = alert.clone();
     crate::open_window(cx, crate::WindowOptions::alert(title.to_owned(), width, height), move |window, cx| {
@@ -328,4 +407,30 @@ pub fn ask_to_save(cx: &mut App, app: &str, name: &str, doing: &str, then: impl 
             cx,
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        cell::Cell,
+        rc::Rc,
+        time::{Duration, Instant},
+    };
+
+    use super::Timeout;
+
+    fn timeout(left: Duration) -> Timeout {
+        Timeout { at: Rc::new(Cell::new(Instant::now() + left)), choice: 0, says: Rc::new(|n| format!("{n}")) }
+    }
+
+    #[test]
+    fn the_seconds_left_round_up_and_end_at_nought() {
+        assert_eq!(timeout(Duration::from_millis(14_200)).left(), 15);
+        assert_eq!(timeout(Duration::from_millis(900)).left(), 1);
+        assert_eq!(timeout(Duration::ZERO).left(), 0);
+        // More time given while it asks.
+        let t = timeout(Duration::from_millis(2_500));
+        t.at.set(Instant::now() + Duration::from_secs(10) + Duration::from_millis(500));
+        assert_eq!(t.left(), 11);
+    }
 }

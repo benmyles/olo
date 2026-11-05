@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Display: Everything else's brightness up to 600 cd/m², on its track
+
+*10:20* — The SDR-in-HDR slider went to 480 while app_server took 600 (and a built-in panel's now follows its brightness, near 600 on the ThinkPad's OLED), so its knob was drawn past the track's end (Ben: it 'runs off the side'). One range for both, in protocol; the kit's Slider draws a value outside its range at the end; the note under it level with the label. At 2×, 1.5× and 1×.
+
+![Display: Everything else's brightness up to 600 cd/m², on its track](2026-11-05/102001-display-everything-else-s-brightness-up-to-600-c.png)
+
+### Display: keep HDR or a new resolution in an alert
+
+*10:20* — Turning HDR on (or choosing a resolution) in Preferences ▸ Display now asks in an alert over the window, counting down, Revert or Keep (the default), as BeOS's Screen preferences did; the line at the foot of the window was easy to miss, and HDR went off by itself 15 s later (Ben, 2026-11-05). The kit's widgets::open_timed_alert.
+
+![Display: keep HDR or a new resolution in an alert](2026-11-05/102000-display-keep-hdr-or-a-new-resolution-in-an-alert.png)
+
 ### Captions and chapters in recordings
 
 *08:01* — An agent narrating a demo puts captions in the video (olo-screen caption-video: drawn into the recording only, never on the screen) and marks its steps (mark-video): the marks become the video's chapters, which the Viewer shows as ticks on its timeline and lists in Go, playing from the one chosen.
