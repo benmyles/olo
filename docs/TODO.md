@@ -1072,6 +1072,17 @@ of Finished; a new one goes where its priority puts it.
   tract's f16 weights (F16C on x86, NEON's fp16) and int8, and keep one
   only if the voice trials (crates/voice tests, the AirPods chain) say
   quality holds. Measure on the ThinkPad and the MacBook.
+  *Tried* (2026-11-04, x86 with AVX2): tract 0.23.9's
+  `FloatPrecisionTranslator` (f32 → f16, the whole model) on the
+  encoder and both decoders breaks DeepFilterNet: a clean voice comes
+  out at −1.5 dB SDR (f32: 34.1), noise isn't taken out (7.5 → −2.0 dB
+  SDR; f32: 17.7), and its 22 µs a frame is the network doing nothing.
+  It turns the activations to f16 too (the GRUs' sums lose too much),
+  where only the weights should be. What's left to try: weights alone
+  in f16 (tract-linalg has f16-in-f32-out matrix kernels on x86,
+  `f16f32` with F16C, and on NEON), which means packing the constant
+  matrices as f16 in tract's own optimizer rather than translating the
+  model; then int8 the same way, judged by the same trials.
 
 - **Other programs' file handling through Olo, fixed** (Ben,
   2026-11-04): "the gtk/qt integration doesn't seem to be working
