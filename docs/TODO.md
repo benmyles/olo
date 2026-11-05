@@ -32,6 +32,121 @@ of Finished; a new one goes where its priority puts it.
   report says, else: behind other windows rather than minimized, on
   another workspace, across a lock or the display sleeping.
 
+- **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
+  screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
+  incorrectly showing up as a keyboard"): "Yubico YubiKey OTP+FIDO+CCID"
+  under Swap Alt and the Windows Key, beside the built-in keyboard. Its
+  OTP interface is a USB boot keyboard (it types one-time codes), so
+  app_server's list (`udev.rs`, `keyboards`: every keyboard device with
+  an A key) takes it. Security keys aren't keyboards to set up: leave
+  them out (Yubico's vendor id, 1050, or a name saying so: YubiKey,
+  Security Key, FIDO, U2F, Nitrokey, OnlyKey, Titan; pid.codes' and
+  Google's ids are shared, so never a vendor alone there), still typing
+  their codes. *Fixed* (2026-11-04: `olo_protocol::keyboards::
+  security_key`, in app_server's list; `security_keys_arent_keyboards`).
+  Left: Ben's look at the tab after the upgrade, the key plugged in.
+
+- **A YubiKey approves sudo and passwords** (Ben, 2026-11-04): "add
+  native yubikey support to olo -- setup should be in prefs-> security
+  and once configured the yubikey should be able to approve any sudo or
+  passwords request. i just plugged in a yubikey nano you can check it
+  against." Preferences ▸ Security gets a YubiKey section: the key found
+  (model, firmware, which applications it has: FIDO2, OTP, PIV),
+  Set Up (a touch to register it, the account password once), a second
+  key as a spare, Remove. Once set up, a touch of the key approves what
+  asks for the account password: Terminal's sudo window, Passwords'
+  unlock and `op`, polkit's dialog (Olo's agent), Approve Without
+  Asking, the lock screen; the password stays the way in, and each
+  window says which (touch the key, or type the password). Native, in
+  Rust: CTAPHID over the key's hidraw node (FIDO2's `hmac-secret`
+  extension, or the OTP application's HMAC-SHA1 challenge-response), no
+  ykman or pam_u2f. One way that needs no PAM change and no root: Olo
+  keeps the account password sealed by a secret only the key can give
+  (`hmac-secret` of a credential made at setup, touch required) and
+  hands the password on as Approve Without Asking does; the other is a
+  PAM module of Olo's for sudo run outside Olo's windows. Udev's rule
+  for the key's hidraw node (uaccess) is checked (Olo Doctor offers it).
+  *Checked* (2026-11-04, from /sys, nothing opened): Ben's key is a
+  YubiKey 5 Nano, USB-C (1050:0407 "YubiKey OTP+FIDO+CCID", firmware
+  5.8, full speed), with three interfaces: OTP as a boot keyboard
+  (hidraw, root's only), FIDO (hidraw, usage page 0xF1D0 usage 1:
+  CTAPHID; the session's ACL already gives Ben read and write, so
+  FIDO2 needs no root and no rule) and CCID (PIV, OpenPGP). So FIDO2's
+  `hmac-secret` is the way in. Next: `CTAPHID_INIT` and
+  `authenticatorGetInfo` (its extensions, PIN set or not), then the
+  sealed-password design above.
+
+- **Face unlock: sudo and Passwords approved by a look** (Ben,
+  2026-11-04): "support facial recognition as an alternative to the
+  yubikey or password to unlock sudo and passwords. put the setup in
+  prefs -> passwords. do whatever is needed to get olo working with it
+  even if you have to write a custom driver or whatever." Set up in
+  Preferences ▸ Passwords (enrol a face, a few angles, with and without
+  glasses; Forget), then a look approves what the password, the
+  fingerprint or the YubiKey approve now: Terminal's sudo window,
+  Passwords' unlock and `op`, polkit, Approve Without Asking, the lock
+  screen; each window says it's looking and falls back to the others.
+  Only with the infrared camera: a photo or a screen can't pass it (IR
+  shows skin and depth cues a printout and a display don't; the colour
+  camera alone is too easily fooled, so never that alone). Native, in
+  Rust and in process: the frames over V4L2 (no howdy, no OpenCV
+  binaries, no linux-enable-ir-emitter), the emitter switched on by
+  Olo's own UVC extension-unit control (found by trying the unit's
+  controls with the camera's own IR stream watched for the flood
+  lighting it, kept per camera), face detection and embeddings by a
+  small model run in process (as Olo runs its others), liveness from IR
+  (and the emitter's on/off frames), the enrolled templates sealed for
+  the user only. The privacy shutter closed: it says so.
+  *Checked* (2026-11-04, from /sys): the ThinkPad's camera is Chicony's
+  04f2:b8b3 on USB (3-4): a colour camera ("Integrated Camera",
+  /dev/video0 and 1) and an infrared one ("Integrated IR Camera",
+  /dev/video2 and 3; UVC, interface 1.2), a camera HID interface (1.4:
+  hidraw0) and a DFU one; Ben's account can open them (the video
+  group's ACL). Next: the IR node's formats (GREY or Y8 at what size),
+  its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
+  which control lights the emitter, and what the HID interface reports
+  (the shutter, perhaps).
+
+- **A USB 2 device in a Thunderbolt 5 port isn't seen** (found
+  2026-11-04 with Ben's YubiKey): in the USB-C port on the Barlow Ridge
+  Thunderbolt 5 controller (8086:5780 bridges, its xHCI 8086:5782 at
+  0000:a9:00.0, buses 5 and 6, both root hubs runtime-suspended, the
+  controller in D3hot) the key drew power (Type-C port 1 had a partner)
+  but the kernel logged nothing at all, not even a failed enumeration;
+  in a port on the chipset's controller (00:14.0) it came up at once. A
+  SanDisk USB 3 drive had worked in that port (SuperSpeed, 6-2). Find
+  whether the controller's USB 2 side misses its wake (PME) for a
+  full-speed connect, whether `power/control` on (Ben's to try) or the
+  USB4 router's own state brings it, and fix or work around it in Olo
+  (a udev rule keeping it awake costs power: measure), with Olo Doctor
+  saying so meanwhile.
+
+- **Floating windows: the one clicked comes to the front** (Ben,
+  2026-11-04): "when more than one floating "on top priority" window
+  exists, one of them keeps itself on top and i can't go to the other
+  floating one it just opens behind it. if we are in auto tile or focus
+  mode the floating windows should probably stay on top of those
+  focused/auto-tiled ones but we should be able to click on other
+  floating windows to see them at front (or if another floating one
+  opens then it should start at the very top). we just want it to be
+  intuitive -- what you'd expect as a user". So: floating windows
+  (dialogs, alerts, panels, windows floated by hand) stay over the tiles
+  in Auto-Tiling and over the focused window in Focus, but among
+  themselves they stack as windows do: the one clicked or activated
+  (Deskbar, ⌘Tab, an agent's `activate`) comes to the front of them, and
+  one that opens starts at the very top. Only a window's own children
+  stay over it (an app's Find panel over its document, an alert over
+  its window). Look at what re-raises the one that stays on top: the
+  passes that put floats back over the tiles and the focused window
+  (`keep_floating_above` in autotile.rs, `keep_floating_over_focus` in
+  modes.rs, "in the order they were") and children over parents
+  (`keep_children_above` in wm.rs), each run after a raise; and an app's
+  floating panels (modes.rs, BeOS's floating feels). Reproduce headless
+  in each mode (two floating windows of different apps, and of one app;
+  click each, activate each, open a third), and keep a test; then a
+  wm-fuzz check that the window just activated is the top one of its
+  layer.
+
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
   NAME --steps 80 --seed 7` on a `--session --shell` session at 3024×1890,
@@ -350,6 +465,27 @@ of Finished; a new one goes where its priority puts it.
     front of the machine (Ben: install the rule from Doctor, turn it
     on); dim when looking away.
   - Left, not started: the IR camera (face sign-in).
+
+- **Palms read as fingertips on the ThinkPad's touchpad** (Ben,
+  2026-11-04): "on the thinkpad touchpad when i try to do the palm
+  training it just thinks my palms are fingertips and only seems to be
+  registering a small dot when my palms are on the touchpad". The pad is
+  a Goodix GXTP5420 (I²C HID, 27C6:0F90, `/dev/input/event6`), and its
+  axes (from /proc/bus/input/devices, ABS=6e0800001000003) are X, Y,
+  pressure, and for each contact slot, position, tool type
+  (`ABS_MT_TOOL_TYPE`), tracking id and pressure (`ABS_MT_PRESSURE`):
+  no contact size (`ABS_MT_TOUCH_MAJOR`/`MINOR`, `ABS_MT_WIDTH_*`),
+  which the trainer draws and the palm model reads (the Mac's pad gives
+  it), so every contact is a point. Next: see what it sends for a palm
+  (an evdev recording of palms, fingertips and a flat thumb: whether the
+  firmware marks palms `MT_TOOL_PALM` itself, as libinput expects of
+  such pads, what pressure a palm gives, and whether a palm comes as
+  several contacts close together); then make the model and the trainer
+  work from what a pad has (the tool type where it says palm, pressure
+  and the contacts' spread where there's no size), the trainer drawing
+  a contact by what's known (a pressure-sized ring, not a dot) and
+  saying when a pad can't tell palms by size; and the built-in model
+  for pads like this one.
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in

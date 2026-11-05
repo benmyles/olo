@@ -50,9 +50,31 @@ pub fn identify(name: &str) -> Option<&'static Model> {
     KNOWN.iter().find(|m| name.contains(m.matches))
 }
 
+/// A security key (a YubiKey and the like): its one-time codes come as a
+/// keyboard's keys, but it isn't a keyboard to set up (Preferences ▸
+/// Keyboard leaves it out). Yubico's vendor id, or a name that says so:
+/// pid.codes' and Google's ids are shared with other things, so never a
+/// vendor alone there.
+pub fn security_key(name: &str, vendor: u32) -> bool {
+    const YUBICO: u32 = 0x1050;
+    let lower = name.to_lowercase();
+    vendor == YUBICO || ["yubikey", "security key", "fido", "u2f", "nitrokey", "onlykey", "titan key"].iter().any(|w| lower.contains(w))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn security_keys_arent_keyboards() {
+        // (Ben's, as its driver names it.)
+        assert!(security_key("Yubico YubiKey OTP+FIDO+CCID", 0x1050));
+        assert!(security_key("Nitrokey Nitrokey 3", 0x20a0));
+        assert!(security_key("Google Titan Key", 0x18d1));
+        assert!(!security_key("AT Translated Set 2 keyboard", 0x0001));
+        assert!(!security_key("Apple Inc. Magic Keyboard with Touch ID and Numeric Keypad", 0x05ac));
+        assert!(!security_key("Keychron K2", 0x05ac));
+    }
 
     #[test]
     fn known_by_the_name_its_driver_gives() {

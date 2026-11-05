@@ -608,8 +608,10 @@ impl Backend for UdevData {
     }
 
     fn keyboards(&self) -> Vec<String> {
-        // (KEY_A: a keyboard to type on.)
-        let mut names: Vec<String> = self.keyboards.iter().filter(|d| d.keyboard_has_key(30) == Ok(true)).map(|d| d.name().to_string()).collect();
+        // (KEY_A: a keyboard to type on; not a security key typing its
+        // codes.)
+        let mut names: Vec<String> =
+            self.keyboards.iter().filter(|d| d.keyboard_has_key(30) == Ok(true) && !olo_protocol::keyboards::security_key(&d.name(), d.id_vendor())).map(|d| d.name().to_string()).collect();
         names.sort();
         names.dedup();
         names
