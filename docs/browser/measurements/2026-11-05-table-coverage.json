@@ -1,0 +1,226 @@
+{
+  "scope": "Static HTML tree comparisons only. No error-code/location conformance, JavaScript execution, or website compatibility claim. Unsupported cases stay in the denominator.",
+  "diagnostics_checked": false,
+  "total": 3904,
+  "counts": {
+    "passed": 2796,
+    "unsupported": 1108
+  },
+  "by_file": {
+    "adoption01.dat": {
+      "passed": 32,
+      "unsupported": 4
+    },
+    "adoption02.dat": {
+      "passed": 8
+    },
+    "blocks.dat": {
+      "passed": 96
+    },
+    "comments01.dat": {
+      "passed": 32
+    },
+    "doctype01.dat": {
+      "passed": 74
+    },
+    "domjs-unsafe.dat": {
+      "unsupported": 18,
+      "passed": 80
+    },
+    "entities01.dat": {
+      "passed": 150
+    },
+    "entities02.dat": {
+      "passed": 52
+    },
+    "foreign-fragment.dat": {
+      "unsupported": 132
+    },
+    "html5test-com.dat": {
+      "passed": 44,
+      "unsupported": 16
+    },
+    "inbody01.dat": {
+      "passed": 8
+    },
+    "isindex.dat": {
+      "passed": 8
+    },
+    "main-element.dat": {
+      "passed": 4,
+      "unsupported": 2
+    },
+    "math.dat": {
+      "unsupported": 16
+    },
+    "menuitem-element.dat": {
+      "passed": 40
+    },
+    "namespace-sensitivity.dat": {
+      "unsupported": 2
+    },
+    "noscript01.dat": {
+      "passed": 18
+    },
+    "pending-spec-changes-plain-text-unsafe.dat": {
+      "passed": 2
+    },
+    "pending-spec-changes.dat": {
+      "passed": 2,
+      "unsupported": 4
+    },
+    "plain-text-unsafe.dat": {
+      "passed": 32,
+      "unsupported": 74
+    },
+    "processing-instructions.dat": {
+      "passed": 243,
+      "unsupported": 4
+    },
+    "quirks01.dat": {
+      "passed": 8
+    },
+    "ruby.dat": {
+      "passed": 42
+    },
+    "scriptdata01.dat": {
+      "passed": 52
+    },
+    "scripted_adoption01.dat": {
+      "unsupported": 1
+    },
+    "scripted_ark.dat": {
+      "unsupported": 1
+    },
+    "scripted_foster01.dat": {
+      "unsupported": 2
+    },
+    "scripted_webkit01.dat": {
+      "unsupported": 2
+    },
+    "search-element.dat": {
+      "passed": 14,
+      "unsupported": 2
+    },
+    "svg.dat": {
+      "unsupported": 16
+    },
+    "tables01.dat": {
+      "passed": 34,
+      "unsupported": 4
+    },
+    "template.dat": {
+      "unsupported": 252,
+      "passed": 2
+    },
+    "tests1.dat": {
+      "passed": 224
+    },
+    "tests10.dat": {
+      "unsupported": 104,
+      "passed": 4
+    },
+    "tests11.dat": {
+      "unsupported": 26
+    },
+    "tests12.dat": {
+      "unsupported": 4
+    },
+    "tests14.dat": {
+      "passed": 14
+    },
+    "tests15.dat": {
+      "passed": 28
+    },
+    "tests16.dat": {
+      "passed": 382
+    },
+    "tests17.dat": {
+      "passed": 26
+    },
+    "tests18.dat": {
+      "passed": 63,
+      "unsupported": 8
+    },
+    "tests19.dat": {
+      "unsupported": 34,
+      "passed": 180
+    },
+    "tests2.dat": {
+      "passed": 126
+    },
+    "tests20.dat": {
+      "passed": 98,
+      "unsupported": 30
+    },
+    "tests21.dat": {
+      "unsupported": 44,
+      "passed": 2
+    },
+    "tests22.dat": {
+      "passed": 10
+    },
+    "tests23.dat": {
+      "passed": 10
+    },
+    "tests24.dat": {
+      "passed": 16
+    },
+    "tests25.dat": {
+      "passed": 52
+    },
+    "tests26.dat": {
+      "passed": 24,
+      "unsupported": 16
+    },
+    "tests3.dat": {
+      "passed": 48
+    },
+    "tests4.dat": {
+      "unsupported": 18
+    },
+    "tests5.dat": {
+      "passed": 32
+    },
+    "tests6.dat": {
+      "passed": 78,
+      "unsupported": 26
+    },
+    "tests7.dat": {
+      "passed": 66,
+      "unsupported": 2
+    },
+    "tests8.dat": {
+      "passed": 20
+    },
+    "tests9.dat": {
+      "unsupported": 50,
+      "passed": 4
+    },
+    "tests_innerHTML_1.dat": {
+      "unsupported": 162
+    },
+    "tricky01.dat": {
+      "passed": 18
+    },
+    "void-in-phrasing.dat": {
+      "passed": 26
+    },
+    "webkit01.dat": {
+      "passed": 90,
+      "unsupported": 14
+    },
+    "webkit02.dat": {
+      "passed": 78,
+      "unsupported": 18
+    }
+  },
+  "source_revision": "d7bb5bb848fcd304c10669288a211dbafd106d90",
+  "full_tree_acceptance_exit": 1,
+  "unsupported_reasons": {
+    "foreign content": 440,
+    "fragment parsing": 412,
+    "templates": 250,
+    "JavaScript execution": 6
+  }
+}

@@ -15,10 +15,11 @@ network parsing and script execution are not implemented yet.
 
 Implemented insertion rules include document/head/body, raw text/RCDATA,
 plaintext, noscript's scripting flag, lists, forms, buttons, ruby,
-framesets, active formatting reconstruction and adoption, and doctype
+framesets, table modes and foster parenting, active formatting reconstruction
+and adoption, and doctype
 mode selection. Initial `selectedcontent` contents are cloned from the
 selected option. Live selection state, events and mutation hooks remain.
-Tables, SVG/MathML foreign parsing, templates and context fragments still
+SVG/MathML foreign parsing, templates and context fragments still
 return explicit unsupported results; they cannot be compatibility passes.
 
 `dom::Document` is storage, not the complete web-facing DOM API. Nodes
@@ -33,8 +34,8 @@ origin/frame boundaries and secret masking around these primitives.
 ## Independent tree coverage
 
 Unmodified WPT fixtures and their license are in `crates/web/tests/wpt-tree`;
-NOTICE.md pins the source revision. Current coverage is **2,484/3,904
-static tree cases**, with **1,420 unsupported**, not passed. Both scripting
+NOTICE.md pins the source revision. Current coverage is **2,796/3,904
+static tree cases**, with **1,108 unsupported**, not passed. Both scripting
 flags run where the fixture calls for them. Parse-error diagnostics are
 not checked. A native evaluator always exits nonzero until every static
 tree case matches:
@@ -59,7 +60,8 @@ Neither set of counts establishes website rendering, JS or DOM API support.
 
 ## Reproducible release measurements
 
-Examples `tokenize_bench`, `dom_bench`, `append_bench` and `parse_bench`
+Examples `tokenize_bench`, `dom_bench`, `append_bench`, `parse_bench`
+and `table_bench`
 emit JSON; run with `cargo run --release -p olo-web --example NAME`.
 Pin to the same CPU and alternate baseline/default runs. Raw samples,
 commands, machine and scope are recorded under `measurements/` and in
@@ -73,3 +75,11 @@ The measured parser stress cases motivated linear initial-attribute
 construction and hashed comparison of large formatting-attribute sets.
 Small tags keep their simpler path. These are static in-memory engine
 measurements, with no network, CSS, layout, JS, UI frames or Chrome comparison.
+
+Table buffering merges contiguous source spans without copying. Decoded or
+discontiguous runs use one growing buffer charged against the owned-text
+quota, and fostered text merges with the preceding text node. The table
+dispatcher and foster insertion paths stay separate from ordinary inserts:
+release comparison caught a compiler inlining/stack regression when merged.
+See `measurements/2026-11-05-table-common.json` and
+`measurements/2026-11-05-tables.json` for every observation.

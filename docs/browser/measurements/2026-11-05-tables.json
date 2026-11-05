@@ -1,0 +1,907 @@
+{
+  "initial_runs": [
+    {
+      "results": [
+        {
+          "case": "rows",
+          "count": 10000,
+          "first_parse_ms": 4.524214000000001,
+          "node_reserved_bytes": 2621440,
+          "nodes": 50007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.799504,
+          "rounds": 5,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 10000,
+          "first_parse_ms": 3.5083559999999996,
+          "node_reserved_bytes": 1310720,
+          "nodes": 30008,
+          "owned_text_capacity_bytes": 16384,
+          "parse_and_drop_ms": 3.5431458,
+          "rounds": 5,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.205986,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.2112784,
+          "rounds": 5,
+          "source_bytes": 10030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.21501499999999998,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 10001,
+          "parse_and_drop_ms": 0.2220714,
+          "rounds": 5,
+          "source_bytes": 10035
+        },
+        {
+          "case": "rows",
+          "count": 20000,
+          "first_parse_ms": 9.597777,
+          "node_reserved_bytes": 5242880,
+          "nodes": 100007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 7.314475400000001,
+          "rounds": 5,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 20000,
+          "first_parse_ms": 6.836869,
+          "node_reserved_bytes": 2621440,
+          "nodes": 60008,
+          "owned_text_capacity_bytes": 32768,
+          "parse_and_drop_ms": 6.956803600000001,
+          "rounds": 5,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.412042,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.4098324000000001,
+          "rounds": 5,
+          "source_bytes": 20030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.407701,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 20001,
+          "parse_and_drop_ms": 0.41457359999999993,
+          "rounds": 5,
+          "source_bytes": 20035
+        },
+        {
+          "case": "rows",
+          "count": 40000,
+          "first_parse_ms": 18.907971,
+          "node_reserved_bytes": 10485760,
+          "nodes": 200007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 14.7054924,
+          "rounds": 5,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 40000,
+          "first_parse_ms": 14.015055,
+          "node_reserved_bytes": 5242880,
+          "nodes": 120008,
+          "owned_text_capacity_bytes": 65536,
+          "parse_and_drop_ms": 13.7395802,
+          "rounds": 5,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.791868,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.7989396,
+          "rounds": 5,
+          "source_bytes": 40030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.851216,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 40001,
+          "parse_and_drop_ms": 0.8384729999999999,
+          "rounds": 5,
+          "source_bytes": 40035
+        }
+      ],
+      "scope": "Static parsing/storage only, no network, JS, layout, UI or Chrome comparison",
+      "repeat": 0,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "target/release/examples/table_bench",
+        "5"
+      ],
+      "time_observation": "\tCommand being timed: \"target/release/examples/table_bench 5\"\n\tUser time (seconds): 0.31\n\tSystem time (seconds): 0.01\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.32\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 19384\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6589\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 7\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "results": [
+        {
+          "case": "rows",
+          "count": 10000,
+          "first_parse_ms": 4.1054129999999995,
+          "node_reserved_bytes": 2621440,
+          "nodes": 50007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.5533396,
+          "rounds": 5,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 10000,
+          "first_parse_ms": 3.40607,
+          "node_reserved_bytes": 1310720,
+          "nodes": 30008,
+          "owned_text_capacity_bytes": 16384,
+          "parse_and_drop_ms": 3.4063254,
+          "rounds": 5,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.198803,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.20208320000000005,
+          "rounds": 5,
+          "source_bytes": 10030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.24527700000000002,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 10001,
+          "parse_and_drop_ms": 0.22205020000000003,
+          "rounds": 5,
+          "source_bytes": 10035
+        },
+        {
+          "case": "rows",
+          "count": 20000,
+          "first_parse_ms": 9.197286,
+          "node_reserved_bytes": 5242880,
+          "nodes": 100007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 7.1608540000000005,
+          "rounds": 5,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 20000,
+          "first_parse_ms": 6.837302,
+          "node_reserved_bytes": 2621440,
+          "nodes": 60008,
+          "owned_text_capacity_bytes": 32768,
+          "parse_and_drop_ms": 6.879253200000001,
+          "rounds": 5,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.397496,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.3970624,
+          "rounds": 5,
+          "source_bytes": 20030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.45881900000000003,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 20001,
+          "parse_and_drop_ms": 0.41263819999999996,
+          "rounds": 5,
+          "source_bytes": 20035
+        },
+        {
+          "case": "rows",
+          "count": 40000,
+          "first_parse_ms": 18.259584,
+          "node_reserved_bytes": 10485760,
+          "nodes": 200007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 14.564052999999998,
+          "rounds": 5,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 40000,
+          "first_parse_ms": 16.261661,
+          "node_reserved_bytes": 5242880,
+          "nodes": 120008,
+          "owned_text_capacity_bytes": 65536,
+          "parse_and_drop_ms": 17.7789624,
+          "rounds": 5,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.789435,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.8027234,
+          "rounds": 5,
+          "source_bytes": 40030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.819861,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 40001,
+          "parse_and_drop_ms": 0.8301888,
+          "rounds": 5,
+          "source_bytes": 40035
+        }
+      ],
+      "scope": "Static parsing/storage only, no network, JS, layout, UI or Chrome comparison",
+      "repeat": 1,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "target/release/examples/table_bench",
+        "5"
+      ],
+      "time_observation": "\tCommand being timed: \"target/release/examples/table_bench 5\"\n\tUser time (seconds): 0.31\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 93%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.34\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 19300\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6587\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 94\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "results": [
+        {
+          "case": "rows",
+          "count": 10000,
+          "first_parse_ms": 4.209021,
+          "node_reserved_bytes": 2621440,
+          "nodes": 50007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.6225132,
+          "rounds": 5,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 10000,
+          "first_parse_ms": 3.512947,
+          "node_reserved_bytes": 1310720,
+          "nodes": 30008,
+          "owned_text_capacity_bytes": 16384,
+          "parse_and_drop_ms": 3.4909842000000006,
+          "rounds": 5,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.196498,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.1997488,
+          "rounds": 5,
+          "source_bytes": 10030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.20902,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 10001,
+          "parse_and_drop_ms": 0.20341740000000003,
+          "rounds": 5,
+          "source_bytes": 10035
+        },
+        {
+          "case": "rows",
+          "count": 20000,
+          "first_parse_ms": 9.328891,
+          "node_reserved_bytes": 5242880,
+          "nodes": 100007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 7.3045394,
+          "rounds": 5,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 20000,
+          "first_parse_ms": 6.972482,
+          "node_reserved_bytes": 2621440,
+          "nodes": 60008,
+          "owned_text_capacity_bytes": 32768,
+          "parse_and_drop_ms": 6.880262400000001,
+          "rounds": 5,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.398101,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.4012092,
+          "rounds": 5,
+          "source_bytes": 20030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.40798100000000004,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 20001,
+          "parse_and_drop_ms": 0.4332888,
+          "rounds": 5,
+          "source_bytes": 20035
+        },
+        {
+          "case": "rows",
+          "count": 40000,
+          "first_parse_ms": 18.542745999999998,
+          "node_reserved_bytes": 10485760,
+          "nodes": 200007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 14.785709599999999,
+          "rounds": 5,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 40000,
+          "first_parse_ms": 14.291445,
+          "node_reserved_bytes": 5242880,
+          "nodes": 120008,
+          "owned_text_capacity_bytes": 65536,
+          "parse_and_drop_ms": 13.9822904,
+          "rounds": 5,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.804332,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.8224366,
+          "rounds": 5,
+          "source_bytes": 40030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.9008889999999999,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 40001,
+          "parse_and_drop_ms": 0.8270698,
+          "rounds": 5,
+          "source_bytes": 40035
+        }
+      ],
+      "scope": "Static parsing/storage only, no network, JS, layout, UI or Chrome comparison",
+      "repeat": 2,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "target/release/examples/table_bench",
+        "5"
+      ],
+      "time_observation": "\tCommand being timed: \"target/release/examples/table_bench 5\"\n\tUser time (seconds): 0.31\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.32\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 19336\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6586\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 3\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ],
+  "runs": [
+    {
+      "results": [
+        {
+          "case": "rows",
+          "count": 10000,
+          "first_parse_ms": 4.208603,
+          "node_reserved_bytes": 2621440,
+          "nodes": 50007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.517664,
+          "rounds": 10,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 10000,
+          "first_parse_ms": 3.248285,
+          "node_reserved_bytes": 1310720,
+          "nodes": 30008,
+          "owned_text_capacity_bytes": 16384,
+          "parse_and_drop_ms": 3.5169696999999998,
+          "rounds": 10,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.159473,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.1594134,
+          "rounds": 10,
+          "source_bytes": 10030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.16695,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 10001,
+          "parse_and_drop_ms": 0.16362870000000002,
+          "rounds": 10,
+          "source_bytes": 10035
+        },
+        {
+          "case": "rows",
+          "count": 20000,
+          "first_parse_ms": 21.604397000000002,
+          "node_reserved_bytes": 5242880,
+          "nodes": 100007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 7.7721152,
+          "rounds": 10,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 20000,
+          "first_parse_ms": 6.638105,
+          "node_reserved_bytes": 2621440,
+          "nodes": 60008,
+          "owned_text_capacity_bytes": 32768,
+          "parse_and_drop_ms": 6.584973,
+          "rounds": 10,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.333672,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.3210114,
+          "rounds": 10,
+          "source_bytes": 20030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.331439,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 20001,
+          "parse_and_drop_ms": 0.3320693,
+          "rounds": 10,
+          "source_bytes": 20035
+        },
+        {
+          "case": "rows",
+          "count": 40000,
+          "first_parse_ms": 17.960745,
+          "node_reserved_bytes": 10485760,
+          "nodes": 200007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 13.8022829,
+          "rounds": 10,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 40000,
+          "first_parse_ms": 13.027522999999999,
+          "node_reserved_bytes": 5242880,
+          "nodes": 120008,
+          "owned_text_capacity_bytes": 65536,
+          "parse_and_drop_ms": 13.184088299999999,
+          "rounds": 10,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.640564,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.6635408,
+          "rounds": 10,
+          "source_bytes": 40030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.691938,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 40001,
+          "parse_and_drop_ms": 0.6648575,
+          "rounds": 10,
+          "source_bytes": 40035
+        }
+      ],
+      "scope": "Static parsing/storage only, no network, JS, layout, UI or Chrome comparison",
+      "repeat": 0,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "target/release/examples/table_bench",
+        "10"
+      ],
+      "time_observation": "\tCommand being timed: \"target/release/examples/table_bench 10\"\n\tUser time (seconds): 0.54\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 95%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.57\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 19408\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6592\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 103\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "results": [
+        {
+          "case": "rows",
+          "count": 10000,
+          "first_parse_ms": 4.196993000000001,
+          "node_reserved_bytes": 2621440,
+          "nodes": 50007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.4628501999999997,
+          "rounds": 10,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 10000,
+          "first_parse_ms": 3.175925,
+          "node_reserved_bytes": 1310720,
+          "nodes": 30008,
+          "owned_text_capacity_bytes": 16384,
+          "parse_and_drop_ms": 3.200913,
+          "rounds": 10,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.157498,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.1549513,
+          "rounds": 10,
+          "source_bytes": 10030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.161699,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 10001,
+          "parse_and_drop_ms": 0.1579776,
+          "rounds": 10,
+          "source_bytes": 10035
+        },
+        {
+          "case": "rows",
+          "count": 20000,
+          "first_parse_ms": 9.343022,
+          "node_reserved_bytes": 5242880,
+          "nodes": 100007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 6.7705634,
+          "rounds": 10,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 20000,
+          "first_parse_ms": 6.4288870000000005,
+          "node_reserved_bytes": 2621440,
+          "nodes": 60008,
+          "owned_text_capacity_bytes": 32768,
+          "parse_and_drop_ms": 6.432426199999999,
+          "rounds": 10,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.308691,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.30893729999999997,
+          "rounds": 10,
+          "source_bytes": 20030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.322787,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 20001,
+          "parse_and_drop_ms": 0.3165432,
+          "rounds": 10,
+          "source_bytes": 20035
+        },
+        {
+          "case": "rows",
+          "count": 40000,
+          "first_parse_ms": 17.236705,
+          "node_reserved_bytes": 10485760,
+          "nodes": 200007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 13.222364899999999,
+          "rounds": 10,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 40000,
+          "first_parse_ms": 12.811721,
+          "node_reserved_bytes": 5242880,
+          "nodes": 120008,
+          "owned_text_capacity_bytes": 65536,
+          "parse_and_drop_ms": 14.0557492,
+          "rounds": 10,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.634817,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.620247,
+          "rounds": 10,
+          "source_bytes": 40030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.6316470000000001,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 40001,
+          "parse_and_drop_ms": 0.6389784,
+          "rounds": 10,
+          "source_bytes": 40035
+        }
+      ],
+      "scope": "Static parsing/storage only, no network, JS, layout, UI or Chrome comparison",
+      "repeat": 1,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "target/release/examples/table_bench",
+        "10"
+      ],
+      "time_observation": "\tCommand being timed: \"target/release/examples/table_bench 10\"\n\tUser time (seconds): 0.52\n\tSystem time (seconds): 0.01\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.55\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 19284\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6593\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 63\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "results": [
+        {
+          "case": "rows",
+          "count": 10000,
+          "first_parse_ms": 4.024179,
+          "node_reserved_bytes": 2621440,
+          "nodes": 50007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.4130494,
+          "rounds": 10,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 10000,
+          "first_parse_ms": 3.173466,
+          "node_reserved_bytes": 1310720,
+          "nodes": 30008,
+          "owned_text_capacity_bytes": 16384,
+          "parse_and_drop_ms": 3.1287349,
+          "rounds": 10,
+          "source_bytes": 180030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.15701800000000002,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.1548127,
+          "rounds": 10,
+          "source_bytes": 10030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 10000,
+          "first_parse_ms": 0.159175,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 10001,
+          "parse_and_drop_ms": 0.1576799,
+          "rounds": 10,
+          "source_bytes": 10035
+        },
+        {
+          "case": "rows",
+          "count": 20000,
+          "first_parse_ms": 8.661158,
+          "node_reserved_bytes": 5242880,
+          "nodes": 100007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 6.546764900000001,
+          "rounds": 10,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 20000,
+          "first_parse_ms": 6.321292,
+          "node_reserved_bytes": 2621440,
+          "nodes": 60008,
+          "owned_text_capacity_bytes": 32768,
+          "parse_and_drop_ms": 6.3092635999999995,
+          "rounds": 10,
+          "source_bytes": 360030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.32276499999999997,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.3097146,
+          "rounds": 10,
+          "source_bytes": 20030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 20000,
+          "first_parse_ms": 0.318168,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 20001,
+          "parse_and_drop_ms": 0.3181238,
+          "rounds": 10,
+          "source_bytes": 20035
+        },
+        {
+          "case": "rows",
+          "count": 40000,
+          "first_parse_ms": 17.246661,
+          "node_reserved_bytes": 10485760,
+          "nodes": 200007,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 13.2259099,
+          "rounds": 10,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fostered_rows",
+          "count": 40000,
+          "first_parse_ms": 12.846046,
+          "node_reserved_bytes": 5242880,
+          "nodes": 120008,
+          "owned_text_capacity_bytes": 65536,
+          "parse_and_drop_ms": 12.6694816,
+          "rounds": 10,
+          "source_bytes": 720030
+        },
+        {
+          "case": "fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.617871,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.6381354,
+          "rounds": 10,
+          "source_bytes": 40030
+        },
+        {
+          "case": "decoded_fragmented_text",
+          "count": 40000,
+          "first_parse_ms": 0.699775,
+          "node_reserved_bytes": 320,
+          "nodes": 7,
+          "owned_text_capacity_bytes": 40001,
+          "parse_and_drop_ms": 0.6628835,
+          "rounds": 10,
+          "source_bytes": 40035
+        }
+      ],
+      "scope": "Static parsing/storage only, no network, JS, layout, UI or Chrome comparison",
+      "repeat": 2,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "target/release/examples/table_bench",
+        "10"
+      ],
+      "time_observation": "\tCommand being timed: \"target/release/examples/table_bench 10\"\n\tUser time (seconds): 0.51\n\tSystem time (seconds): 0.01\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.53\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 19384\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6591\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 27\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ],
+  "machine": {
+    "cpu": "Intel Core Ultra 7 356H",
+    "architecture": "x86_64",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "date": "2026-11-05",
+    "clocks_and_load_controlled": false
+  }
+}

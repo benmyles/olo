@@ -66,7 +66,8 @@ fn malformed_markup_does_not_panic_or_reprocess_forever() {
     use olo_web::html::{ParseError, ParseOptions, parse};
     use std::sync::Arc;
     let tags = [
-        "div", "p", "a", "b", "i", "html", "head", "body", "pre", "li", "dl", "dd", "form", "button", "option", "select", "optgroup", "script", "style", "title", "textarea", "frameset", "frame", "br",
+        "div", "p", "a", "b", "i", "html", "head", "body", "pre", "li", "dl", "dd", "form", "button", "option", "select", "optgroup", "script", "style", "title", "textarea", "frameset", "frame",
+        "br", "table", "tbody", "thead", "tfoot", "tr", "td", "th", "caption", "colgroup", "col",
     ];
     let mut seed = 0x1309_aca1_2077_9bdfu64;
     for _ in 0..10_000 {
@@ -88,4 +89,25 @@ fn malformed_markup_does_not_panic_or_reprocess_forever() {
             assert!(matches!(e, ParseError::Unsupported(_)), "{e}: {input:?}");
         }
     }
+}
+
+#[test]
+fn table_text_uses_source_ranges_and_enforces_its_temporary_buffer_quota() {
+    use olo_web::{
+        dom::{self, NodeType},
+        html::{ParseError, ParseOptions, parse},
+    };
+    use std::sync::Arc;
+    let source: Arc<str> = Arc::from(format!("<!doctype html><table>{}</table>", "<".repeat(20_000)));
+    let doc = parse(source, ParseOptions { document_limits: dom::Limits { owned_text_bytes: 0, ..Default::default() }, ..Default::default() }, None).unwrap().document;
+    assert_eq!(doc.memory().owned_text_bytes, 0);
+    let html = doc.children(doc.root()).unwrap().find(|&n| doc.node_type(n).unwrap() == NodeType::Element).unwrap();
+    let body = doc.children(html).unwrap().find(|&n| doc.name(n).unwrap() == Some("body")).unwrap();
+    let text = doc.first_child(body).unwrap().unwrap();
+    assert_eq!(doc.value(text).unwrap().unwrap().len(), 20_000);
+    let source: Arc<str> = Arc::from(format!("<!doctype html><table>&amp;{}</table>", "<".repeat(100)));
+    assert!(matches!(
+        parse(source, ParseOptions { document_limits: dom::Limits { owned_text_bytes: 32, ..Default::default() }, ..Default::default() }, None),
+        Err(ParseError::Document(dom::Error::TextLimit))
+    ));
 }

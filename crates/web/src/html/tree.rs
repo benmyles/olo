@@ -13,6 +13,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
+mod tables;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuirksMode {
@@ -77,7 +78,7 @@ pub fn parse(source: Arc<str>, options: ParseOptions, cancelled: Option<&AtomicB
     if let Some(cancelled) = cancelled {
         tokenizer = tokenizer.with_cancellation(cancelled);
     }
-    let mut builder = Builder::new(source.clone(), options, cancelled)?;
+    let mut builder = Builder::new(source.clone(), &source, options, cancelled)?;
     loop {
         if cancelled.is_some_and(|c| c.load(Ordering::Relaxed)) {
             return Err(ParseError::Tokenizer(super::Error::Cancelled));
@@ -101,6 +102,7 @@ enum Insertion {
     Head,
     HeadNoscript,
     AfterHead,
+    ColumnGroup,
     Body,
     Text,
     AfterBody,
@@ -108,12 +110,19 @@ enum Insertion {
     Frameset,
     AfterFrameset,
     AfterAfterFrameset,
+    Table,
+    TableText,
+    Caption,
+    TableBody,
+    Row,
+    Cell,
 }
 #[derive(Clone, Copy)]
 enum Scope {
     Normal,
     Button,
     List,
+    Table,
 }
 #[derive(Clone)]
 struct Formatting<'a> {
@@ -122,6 +131,7 @@ struct Formatting<'a> {
 }
 
 struct Builder<'a> {
+    source_text: &'a str,
     cancelled: Option<&'a AtomicBool>,
     document: Document,
     stack: Vec<NodeId>,
@@ -133,6 +143,8 @@ struct Builder<'a> {
     original_mode: Insertion,
     frameset_ok: bool,
     ignore_lf: bool,
+    foster_parenting: bool,
+    pending_table_text: Cow<'a, str>,
     quirks: QuirksMode,
     options: ParseOptions,
 }
@@ -243,8 +255,9 @@ fn special(name: &str) -> bool {
 }
 
 impl<'a> Builder<'a> {
-    fn new(source: Arc<str>, options: ParseOptions, cancelled: Option<&'a AtomicBool>) -> Result<Self> {
+    fn new(source: Arc<str>, source_text: &'a str, options: ParseOptions, cancelled: Option<&'a AtomicBool>) -> Result<Self> {
         Ok(Self {
+            source_text,
             cancelled,
             document: Document::new(source, options.document_limits)?,
             stack: Vec::new(),
@@ -256,6 +269,8 @@ impl<'a> Builder<'a> {
             original_mode: Insertion::Initial,
             frameset_ok: true,
             ignore_lf: false,
+            foster_parenting: false,
+            pending_table_text: Cow::Borrowed(""),
             quirks: QuirksMode::NoQuirks,
             options,
         })
@@ -292,8 +307,12 @@ impl<'a> Builder<'a> {
     }
     fn insert(&mut self, tag: &mut Tag<'a>) -> Result<NodeId> {
         let node = self.create(tag)?;
-        let parent = self.stack.last().copied().unwrap_or(self.document.root());
-        self.document.append_child(parent, node)?;
+        let current = self.stack.last().copied().unwrap_or(self.document.root());
+        if self.foster_parenting {
+            self.insert_fostered_node(current, node)?;
+        } else {
+            self.document.append_child(current, node)?;
+        }
         self.push(node)?;
         Ok(node)
     }
@@ -302,6 +321,9 @@ impl<'a> Builder<'a> {
             return Ok(());
         }
         let parent = self.current();
+        if self.foster_parenting {
+            return self.insert_fostered_text(parent, text);
+        }
         if let Some(last) = self.document.last_child(parent)?
             && self.document.node_type(last)? == NodeType::Text
         {
@@ -314,8 +336,18 @@ impl<'a> Builder<'a> {
     }
     fn miscellaneous(&mut self, token: &mut Option<Token<'a>>, parent: NodeId) -> Result<bool> {
         let node = match token {
-            Some(Token::Comment(text)) => Some(self.document.create_comment(std::mem::replace(text, Cow::Borrowed("")))?),
-            Some(Token::ProcessingInstruction { target, data }) => Some(self.document.create_processing_instruction(target, std::mem::replace(data, Cow::Borrowed("")))?),
+            Some(Token::Comment(text)) => {
+                if self.mode == Insertion::TableText {
+                    return Ok(false);
+                }
+                Some(self.document.create_comment(std::mem::replace(text, Cow::Borrowed("")))?)
+            }
+            Some(Token::ProcessingInstruction { target, data }) => {
+                if self.mode == Insertion::TableText {
+                    return Ok(false);
+                }
+                Some(self.document.create_processing_instruction(target, std::mem::replace(data, Cow::Borrowed("")))?)
+            }
             _ => None,
         };
         if let Some(node) = node {
@@ -331,9 +363,13 @@ impl<'a> Builder<'a> {
             if names.contains(&name) {
                 return Some(at);
             }
-            let boundary = matches!(name, "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee" | "object" | "select" | "template")
-                || matches!(scope, Scope::Button) && name == "button"
-                || matches!(scope, Scope::List) && matches!(name, "ol" | "ul");
+            let boundary = if matches!(scope, Scope::Table) {
+                matches!(name, "html" | "table" | "template")
+            } else {
+                matches!(name, "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee" | "object" | "select" | "template")
+                    || matches!(scope, Scope::Button) && name == "button"
+                    || matches!(scope, Scope::List) && matches!(name, "ol" | "ul")
+            };
             if boundary {
                 return None;
             }
@@ -512,10 +548,8 @@ impl<'a> Builder<'a> {
                 self.document.append_child(clone, last)?;
                 last = clone;
             }
-            if matches!(self.name(ancestor), "table" | "tbody" | "tfoot" | "thead" | "tr") {
-                return Err(ParseError::Unsupported("adoption foster parenting"));
-            }
-            self.document.append_child(ancestor, last)?;
+            let (parent, before) = self.insertion_location(ancestor)?;
+            self.document.insert_before(parent, last, before)?;
             let mut token = self.formatting.iter().flatten().find(|f| f.node == formatting).unwrap().token.clone();
             let saved = token.clone();
             let new = self.create(&mut token)?;
@@ -553,13 +587,13 @@ impl<'a> Builder<'a> {
             self.check_cancelled()?;
             // Character runs can cross an insertion-mode boundary. Handle
             // their leading whitespace without splitting body text per word.
-            if matches!(self.mode, Insertion::Initial | Insertion::BeforeHtml | Insertion::BeforeHead | Insertion::Head | Insertion::HeadNoscript | Insertion::AfterHead)
+            if matches!(self.mode, Insertion::Initial | Insertion::BeforeHtml | Insertion::BeforeHead | Insertion::Head | Insertion::HeadNoscript | Insertion::AfterHead | Insertion::ColumnGroup)
                 && let Some(Token::Text(text)) = &mut token
             {
                 let n = text.bytes().take_while(|b| whitespace(*b)).count();
                 if n > 0 {
                     let prefix = take_prefix(text, n);
-                    if matches!(self.mode, Insertion::Head | Insertion::HeadNoscript | Insertion::AfterHead) {
+                    if matches!(self.mode, Insertion::Head | Insertion::HeadNoscript | Insertion::AfterHead | Insertion::ColumnGroup) {
                         self.insert_text(prefix)?;
                     }
                     if text.is_empty() {
@@ -721,6 +755,9 @@ impl<'a> Builder<'a> {
                     }
                 },
                 Insertion::Frameset | Insertion::AfterFrameset | Insertion::AfterAfterFrameset => self.in_frameset(&mut token, tokenizer)?,
+                Insertion::Table | Insertion::TableText | Insertion::Caption | Insertion::ColumnGroup | Insertion::TableBody | Insertion::Row | Insertion::Cell => {
+                    self.table_dispatch(&mut token, tokenizer)?
+                }
             };
             if !again {
                 return Ok(());
@@ -881,7 +918,12 @@ impl<'a> Builder<'a> {
                     self.formatting_marker()?;
                     self.frameset_ok = false;
                 } else if name == "table" {
-                    return Err(ParseError::Unsupported("table tree construction"));
+                    if self.quirks != QuirksMode::Quirks {
+                        self.close_p()?;
+                    }
+                    self.insert(tag)?;
+                    self.frameset_ok = false;
+                    self.mode = Insertion::Table;
                 } else if matches!(name, "area" | "br" | "embed" | "img" | "keygen" | "wbr" | "input" | "image") {
                     if name == "image" {
                         tag.name = Cow::Borrowed("img");

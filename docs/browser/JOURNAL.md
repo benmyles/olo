@@ -278,3 +278,72 @@ Raw samples: `measurements/2026-11-04-tree.json`. No visible UI changes.
 Next: table insertion modes and foster parenting, then foreign content,
 templates and context fragments. Browser/JS/layout/site acceptance and
 the full goal remain unfinished and active.
+
+
+## 2026-11-05 — table tree construction and measured common paths
+
+Implemented the table, pending-table-text, caption, column-group,
+table-body, row and cell insertion modes. Implicit `tbody`/`tr`/`colgroup`,
+table-scope closing/reset, fostered insertion and adoption into the foster
+location now repair malformed table markup. Scripts remain inert; this
+is tree construction, not CSS table layout. Pending text merges contiguous
+source ranges without allocation; decoded/discontiguous text grows one
+quota-bounded buffer. Fostered text appends amortize into the preceding
+text node. Cancellation continues through token/reprocessing loops.
+
+All 62 pinned WPT files still run: **2,796/3,904** static trees match,
+**312 additional matches**. **1,108 remain unsupported**: foreign content
+440, context fragments 412, templates 250, JavaScript execution 6. Some
+former table rejections now reach foreign/template rules, hence those
+categories grow. The per-case baseline protects every current match.
+No emitted-tree mismatch, error or panic remains. `tree_eval` still exits
+**1**, verified; error diagnostics and browser/website behavior are not
+part of these counts. Summary: `measurements/2026-11-05-table-coverage.json`.
+
+Release measurements found an initial 14–16% common-text slowdown. Assembly
+showed a larger insertion stack frame and a table-expanded dispatcher that
+stopped inlining into the token loop. Kept rare foster insertion methods
+and the table dispatcher outlined. Final alternating comparison with
+committed `5f242dc8`, CPU 0, Core Ultra 7 356H, rustc 1.99.1, three runs,
+20 parse/drop iterations per sample (CPU clocks/load uncontrolled):
+
+| Static workload | Before tables, median | With tables, median |
+|---|---:|---:|
+| Article, 65,544 nodes | 6.331 ms | 6.276 ms |
+| 100,000 fragmented text tokens | 3.693 ms | 3.756 ms |
+| One 4,096-attribute tag | 0.639 ms | 0.634 ms |
+| Four formatting tags with 4,096 attributes each | 2.234 ms | 2.218 ms |
+
+Fragmented text is 1.7% slower in these samples; no zero-cost claim.
+Median first article parse: **8.108 / 7.996 ms**. Benchmark peak RSS:
+**8,264–8,488 KiB** across both builds. All common cases retain zero owned
+text bytes. Raw samples include intermediate regressions and outliers:
+`measurements/2026-11-05-table-common.json`, including source SHA-256.
+
+Table stress, final build, same CPU, three runs of ten iterations:
+
+| Workload | 10,000 rows/tokens | 20,000 | 40,000 |
+|---|---:|---:|---:|
+| Two-cell rows | 3.463 ms | 6.771 ms | 13.226 ms |
+| Text fostered before each row | 3.201 ms | 6.432 ms | 13.184 ms |
+| Contiguous fragmented table text | 0.155 ms | 0.310 ms | 0.638 ms |
+| Decoded then fragmented table text | 0.158 ms | 0.318 ms | 0.663 ms |
+
+These scale with input. Row trees have 50,007/100,007/200,007 nodes and no
+owned text. Fostered-row text capacities: 16,384/32,768/65,536 bytes.
+Contiguous text retains zero owned bytes; decoded text retains
+10,001/20,001/40,001 bytes. Median first complete 40,000-row parse:
+**17.247 ms**; worker-only API. Stress peak RSS **19,284–19,408 KiB**.
+Raw observations: `measurements/2026-11-05-tables.json`.
+Reproduce `cargo build --release -p olo-web --example table_bench`, then
+`taskset -c 0 /usr/bin/time -v target/release/examples/table_bench 10`.
+These are synthetic static parses; no network, JS, layout, UI or Chrome
+performance is measured.
+
+Validation: release engine tests (15 DOM, four tokenizer, six tree),
+release clippy, counterfactual-parser tree suite and workspace release
+build. The malformed-input test now includes table structures; dedicated
+buffer tests enforce zero-owned source text and decoded-buffer quotas.
+No visible UI changes or person's-session actions. Next: foreign content
+and namespaced attributes, templates and context fragments. The full
+browser goal remains active and substantially unfinished.
