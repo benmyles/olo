@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Agent Screens: a stopped screen stays, with Start Screen
+
+*17:56* — Stopping a screen keeps it, listed under Stopped (even one no agent acted on, which used to vanish), with Start Screen to start it again at its size; archived screens under Archived, shown by default. The same from olo-screen: list (with each screen's state), start NAME, archive, unarchive, delete.
+
+![Agent Screens: a stopped screen stays, with Start Screen](2026-11-04/175618-agent-screens-a-stopped-screen-stays-with-start-.png)
+
 ### Banner actions stack when they don't fit side by side
 
 *15:47* — Two long actions, one above another at the card's width, at 1×, 1.5× and 2×; a label cut with … only when even a row of its own is too narrow.

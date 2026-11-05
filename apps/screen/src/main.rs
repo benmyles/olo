@@ -29,11 +29,17 @@ const USAGE: &str = "\
 usage: olo-screen                         open Agent Screens (watch, take control)
        olo-screen watch [NAME]            the same, showing NAME
        olo-screen start [NAME] [--size WxH] [--scale N] [--sound]
-                                             start a screen (default: agent, 1440x900, 1x, silent);
-                                             prints it as JSON
-       olo-screen list                    the screens, as JSON (with the name each was given)
+                                             start a screen (default: agent, 1440x900, 1x, silent),
+                                             or start a stopped or archived one again (as it was,
+                                             unless given); prints it as JSON
+       olo-screen list                    every screen, as JSON: its state (running, stopped,
+                                             archived) and the name each was given
        olo-screen rename NAME [TITLE]     give a screen a name to show by (none: its own)
-       olo-screen stop NAME               end a screen and everything on it
+       olo-screen stop NAME               end a screen and everything on it; the screen is kept
+                                             (stopped: its history, Chrome profile, passwords)
+       olo-screen archive NAME            a stopped screen out of the way (listed as archived)
+       olo-screen unarchive NAME          back among the stopped ones
+       olo-screen delete NAME             a screen and everything it kept, to the Trash
        olo-screen history NAME [--json] [--kind KIND] [--search TEXT] [--last N] [--clear]
                                              what was done on it: each action, what it matched, how it went
        olo-screen history NAME --look N [OUT.png]
@@ -193,7 +199,9 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         }
         "watch" => return None,
         "start" => (|| {
-            let mut opts = screens::Options::default();
+            let given = rest.first().filter(|a| !a.starts_with("--")).cloned();
+            // A stopped screen starts again as it was, unless told otherwise.
+            let mut opts = given.as_deref().and_then(screens::kept).unwrap_or_default();
             if let Some(size) = option(rest, "--size") {
                 let (w, h) = size.split_once('x').ok_or("--size is WIDTHxHEIGHT")?;
                 opts.width = w.parse().map_err(|_| "--size is WIDTHxHEIGHT")?;
@@ -202,18 +210,25 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             if let Some(scale) = option(rest, "--scale") {
                 opts.scale = scale.parse().map_err(|_| "--scale is a number")?;
             }
-            opts.sound = has(rest, "--sound");
-            let given = rest.first().filter(|a| !a.starts_with("--")).cloned();
+            opts.sound = opts.sound || has(rest, "--sound");
             let screen = screens::start(&given.unwrap_or_else(screens::free_name), &opts)?;
             print_json(&json!(screen));
             Ok(())
         })(),
         "list" => {
-            let listed: Vec<serde_json::Value> = screens::list()
+            let running = screens::list();
+            let listed: Vec<serde_json::Value> = screens::all()
                 .into_iter()
-                .map(|s| {
-                    let title = history::title(&s.name);
-                    let mut v = json!(s);
+                .map(|(name, state)| {
+                    let title = history::title(&name);
+                    let mut v = match running.iter().find(|s| s.name == name) {
+                        Some(s) => json!(s),
+                        None => {
+                            let kept = screens::kept(&name).unwrap_or_default();
+                            json!({ "name": name, "width": kept.width, "height": kept.height, "scale": kept.scale, "sound": kept.sound })
+                        }
+                    };
+                    v["state"] = json!(state);
                     v["title"] = json!(title);
                     v
                 })
@@ -223,6 +238,9 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         }
         "rename" => name().and_then(|n| history::set_title(&n, rest.get(1).map(String::as_str))),
         "stop" => name().and_then(|n| screens::stop(&n)),
+        "archive" => name().and_then(|n| screens::archive(&n, true)),
+        "unarchive" => name().and_then(|n| screens::archive(&n, false)),
+        "delete" => name().and_then(|n| screens::delete(&n)),
         "env" => screen().map(|s| {
             for (k, v) in s.env() {
                 println!("export {k}={}", shell_quote(&v));

@@ -23,14 +23,20 @@ Coordinates are the screen's logical pixels from its top left. Cmd is ⌘
 olo-screen start                    # prints JSON; the name is "agent" (or agent-2, …)
 olo-screen start review --size 1280x800
 olo-screen run agent olo-styled-edit notes.txt     # prints the pid
-olo-screen list
-olo-screen stop agent               # ends the screen and everything on it
+olo-screen list                     # every screen, each with its "state": running, stopped, archived
+olo-screen stop agent               # ends the screen and everything on it; the screen is kept, stopped
+olo-screen start agent              # a stopped (or archived) one again, at the size it had
+olo-screen archive agent            # a stopped one out of the way; `unarchive` brings it back
+olo-screen delete agent             # it and everything it kept (history, Chrome profile), to the Trash
 ```
 
 `eval "$(olo-screen env agent)"` sets `WAYLAND_DISPLAY` and
 `OLO_SOCKET` for your shell, so programs you start yourself (tests, a
 binary you just built) open on that screen. Screens are silent unless
-started with `--sound`. Stop your screens when you are done.
+started with `--sound`. Stop your screens when you are done: a stopped
+screen keeps its history, its Chrome profile and the passwords shared
+with it, and starts again as it was. Act only on a screen whose `state`
+is `running`. Delete only screens you made, and only when asked.
 
 ## A web browser: Olo's Chrome, only
 

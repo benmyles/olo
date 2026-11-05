@@ -1084,19 +1084,6 @@ of Finished; a new one goes where its priority puts it.
   lightweight then just do it after each new sample is collected." On
   the CPU's SIMD (never the NVIDIA GPU), measured per keystroke.
 
-- **Agent Screens: Stop keeps a screen; Archive and Delete** (Ben,
-  2026-11-04): "stopping an agent screen makes it dissappear completely.
-  it should just change to be in a stopped state and able to be started
-  again. and then there should be an option to archive it and archived
-  ones should be in the menu too in their own section. and then an
-  option to delete fully as well." Stop ends a screen's session but
-  keeps it (its home, its history, its name) as Stopped, listed with
-  Start; Archive moves a stopped one to an Archived section of the
-  menu (Start brings it back); Delete removes it and everything it
-  kept, asked first. The same for agents: `olo-screen stop` (keeps),
-  `archive`, `delete`, and `list` saying which is which (apps/screen,
-  HACKING's "Agent Screens").
-
 - **Other programs' file handling through Olo, fixed** (Ben,
   2026-11-04): "the gtk/qt integration doesn't seem to be working
   properly e.g. even in olo chrome i can't click on the folder for a
@@ -1234,6 +1221,31 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Agent Screens: Stop keeps a screen; Archive and Delete**~~ (done
+  2026-11-04: Stop and Archive and Delete were there, but a stopped
+  screen was listed only by its history, so one no agent had acted on
+  (made with New Screen) went from the list when stopped, and nothing
+  started a stopped one. Now every screen is kept from its start
+  (`screen.json` beside its history), listed as Stopped once stopped,
+  started again as it was (Start in the menu, Start Screen in its
+  header, `olo-screen start NAME`); the Archived section shows unless
+  View ▸ Show Archived is turned off; `olo-screen list` says each one's
+  state, with `archive`, `unarchive` and `delete`. On the way: Clear
+  History deleted the screen's whole folder (its Chrome profile and
+  shared passwords with it); now only its actions and frames. Checked
+  in a sandbox, by the command line and the viewer) (Ben,
+  2026-11-04): "stopping an agent screen makes it dissappear completely.
+  it should just change to be in a stopped state and able to be started
+  again. and then there should be an option to archive it and archived
+  ones should be in the menu too in their own section. and then an
+  option to delete fully as well." Stop ends a screen's session but
+  keeps it (its home, its history, its name) as Stopped, listed with
+  Start; Archive moves a stopped one to an Archived section of the
+  menu (Start brings it back); Delete removes it and everything it
+  kept, asked first. The same for agents: `olo-screen stop` (keeps),
+  `archive`, `delete`, and `list` saying which is which (apps/screen,
+  HACKING's "Agent Screens").
 
 - ~~**app_server crashes as it exits**~~ (done 2026-11-04: the
   `dmabuf check` worker is told to quit and waited for as app_server

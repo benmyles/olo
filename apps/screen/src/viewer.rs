@@ -128,8 +128,10 @@ struct Saved {
     selected: Option<String>,
     #[serde(default)]
     tab: Tab,
+    /// The Archived section hidden (View ▸ Show Archived off): listed
+    /// unless.
     #[serde(default)]
-    show_archived: bool,
+    hide_archived: bool,
 }
 
 /// A screen in the list.
@@ -590,7 +592,7 @@ impl Viewer {
             title_at: Default::default(),
             also: Vec::new(),
             anchor: None,
-            show_archived: saved.show_archived,
+            show_archived: !saved.hide_archived,
         };
         v.watch(cx);
         v
@@ -623,7 +625,7 @@ impl Viewer {
 
     /// What to keep over an upgrade.
     pub fn saved(&self) -> String {
-        serde_json::to_string(&Saved { selected: self.selected.clone(), tab: self.tab, show_archived: self.show_archived }).unwrap_or_default()
+        serde_json::to_string(&Saved { selected: self.selected.clone(), tab: self.tab, hide_archived: !self.show_archived }).unwrap_or_default()
     }
 
     fn screen(&self) -> Option<&Screen> {
@@ -737,15 +739,59 @@ impl Viewer {
         cx.notify();
     }
 
+    /// The stopped (and archived) screens chosen started again, each as
+    /// it was (`screens::kept`), out of the archive; the one shown is
+    /// then watched.
+    fn start_chosen(&mut self, cx: &mut Context<Self>) {
+        let names: Vec<String> = self.chosen().into_iter().filter(|n| !self.screens.iter().any(|s| &s.name == n)).collect();
+        if self.busy || names.is_empty() {
+            return;
+        }
+        self.busy = true;
+        // (The one shown last, so it is the one watched.)
+        let shown = self.selected.clone();
+        let mut order = names;
+        if let Some(i) = shown.as_ref().and_then(|s| order.iter().position(|n| n == s)) {
+            let s = order.remove(i);
+            order.push(s);
+        }
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let mut failed = Vec::new();
+            let mut last = None;
+            for n in &order {
+                match screens::start(n, &screens::kept(n).unwrap_or_default()) {
+                    Ok(s) => last = Some(Ok(s)),
+                    Err(e) => failed.push(format!("{n}: {e}")),
+                }
+            }
+            // (Those that didn't start said too, when others did.)
+            if last.is_some() && !failed.is_empty() {
+                proxy.send(Msg::Changed(failed.clone()));
+            }
+            proxy.send(Msg::Started(last.unwrap_or_else(|| Err(failed.join("\n")))));
+        });
+        cx.notify();
+    }
+
     /// Ask, once for all, before the running screens chosen are stopped.
     fn ask_stop(&mut self, cx: &mut Context<Self>) {
         let names: Vec<String> = self.chosen().into_iter().filter(|n| self.screens.iter().any(|s| &s.name == n)).collect();
         let shown = |n: &String| self.rows.iter().find(|r| &r.name == n).map_or(n.as_str(), Row::shown).to_owned();
         let (message, button) = match names.as_slice() {
             [] => return,
-            [one] => (format!("Stop the screen “{}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. Its history is kept.", shown(one)), "Stop Screen".to_owned()),
+            [one] => (
+                format!(
+                    "Stop the screen “{}”? The agent’s programs on it are closed, and anything it hasn’t saved is lost. The screen is kept, with its history: Start Screen starts it again.",
+                    shown(one)
+                ),
+                "Stop Screen".to_owned(),
+            ),
             many => (
-                format!("Stop {} screens? The agents’ programs on them are closed, and anything they haven’t saved is lost. Their histories are kept.", many.len()),
+                format!(
+                    "Stop {} screens? The agents’ programs on them are closed, and anything they haven’t saved is lost. The screens are kept, with their histories: Start starts them again.",
+                    many.len()
+                ),
                 format!("Stop {} Screens", many.len()),
             ),
         };
@@ -1001,6 +1047,7 @@ impl Viewer {
             "shares-everywhere" => crate::shares::open_everywhere(self.shares_everywhere, cx, |v, w| v.shares_everywhere = w),
             "rename" => self.start_rename(window, cx),
             "archive" => self.archive(true, cx),
+            "start-stopped" => self.start_chosen(cx),
             "unarchive" => self.archive(false, cx),
             "delete" => self.ask_delete(cx),
             "select-all" => self.select_all(cx),
@@ -1126,6 +1173,8 @@ impl Viewer {
         menu.item("Rename…", "rename")
             .enabled(chosen.len() == 1)
             .separator()
+            .item(say("Start", delete, ""), "start-stopped")
+            .enabled(delete > 0 && !self.busy)
             .item(say("Archive", archive, ""), "archive")
             .enabled(archive > 0)
             .item(say("Unarchive", unarchive, ""), "unarchive")
@@ -1469,14 +1518,24 @@ impl Viewer {
             }
             None => face,
         };
-        let (stop, export) = (me.clone(), me);
+        let (stop, export, start) = (me.clone(), me.clone(), me);
         let first = if running {
             Button::new("Stop Screen…").min_width(96.0).on_click(move |_, cx| stop.update(cx, |v, cx| v.ask_stop(cx)))
         } else {
             Button::new("Clear History…").min_width(96.0).on_click(move |_, cx| stop.update(cx, |v, cx| v.ask_clear(cx)))
         };
         let export = Button::new("Export Video…").min_width(96.0).enabled(self.can_export(cx)).on_click(move |_, cx| export.update(cx, |v, cx| v.ask_export(cx)));
-        div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).child(export).child(first)
+        let row = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(HEADER_H)).flex_shrink_0().child(face).child(export).child(first);
+        // Stopped: started again as it was (one shown, `start_chosen`
+        // takes the others chosen with it too).
+        if running {
+            row
+        } else {
+            let busy = self.busy;
+            row.child(
+                Button::new(if busy { "Starting…" } else { "Start Screen" }).id("start-screen").min_width(96.0).enabled(!busy).on_click(move |_, cx| start.update(cx, |v, cx| v.start_chosen(cx))),
+            )
+        }
     }
 
     /// The screen as it is now, and Take Control.

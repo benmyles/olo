@@ -8293,8 +8293,8 @@ can stop it. Olo's Viewer plays the result. In the window, History's
 Export Video… asks where (the kit's Save panel, `NAME.mp4` in ~/Videos)
 and exports on a worker, the bar saying how far it is with Cancel, then
 an alert with Open in Tracker (`Replay::start_export`). The sidebar (the
-kit's `Sidebar`) has every screen running and every one stopped with a
-history kept, under Running and Stopped, by last use (`viewer::rows`,
+kit's `Sidebar`) has every screen running and every one stopped, under
+Running and Stopped, by last use (`viewer::rows`,
 read on a worker; the chosen one's as it acts), each with how long ago,
 and New Screen under them. A screen can be given a name of its own
 (Screen ▸ Rename…, or a click on its title in the header: a field over
@@ -8306,16 +8306,29 @@ and in `olo-screen list` as `title`. Screens are chosen together with
 ⌘A in the list or Edit ▸ Select All Screens; a secondary click opens
 the menu for all of them (for the one clicked alone if it isn't one),
 as the Screen menu has it too, each item saying how many it acts on:
-Rename…, Archive, Unarchive, Stop… and Delete… (asked once for all).
-Archived screens (stopped ones, `history::archived`, an `archived` mark
-beside the history; one started again isn't) leave the list until View
-▸ Show Archived lists them under Archived; Delete moves each history,
-its recordings, stats and title, to the Trash (`history::trash`,
+Rename…, Start, Archive, Unarchive, Stop… and Delete… (asked once for
+all). Every screen is kept from its start, not only once an agent has
+acted on it: `screens::start` writes what it was started with
+(`screen.json`: size, scale, sound) beside its history, which is what
+lists a stopped one (`history::names`: a folder with `screen.json` or
+`actions.jsonl`) and starts it again as it was (`screens::kept`; Start,
+the Start Screen button in a stopped one's header, `olo-screen start
+NAME`, which take it out of the archive too). Before, one made with New
+Screen and stopped before an agent did anything on it went from the
+list altogether. Archived screens (stopped ones, `history::archived`,
+an `archived` mark beside the history) are listed under Archived
+unless View ▸ Show Archived is turned off; Delete moves each screen's
+folder (its history, recordings, title, Chrome profile and the
+passwords shared with it) to the Trash (`history::trash`,
 `olo_xdg::trash::move_to_trash`, with its .trashinfo to put it back).
-The chosen screen's header names it and says
-how it is (running and its size, up for how long, its actions, the
-last how long ago), with Export Video… and Stop Screen… (Clear
-History… for a stopped one). Stats (`stats.rs`) are the kit's dashboard
+The same for agents: `olo-screen list` gives each screen's `state`
+(running, stopped, archived; a stopped one with its kept size),
+`archive`, `unarchive` (`screens::archive`, a running one refused) and
+`delete` (`screens::delete`, stopping it first). The chosen screen's
+header names it and says how it is (running and its size, up for how
+long, its actions, the last how long ago), with Export Video… and Stop
+Screen… (for a stopped one Clear History…, which deletes its actions
+and the frames kept with them and nothing else, and Start Screen). Stats (`stats.rs`) are the kit's dashboard
 cards: its use (started, last used, ran for, in use), its actions by
 kind with bars and how many failed, actions a minute over the last hour
 of use, and the programs run on it (`history::stats`, worked out again

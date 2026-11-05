@@ -262,8 +262,8 @@ pub fn free_name() -> String {
     (1..).map(|n| if n == 1 { "agent".to_owned() } else { format!("agent-{n}") }).find(|n| !taken.contains(n)).unwrap_or_default()
 }
 
-/// What to start a screen with.
-#[derive(Debug, Clone)]
+/// What to start a screen with (kept beside its history: `kept`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Options {
     pub width: i32,
     pub height: i32,
@@ -275,6 +275,77 @@ impl Default for Options {
     fn default() -> Options {
         Options { width: 1440, height: 900, scale: 1.0, sound: false }
     }
+}
+
+/// Where a screen's own settings are kept, beside its history: every
+/// screen, however started (the viewer's New Screen leaves no history
+/// till an agent acts on it), is listed once stopped, and starts again as
+/// it was.
+fn kept_path(name: &str) -> PathBuf {
+    crate::history::dir(name).join("screen.json")
+}
+
+/// What screen `name` was started with, if it ever was.
+pub fn kept(name: &str) -> Option<Options> {
+    std::fs::read(kept_path(name)).ok().and_then(|b| serde_json::from_slice(&b).ok())
+}
+
+fn keep(name: &str, opts: &Options) {
+    let path = kept_path(name);
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(json) = serde_json::to_vec_pretty(opts) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+/// How a screen is now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum State {
+    Running,
+    Stopped,
+    Archived,
+}
+
+/// Every screen there is (running, or stopped or archived with what it
+/// kept), by name, and how it is.
+pub fn all() -> Vec<(String, State)> {
+    let running: Vec<String> = list().into_iter().map(|s| s.name).collect();
+    let mut all: Vec<(String, State)> = running.iter().map(|n| (n.clone(), State::Running)).collect();
+    for n in crate::history::names() {
+        if !running.contains(&n) {
+            let state = if crate::history::archived(&n) { State::Archived } else { State::Stopped };
+            all.push((n, state));
+        }
+    }
+    all.sort_by(|a, b| a.0.cmp(&b.0));
+    all
+}
+
+/// Stop screen `name` if it runs, archive it.
+pub fn archive(name: &str, on: bool) -> Result<(), String> {
+    if !all().iter().any(|(n, _)| n == name) {
+        return Err(format!("there's no screen {name:?} (olo-screen list)"));
+    }
+    if on && list().iter().any(|s| s.name == name) {
+        return Err(format!("screen {name} is running: stop it first (olo-screen stop {name})"));
+    }
+    crate::history::set_archived(name, on)
+}
+
+/// Delete screen `name` and everything it kept (its history,
+/// recordings, stats and Chrome profile), to the Trash; stopped first if
+/// it runs.
+pub fn delete(name: &str) -> Result<(), String> {
+    if !all().iter().any(|(n, _)| n == name) {
+        return Err(format!("there's no screen {name:?} (olo-screen list)"));
+    }
+    if list().iter().any(|s| s.name == name) {
+        stop(name)?;
+    }
+    crate::history::trash(name)
 }
 
 fn config_path() -> PathBuf {
@@ -381,6 +452,10 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
         std::thread::sleep(Duration::from_millis(100));
     }
     fastest(&screen);
+    // Kept, to be listed once stopped and started again as it was; out
+    // of the archive if it was there.
+    keep(name, opts);
+    let _ = crate::history::set_archived(name, false);
     let tmp = entry(name).with_extension("tmp");
     std::fs::write(&tmp, serde_json::to_vec_pretty(&screen).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, entry(name)).map_err(|e| e.to_string())?;

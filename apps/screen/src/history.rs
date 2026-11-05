@@ -215,11 +215,17 @@ impl Reader {
 
 /// Forget screen `name`'s history.
 pub fn clear(name: &str) -> Result<(), String> {
-    match std::fs::remove_dir_all(dir(name)) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(format!("couldn't clear {name}'s history: {e}")),
+    // Its actions and the frames kept with them, as Clear History says:
+    // not the screen (its name, settings, archive mark) nor what its
+    // programs keep there (Chrome's profile, the passwords shared with it).
+    let Ok(read) = std::fs::read_dir(dir(name)) else { return Ok(()) };
+    for e in read.flatten() {
+        let file = e.file_name().to_string_lossy().into_owned();
+        if file == "actions.jsonl" || (file.starts_with("frames-") && file.ends_with(".olof")) {
+            std::fs::remove_file(e.path()).map_err(|e| format!("couldn't clear {name}'s history: {e}"))?;
+        }
     }
+    Ok(())
 }
 
 /// How much of each screen's history to keep (bytes) and for how long
@@ -258,7 +264,7 @@ pub fn prune(max_age: Option<u64>) {
 /// The screens with a history kept.
 pub fn names() -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(olo_xdg::state_dir().join("screens"))
-        .map(|d| d.flatten().filter(|e| e.path().join("actions.jsonl").is_file()).filter_map(|e| e.file_name().to_str().map(str::to_owned)).collect())
+        .map(|d| d.flatten().filter(|e| e.path().join("actions.jsonl").is_file() || e.path().join("screen.json").is_file()).filter_map(|e| e.file_name().to_str().map(str::to_owned)).collect())
         .unwrap_or_default();
     v.sort();
     v
@@ -385,7 +391,7 @@ mod tests {
 
     #[test]
     fn reads_what_was_added() {
-        let state = std::env::temp_dir().join(format!("olo-screen-history-{}", std::process::id()));
+        let state = std::path::PathBuf::from(format!("/var/tmp/olo-screen-history-{}", std::process::id()));
         // SAFETY: this test alone reads XDG_STATE_HOME in this process.
         unsafe { std::env::set_var("XDG_STATE_HOME", &state) };
         let name = "reader-test";
@@ -409,8 +415,23 @@ mod tests {
         std::fs::write(&path, serde_json::to_string(&act(9, 1, "stop", &[], None)).unwrap() + "\n").unwrap();
         let (got, reset) = r.more(name);
         assert!(reset && got.len() == 1 && got[0].kind == "stop");
+        // Clear History takes its actions and frames, not the screen nor
+        // what its programs keep there.
+        std::fs::write(dir(name).join("frames-0000000000000001.olof"), b"x").unwrap();
+        for kept in ["screen.json", "title", "passwords.vault"] {
+            std::fs::write(dir(name).join(kept), b"{}").unwrap();
+        }
+        std::fs::create_dir_all(dir(name).join("google-chrome")).unwrap();
         clear(name).unwrap();
         assert_eq!(r.more(name), (vec![], true));
+        let mut left: Vec<String> = std::fs::read_dir(dir(name)).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left, ["google-chrome", "passwords.vault", "screen.json", "title"]);
+        // Listed still, with no history: a screen made and stopped
+        // before an agent did anything on it.
+        assert!(names().contains(&name.to_owned()), "{:?}", names());
+        std::fs::create_dir_all(dir("not-a-screen")).unwrap();
+        assert!(!names().contains(&"not-a-screen".to_owned()));
         let _ = std::fs::remove_dir_all(&state);
     }
 
