@@ -6041,6 +6041,29 @@ Screens' Export Video uses too).
   recorded, 4 s): the pointer still, 0.5% of a core and 12 wakeups a
   second, smoothed or not; jumping twice a second, 0.8% plain and 2.5%
   smoothed (the frames of the glides, 100 wakeups a second).
+- **Zoom** (app_server `zoom.rs`; `SetShowing`'s `zoom`, `Request::ZoomTo`):
+  `--zoom-follow` (Record… ▸ Zoom on Clicks; a whole display's recording
+  only, not a region's or a window's) zooms the recording in twice
+  around each click, pans to keep the pointer 15% inside the view, holds
+  while clicks and keys come, and zooms out three seconds after the last
+  (a calloop timer wakes the displays then, put off while the hold is
+  extended). `olo-screenshot --zoom-to X,Y,W,H|out` (Agent Screens:
+  `olo-screen zoom-video NAME X,Y,W,H|out`) zooms to that part of the
+  display, as much as shows all of it (at most 8×), and holds it till
+  `out`. The view (centre and magnification) glides on a critically
+  damped spring (rate 7 a second: 95% there in 0.68 s), solved exactly
+  for each frame's time. It's drawn by the GPU as the capture is: the
+  display's elements rescaled and moved as a mirror's are (`render::frame`
+  with a `Fit`), so the recorder does nothing more; the shortcut's key
+  cap is drawn apart, unzoomed in its place (`showing::apart`), so a
+  shortcut shows wherever the view is. Only capture sessions
+  (`capture_elements`' `zoomable`): screenshots and the screen are as
+  they are (a screen share of that display while recording is zoomed
+  too). While it glides the displays draw on, only while a capture waits
+  for a frame (`keeps_awake`; the pointer's glide likewise), so a
+  recorder that died can't keep them drawing. Measured (`tools/dev/cost`
+  on a headless 2× session's app_server, 6 s with three clicks): 0.7% of
+  a core plain, 1.0% zooming; idle after, 0.2%.
 - **A window on a background** (`backdrop.rs`; `--background`, the
   settings' `background`, Record… ▸ Window on a Background; only for a
   window): each frame is the window, its corners rounded (10 points'

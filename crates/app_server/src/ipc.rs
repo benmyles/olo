@@ -603,12 +603,28 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.lock_screen();
                 Reply::Ok
             }
-            Request::SetShowing { clicks, keys, pointer_size, smooth_pointer } => {
+            Request::SetShowing { clicks, keys, pointer_size, smooth_pointer, zoom } => {
                 crate::showing::set(clicks, keys);
                 crate::showing::set_pointer(pointer_size, smooth_pointer);
+                crate::zoom::set_follow(Some(zoom));
                 // (Captures draw the pointer anew.)
                 self.backend_data.wake(None);
                 Reply::Ok
+            }
+            Request::ZoomTo { rect, display } => {
+                let at = self.pointer.current_location();
+                let output = match display {
+                    Some(name) => self.space.outputs().find(|o| o.name() == name).cloned(),
+                    None => self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned(),
+                };
+                match output.and_then(|o| self.space.output_geometry(&o).map(|g| (o, g))) {
+                    Some((o, g)) => {
+                        crate::zoom::to(&o.name(), rect, g.size.to_f64());
+                        self.backend_data.wake(None);
+                        Reply::Ok
+                    }
+                    None => Reply::Error { message: "no such display".into() },
+                }
             }
             Request::Countdown { n } => {
                 let at = self.pointer.current_location();

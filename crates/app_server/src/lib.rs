@@ -67,6 +67,7 @@ pub mod twitcher;
 pub mod wallpaper;
 pub mod window_drop;
 pub mod xcursor;
+pub mod zoom;
 
 pub use state::{AnvilState, ClientState};
 

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Recordings zoom in on clicks
+
+*06:45* — Record… ▸ Zoom on Clicks (or --zoom-follow): a recording of the screen glides in around each click (twice), pans to keep the pointer in view, holds while you click and type, and glides out three seconds after; a shortcut's key cap stays in its place, unzoomed. Agents zoom to a detail themselves (olo-screen zoom-video NAME X,Y,W,H, then out). The GPU draws the capture magnified, so it costs the recorder nothing; screenshots and the screen are as they are.
+
+![Recordings zoom in on clicks](2026-11-05/064521-recordings-zoom-in-on-clicks.png)
+
 ### The pointer in a recording, larger and smoothed
 
 *06:30* — Record… ▸ Larger Pointer and Smooth Pointer (or --pointer-size, --smooth-pointer): recordings draw the pointer bigger (drawn at that size, never enlarged) and gliding after the real one, so a hand's jitter is smoothed and an agent's jumps become moves. Here, the frames after one jump laid over each other, a thirtieth of a second apart. Only recordings have it; a window's recording now shows the pointer too.

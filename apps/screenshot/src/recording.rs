@@ -14,7 +14,8 @@
 //!                [--seconds N] [--fps N] [--no-pointer]
 //!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
 //!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--background]
-//!                [--pointer-size K] [--smooth-pointer] [--to PATH]
+//!                [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--to PATH]
+//! olo-screenshot --zoom-to X,Y,W,H|out [--display NAME]
 //! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
 //! olo-screenshot --trim VIDEO.mp4 --start S --end E [--to PATH]
 //! olo-screenshot --stop          the recording on this display, finished
@@ -42,6 +43,13 @@
 //! `--show-clicks` and `--show-keys` (or the settings', Record…'s ticks)
 //! have app_server show clicks (a ring) and shortcuts (a key cap) while
 //! it records (`Request::SetShowing`), and stop after.
+//!
+//! `--zoom-follow` (or the settings', Record… ▸ Zoom on Clicks) has a
+//! display's recording zoom in twice around each click, follow the
+//! pointer, and zoom out three seconds after the last click or key;
+//! `--zoom-to X,Y,W,H` zooms it to a part of the display and holds it
+//! there (`out`: back), for an agent showing a detail (app_server's
+//! `zoom`: the GPU draws the capture magnified, the screen as it is).
 //!
 //! `--pointer-size K` draws the pointer K times its size in the
 //! recording (1 to 4; the built-in cursors drawn at that size, not
@@ -311,6 +319,9 @@ fn crop_within(crop: Option<[u32; 4]>, w: u32, h: u32) -> [u32; 4] {
     [x, y, cw.min(w - x), ch.min(h - y)]
 }
 
+/// How much a recording that follows clicks zooms in.
+const ZOOM: f64 = 2.0;
+
 /// A recording, or None: a region was to be picked, and none was.
 fn record(args: &[String]) -> Result<Option<Made>, String> {
     if let Some(g) = going() {
@@ -365,6 +376,9 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         None => settings.as_ref().map_or(1.0, |s| s.pointer_size.clamp(1.0, 4.0)),
     };
     let smooth_pointer = args.iter().any(|a| a == "--smooth-pointer") || settings.as_ref().is_some_and(|s| s.smooth_pointer);
+    // Zoom following clicks: the whole display only (a region's part and a
+    // window are as they are).
+    let zoom_follow = args.iter().any(|a| a == "--zoom-follow") || settings.as_ref().is_some_and(|s| s.zoom_follow);
     let countdown: u32 = option(args, "--countdown").map_or(Ok(0), str::parse).map_err(|_| "--countdown takes seconds")?;
     let sound = match option(args, "--sound").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.sound.clone())) {
         Some(s) => crate::sound::Which::parse(&s).ok_or("--sound is computer, microphone, both or none")?,
@@ -412,18 +426,19 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
     // Clicks and keys shown while it records, the pointer as asked, and
     // as before after.
-    let showing = show_clicks || show_keys || pointer_size != 1.0 || smooth_pointer;
-    let set_showing = |clicks: bool, keys: bool, pointer_size: f64, smooth_pointer: bool| {
+    let zoom = if zoom_follow && matches!(source, Source::Output(_)) && crop.is_none() { ZOOM } else { 0.0 };
+    let showing = show_clicks || show_keys || pointer_size != 1.0 || smooth_pointer || zoom > 1.0;
+    let set_showing = |clicks: bool, keys: bool, pointer_size: f64, smooth_pointer: bool, zoom: f64| {
         if let Ok(mut c) = olo_protocol::Client::connect() {
-            let _ = c.request(&olo_protocol::Request::SetShowing { clicks, keys, pointer_size, smooth_pointer });
+            let _ = c.request(&olo_protocol::Request::SetShowing { clicks, keys, pointer_size, smooth_pointer, zoom });
         }
     };
     if showing {
-        set_showing(show_clicks, show_keys, pointer_size, smooth_pointer);
+        set_showing(show_clicks, show_keys, pointer_size, smooth_pointer, zoom);
     }
     let result = record_into(&mut capture, &path, fps, seconds, choice, crop, backdrop, sound, countdown.min(10), &g, woken.as_raw_fd());
     if showing {
-        set_showing(false, false, 1.0, false);
+        set_showing(false, false, 1.0, false, 0.0);
     }
     let _ = std::fs::remove_file(going_path());
     WAKE.store(-1, Ordering::SeqCst);
@@ -861,6 +876,42 @@ pub fn pause(on: bool) -> i32 {
     unsafe { libc::kill(g.pid as i32, if on { libc::SIGUSR1 } else { libc::SIGUSR2 }) };
     println!("{}", serde_json::json!({ "path": g.path, "paused": on }));
     0
+}
+
+/// `--zoom-to X,Y,W,H|out [--display NAME]`: the recording on this
+/// display zoomed to that part (points from the display's top left, as
+/// windows' frames are given), gliding there and held, or back out
+/// (app_server's `Request::ZoomTo`).
+pub fn zoom_to(args: &[String]) -> i32 {
+    let rect = match option(args, "--zoom-to") {
+        Some("out") => None,
+        Some(v) => match rect(v) {
+            Some(r) if r[2] > 0.0 && r[3] > 0.0 => Some(r),
+            _ => {
+                eprintln!("olo-screenshot: --zoom-to takes X,Y,W,H (points from the display's top left) or out");
+                return 2;
+            }
+        },
+        None => {
+            eprintln!("olo-screenshot: --zoom-to takes X,Y,W,H or out");
+            return 2;
+        }
+    };
+    let display = option(args, "--display").map(str::to_owned);
+    match olo_protocol::Client::connect().map_err(|e| e.to_string()).and_then(|mut c| c.request(&olo_protocol::Request::ZoomTo { rect, display }).map_err(|e| e.to_string())) {
+        Ok(olo_protocol::Reply::Error { message }) => {
+            eprintln!("olo-screenshot: {message}");
+            1
+        }
+        Ok(_) => {
+            println!("{}", serde_json::json!({ "zoomed": rect }));
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: {e}");
+            1
+        }
+    }
 }
 
 /// `--recording`: what's being recorded on this display, as JSON (null:

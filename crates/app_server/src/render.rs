@@ -795,13 +795,16 @@ where
 {
     let size = crate::capture::size(output).ok_or("output has no mode")?;
     let scale = output.current_scale().fractional_scale();
-    let (elements, clear_color) = capture_elements(renderer, output, space, overlays, overview, clear_color, locked, None);
+    // (A screenshot is the screen as it is: never a recording's zoom.)
+    let (elements, clear_color) = capture_elements(renderer, output, space, overlays, overview, clear_color, locked, None, false);
     offscreen(renderer, size, scale, &elements, clear_color)
 }
 
 /// What a picture of `output` shows (a mirror's is its source's, fitted),
 /// with the pointer over it when `pointer` gives where it is and what it
-/// shows; and the background.
+/// shows; and the background. `zoomable`: a capture session's (a
+/// recording, a screen share), drawn as a recording's zoom has it; a
+/// screenshot never is.
 #[allow(clippy::too_many_arguments)]
 pub fn capture_elements<R>(
     renderer: &mut R,
@@ -812,6 +815,7 @@ pub fn capture_elements<R>(
     clear_color: Color32F,
     locked: bool,
     pointer: Option<(Point<f64, Logical>, &smithay::input::pointer::CursorImageStatus)>,
+    zoomable: bool,
 ) -> (Vec<FrameElements<R, WindowRenderElement<R>>>, Color32F)
 where
     R: Renderer + ImportAll + ImportMem,
@@ -820,11 +824,23 @@ where
     let source = mirror_source(output);
     let fit = source.as_ref().map(|s| fit_outputs(output, s, space));
     let from = source.as_ref().unwrap_or(output);
+    // A recording's zoom (`zoom`; not a mirror's): drawn magnified, the
+    // shortcut's key cap apart, in its place over it.
+    let geo = space.output_geometry(from).unwrap_or_default();
+    let zoom = if zoomable && fit.is_none() && !locked { crate::zoom::view(&from.name(), geo.size.to_f64(), pointer.map(|(at, _)| at - geo.loc.to_f64())) } else { None };
     if let Some((at, status)) = pointer {
         overlays.splice(0..0, pointer_elements(renderer, from, space, at, status));
     }
-    let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked);
-    (frame(elements, fit), clear_color)
+    let Some((k, corner)) = zoom else {
+        let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked);
+        return (frame(elements, fit), clear_color);
+    };
+    let ((elements, clear_color), chord) = crate::showing::apart(renderer, from, geo.size, |renderer| output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked));
+    let scale = from.current_scale().fractional_scale();
+    let offset = Point::<f64, Logical>::from((-corner.x * k, -corner.y * k)).to_physical(scale).to_i32_round();
+    let mut framed = frame(elements, Some(Fit { factor: k, offset }));
+    framed.splice(0..0, chord.into_iter().map(|e| FrameElements::Normal(OutputRenderElements::Custom(CustomRenderElements::Overlay(e)))));
+    (framed, clear_color)
 }
 
 /// A picture of window `id` alone, for a screen share of it: only what

@@ -243,6 +243,41 @@ where
         let half = f64::from(side) / 2.0;
         out.extend(crate::render::picture(renderer, (centre.x - half, centre.y - half).into(), &buffer, (side, side), None, Kind::Unspecified));
     }
+    if !CHORD_APART.get() {
+        out.extend(chord_in(&mut s, renderer, output, screen));
+    }
+    out
+}
+
+thread_local! {
+    /// The chord left out of `elements`, for a zoomed capture to draw it
+    /// unzoomed (`apart`).
+    static CHORD_APART: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// `f` with the chord left out of `elements`, then the chord's elements
+/// on their own: a zoomed capture draws them over the zoomed picture, in
+/// their place on the screen, so a shortcut shows wherever the view is.
+pub fn apart<R, T>(renderer: &mut R, output: &Output, screen: Size<i32, Logical>, f: impl FnOnce(&mut R) -> T) -> (T, Vec<Exact<MemoryRenderBufferRenderElement<R>>>)
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    CHORD_APART.set(true);
+    let made = f(renderer);
+    CHORD_APART.set(false);
+    let chord = if keys() { chord_in(&mut STATE.lock().unwrap(), renderer, output, screen) } else { Vec::new() };
+    (made, chord)
+}
+
+/// The chord up on `output`, if any, as elements.
+fn chord_in<R>(s: &mut State, renderer: &mut R, output: &Output, screen: Size<i32, Logical>) -> Vec<Exact<MemoryRenderBufferRenderElement<R>>>
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    let mut out = Vec::new();
+    let (name, scale, p, now) = (output.name(), output.current_scale().fractional_scale(), theme::palette(), Instant::now());
     if let Some((o, label, since, made)) = s.chord.as_mut().filter(|(o, ..)| *o == name) {
         let _ = o;
         if made.as_ref().is_none_or(|(sc, ..)| *sc != scale) {

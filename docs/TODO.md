@@ -1529,9 +1529,10 @@ of Finished; a new one goes where its priority puts it.
   wallpaper, rounded corners, a shadow. *The pointer larger and
   smoothed* (2026-11-05): Record… ▸ Larger Pointer, Smooth Pointer,
   `--pointer-size`, `--smooth-pointer`; a window's recording has the
-  pointer.
+  pointer. *Zoom* (2026-11-05): Record… ▸ Zoom on Clicks,
+  `--zoom-follow`; `--zoom-to` and `olo-screen zoom-video` for agents.
   *Left*: CleanShot X's
-  polish (zoom following the action, a webcam bubble), and
+  polish (a webcam bubble), and
   the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
   4K: 111 ms a frame).

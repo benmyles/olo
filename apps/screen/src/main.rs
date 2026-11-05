@@ -42,10 +42,13 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen delete NAME             a screen and everything it kept, to the Trash
        olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
                                [--show-clicks] [--show-keys] [--sound computer|microphone|both|none] [--as-gif]
-                          [--no-pointer] [--pointer-size K] [--smooth-pointer] [--background]
+                          [--no-pointer] [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--background]
                           [--encoder auto|cpu|nvidia] [--to PATH]
                                              a video of the screen (or one window, or part), into
                                              ~/Videos unless told; prints its path (JSON) at once
+       olo-screen zoom-video NAME X,Y,W,H|out
+                                          the video zoomed to that part of the screen (points),
+                                          gliding there and held; out: back to the whole
        olo-screen pause-video NAME        nothing recorded till resume-video (the pause cut out)
        olo-screen resume-video NAME
        olo-screen stop-video NAME         the video finished; prints where it went
@@ -279,7 +282,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }
             }
-            for flag in ["--no-pointer", "--show-clicks", "--show-keys", "--as-gif", "--background", "--smooth-pointer"] {
+            for flag in ["--no-pointer", "--show-clicks", "--show-keys", "--as-gif", "--background", "--smooth-pointer", "--zoom-follow"] {
                 if has(rest, flag) {
                     argv.push(flag.into());
                 }
@@ -312,15 +315,19 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         }),
         // (The recorder's --stop, --pause and --resume, on the screen's
         // display.)
-        "stop-video" | "pause-video" | "resume-video" => screen().and_then(|s| {
+        "stop-video" | "pause-video" | "resume-video" | "zoom-video" => screen().and_then(|s| {
             let program = olo_xdg::find_program("olo-screenshot").ok_or("olo-screenshot isn't installed")?;
             let mut cmd = std::process::Command::new(program);
             let flag = match command {
                 "pause-video" => "--pause",
                 "resume-video" => "--resume",
+                "zoom-video" => "--zoom-to",
                 _ => "--stop",
             };
             cmd.arg(flag).env_remove("DISPLAY");
+            if command == "zoom-video" {
+                cmd.arg(positionals(rest).get(1).ok_or("zoom-video NAME X,Y,W,H|out")?);
+            }
             for (k, v) in s.env() {
                 cmd.env(k, v);
             }

@@ -267,6 +267,7 @@ impl Screenshot {
             "background" => r.background = !r.background,
             "pointer-size" => r.pointer_size = if r.pointer_size > 1.0 { 1.0 } else { 1.5 },
             "smooth-pointer" => r.smooth_pointer = !r.smooth_pointer,
+            "zoom-follow" => r.zoom_follow = !r.zoom_follow,
             _ => return,
         }
         let mine = r.clone();
@@ -368,6 +369,8 @@ impl Screenshot {
                     .checked(r.pointer_size > 1.0)
                     .item("Smooth Pointer", "smooth-pointer")
                     .checked(r.smooth_pointer)
+                    .item("Zoom on Clicks", "zoom-follow")
+                    .checked(r.zoom_follow)
                     .item("Window on a Background", "background")
                     .checked(r.background)
                     .separator()
@@ -379,7 +382,7 @@ impl Screenshot {
 
     fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let what = match command {
-            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" => {
+            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" => {
                 self.toggle(command);
                 cx.notify();
                 return;
@@ -819,6 +822,9 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--recording") {
         std::process::exit(recording::status());
+    }
+    if args.iter().any(|a| a == "--zoom-to") {
+        std::process::exit(recording::zoom_to(&args));
     }
     // The Screenshot portal's PickColor: "R G B" (0–255), nothing if
     // cancelled.

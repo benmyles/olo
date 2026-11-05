@@ -291,6 +291,19 @@ pub enum Request {
         pointer_size: f64,
         #[serde(default)]
         smooth_pointer: bool,
+        /// Captures of a display zoom in this much around each click,
+        /// following the pointer, and out three seconds after the last
+        /// click or key (app_server's `zoom`); 0 or 1: not.
+        #[serde(default)]
+        zoom: f64,
+    },
+    /// A display's captures (recordings, screen sharing) zoomed to `rect`
+    /// (points of the display: x, y, w, h), gliding there and held; None:
+    /// back out. The display the pointer is on unless named.
+    ZoomTo {
+        rect: Option<[f64; 4]>,
+        #[serde(default)]
+        display: Option<String>,
     },
     /// A recording's countdown: `n` shown large in the middle of the
     /// screen under the pointer, till the next (0: taken down).
@@ -1502,6 +1515,9 @@ pub struct ScreenRecordingSettings {
     pub pointer_size: f64,
     /// The pointer in recordings glides after the real one (smoothed).
     pub smooth_pointer: bool,
+    /// A screen's recording zooms in around each click, following the
+    /// pointer, and out when nothing has been done for three seconds.
+    pub zoom_follow: bool,
 }
 
 impl Default for ScreenRecordingSettings {
@@ -1516,6 +1532,7 @@ impl Default for ScreenRecordingSettings {
             background: false,
             pointer_size: 1.0,
             smooth_pointer: false,
+            zoom_follow: false,
         }
     }
 }

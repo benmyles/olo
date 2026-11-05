@@ -154,6 +154,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// A ring where the pointer is, when clicks are shown (`showing`).
     fn show_click(&mut self) {
+        self.zoom_click();
         if !crate::showing::clicks() {
             return;
         }
@@ -164,6 +165,30 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             crate::showing::click(o, at - g.loc.to_f64());
         }
         self.backend_data.wake(None);
+    }
+
+    /// A press, for a recording's zoom that follows clicks (`zoom`): in
+    /// around it, and the displays woken once the hold is up (a timer at
+    /// a time, put off while clicks and keys hold it).
+    fn zoom_click(&mut self) {
+        let at = self.pointer.current_location();
+        let Some((o, g)) = self.space.output_under(at).next().and_then(|o| self.space.output_geometry(o).map(|g| (o.clone(), g))) else { return };
+        if !crate::zoom::click(&o.name(), at - g.loc.to_f64(), g.size.to_f64()) {
+            return;
+        }
+        self.backend_data.wake(None);
+        if !self.zoom_timer {
+            self.zoom_timer = true;
+            use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+            let _ = self.handle.insert_source(Timer::from_duration(crate::zoom::HOLD), |_, _, state| match crate::zoom::hold_left() {
+                Some(left) => TimeoutAction::ToDuration(left + std::time::Duration::from_millis(10)),
+                None => {
+                    state.zoom_timer = false;
+                    state.backend_data.wake(None);
+                    TimeoutAction::Drop
+                }
+            });
+        }
     }
 
     /// Physical `key` pressed while keys are shown (`showing`): its chord
@@ -192,6 +217,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             if crate::showing::keys() {
                 self.show_chord(key);
             }
+            crate::zoom::key();
         }
         // Escape while something is dragged: the drag ends, nothing
         // dropped (and the Escape reaches nobody).

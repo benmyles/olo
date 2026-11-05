@@ -73,7 +73,7 @@ where
     match what {
         Target::Output => {
             let (overlays, overview, color, pointer) = screen();
-            let (elements, clear) = crate::render::capture_elements(renderer, output, space, overlays, overview, color, locked, pointer);
+            let (elements, clear) = crate::render::capture_elements(renderer, output, space, overlays, overview, color, locked, pointer, true);
             Some(Picture { elements, clear, size: size(output)?, scale: output.current_scale().fractional_scale() })
         }
         Target::Window(id) => {
