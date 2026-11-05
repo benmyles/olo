@@ -136,6 +136,10 @@ pub struct Groups {
     /// meanwhile, so the size it opened at isn't the group's (it is in
     /// front, and would lead).
     settling: Vec<(WindowElement, Instant)>,
+    /// An arranging command was done to it (`front_of_group`): it leads
+    /// its group the next time the groups are made, the others following
+    /// it, though one of them comes back from hidden meanwhile.
+    leads: Option<WindowElement>,
 }
 
 impl Groups {
@@ -374,7 +378,25 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn front_of_group(&mut self, w: &WindowElement) {
         if self.behind_in_group(w) {
             self.space.raise_element(w, false);
+            return;
         }
+        // A group made by hand that its mate, just shown again, is about
+        // to form again (not in the groups till they're next made): `w`
+        // in front of it, and leading the group as it forms. (The group
+        // followed the mate back from hidden, in front, pulling `w` out of
+        // the tile it was just put in.) Only then: an app's own grouping
+        // forms and changes all the time, auto-tiled most of all.
+        if !self.groups.mates(w).is_empty() || !matches!(self.group_key(w), Some(GroupKey::Id(_))) {
+            return;
+        }
+        let mates = self.mates_to_be(w);
+        if mates.is_empty() {
+            return;
+        }
+        if self.space.elements().rev().find(|o| *o == w || mates.contains(o)).is_some_and(|f| f != w) {
+            self.space.raise_element(w, false);
+        }
+        self.groups.leads = Some(w.clone());
     }
 
     /// Whether `app_id`'s windows are grouped (the default).
@@ -532,7 +554,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // the one that was there first.
             let tiled: Vec<WindowElement> = g.iter().filter(|w| self.tree_of(w).is_some()).cloned().collect();
             let pool = if tiled.is_empty() { g } else { &tiled };
-            let leader = pool.iter().rev().filter(leads).find(|w| was_member(w)).or_else(|| pool.iter().rev().filter(leads).find(|w| was_seen(w))).unwrap_or(&pool[pool.len() - 1]).clone();
+            // (Arranged by a command, where nothing auto-tiles: the tile
+            // says where an auto-tiled group is.)
+            let arranged = before.leads.as_ref().filter(|l| tiled.is_empty() && pool.contains(l));
+            let leader =
+                arranged.or_else(|| pool.iter().rev().filter(leads).find(|w| was_member(w))).or_else(|| pool.iter().rev().filter(leads).find(|w| was_seen(w))).unwrap_or(&pool[pool.len() - 1]).clone();
             // Floated by hand, a group floats as one: a window that joins
             // it (one the app opens, grouped by its app) floats too, else
             // it was a tile at the floating group's frame, over the tiles
@@ -679,7 +705,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // made it in (else it may still: it is being placed).
         let joining = before.joining.into_iter().filter(|w| w.alive() && !list.iter().any(|(_, g)| g.contains(w))).collect();
         let seen_on = seen.iter().map(|w| (w.clone(), self.group_display(w))).collect();
-        self.groups = Groups { seen, seen_on, list, away, known: all, numbers, joining, settling };
+        self.groups = Groups { seen, seen_on, list, away, known: all, numbers, joining, settling, leads: None };
         // One come to the front with something new to draw is told to
         // draw it now, not when its frame callback is next due (a
         // second), and the screen looks again once it may show anyway.
