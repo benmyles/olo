@@ -45,12 +45,20 @@ of Finished; a new one goes where its priority puts it.
   then drew its tile's size there, over its neighbour, till a layout
   four seconds later. A window that drew another size than it acked,
   one it can be, is left where its tile is now (`drawn_otherwise`).
-  Seeds 1–3 pass 60 steps. *Next*: seed 7 now fails at step 39, the
-  same in three runs: as a drag of 4's right edge is let go (80 steps
-  8 ms apart, held 0 s), one look of 310 has tile 9 at its new width
-  (876) but 18 px right of where it goes (422, not 404), over 10: its
-  move landing a few drag steps after its size, in the last round
-  (`tile_drag_end`, `round_move`).
+  Seeds 1–3 pass 60 steps. *Step 39 fixed* too: a drag round was on
+  its way as the drag was let go, and the tiles were laid out again
+  (StyledEdit can't be as narrow as the drag left it), giving the
+  followers new targets; the round's frames came at the drag's sizes
+  and were placed by the new targets (9 drawn 876 wide, anchored on
+  the new right edge: 18 px over 10, for a frame). A follower now keeps
+  its last few asks and places a frame by the one it was drawn for.
+  Seeds 1–5 and 7 pass 80 steps, 8 and 9 with `--reloads` too.
+  *Next*: seed 6 fails at step 55, before these changes as well: 67 ms
+  into a drag of 8's right edge, one look of 166 has 1 and 8 out of
+  step (5 to 32 px). And seed 9 with reloads now and then: at step 38
+  (3 and 10 overlapping 220 px for most of a 2.7 s drag) or, without
+  these changes, step 46 (settled, then moved); it passed 80 steps in
+  two runs after.
 
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in

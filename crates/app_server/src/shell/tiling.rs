@@ -238,7 +238,15 @@ pub struct Follower {
     start: Rectangle<i32, Logical>,
     target: Rectangle<i32, Logical>,
     asked: Instant,
+    /// The asks before this one (start and target), newest first, a few:
+    /// a frame drawn for one of them (a round on its way as the drag was
+    /// let go, and the tiles laid out again) goes where that one put it,
+    /// not where the newest would put a frame of another size.
+    before: Vec<(Rectangle<i32, Logical>, Rectangle<i32, Logical>)>,
 }
+
+/// Asks a follower remembers ([`Follower::before`]).
+const ASKS_KEPT: usize = 3;
 
 /// The longest a window is followed, waiting for it to draw the size it
 /// was asked for, after it last was: an app that never does is left where
@@ -1056,8 +1064,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     fn ask_to_follow(&mut self, window: &WindowElement, start: Rectangle<i32, Logical>, target: Rectangle<i32, Logical>) {
         let asked = Instant::now();
         match self.tile_followers.iter_mut().find(|f| f.window == *window) {
-            Some(f) => (f.start, f.target, f.asked) = (start, target, asked),
-            None => self.tile_followers.push(Follower { window: window.clone(), start, target, asked }),
+            Some(f) => {
+                if f.target != target {
+                    f.before.insert(0, (f.start, f.target));
+                    f.before.truncate(ASKS_KEPT);
+                }
+                (f.start, f.target, f.asked) = (start, target, asked);
+            }
+            None => self.tile_followers.push(Follower { window: window.clone(), start, target, asked, before: Vec::new() }),
         }
         let content = window.inner_size(target.size);
         // (Following a drag, it's being resized by hand as much as the
@@ -1104,8 +1118,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             self.tile_followers.remove(i);
             return;
         };
-        let x = if target.loc.x != start.loc.x { target.loc.x + target.size.w - geo.size.w } else { target.loc.x };
-        let y = if target.loc.y != start.loc.y { target.loc.y + target.size.h - geo.size.h } else { target.loc.y };
+        // Drawn for an ask before the newest: placed by that one (its size
+        // and edges together, as the round it came in showed them).
+        let (from, to) = match geo.size == target.size {
+            true => (start, target),
+            false => self.tile_followers[i].before.iter().find(|(_, t)| t.size == geo.size).copied().unwrap_or((start, target)),
+        };
+        let x = if to.loc.x != from.loc.x { to.loc.x + to.size.w - geo.size.w } else { to.loc.x };
+        let y = if to.loc.y != from.loc.y { to.loc.y + to.size.h - geo.size.h } else { to.loc.y };
         let at = Point::from((x, y)) - (geo.loc - loc);
         debug!(target: "olo::rounds", window = window.id(), drew = ?(geo.size.w, geo.size.h), target = ?(target.loc.x, target.loc.y, target.size.w, target.size.h), in_round = self.round_has(window), "follower drew");
         if at != loc {
