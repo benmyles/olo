@@ -187,6 +187,10 @@ pub struct Made {
     pub encoder: String,
     /// What it's coded as: "H.264", "HEVC" or "AV1".
     pub codec: &'static str,
+    /// Why it stopped before it was told to (the encoder failed twice,
+    /// the disk filled): what was recorded till then is kept.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stopped_early: Option<String>,
     /// The sound in it ("computer", "microphone", "both"), if any.
     pub sound: Option<String>,
     /// Why there's none, when some was asked for.
@@ -682,7 +686,7 @@ fn record_into(
     slot.1.notify_one();
     let made = worker.join().map_err(|_| "the encoder failed".to_string())?;
     result?;
-    let (frames, (width, height), encoder, codec) = made?;
+    let (frames, (width, height), encoder, codec, stopped_early) = made?;
     // The file finished by the worker, then put where it goes.
     std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(Made {
@@ -693,6 +697,7 @@ fn record_into(
         height,
         encoder: encoder.to_owned(),
         codec: codec.name(),
+        stopped_early,
         sound: sounded,
         sound_note,
         gif: None,
@@ -732,7 +737,7 @@ fn encode(
     look: Option<&crate::backdrop::Look>,
     ready: &std::sync::mpsc::Sender<Result<(), String>>,
     sound: &Mutex<Option<SoundIn>>,
-) -> Result<(usize, (u32, u32), &'static str, olo_video::Codec), String> {
+) -> Result<(usize, (u32, u32), &'static str, olo_video::Codec, Option<String>), String> {
     // The sound's access units so far, into the file beside the pictures
     // (its description given the file the first time).
     let mut described = false;
@@ -784,6 +789,9 @@ fn encode(
     let _ = ready.send(Ok(()));
     let mut held: Option<(Vec<u8>, bool, Duration)> = None;
     let mut frames = 0usize;
+    // Why it stopped before it was told to, if it did.
+    let mut stopped: Option<String> = None;
+    let fail_at: Option<(usize, bool)> = std::env::var("OLO_RECORDING_FAIL_AT").ok().and_then(|v| Some((v.trim_end_matches('!').parse().ok()?, v.ends_with('!'))));
     loop {
         let next = {
             let mut g = m.lock().unwrap_or_else(|e| e.into_inner());
@@ -809,25 +817,57 @@ fn encode(
             Some(b) => b.compose(&w.data, w.stride, w.width, w.height, canvas),
             None => fit(&w, canvas, vw, vh),
         }
-        let (bits, key) = enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra)?;
+        // An encoder that fails is opened again, once: its first picture a
+        // key frame, the file goes on (if its parameter sets are the same;
+        // else `add` says so). Failing again, what was recorded is kept:
+        // the recording stops there, the file finished.
+        // (`OLO_RECORDING_FAIL_AT=N`, for tests: picture N fails; `N!`,
+        // the encoder opened again fails too.)
+        let failing = fail_at.is_some_and(|(n, _)| n == frames);
+        let coded = (if failing { Err("failed on purpose (OLO_RECORDING_FAIL_AT)".to_owned()) } else { enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra) }).or_else(|e| {
+            eprintln!("olo-screenshot: the encoder failed ({e}); opening it again");
+            *enc = olo_video::Encoder::new(vw, vh, fps, choice, codec).map_err(|again| format!("{e}; opened again: {again}"))?;
+            if failing && fail_at.is_some_and(|(_, again)| again) {
+                return Err(format!("{e}; and again"));
+            }
+            enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra)
+        });
+        let (bits, key) = match coded {
+            Ok(c) => c,
+            Err(e) => {
+                stopped = Some(format!("the encoder failed: {e}"));
+                break;
+            }
+        };
         if let Some((b, k, at)) = held.take() {
             let ms = w.at.saturating_sub(at).as_millis().max(1) as u32;
-            mp4.add(&b, k, ms).map_err(|e| e.to_string())?;
+            if let Err(e) = mp4.add(&b, k, ms) {
+                stopped = Some(format!("the file took no more: {e}"));
+                break;
+            }
             frames += 1;
             add_sound(mp4)?;
         }
         held = Some((bits, key, w.at));
     }
-    let Some((enc, mut mp4, _)) = video else { return Err("nothing was shown to record".into()) };
+    if let Some(why) = &stopped {
+        // (The recorder stops too: nothing more would be kept.)
+        eprintln!("olo-screenshot: recording stopped early: {why}");
+        on_stop(0);
+    }
+    let Some((enc, mut mp4, _)) = video else { return Err(stopped.unwrap_or_else(|| "nothing was shown to record".into())) };
     if let Some((b, k, at)) = held {
-        let ms = Duration::from_millis(end.load(Ordering::SeqCst)).saturating_sub(at).as_millis().max(1) as u32;
-        mp4.add(&b, k, ms).map_err(|e| e.to_string())?;
-        frames += 1;
+        // (Stopped early, the last picture held a moment, not to the end.)
+        let till = if stopped.is_some() { at + Duration::from_millis(100) } else { Duration::from_millis(end.load(Ordering::SeqCst)) };
+        let ms = till.saturating_sub(at).as_millis().max(1) as u32;
+        if mp4.add(&b, k, ms).is_ok() {
+            frames += 1;
+        }
     }
     add_sound(&mut mp4)?;
     let made = mp4.size();
     mp4.finish().map_err(|e| e.to_string())?;
-    Ok((frames, made, enc.name(), enc.codec()))
+    Ok((frames, made, enc.name(), enc.codec(), stopped))
 }
 
 /// The camera bubble's process (`bubble.rs`), while a recording shows

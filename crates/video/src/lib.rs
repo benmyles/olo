@@ -23,6 +23,20 @@ use openh264::{
     formats::{BgraSliceU8, RgbaSliceU8, YUVBuffer},
 };
 
+/// A parameter set (or sequence header) kept for the sample entry: the
+/// first; one that differs later is an error, as the entry describes only
+/// one (an encoder opened again with other settings).
+fn keep(held: &mut Option<Vec<u8>>, set: &[u8]) -> std::io::Result<()> {
+    match held {
+        Some(h) if h.as_slice() != set => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "the stream's parameter sets changed")),
+        Some(_) => Ok(()),
+        None => {
+            *held = Some(set.to_vec());
+            Ok(())
+        }
+    }
+}
+
 /// The NAL units of an Annex B stream (start codes taken off).
 pub fn nal_units(stream: &[u8]) -> Vec<&[u8]> {
     let mut starts = Vec::new();
@@ -468,8 +482,8 @@ impl Mp4 {
             Codec::H264 => {
                 for u in nal_units(coded) {
                     match u[0] & 0x1f {
-                        7 => self.sps = Some(u.to_vec()),
-                        8 => self.pps = Some(u.to_vec()),
+                        7 => keep(&mut self.sps, u)?,
+                        8 => keep(&mut self.pps, u)?,
                         9 => {}
                         _ => unit(u, &mut sample),
                     }
@@ -478,9 +492,9 @@ impl Mp4 {
             Codec::Hevc => {
                 for u in nal_units(coded) {
                     match (u[0] >> 1) & 0x3f {
-                        32 => self.vps = Some(u.to_vec()),
-                        33 => self.sps = Some(u.to_vec()),
-                        34 => self.pps = Some(u.to_vec()),
+                        32 => keep(&mut self.vps, u)?,
+                        33 => keep(&mut self.sps, u)?,
+                        34 => keep(&mut self.pps, u)?,
                         35 => {}
                         _ => unit(u, &mut sample),
                     }
@@ -491,11 +505,7 @@ impl Mp4 {
                 while let Some((kind, head, size)) = config::obu(b) {
                     let o = &b[..head + size];
                     match kind {
-                        1 => {
-                            if self.sps.is_none() {
-                                self.sps = Some(o.to_vec());
-                            }
-                        }
+                        1 => keep(&mut self.sps, o)?,
                         2 | 15 => {}
                         _ => sample.extend_from_slice(o),
                     }
@@ -731,6 +741,37 @@ mod tests {
         assert_eq!(sound.channel_config().unwrap(), mp4::ChannelConfig::Stereo);
         let secs = sound.duration().as_secs_f64();
         assert!((1.9..2.2).contains(&secs), "{secs} s of sound");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An encoder opened again with the same settings goes on in the same
+    /// file; one whose parameter sets differ is refused (the file's entry
+    /// describes one), and what came before is still a whole file.
+    #[test]
+    fn changed_parameter_sets_are_refused() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-params-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("p.mp4");
+        let px = |w: u32, h: u32| vec![128u8; (w * h * 4) as usize];
+        let mut mp4 = Mp4::create(&path, 64, 48, 1000).unwrap();
+        let mut a = H264::new(64, 48, 30).unwrap();
+        let (bits, key) = a.encode(&px(64, 48), 64 * 4, Order::Bgra).unwrap();
+        mp4.add(&bits, key, 33).unwrap();
+        // The same settings again: the same sets, going on.
+        let mut again = H264::new(64, 48, 30).unwrap();
+        let (bits, key) = again.encode(&px(64, 48), 64 * 4, Order::Bgra).unwrap();
+        assert!(key);
+        mp4.add(&bits, key, 33).unwrap();
+        // Another size: refused, the file as it was.
+        let mut other = H264::new(96, 64, 30).unwrap();
+        let (bits, key) = other.encode(&px(96, 64), 96 * 4, Order::Bgra).unwrap();
+        assert_eq!(mp4.add(&bits, key, 33).unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(mp4.len(), 2);
+        mp4.finish().unwrap();
+        let f = std::fs::File::open(&path).unwrap();
+        let size = f.metadata().unwrap().len();
+        let r = mp4::Mp4Reader::read_header(std::io::BufReader::new(f), size).unwrap();
+        assert_eq!(r.tracks().values().next().unwrap().sample_count(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

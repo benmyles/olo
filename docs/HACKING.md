@@ -5938,6 +5938,18 @@ Screens' Export Video uses too).
   isn't one of its values set first, or filled by the driver). The JSON
   says which encoded it (`encoder`). A window that changes size is cut
   or shown on black at the size it began.
+- **An encoder that fails mid-recording** is opened again once (its
+  first picture a key frame), and the file goes on if the new one's
+  parameter sets are the same (NVENC's and OpenH264's are, opened with
+  the same settings; `Mp4::add` refuses ones that differ, as the file's
+  sample entry describes one). Failing again, or the file refusing (a
+  full disk), the recording stops there and what was recorded is kept:
+  the file finished, `stopped_early` saying why, the recorder stopped
+  (before, an encoder's error left an unplayable `.part`).
+  `OLO_RECORDING_FAIL_AT=N` makes picture N fail (`N!`: the encoder
+  opened again too), for tests: checked on the processor (carried on;
+  stopped at 1.76 s with 21 frames kept, playable) and on NVENC (opened
+  again in 2.5 s, carried on in the same file, decoded past the gap).
 - **H.264, HEVC or AV1** (`--codec`, `Settings::screen_recording.codec`,
   Preferences ▸ GPUs ▸ Format, which offers H.264 and HEVC;
   `olo_video::Codec`): HEVC and AV1 on NVIDIA's encoder only (the
