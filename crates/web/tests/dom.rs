@@ -328,3 +328,39 @@ fn failed_append_keeps_value_and_reserved_bytes_and_revision_unchanged() {
     doc.set_value(node, "abcd").unwrap();
     assert_eq!(doc.memory().owned_text_bytes, 4);
 }
+
+#[test]
+fn cloning_preserves_order_and_source_text_and_does_not_alias_mutable_buffers() {
+    let source: Arc<str> = Arc::from("source text");
+    let mut doc = Document::new(source.clone(), Limits::default()).unwrap();
+    let root = element(&mut doc, "p");
+    doc.set_attribute(root, "class", "first").unwrap();
+    doc.set_attribute(root, "title", "second").unwrap();
+    let text = doc.create_text(source.as_ref()).unwrap();
+    doc.append_child(root, text).unwrap();
+    let copied = doc.clone_subtree(root).unwrap();
+    let copied_text = doc.first_child(copied).unwrap().unwrap();
+    assert_eq!(doc.attributes(root).unwrap().collect::<Vec<_>>(), doc.attributes(copied).unwrap().collect::<Vec<_>>());
+    assert_eq!(doc.value(copied_text).unwrap().unwrap().as_ptr(), source.as_ptr());
+    doc.append_value(copied_text, " changed").unwrap();
+    assert_eq!(doc.value(text), Ok(Some(source.as_ref())));
+    let owned = doc.clone_subtree(copied).unwrap();
+    let owned_text = doc.first_child(owned).unwrap().unwrap();
+    doc.append_value(owned_text, " again").unwrap();
+    assert_eq!(doc.value(copied_text), Ok(Some("source text changed")));
+    for node in [root, copied, owned] {
+        doc.destroy_subtree(node).unwrap();
+    }
+    assert_eq!(doc.memory().owned_text_bytes, 0);
+}
+
+#[test]
+fn a_cancelled_clone_does_not_allocate_or_mutate_the_document() {
+    let mut doc = document();
+    let root = element(&mut doc, "main");
+    let revision = doc.revision();
+    let flag = std::sync::atomic::AtomicBool::new(true);
+    assert_eq!(doc.clone_subtree_cancellable(root, Some(&flag)), Err(Error::Cancelled));
+    assert_eq!(doc.revision(), revision);
+    assert_eq!(doc.memory().live_nodes, 2);
+}

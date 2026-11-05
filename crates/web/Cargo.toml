@@ -11,9 +11,13 @@ scalar-scans = []
 # Reproduce the initial text-copy/per-insertion-allocation costs in the
 # storage benchmark. Same semantics; never enabled in normal builds.
 baseline-storage = []
+# Counterfactual parser measurements with repeated attribute lookup and
+# linear-pair formatting-attribute comparison; identical tree semantics.
+baseline-parser = []
 
 [dependencies]
 memchr = "2"
 
 [dev-dependencies]
 serde_json.workspace = true
+sha2 = "0.10"

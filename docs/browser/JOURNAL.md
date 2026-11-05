@@ -207,3 +207,74 @@ not a page-load/UI/Chrome claim. Reproduce with `cargo build --release
 -p olo-web --example append_bench` then `taskset -c 0
 target/release/examples/append_bench`. Raw runs:
 `measurements/2026-11-04-appends.json`. Next: original HTML tree builder.
+
+## 2026-11-04 — original static HTML tree construction
+
+Connected the tokenizer to the compact document store with an original
+Rust tree builder. Implemented initial/before-html/before-head/head/
+head-noscript/after-head/body/text/after-body/after-after-body and frameset
+insertion modes, including implied nodes/end tags, lists, forms, buttons,
+ruby, raw text/RCDATA/plaintext, scripting-flag noscript behavior, doctype
+mode selection, active formatting reconstruction, Noah's Ark matching and
+adoption agency handling outside table contexts. Scripts remain inert;
+`scripting` currently controls parsing behavior, not execution.
+
+The first independent run matched 2,476 static trees and found eight
+mismatches, all missing `selectedcontent` initialization. Added initial
+selection/disabledness handling and selected-option content cloning, using
+an iterative, cancellable subtree clone with independent mutable buffers
+and shared source ranges. Those eight cases now match. Live selectedness,
+mutation hooks, events and the complete DOM/Web IDL APIs remain open.
+
+Pinned 62 unmodified WPT fixture files at
+`d7bb5bb848fcd304c10669288a211dbafd106d90`, with the upstream BSD license,
+format README and per-file SHA-256 checks. Literal whitespace/control bytes
+are preserved. All fixtures run: **2,484/3,904 static tree comparisons match**;
+**1,420 unsupported** stay in the denominator: tables 438, foreign content
+364, context fragments 412, templates 200, JavaScript execution 6.
+Parse-error diagnostics are not checked. No website compatibility follows
+from these counts. Summary: `measurements/2026-11-04-tree-coverage.json`.
+
+The native `tree_eval` example always requires every static case and
+currently exits **1**, as verified. Default unit tests reject any emitted
+tree mismatch/error/panic and protect each previously matched case in
+`tests/tree-coverage.json`; they are a regression gate, not proof that
+unsupported cases work. `OLO_TREE_REQUIRE_COMPLETE=1` additionally requires
+all 3,904 static cases. ENGINE.md documents this distinction and commands.
+
+Validation: release engine tests (15 DOM tests, tokenizer suite, five
+tree tests), clippy and workspace release build pass. Tree tests also
+check cancellation, input/stack/formatting limits (markers included),
+current doctype mode rules and 10,000 generated malformed documents.
+Both default and counterfactual parser algorithms matched the independent
+fixture outputs. Existing GPUI workspace warnings remain unchanged.
+
+Release comparison on Core Ultra 7 356H, CPU 0, three alternating runs,
+three parse/drop iterations per sample. `baseline-parser` reproduces
+repeated attribute lookup and linear-pair formatting-attribute comparison;
+default uses one-pass initial attributes and a hashed comparison for large
+formatting attribute sets. Small tags keep the simple path:
+
+| Case | Baseline median parse/drop | Default median parse/drop |
+|---|---:|---:|
+| Article, 65,544 nodes | 6.352 ms | 6.322 ms |
+| 100,000 fragmented text tokens | 3.777 ms | 3.635 ms |
+| One 4,096-attribute tag | 16.650 ms | 0.633 ms |
+| Four formatting tags, 4,096 attributes each | 131.950 ms | 2.220 ms |
+
+Median first complete parse: article **8.028 / 7.704 ms**, attribute case
+**16.523 / 0.564 ms**, formatting stress **131.308 / 2.153 ms**
+(baseline/default). All cases retain zero owned text bytes; source slices
+are reused, including fragmented '<' runs. Peak benchmark RSS:
+baseline **8,408–8,484 KiB**, default **8,324–8,572 KiB**. These are
+synthetic complete-buffer parsing measurements, not network, first paint,
+layout, JS, UI-frame or Chrome results. CPU clocks/load were not controlled;
+the raw samples retain an article outlier rather than hiding it.
+
+Reproduce: `cargo build --release -p olo-web --example parse_bench` (add
+`--features baseline-parser` for the counterfactual), then
+`taskset -c 0 /usr/bin/time -v target/release/examples/parse_bench 3`.
+Raw samples: `measurements/2026-11-04-tree.json`. No visible UI changes.
+Next: table insertion modes and foster parenting, then foreign content,
+templates and context fragments. Browser/JS/layout/site acceptance and
+the full goal remain unfinished and active.

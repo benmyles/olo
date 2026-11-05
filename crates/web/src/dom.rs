@@ -95,6 +95,7 @@ pub enum Error {
     DepthLimit,
     InvalidName,
     RevisionOverflow,
+    Cancelled,
 }
 
 impl std::fmt::Display for Error {
@@ -688,6 +689,37 @@ impl Document {
         self.bump()?;
         Ok(true)
     }
+
+    /// Parser-only path for a fresh element. The tokenizer has already
+    /// normalized/deduplicated these names, so do not search an increasingly
+    /// long attribute list for every insertion (quadratic on large tags).
+    pub(crate) fn initial_attributes<'a>(&mut self, id: NodeId, attributes: impl IntoIterator<Item = (Cow<'a, str>, Cow<'a, str>)>) -> Result<()> {
+        let node = self.resolve(id)?;
+        if self.attribute_head(node)?.is_some() {
+            return Err(Error::Hierarchy);
+        }
+        let mut last = None;
+        for (name, value) in attributes {
+            if self.attributes.live >= self.limits.attributes {
+                return Err(Error::AttributeLimit);
+            }
+            if self.revision == u64::MAX {
+                return Err(Error::RevisionOverflow);
+            }
+            let name = self.atom(&name)?;
+            let value = self.store_text(value, 0)?;
+            let attr = self.attributes.insert(Attribute { name, value, next: None });
+            if let Some(last) = last {
+                self.attributes.get_mut(last).next = Some(attr);
+            } else {
+                let Data::Element { attributes, .. } = &mut self.nodes[index(node)].data else { unreachable!() };
+                *attributes = Some(attr);
+            }
+            last = Some(attr);
+            self.bump()?;
+        }
+        Ok(())
+    }
     pub fn remove_attribute(&mut self, id: NodeId, name: &str) -> Result<bool> {
         let at = self.resolve(id)?;
         let normalized = self.normalize_attribute(at, name);
@@ -867,6 +899,117 @@ impl Document {
     }
     pub fn append_child(&mut self, parent: NodeId, node: NodeId) -> Result<bool> {
         self.insert_before(parent, node, None)
+    }
+
+    fn copy_text(&mut self, value: TextValue) -> Result<TextValue> {
+        if value.len < u32::MAX - 1 {
+            return Ok(value);
+        }
+        if self.text(value).len() > self.limits.owned_text_bytes.saturating_sub(self.owned_bytes) {
+            return Err(Error::TextLimit);
+        }
+        let copied = self.text(value).to_owned();
+        self.store_text(Cow::Owned(copied), 0)
+    }
+
+    fn clone_shallow(&mut self, id: NodeId) -> Result<NodeId> {
+        let at = self.resolve(id)?;
+        self.can_allocate()?;
+        let data = match self.nodes[index(at)].data {
+            Data::Element { name, namespace, .. } => Data::Element { name, namespace, attributes: None },
+            Data::Text(v) => Data::Text(self.copy_text(v)?),
+            Data::Comment(v) => Data::Comment(self.copy_text(v)?),
+            Data::ProcessingInstruction { target, data } => Data::ProcessingInstruction { target, data: self.copy_text(data)? },
+            Data::Fragment => Data::Fragment,
+            Data::Doctype(id) => {
+                let (name, public, system) = {
+                    let d = self.doctypes.get(id);
+                    (d.name, d.public_id, d.system_id)
+                };
+                let public_id = self.copy_text(public)?;
+                let system_id = match self.copy_text(system) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        self.free_text(public_id);
+                        return Err(e);
+                    }
+                };
+                Data::Doctype(self.doctypes.insert(DoctypeData { name, public_id, system_id }))
+            }
+            Data::Document | Data::Vacant(_) => return Err(Error::Hierarchy),
+        };
+        let copied = self.allocate(data);
+        if let Data::Element { attributes, .. } = self.nodes[index(at)].data {
+            let result = (|| -> Result<()> {
+                let mut next = attributes;
+                let mut last = None;
+                while let Some(attr) = next {
+                    if self.attributes.live >= self.limits.attributes {
+                        return Err(Error::AttributeLimit);
+                    }
+                    let (name, value, following) = {
+                        let a = self.attributes.get(attr);
+                        (a.name, a.value, a.next)
+                    };
+                    let value = self.copy_text(value)?;
+                    let new = self.attributes.insert(Attribute { name, value, next: None });
+                    if let Some(last) = last {
+                        self.attributes.get_mut(last).next = Some(new);
+                    } else {
+                        let Data::Element { attributes, .. } = &mut self.nodes[copied.slot as usize].data else { unreachable!() };
+                        *attributes = Some(new);
+                    }
+                    last = Some(new);
+                    next = following;
+                }
+                Ok(())
+            })();
+            if let Err(e) = result {
+                self.destroy_subtree(copied)?;
+                return Err(e);
+            }
+        }
+        Ok(copied)
+    }
+
+    /// Clone into this document, preserving source ranges and attribute
+    /// order. Character-data buffers are independent after cloning. A
+    /// Document itself needs a new document identity and is not accepted.
+    pub fn clone_subtree(&mut self, id: NodeId) -> Result<NodeId> {
+        self.clone_subtree_cancellable(id, None)
+    }
+
+    pub fn clone_subtree_cancellable(&mut self, id: NodeId, cancelled: Option<&std::sync::atomic::AtomicBool>) -> Result<NodeId> {
+        if cancelled.is_some_and(|c| c.load(Ordering::Relaxed)) {
+            return Err(Error::Cancelled);
+        }
+        let root = self.clone_shallow(id)?;
+        let result = (|| -> Result<()> {
+            let mut frames = vec![(self.first_child(id)?, root)];
+            while let Some(frame) = frames.last_mut() {
+                if cancelled.is_some_and(|c| c.load(Ordering::Relaxed)) {
+                    return Err(Error::Cancelled);
+                }
+                let Some(child) = frame.0 else {
+                    frames.pop();
+                    continue;
+                };
+                frame.0 = self.next_sibling(child)?;
+                let parent = frame.1;
+                let copied = self.clone_shallow(child)?;
+                if let Err(e) = self.append_child(parent, copied) {
+                    self.destroy_subtree(copied)?;
+                    return Err(e);
+                }
+                frames.push((self.first_child(child)?, copied));
+            }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            self.destroy_subtree(root)?;
+            return Err(e);
+        }
+        Ok(root)
     }
 
     /// Explicit reclamation for unreachable nodes. DOM removeChild only

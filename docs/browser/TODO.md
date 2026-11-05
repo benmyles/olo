@@ -19,6 +19,11 @@ item means implemented and verified; a partial implementation stays open.
   (Web IDL, namespaced attributes, adoption, mutation observers, ranges,
   event dispatch, shadow DOM and GC rooting). Amortized adjacent-text
   appends and source-range merging are implemented and measured.
+- [x] Connect tokenizer to original static document/head/body/list/form/raw-text/
+  formatting/frameset tree construction; independent WPT tree runner and
+  per-case regression baseline. 2,484/3,904 tree cases match; this is partial.
+- [ ] Complete table/foster-parenting, foreign-content, template and context
+  fragment parsing; initial remaining tree cases: 1,420 unsupported.
 - [ ] Add network/encoding/cache/cookies with security and memory bounds.
 - [ ] Implement CSS tokenizer/parser, selectors, cascade, media queries,
   custom properties and style invalidation.
@@ -46,6 +51,6 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: connect tokenizer to original HTML tree construction and independent
-tree fixtures; complete tokenizer diagnostics/input handling. Evaluation
-capture/replay and executable site journeys remain open.
+Next: table insertion modes and foster parenting, then foreign content,
+templates and fragments; complete tokenizer diagnostics/input handling.
+Evaluation capture/replay and executable site journeys remain open.

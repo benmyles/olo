@@ -1,0 +1,400 @@
+{
+  "runs": [
+    {
+      "baseline_parser": true,
+      "samples": [
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "article",
+          "first_parse_ms": 7.734539000000001,
+          "node_reserved_bytes": 5242880,
+          "nodes": 65544,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 6.329751333333333,
+          "rounds": 3,
+          "source_bytes": 892978
+        },
+        {
+          "attribute_reserved_bytes": 0,
+          "attributes": 0,
+          "case": "fragmented_text",
+          "first_parse_ms": 3.777455,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.777041666666666,
+          "rounds": 3,
+          "source_bytes": 100015
+        },
+        {
+          "attribute_reserved_bytes": 65536,
+          "attributes": 4096,
+          "case": "attributes",
+          "first_parse_ms": 16.458129,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 16.563804333333334,
+          "rounds": 3,
+          "source_bytes": 72639
+        },
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "formatting_attributes",
+          "first_parse_ms": 130.75488399999998,
+          "node_reserved_bytes": 640,
+          "nodes": 9,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 131.173452,
+          "rounds": 3,
+          "source_bytes": 290503
+        }
+      ],
+      "scope": "Static complete-buffer tree construction only; no network, JS execution, layout, frames, UI or Chrome comparison",
+      "repeat": 0,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "/var/tmp/olo-browser-research/parse-baseline",
+        "3"
+      ],
+      "time_observation": "\tCommand being timed: \"/var/tmp/olo-browser-research/parse-baseline 3\"\n\tUser time (seconds): 0.62\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.64\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 8484\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 2343\n\tVoluntary context switches: 3\n\tInvoluntary context switches: 7\n\tSwaps: 0\n\tFile system inputs: 4328\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "baseline_parser": false,
+      "samples": [
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "article",
+          "first_parse_ms": 7.737784,
+          "node_reserved_bytes": 5242880,
+          "nodes": 65544,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 6.3222233333333335,
+          "rounds": 3,
+          "source_bytes": 892978
+        },
+        {
+          "attribute_reserved_bytes": 0,
+          "attributes": 0,
+          "case": "fragmented_text",
+          "first_parse_ms": 3.696879,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.6728663333333333,
+          "rounds": 3,
+          "source_bytes": 100015
+        },
+        {
+          "attribute_reserved_bytes": 65536,
+          "attributes": 4096,
+          "case": "attributes",
+          "first_parse_ms": 0.563582,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.6500183333333334,
+          "rounds": 3,
+          "source_bytes": 72639
+        },
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "formatting_attributes",
+          "first_parse_ms": 2.148996,
+          "node_reserved_bytes": 640,
+          "nodes": 9,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 2.225779333333333,
+          "rounds": 3,
+          "source_bytes": 290503
+        }
+      ],
+      "scope": "Static complete-buffer tree construction only; no network, JS execution, layout, frames, UI or Chrome comparison",
+      "repeat": 0,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "/var/tmp/olo-browser-research/parse-optimized",
+        "3"
+      ],
+      "time_observation": "\tCommand being timed: \"/var/tmp/olo-browser-research/parse-optimized 3\"\n\tUser time (seconds): 0.05\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 83%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.06\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 8572\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 2348\n\tVoluntary context switches: 3\n\tInvoluntary context switches: 1\n\tSwaps: 0\n\tFile system inputs: 4600\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "baseline_parser": false,
+      "samples": [
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "article",
+          "first_parse_ms": 7.690231,
+          "node_reserved_bytes": 5242880,
+          "nodes": 65544,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 6.373540333333334,
+          "rounds": 3,
+          "source_bytes": 892978
+        },
+        {
+          "attribute_reserved_bytes": 0,
+          "attributes": 0,
+          "case": "fragmented_text",
+          "first_parse_ms": 3.634605,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.634812,
+          "rounds": 3,
+          "source_bytes": 100015
+        },
+        {
+          "attribute_reserved_bytes": 65536,
+          "attributes": 4096,
+          "case": "attributes",
+          "first_parse_ms": 0.566943,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.6273203333333334,
+          "rounds": 3,
+          "source_bytes": 72639
+        },
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "formatting_attributes",
+          "first_parse_ms": 2.153266,
+          "node_reserved_bytes": 640,
+          "nodes": 9,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 2.214440333333333,
+          "rounds": 3,
+          "source_bytes": 290503
+        }
+      ],
+      "scope": "Static complete-buffer tree construction only; no network, JS execution, layout, frames, UI or Chrome comparison",
+      "repeat": 1,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "/var/tmp/olo-browser-research/parse-optimized",
+        "3"
+      ],
+      "time_observation": "\tCommand being timed: \"/var/tmp/olo-browser-research/parse-optimized 3\"\n\tUser time (seconds): 0.05\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.05\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 8324\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2344\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 1\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "baseline_parser": true,
+      "samples": [
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "article",
+          "first_parse_ms": 10.630587,
+          "node_reserved_bytes": 5242880,
+          "nodes": 65544,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 11.296909333333334,
+          "rounds": 3,
+          "source_bytes": 892978
+        },
+        {
+          "attribute_reserved_bytes": 0,
+          "attributes": 0,
+          "case": "fragmented_text",
+          "first_parse_ms": 4.106609,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 4.002151333333333,
+          "rounds": 3,
+          "source_bytes": 100015
+        },
+        {
+          "attribute_reserved_bytes": 65536,
+          "attributes": 4096,
+          "case": "attributes",
+          "first_parse_ms": 16.523231,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 16.649835666666664,
+          "rounds": 3,
+          "source_bytes": 72639
+        },
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "formatting_attributes",
+          "first_parse_ms": 131.307952,
+          "node_reserved_bytes": 640,
+          "nodes": 9,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 131.9494786666667,
+          "rounds": 3,
+          "source_bytes": 290503
+        }
+      ],
+      "scope": "Static complete-buffer tree construction only; no network, JS execution, layout, frames, UI or Chrome comparison",
+      "repeat": 1,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "/var/tmp/olo-browser-research/parse-baseline",
+        "3"
+      ],
+      "time_observation": "\tCommand being timed: \"/var/tmp/olo-browser-research/parse-baseline 3\"\n\tUser time (seconds): 0.63\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.65\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 8408\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2342\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 53\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "baseline_parser": true,
+      "samples": [
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "article",
+          "first_parse_ms": 8.027569,
+          "node_reserved_bytes": 5242880,
+          "nodes": 65544,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 6.351606666666666,
+          "rounds": 3,
+          "source_bytes": 892978
+        },
+        {
+          "attribute_reserved_bytes": 0,
+          "attributes": 0,
+          "case": "fragmented_text",
+          "first_parse_ms": 3.7471900000000002,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.762920333333333,
+          "rounds": 3,
+          "source_bytes": 100015
+        },
+        {
+          "attribute_reserved_bytes": 65536,
+          "attributes": 4096,
+          "case": "attributes",
+          "first_parse_ms": 16.536856,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 16.682845999999998,
+          "rounds": 3,
+          "source_bytes": 72639
+        },
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "formatting_attributes",
+          "first_parse_ms": 131.71669,
+          "node_reserved_bytes": 640,
+          "nodes": 9,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 139.899462,
+          "rounds": 3,
+          "source_bytes": 290503
+        }
+      ],
+      "scope": "Static complete-buffer tree construction only; no network, JS execution, layout, frames, UI or Chrome comparison",
+      "repeat": 2,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "/var/tmp/olo-browser-research/parse-baseline",
+        "3"
+      ],
+      "time_observation": "\tCommand being timed: \"/var/tmp/olo-browser-research/parse-baseline 3\"\n\tUser time (seconds): 0.63\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 96%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.66\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 8444\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2345\n\tVoluntary context switches: 0\n\tInvoluntary context switches: 100\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "baseline_parser": false,
+      "samples": [
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "article",
+          "first_parse_ms": 7.703897,
+          "node_reserved_bytes": 5242880,
+          "nodes": 65544,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 6.203836333333332,
+          "rounds": 3,
+          "source_bytes": 892978
+        },
+        {
+          "attribute_reserved_bytes": 0,
+          "attributes": 0,
+          "case": "fragmented_text",
+          "first_parse_ms": 3.775395,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 3.629363666666667,
+          "rounds": 3,
+          "source_bytes": 100015
+        },
+        {
+          "attribute_reserved_bytes": 65536,
+          "attributes": 4096,
+          "case": "attributes",
+          "first_parse_ms": 0.562764,
+          "node_reserved_bytes": 320,
+          "nodes": 6,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 0.632958,
+          "rounds": 3,
+          "source_bytes": 72639
+        },
+        {
+          "attribute_reserved_bytes": 262144,
+          "attributes": 16384,
+          "case": "formatting_attributes",
+          "first_parse_ms": 2.2256400000000003,
+          "node_reserved_bytes": 640,
+          "nodes": 9,
+          "owned_text_capacity_bytes": 0,
+          "parse_and_drop_ms": 2.219859666666667,
+          "rounds": 3,
+          "source_bytes": 290503
+        }
+      ],
+      "scope": "Static complete-buffer tree construction only; no network, JS execution, layout, frames, UI or Chrome comparison",
+      "repeat": 2,
+      "cpu": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "0",
+        "/usr/bin/time",
+        "-v",
+        "/var/tmp/olo-browser-research/parse-optimized",
+        "3"
+      ],
+      "time_observation": "\tCommand being timed: \"/var/tmp/olo-browser-research/parse-optimized 3\"\n\tUser time (seconds): 0.04\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.05\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 8388\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2343\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 1\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 0\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ]
+}

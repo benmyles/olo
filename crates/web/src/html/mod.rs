@@ -4,5 +4,7 @@
 
 mod entities;
 mod tokenizer;
+mod tree;
 
 pub use tokenizer::{Attribute, Doctype, Error, Limits, Mode, Tag, Token, Tokenizer};
+pub use tree::{ParseError, ParseOptions, ParsedDocument, QuirksMode, parse};

@@ -1,0 +1,2 @@
+# Whitespace and control characters are literal parser test inputs.
+*.dat -text -whitespace
