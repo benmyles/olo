@@ -28,7 +28,16 @@ enum Msg {
     Finger(fingerprint::Event),
     /// The sensor isn't there or has no prints for this user.
     NoFinger,
+    /// A security key set up is plugged in and waits for a touch.
+    KeyWaiting,
+    /// The key's password (checked as one typed), or why not.
+    Key(olo_fido::Result<zeroize::Zeroizing<String>>),
 }
+
+/// Waits for a key that end with nobody touching it, in a row, before
+/// the lock screen stops asking it till someone is there (a key pressed,
+/// the pointer moved): a key waiting all night blinks all night.
+const KEY_TRIES: u32 = 3;
 
 #[derive(PartialEq)]
 enum Status {
@@ -46,6 +55,11 @@ struct Lock {
     /// What the fingerprint sensor last said (None: not offered).
     finger: Option<String>,
     finger_stop: fingerprint::Stop,
+    /// A touch of a security key waited for, what to say of it, and the
+    /// waits in a row that ended untouched.
+    key: Option<olo_fido::Touch>,
+    key_note: Option<String>,
+    key_tries: u32,
     unlocking: bool,
     /// A wrong answer just came (the panel shakes).
     shake: Option<Instant>,
@@ -142,16 +156,36 @@ impl Lock {
             .expect("thread");
     }
 
+    /// Wait for a touch of a security key set up, unless already waiting.
+    fn wait_for_key(&mut self, cx: &App) {
+        if self.key.is_some() || self.unlocking {
+            return;
+        }
+        let (p, proxy) = (olo_ui::proxy(cx), olo_ui::proxy(cx));
+        self.key = Some(olo_fido::touch(self.user.clone(), move || p.send(Msg::KeyWaiting), move |r| proxy.send(Msg::Key(r))));
+    }
+
+    /// Someone is there (a key, the pointer): the key is asked again.
+    fn activity(&mut self, cx: &App) {
+        self.key_tries = 0;
+        self.wait_for_key(cx);
+    }
+
     fn submit(&mut self, cx: &mut Context<Self>) {
         if self.status == Status::Checking || self.field.read(cx).text().is_empty() {
             return;
         }
-        self.status = Status::Checking;
         let password = self.field.read(cx).text().to_owned();
         self.field.update(cx, |f, cx| {
             f.clear_secret(cx);
             f.set_enabled(false, cx);
         });
+        self.check(password, cx);
+    }
+
+    /// Check `password` through PAM, on a thread.
+    fn check(&mut self, password: String, cx: &mut Context<Self>) {
+        self.status = Status::Checking;
         let (user, proxy) = (self.user.clone(), olo_ui::proxy(cx));
         std::thread::Builder::new()
             .name("pam".into())
@@ -172,6 +206,7 @@ impl Lock {
         }
         self.unlocking = true;
         self.finger_stop.stop();
+        self.key = None;
         olo_ui::unlock_session();
         cx.quit();
     }
@@ -197,6 +232,25 @@ impl Lock {
                 self.shake = Some(Instant::now());
             }
             Msg::Finger(fingerprint::Event::Failed(_)) | Msg::NoFinger => self.finger = None,
+            Msg::KeyWaiting => self.key_note = Some("Touch your security key or enter your password".into()),
+            Msg::Key(Ok(password)) => {
+                self.key = None;
+                self.key_note = None;
+                if self.status != Status::Checking {
+                    self.check(password.to_string(), cx);
+                }
+            }
+            Msg::Key(Err(e)) => {
+                self.key = None;
+                self.key_note = None;
+                let untouched = matches!(e, olo_fido::Error::Timeout | olo_fido::Error::Ctap(olo_fido::ctap::ERR_USER_ACTION_TIMEOUT));
+                if untouched && self.key_tries + 1 < KEY_TRIES {
+                    self.key_tries += 1;
+                    self.wait_for_key(cx);
+                } else if !untouched {
+                    tracing::info!("security key: {e}");
+                }
+            }
         }
         cx.notify();
     }
@@ -206,7 +260,15 @@ impl Lock {
         match &self.status {
             Status::Checking => ("Checking…".to_owned(), false),
             Status::Error(e) => (e.clone(), true),
-            Status::Idle => (self.finger.clone().unwrap_or_else(|| "Enter your password".to_owned()), false),
+            Status::Idle => (
+                match (&self.finger, &self.key_note) {
+                    (Some(f), Some(_)) if f == "Touch ID or enter your password" => "Touch ID, your security key, or your password".to_owned(),
+                    (Some(f), _) => f.clone(),
+                    (None, Some(k)) => k.clone(),
+                    (None, None) => "Enter your password".to_owned(),
+                },
+                false,
+            ),
         }
     }
 }
@@ -241,7 +303,13 @@ impl Render for Screen {
         )
         .absolute()
         .inset_0();
-        let mut root = div().relative().size_full().child(backdrop);
+        // Someone there: the key is asked again, if it stopped waiting.
+        let l = self.lock.clone();
+        let mut root = div().relative().size_full().child(backdrop).on_mouse_move(move |_, _, cx| {
+            if l.read(cx).key.is_none() {
+                l.update(cx, |l, cx| l.activity(cx));
+            }
+        });
         if primary {
             root = root.child(panel(lock, window));
             // Typing always lands in the password.
@@ -310,16 +378,33 @@ fn main() {
         let field = text_field(cx, |f| f.name("Password").password(true).hint("Password"));
         let desktop = olo_ui::settings::current().unwrap_or_default().workspace_color(0);
         let lock = cx.new(|cx| {
-            cx.subscribe(&field, |l: &mut Lock, _, e: &TextFieldEvent, cx| match e {
-                TextFieldEvent::Entered => l.submit(cx),
-                TextFieldEvent::Changed if matches!(l.status, Status::Error(_)) => {
-                    l.status = Status::Idle;
-                    cx.notify();
+            cx.subscribe(&field, |l: &mut Lock, _, e: &TextFieldEvent, cx| {
+                l.activity(cx);
+                match e {
+                    TextFieldEvent::Entered => l.submit(cx),
+                    TextFieldEvent::Changed if matches!(l.status, Status::Error(_)) => {
+                        l.status = Status::Idle;
+                        cx.notify();
+                    }
+                    _ => {}
                 }
-                _ => {}
             })
             .detach();
-            Lock { user, name, field, status: Status::Idle, finger: None, finger_stop: fingerprint::Stop::default(), unlocking: false, shake: None, desktop, primary: None }
+            Lock {
+                user,
+                name,
+                field,
+                status: Status::Idle,
+                finger: None,
+                finger_stop: fingerprint::Stop::default(),
+                key: None,
+                key_note: None,
+                key_tries: 0,
+                unlocking: false,
+                shake: None,
+                desktop,
+                primary: None,
+            }
         });
         let l = lock.clone();
         olo_ui::message_handler(cx, move |m, cx| {
@@ -356,7 +441,10 @@ fn main() {
                 screen
             },
             move |event, cx| match event {
-                SessionLockEvent::Locked => events.update(cx, |l, cx| l.start_fingerprint(cx)),
+                SessionLockEvent::Locked => events.update(cx, |l, cx| {
+                    l.start_fingerprint(cx);
+                    l.wait_for_key(cx);
+                }),
                 // Refused (another lock screen?) or ended: nothing to do.
                 _ => cx.quit(),
             },

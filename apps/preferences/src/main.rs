@@ -32,6 +32,7 @@ mod performance;
 mod power;
 mod screensaver;
 mod security;
+mod security_keys;
 mod server;
 mod shortcuts;
 mod sound;

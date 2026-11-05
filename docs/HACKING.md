@@ -383,6 +383,7 @@ socket.
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
+| `crates/fido` | `olo-fido`: FIDO2 security keys (a YubiKey) natively: CTAPHID over hidraw, the CTAP2 Olo uses, and the account password sealed by a key's `hmac-secret`, so a touch can stand for typing it. See "Security keys". |
 | `crates/eld` | `olo-eld`: an AAC-ELD decoder in Rust (AirPods' microphone stream: mono, 480 samples a frame, no SBR). Huffman tables vendored from Symphonia (MPL-2.0), the standard's band, TNS and window tables transcribed (`tables.rs`); checked against libfdk-aac's decode of a libfdk-made stream (`tests/fdk.rs`: 85 dB) and, with `--ignored`, of a real capture. |
 | `crates/voice` | `olo-voice`: what Olo does to every microphone, 10 ms at a time: echo cancellation (its own fullband Kalman filter), noise suppression (DeepFilterNet3, vendored in `vendor/deep_filter`), level normalization (WebRTC's AGC2, vendored in `vendor/sonora`). See "Voice processing". |
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
@@ -5422,6 +5423,63 @@ asking"). Never test with the real PAM: debug builds take
 `OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE` (a stand-in `pam_exec` check),
 Terminal's sudo `OLO_SUDO_REAL`, and `OLO_NO_FINGERPRINT=1` leaves
 fprintd alone.
+
+## Security keys (olo-fido; Preferences ▸ Security; app_server security_key.rs)
+
+A security key set up (a YubiKey: any FIDO2 key with `hmac-secret`) is
+touched instead of typing the account password: Terminal's sudo window,
+Passwords' unlock, the polkit agent (for the person's own identity) and
+the lock screen. Natively, as the person, no root: `olo_fido` speaks
+CTAPHID to the key's FIDO interface (its hidraw node, found by usage page
+0xF1D0 under /sys, open to the person at their seat by systemd's
+uaccess) and CTAP2 itself (GetInfo, ClientPIN's key agreement in PIN
+protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
+
+* **Setting up** (Preferences ▸ Security ▸ Security Keys, `security_keys.rs`):
+  the password is checked through PAM, then two touches: a credential
+  made for Olo (relying party `olo.local`, not discoverable,
+  `hmac-secret` on), then its secret for a random salt, which seals the
+  password (XChaCha20-Poly1305 under HKDF of it, the user and credential
+  as associated data). Kept in `security-keys.json` in the config
+  directory (0600): useless without the key. A second key set up the same
+  way is a spare; Remove forgets one. The box follows keys plugged in and
+  out from udev's own announcements (`olo_fido::hid::watch`, netlink
+  group 2: sent once the node's permissions are set; no polling), asking
+  each what it is and whether it's one set up without a touch
+  (GetAssertion with `up` off). A key with a PIN set that wants it for a
+  credential isn't supported yet (it says so).
+* **Unlocking** (`olo_fido::touch`): each window, as it asks for the
+  password, starts a wait on a thread of its own: if a key set up is
+  plugged in it says `olo_fido::TOUCH_OR_TYPE` ("Touch your security key,
+  or type your password.") beside the field, and the password the touch
+  unseals goes where a typed one would (sudo's prompt, the polkit
+  helper's, PAM through `olo_system::auth::check_password` for Passwords
+  and the lock screen, so a password changed since setting up fails as a
+  wrong one would). The wait is dropped with the window (CTAPHID_CANCEL),
+  and Passwords and the lock screen wait only while their window has the
+  keyboard. The key gives up on a touch after about 30 seconds; the lock
+  screen asks again three times, then not till someone is there (a key,
+  the pointer), so a locked computer's key doesn't blink all night.
+* **Stray touches** (app_server `security_key.rs`): a touch with nothing
+  waiting types the key's one-time code through its own USB keyboard.
+  app_server knows that keyboard by the device as it's added
+  (`olo_protocol::keyboards::security_key`, by its USB id from then on)
+  and passes its keys to nobody; three touches in a row (each within
+  three seconds of the last) type the third's code into the focused
+  window as the key would have (`SecurityKeySettings::three_touches_type`,
+  on by default: Preferences ▸ Security ▸ Three touches type a code).
+  While a window waits for the key a touch answers that instead (FIDO),
+  typing nothing at all.
+* **Testing**: never with the person's key or password. Debug builds take
+  `OLO_FIDO_SOFT=FILE`, a software key (`olo_fido::soft`: the same
+  CTAPHID and CTAP2, its master secret in FILE so a credential made in
+  one process opens in another) that touches itself
+  `OLO_FIDO_SOFT_TOUCH_MS` (400) after it starts waiting, or never
+  ("never"); with the PAM stand-in (`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE`),
+  `OLO_SUDO_REAL` and `OLO_POLKIT_HELPER` the whole thing runs headless.
+  `cargo run -p olo-fido --example info` asks every key plugged in what it
+  is, without a touch. `cargo test -p olo-fido` (both PIN protocols
+  against the soft key, cancelling, sealing).
 
 ## Each display on its own GPU (app_server udev.rs; Preferences ▸ Display ▸ Graphics)
 

@@ -109,6 +109,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
         let key = evt.key_code().raw().saturating_sub(8);
+        // A security key's typing goes to nobody, but three touches in a
+        // row (security_key.rs).
+        if !self.security_key_ids.is_empty() && evt.device().usb_id().is_some_and(|id| self.security_key_ids.contains(&id)) {
+            let pressed = evt.state() == KeyState::Pressed;
+            let typing = self.settings.security.keys.three_touches_type;
+            if let Some(keys) = self.security_key_taps.feed(key, pressed, std::time::Instant::now(), typing) {
+                let time = Event::time(&evt);
+                for (k, p) in keys {
+                    let _ = self.physical_key(k, p, time);
+                }
+            }
+            return KeyAction::None;
+        }
         // A keyboard whose Alt and Super change places (its own setting:
         // a PC keyboard's, not an Apple one's on the same computer).
         let swap = &self.settings.keyboard.swap_alt_super;
@@ -1197,6 +1210,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_device_added<B: InputBackend>(&mut self, device: B::Device) {
+        // A security key's keyboard (its one-time codes): known by the
+        // device, its typing taken from now on.
+        if device.has_capability(DeviceCapability::Keyboard)
+            && let Some(id) = device.usb_id()
+            && olo_protocol::keyboards::security_key(&device.name(), id.1)
+            && !self.security_key_ids.contains(&id)
+        {
+            info!(name = device.name(), "a security key's keyboard: its touches type nothing on their own");
+            self.security_key_ids.push(id);
+        }
         let dh = &self.display_handle;
         if device.has_capability(DeviceCapability::TabletTool) {
             self.seat.tablet_seat().add_wp_tablet(dh, &TabletDescriptor::from(&device));

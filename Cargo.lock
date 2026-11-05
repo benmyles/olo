@@ -7167,11 +7167,13 @@ name = "olo-lock"
 version = "0.1.0"
 dependencies = [
  "olo-crash",
+ "olo-fido",
  "olo-system",
  "olo-theme",
  "olo-ui",
  "olo-xdg",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -7284,6 +7286,7 @@ dependencies = [
  "chrono",
  "getrandom 0.3.4",
  "olo-crash",
+ "olo-fido",
  "olo-keychain",
  "olo-kit-base",
  "olo-onepassword",
@@ -7315,10 +7318,12 @@ name = "olo-polkit-agent"
 version = "0.1.0"
 dependencies = [
  "olo-crash",
+ "olo-fido",
  "olo-system",
  "olo-ui",
  "olo-xdg",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -7375,6 +7380,7 @@ dependencies = [
  "olo-color",
  "olo-complete",
  "olo-crash",
+ "olo-fido",
  "olo-palm",
  "olo-protocol",
  "olo-screensavers",
@@ -7677,6 +7683,7 @@ dependencies = [
  "image",
  "libc",
  "olo-crash",
+ "olo-fido",
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",

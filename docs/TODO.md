@@ -98,6 +98,23 @@ of Finished; a new one goes where its priority puts it.
   one the key used up; that's fine (Yubico's counter only moves on). A
   key's touches are told apart from a real keyboard's typing by the
   device, never by timing or the text.
+  *Done* (2026-11-05, HACKING's "Security keys"): `olo-fido` speaks
+  CTAPHID and CTAP2 to the key itself (no root, no PAM change); setting
+  up in Preferences ▸ Security ▸ Security Keys (the password checked
+  through PAM, two touches, a spare the same way, Remove); a touch
+  answering Terminal's sudo window, Passwords' unlock, the polkit agent
+  (the person's own identity) and the lock screen, each window saying
+  so; stray touches typing nothing (app_server takes the key's keyboard
+  by the device) and three in a row typing the code ("Three touches type
+  a code", on). All of it tried headless with a software key
+  (`OLO_FIDO_SOFT`), the PAM stand-in, a stand-in sudo and polkit
+  helper; Ben's key asked what it is without a touch (firmware 5.8.0,
+  hmac-secret, no PIN set, a key agreement in protocol 2). *Left*: Ben's
+  setup with his key (its two touches), then sudo, Passwords, polkit and
+  the lock screen touched for real, and a stray touch and three in a row
+  in a text field; a key with a PIN that wants it (not asked for yet);
+  Olo Doctor saying when a key's FIDO node isn't the person's to open
+  (uaccess: his is).
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the

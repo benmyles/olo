@@ -1,17 +1,23 @@
 //! Locking: Passwords opens locked and locks again when idle. Touch ID
-//! (fprintd) unlocks it, or the account password (PAM), both checked on
-//! threads. The sensor is claimed only while the locked window has the
-//! keyboard, so it never holds it from sudo or the lock screen.
+//! (fprintd) unlocks it, a touch of a security key set up (`olo_fido`:
+//! the password it keeps, checked as one typed), or the account password
+//! (PAM), each on a thread. The sensor and the key are waited on only
+//! while the locked window has the keyboard, so neither is held from
+//! sudo or the lock screen.
 
 use olo_system::{auth, fingerprint};
 use olo_ui::Proxy;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 pub enum LockMsg {
     Finger(fingerprint::Event),
     /// No sensor, no enrolled finger, or it failed.
     NoFinger,
     Password(Result<(), auth::AuthError>),
+    /// A security key set up is plugged in and waits for a touch.
+    KeyWaiting,
+    /// The key's password, or why not.
+    Key(Result<Zeroizing<String>, String>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -31,6 +37,9 @@ pub struct Lock {
     pub error: Option<String>,
     pub finger: Finger,
     stop: Option<fingerprint::Stop>,
+    /// A touch of a security key waited for, and what to say of it.
+    key: Option<olo_fido::Touch>,
+    pub key_note: Option<String>,
     user: String,
     proxy: Proxy,
 }
@@ -38,7 +47,7 @@ pub struct Lock {
 impl Lock {
     pub fn new(proxy: Proxy, locked: bool) -> Lock {
         let finger = if std::env::var_os("OLO_NO_FINGERPRINT").is_some() { Finger::Off } else { Finger::Idle };
-        Lock { locked, password: String::new(), checking: false, error: None, finger, stop: None, user: auth::current_user().unwrap_or_default(), proxy }
+        Lock { locked, password: String::new(), checking: false, error: None, finger, stop: None, key: None, key_note: None, user: auth::current_user().unwrap_or_default(), proxy }
     }
 
     pub fn user(&self) -> &str {
@@ -52,13 +61,27 @@ impl Lock {
         self.password.clear();
     }
 
-    /// Listen for a finger while the locked window has the keyboard.
+    /// Listen for a finger, and wait for a key, while the locked window
+    /// has the keyboard.
     pub fn focus(&mut self, focused: bool) {
         match (focused && self.locked, &self.stop) {
             (true, None) if self.finger != Finger::Off => self.start_fingerprint(),
             (false, Some(_)) => self.stop_fingerprint(),
             _ => {}
         }
+        match (focused && self.locked, &self.key) {
+            (true, None) => self.wait_for_key(),
+            (false, Some(_)) => {
+                self.key = None;
+                self.key_note = None;
+            }
+            _ => {}
+        }
+    }
+
+    fn wait_for_key(&mut self) {
+        let (p, proxy) = (self.proxy.clone(), self.proxy.clone());
+        self.key = Some(olo_fido::touch(self.user.clone(), move || p.send(LockMsg::KeyWaiting), move |r| proxy.send(LockMsg::Key(r.map_err(|e| e.to_string())))));
     }
 
     fn start_fingerprint(&mut self) {
@@ -130,6 +153,19 @@ impl Lock {
                     other => other.to_string(),
                 });
             }
+            LockMsg::KeyWaiting => self.key_note = Some(olo_fido::TOUCH_OR_TYPE.into()),
+            LockMsg::Key(Ok(password)) => {
+                // Checked as one typed (a password changed since the key
+                // was set up doesn't do).
+                self.key_note = None;
+                self.password.zeroize();
+                self.password = password.to_string();
+                self.submit();
+            }
+            LockMsg::Key(Err(why)) => {
+                self.key = None;
+                self.key_note = Some(format!("{why} Type your password."));
+            }
         }
         false
     }
@@ -147,6 +183,8 @@ impl Lock {
         self.locked = false;
         self.error = None;
         self.stop_fingerprint();
+        self.key = None;
+        self.key_note = None;
         true
     }
 }

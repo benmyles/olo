@@ -32,6 +32,7 @@ olo-theme.workspace = true
 olo-xdg.workspace = true
 olo-protocol.workspace = true
 olo-system.workspace = true
+olo-fido.workspace = true
 olo-sync.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }

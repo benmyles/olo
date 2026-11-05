@@ -1,14 +1,20 @@
 //! Security: how Passwords keeps its secrets (syncing with 1Password,
-//! locking, `op` on the command line, the clipboard). Passwords follows these live.
+//! locking, `op` on the command line, the clipboard; Passwords follows
+//! these live), and beside them security keys (`security_keys`).
 
 use olo_ui::gpui::SharedString;
 
 use crate::{
     form::{Ui, divider_for},
     power::minutes_menu,
+    security_keys,
 };
 
-pub fn ui(ui: &mut Ui) {
+pub fn ui(ui: &mut Ui, keys: &mut security_keys::State) {
+    ui.columns(passwords, |ui| security_keys::ui(ui, keys));
+}
+
+fn passwords(ui: &mut Ui) {
     let p = ui.s.security.passwords.clone();
     ui.bbox("Passwords: Syncing with 1Password", |ui| {
         ui.radio("Automatically", p.auto_sync, |s| s.security.passwords.auto_sync = true);

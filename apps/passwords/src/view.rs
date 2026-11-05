@@ -301,8 +301,10 @@ fn sync_ago(at: chrono::DateTime<chrono::Utc>) -> String {
 fn locked(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwords>) -> AnyElement {
     let me = cx.entity();
     let p = theme::palette(cx);
-    let mut message = match &app.lock.finger {
-        Finger::Listening(s) => s.clone(),
+    let mut message = match (&app.lock.finger, &app.lock.key_note) {
+        (Finger::Listening(s), Some(_)) if s == "Touch ID or enter your password" => "Touch ID, touch your security key, or enter your password".into(),
+        (Finger::Listening(s), _) => s.clone(),
+        (_, Some(k)) => k.clone(),
         _ => format!("Enter the password for “{}” to unlock it.", app.lock.user()),
     };
     // Who is waiting: the app by name, or apps, if more than one.

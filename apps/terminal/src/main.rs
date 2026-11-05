@@ -1700,6 +1700,25 @@ impl Terminal {
                 if r.said(said) {
                     self.sudo_done(cx, id, None);
                 } else {
+                    // (The key answered before sudo asked.)
+                    r.answer_with_key(cx);
+                    cx.redraw(id);
+                }
+            }
+            sudo::Event::KeyWaiting(conn) => {
+                if let Some(id) = self.sudo_window(conn)
+                    && let Some(Win::Sudo(r)) = self.windows.get_mut(&id)
+                {
+                    r.key_waiting();
+                    cx.redraw(id);
+                }
+            }
+            sudo::Event::Key(conn, said) => {
+                if let Some(id) = self.sudo_window(conn)
+                    && let Some(Win::Sudo(r)) = self.windows.get_mut(&id)
+                {
+                    tracing::info!(what = r.summary(), ok = said.is_ok(), "sudo: the security key answered");
+                    r.key_said(said, cx);
                     cx.redraw(id);
                 }
             }
@@ -1727,6 +1746,7 @@ impl Terminal {
         let _ = over;
         let id = cx.open_window(WindowOptions::new("sudo", size.0, size.1).min_size(size.0, size.1).max_size(size.0, size.1));
         r.focus_field(cx, id);
+        r.wait_for_key(cx.proxy());
         self.windows.insert(id, Win::Sudo(Box::new(r)));
         cx.activate(id);
     }

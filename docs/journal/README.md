@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### The lock screen: touch your security key
+
+*04:33* — Asked as the screen locks, again three times, then whenever someone is there.
+
+![The lock screen: touch your security key](2026-11-05/043302-the-lock-screen-touch-your-security-key.png)
+
+### Terminal's sudo window: touch your security key
+
+*04:33* — With a key set up and plugged in, the window says a touch will do; the password the key keeps goes to sudo's prompt.
+
+![Terminal's sudo window: touch your security key](2026-11-05/043302-terminal-s-sudo-window-touch-your-security-key.png)
+
+### Preferences ▸ Security: Security Keys
+
+*04:33* — A security key (a YubiKey) set up so a touch of it stands for the account password: the password checked, then two touches; a spare the same way; and three touches in a row to type its code where you are. Shown set up with the test key.
+
+![Preferences ▸ Security: Security Keys](2026-11-05/043301-preferences-security-security-keys.png)
+
 ### Cube, light
 
 *03:52* — The Cube theme: workstation greys, a black tab, deep blue selection, its airbrushed icons and studio wallpaper.

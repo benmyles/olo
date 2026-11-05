@@ -1404,6 +1404,23 @@ pub const AI_EFFORTS: &[(&str, &str)] = &[("low", "Low"), ("medium", "Medium"), 
 #[serde(default)]
 pub struct SecuritySettings {
     pub passwords: PasswordsSecurity,
+    pub keys: SecurityKeySettings,
+}
+
+/// Security keys (a YubiKey): set up in Preferences ▸ Security, a touch
+/// of one standing for the account password (`olo_fido`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct SecurityKeySettings {
+    /// A key's touches type its one-time code only when three come in a
+    /// row: one alone, with nothing waiting for the key, types nothing.
+    pub three_touches_type: bool,
+}
+
+impl Default for SecurityKeySettings {
+    fn default() -> Self {
+        SecurityKeySettings { three_touches_type: true }
+    }
 }
 
 /// How Passwords keeps its secrets.

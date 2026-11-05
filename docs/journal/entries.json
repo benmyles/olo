@@ -3196,5 +3196,23 @@
   "title": "Cube, light",
   "caption": "The Cube theme: workstation greys, a black tab, deep blue selection, its airbrushed icons and studio wallpaper.",
   "image": "2026-11-05/035249-cube-light.png"
+ },
+ {
+  "time": "2026-11-05T04:33:01",
+  "title": "Preferences \u25b8 Security: Security Keys",
+  "caption": "A security key (a YubiKey) set up so a touch of it stands for the account password: the password checked, then two touches; a spare the same way; and three touches in a row to type its code where you are. Shown set up with the test key.",
+  "image": "2026-11-05/043301-preferences-security-security-keys.png"
+ },
+ {
+  "time": "2026-11-05T04:33:02",
+  "title": "Terminal's sudo window: touch your security key",
+  "caption": "With a key set up and plugged in, the window says a touch will do; the password the key keeps goes to sudo's prompt.",
+  "image": "2026-11-05/043302-terminal-s-sudo-window-touch-your-security-key.png"
+ },
+ {
+  "time": "2026-11-05T04:33:02",
+  "title": "The lock screen: touch your security key",
+  "caption": "Asked as the screen locks, again three times, then whenever someone is there.",
+  "image": "2026-11-05/043302-the-lock-screen-touch-your-security-key.png"
  }
 ]

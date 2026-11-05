@@ -230,6 +230,53 @@ pub fn unlock(user: &str, cancel: &AtomicBool, touch: &(dyn Fn() + Sync)) -> Res
     Err(last)
 }
 
+/// What a window asking for the password says while a key could answer
+/// for it.
+pub const TOUCH_OR_TYPE: &str = "Touch your security key, or type your password.";
+
+/// A touch of a key being waited for, beside a password field; dropping
+/// it (the window going, the password typed) stops the wait.
+pub struct Touch {
+    cancel: std::sync::Arc<AtomicBool>,
+}
+
+impl Touch {
+    /// Stop waiting.
+    pub fn stop(&self) {
+        self.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Drop for Touch {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Wait, on a thread of its own, for a touch of one of `user`'s keys set
+/// up: if one is plugged in, `waiting` is called (on that thread) as the
+/// wait begins (for the window to say `TOUCH_OR_TYPE`), then `done` with
+/// the password or why not. Nothing is called if no key is set up and
+/// plugged in, or once stopped.
+pub fn touch(user: String, waiting: impl FnOnce() + Send + 'static, done: impl FnOnce(Result<Zeroizing<String>>) + Send + 'static) -> Touch {
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let stop = cancel.clone();
+    let spawned = std::thread::Builder::new().name("security-key".into()).spawn(move || {
+        if !ready(&user) {
+            return;
+        }
+        waiting();
+        let r = unlock(&user, &stop, &|| {});
+        if !stop.load(std::sync::atomic::Ordering::Relaxed) && !matches!(r, Err(Error::Cancelled)) {
+            done(r);
+        }
+    });
+    if let Err(e) = spawned {
+        tracing::warn!(?e, "no thread to wait for a security key on");
+    }
+    Touch { cancel }
+}
+
 /// `f` again while another program has the key (CTAPHID's busy), for up
 /// to five seconds.
 fn busy_retry<T>(cancel: &AtomicBool, mut f: impl FnMut() -> Result<T>) -> Result<T> {
@@ -296,6 +343,16 @@ mod tests {
         }
         // A touch asked for each make and each secret (not for `holds`).
         assert_eq!(touches.load(Ordering::Relaxed), 8);
+    }
+
+    #[test]
+    fn nothing_waited_for_without_a_key_set_up() {
+        // (No key set up for a user that isn't: neither callback.)
+        let (tx, rx) = std::sync::mpsc::channel::<&str>();
+        let tx2 = tx.clone();
+        let t = touch("olo-nobody-at-all".into(), move || tx.send("waiting").unwrap(), move |_| tx2.send("done").unwrap());
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
+        drop(t);
     }
 
     #[test]

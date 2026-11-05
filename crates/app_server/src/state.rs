@@ -284,6 +284,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Olo Rescue, while it's on (rescue.rs), and its keys followed.
     pub rescue: Option<crate::rescue::Rescue>,
     pub rescue_chord: crate::rescue::Chord,
+    /// Security keys' keyboards (their USB product and vendor ids), whose
+    /// typing is taken (security_key.rs), and their touches.
+    pub security_key_ids: Vec<(u32, u32)>,
+    pub security_key_taps: crate::security_key::Taps,
     /// The display a workspace was last switched on (its connector): the
     /// active one while no window has the focus.
     pub last_display: Option<String>,
@@ -1210,6 +1214,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             showing: HashMap::new(),
             rescue: None,
             rescue_chord: Default::default(),
+            security_key_ids: Vec::new(),
+            security_key_taps: Default::default(),
             last_display: None,
             told_active: None,
             clipboard_helpers: Vec::new(),

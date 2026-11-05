@@ -77,6 +77,62 @@ pub fn is_fido(rd: &[u8]) -> bool {
     false
 }
 
+/// Call `changed` whenever a HID device node comes or goes (a key
+/// plugged in or out), from udev's own announcements (netlink, group 2:
+/// sent once udev has set the node up, its permissions too), on a thread
+/// of its own that sleeps till then. Errors if the socket can't be had.
+pub fn watch(changed: impl Fn() + Send + 'static) -> io::Result<()> {
+    // SAFETY: plain socket calls on a socket of our own, with structs
+    // sized as the kernel expects.
+    let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, libc::NETLINK_KOBJECT_UEVENT) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
+    addr.nl_family = libc::AF_NETLINK as u16;
+    // udev's group: after its rules have run.
+    addr.nl_groups = 2;
+    let bound = unsafe { libc::bind(fd, (&addr as *const libc::sockaddr_nl).cast(), std::mem::size_of::<libc::sockaddr_nl>() as u32) };
+    if bound < 0 {
+        let e = io::Error::last_os_error();
+        unsafe { libc::close(fd) };
+        return Err(e);
+    }
+    std::thread::Builder::new().name("fido-plugging".into()).spawn(move || {
+        let mut buf = vec![0u8; 8192];
+        loop {
+            let n = unsafe { libc::recv(fd, buf.as_mut_ptr().cast(), buf.len(), 0) };
+            if n < 0 {
+                if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                break;
+            }
+            let msg = &buf[..n as usize];
+            if is_hidraw_change(msg) {
+                changed();
+            }
+        }
+        unsafe { libc::close(fd) };
+    })?;
+    Ok(())
+}
+
+/// Whether a udev announcement is a hidraw node added or removed.
+fn is_hidraw_change(msg: &[u8]) -> bool {
+    // libudev's: a header ("libudev", a magic number, its size, then where
+    // the properties are and how long), the properties after it.
+    let props = if msg.starts_with(b"libudev\0") && msg.len() >= 24 {
+        let at = u32::from_ne_bytes([msg[16], msg[17], msg[18], msg[19]]) as usize;
+        let len = u32::from_ne_bytes([msg[20], msg[21], msg[22], msg[23]]) as usize;
+        msg.get(at..at.saturating_add(len)).unwrap_or(&[])
+    } else {
+        msg
+    };
+    let has = |needle: &[u8]| props.split(|&b| b == 0).any(|p| p == needle);
+    has(b"SUBSYSTEM=hidraw") && (has(b"ACTION=add") || has(b"ACTION=remove"))
+}
+
 /// Reports to and from a key.
 pub trait Transport: Send {
     fn send(&mut self, report: &[u8; REPORT]) -> io::Result<()>;
@@ -128,6 +184,27 @@ impl Transport for Hidraw {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hidraw_announcements() {
+        // As udev sends them: its header, then the properties.
+        let udev = |props: &[u8]| {
+            let mut m = b"libudev\0".to_vec();
+            m.extend_from_slice(&0xfeedcafeu32.to_be_bytes());
+            m.extend_from_slice(&40u32.to_ne_bytes());
+            m.extend_from_slice(&40u32.to_ne_bytes());
+            m.extend_from_slice(&(props.len() as u32).to_ne_bytes());
+            m.resize(40, 0x55);
+            m.extend_from_slice(props);
+            m
+        };
+        assert!(is_hidraw_change(&udev(b"ACTION=add\0DEVPATH=/devices/x/hidraw/hidraw4\0SUBSYSTEM=hidraw\0DEVNAME=/dev/hidraw4\0")));
+        assert!(is_hidraw_change(&udev(b"ACTION=remove\0SUBSYSTEM=hidraw\0")));
+        assert!(!is_hidraw_change(&udev(b"ACTION=add\0SUBSYSTEM=input\0")));
+        assert!(!is_hidraw_change(&udev(b"ACTION=change\0SUBSYSTEM=hidraw\0")));
+        // The kernel's own form.
+        assert!(is_hidraw_change(b"add@/devices/x/hidraw/hidraw4\0ACTION=add\0SUBSYSTEM=hidraw\0"));
+    }
 
     #[test]
     fn a_fido_interface_by_its_descriptor() {
