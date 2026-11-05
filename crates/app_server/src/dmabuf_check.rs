@@ -199,6 +199,8 @@ enum Job {
     Bound(Option<Instant>),
     /// A client let go of a buffer.
     Gone,
+    /// app_server is ending ([`Checks::stop`]).
+    Quit,
 }
 
 /// A buffer the worker holds.
@@ -325,6 +327,8 @@ impl Worker {
 /// Buffers being checked, and the worker checking them.
 pub struct Checks {
     tx: mpsc::Sender<Job>,
+    /// The worker's thread, waited for as app_server ends.
+    worker: Option<std::thread::JoinHandle<()>>,
     pending: HashMap<u64, (Dmabuf, ImportNotifier, Gate)>,
     next: u64,
     /// Frames the renderer has finished ([`Checks::frame_done`]).
@@ -345,7 +349,7 @@ impl Checks {
         let frames = Arc::new(AtomicU64::new(0));
         let spare = Arc::new(Mutex::new(None));
         let (seen, shared, renderer) = (frames.clone(), spare.clone(), display.clone());
-        let _ = std::thread::Builder::new().name("dmabuf check".into()).spawn(move || {
+        let worker = std::thread::Builder::new().name("dmabuf check".into()).spawn(move || {
             let (display, spare) = node.as_deref().and_then(own_display).unwrap_or((display, None));
             *shared.lock().unwrap() = spare.clone();
             let mut worker = Worker { display, spare, kept: Vec::new(), waiting: None, look_until: None };
@@ -357,9 +361,17 @@ impl Checks {
                     (None, Some(d)) => rx.recv_timeout(d),
                 };
                 let mut job = match job {
+                    Ok(Job::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        // app_server is ending: what it holds is left for
+                        // the process's end to free (a destroy now would
+                        // race EGL's own teardown at exit: the cores of
+                        // 2026-11-04, `dri_destroy` on a freed heap and a
+                        // dead mutex in NVIDIA's thread-exit destructor).
+                        std::mem::forget(worker);
+                        return;
+                    }
                     Ok(job) => Some(job),
                     Err(mpsc::RecvTimeoutError::Timeout) => None,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 };
                 if job.is_none() {
                     // (Nothing came in: buffers that went noted, and, if
@@ -386,6 +398,10 @@ impl Checks {
                             worker.look_until = Some(Instant::now() + LOOK_FOR);
                             worker.note(seen.load(Ordering::Relaxed), None);
                         }
+                        Job::Quit => {
+                            std::mem::forget(worker);
+                            return;
+                        }
                     }
                     // Checks first; the freeing once none waits (or too
                     // much waits to be freed).
@@ -404,7 +420,27 @@ impl Checks {
                 }
             }
         });
-        Checks { tx, pending: HashMap::new(), next: 0, frames, renderer, spare }
+        Checks { tx, worker: worker.ok(), pending: HashMap::new(), next: 0, frames, renderer, spare }
+    }
+
+    /// As app_server ends, before its renderer and EGL go: the worker
+    /// told to quit, and waited for (its thread's end runs the driver's
+    /// destructors, which need EGL still there), half a second at most,
+    /// so a driver stuck in a check can't hold an upgrade's restart up.
+    pub fn stop(&mut self) {
+        let Some(worker) = self.worker.take() else { return };
+        let asked = Instant::now();
+        let _ = self.tx.send(Job::Quit);
+        let until = Instant::now() + std::time::Duration::from_millis(500);
+        while !worker.is_finished() && Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_micros(100));
+        }
+        if worker.is_finished() {
+            let _ = worker.join();
+            tracing::info!(took_ms = asked.elapsed().as_secs_f64() * 1000.0, "the dmabuf check worker stopped");
+        } else {
+            tracing::warn!("the dmabuf check worker didn't stop in time; ending without it");
+        }
     }
 
     /// Check `dmabuf` on the worker, telling `notifier` later; or, if the
@@ -455,5 +491,11 @@ impl Checks {
     /// the renderer has it.
     pub fn finish(&mut self, id: u64) -> Option<(Dmabuf, ImportNotifier, Gate)> {
         self.pending.remove(&id)
+    }
+}
+
+impl Drop for Checks {
+    fn drop(&mut self) {
+        self.stop();
     }
 }

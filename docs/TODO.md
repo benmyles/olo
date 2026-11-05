@@ -32,16 +32,6 @@ of Finished; a new one goes where its priority puts it.
   report says, else: behind other windows rather than minimized, on
   another workspace, across a lock or the display sleeping.
 
-- **app_server crashes as it exits** (found 2026-11-04 in the core
-  dumps of headless test sessions, `coredumpctl list`): a SIGSEGV in
-  the `dmabuf check` thread freeing what it keeps
-  (`drop_glue<dmabuf_check::Kept>` → `dri_destroy` → a corrupt heap),
-  others in NVIDIA's EGL and in `__eglFini` while that thread still
-  holds a lock. The thread outlives the renderer it borrows from as the
-  process ends. An in-place reload is such an exit: stop and join the
-  thread (its images dropped while EGL is still up) before the
-  renderer goes, and check a stopped session leaves no core.
-
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
   NAME --steps 80 --seed 7` on a `--session --shell` session at 3024×1890,
@@ -1220,6 +1210,25 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**app_server crashes as it exits**~~ (done 2026-11-04: the
+  `dmabuf check` worker is told to quit and waited for as app_server
+  ends, before the renderer and EGL go (`Checks::stop`, at the end of
+  the udev and headless loops, and on drop), leaving what it holds for
+  the process's end to free rather than destroying it during EGL's
+  teardown; the wait is bounded (500 ms) so a stuck driver can't hold
+  up a reload, and takes 0.16 ms. Fixed from the cores' stacks: the
+  race is narrow and didn't happen on demand, neither before nor after,
+  in 20 headless stops at 3024 × 1964 with seven windows and 12 reloads
+  under olo-session) (found 2026-11-04 in the core
+  dumps of headless test sessions, `coredumpctl list`): a SIGSEGV in
+  the `dmabuf check` thread freeing what it keeps
+  (`drop_glue<dmabuf_check::Kept>` → `dri_destroy` → a corrupt heap),
+  others in NVIDIA's EGL and in `__eglFini` while that thread still
+  holds a lock. The thread outlives the renderer it borrows from as the
+  process ends. An in-place reload is such an exit: stop and join the
+  thread (its images dropped while EGL is still up) before the
+  renderer goes, and check a stopped session leaves no core.
 
 - ~~**Every Olo program leaves what's needed to debug its crash**~~
   (done 2026-11-04: `olo-crash`, installed first by every program's

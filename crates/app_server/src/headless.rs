@@ -488,6 +488,8 @@ pub fn run_headless(size_arg: Option<&str>) {
     }
     state.save_layout();
     state.save_handover();
+    // The dmabuf worker ends while EGL is still up.
+    state.backend_data.dmabuf_checks.stop();
 }
 
 /// Keyboard hints and Twitcher, if they are up, as elements for `output`

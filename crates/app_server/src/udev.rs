@@ -1379,6 +1379,10 @@ pub fn run_udev() {
     }
     state.save_layout();
     state.save_handover();
+    // The dmabuf worker ends while EGL is still up.
+    if let Some(checks) = state.backend_data.dmabuf_checks.as_mut() {
+        checks.stop();
+    }
     // A colour matrix outlives us: leave the screens as they were.
     for backend in state.backend_data.backends.values() {
         let crtcs: Vec<crtc::Handle> = backend.ctm.borrow().keys().copied().collect();
