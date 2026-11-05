@@ -110,6 +110,83 @@ pub fn chord(output: &Output, label: String) {
     }
 }
 
+/// The pointer as captures draw it (screen recordings, screen sharing):
+/// how many times its size, whether it glides after the real one, and
+/// the glide: where it's drawn, how fast it goes (points a second), where
+/// it's going and as of when.
+struct Captured {
+    size: f64,
+    smooth: bool,
+    glide: Option<Glide>,
+}
+
+#[derive(Clone, Copy)]
+struct Glide {
+    at: Point<f64, Logical>,
+    speed: Point<f64, Logical>,
+    to: Point<f64, Logical>,
+    when: Instant,
+}
+
+static CAPTURED: Mutex<Captured> = Mutex::new(Captured { size: 1.0, smooth: false, glide: None });
+
+/// How fast the glide closes in: a critically damped spring's rate (per
+/// second). A jump is 95% done in 0.26 s, a hand's jitter (a few points
+/// back and forth in 20 ms) smoothed away, no overshoot.
+const GLIDE: f64 = 18.0;
+
+/// Captures draw the pointer `size` times its size (1, or 0: as it is),
+/// gliding after the real one if `smooth`.
+pub fn set_pointer(size: f64, smooth: bool) {
+    let mut c = CAPTURED.lock().unwrap();
+    c.size = if size > 0.0 { size.clamp(1.0, 4.0) } else { 1.0 };
+    c.smooth = smooth;
+    c.glide = None;
+}
+
+/// Where captures draw the pointer, the real one being at `real` (the
+/// glide moved on to now), and how many times its size.
+pub fn captured_pointer(real: Point<f64, Logical>) -> (Point<f64, Logical>, f64) {
+    let mut c = CAPTURED.lock().unwrap();
+    if !c.smooth {
+        return (real, c.size);
+    }
+    let now = Instant::now();
+    let g = c.glide.unwrap_or(Glide { at: real, speed: Point::default(), to: real, when: now });
+    let (at, speed) = glide(g.at - real, g.speed, now.duration_since(g.when).as_secs_f64());
+    let at = real + at;
+    c.glide = Some(Glide { at, speed, to: real, when: now });
+    (at, c.size)
+}
+
+/// A critically damped spring `dt` seconds on: from `off` (where it is,
+/// less where it's going) at `speed`, its new offset and speed. Exact for
+/// any `dt`, so frames coming unevenly glide the same.
+fn glide(off: Point<f64, Logical>, speed: Point<f64, Logical>, dt: f64) -> (Point<f64, Logical>, Point<f64, Logical>) {
+    let e = (-GLIDE * dt).exp();
+    let axis = |y: f64, v: f64| {
+        let k = v + GLIDE * y;
+        ((y + k * dt) * e, (v - GLIDE * k * dt) * e)
+    };
+    let ((x, vx), (y, vy)) = (axis(off.x, speed.x), axis(off.y, speed.y));
+    // (Within a twentieth of a point and nearly still: arrived.)
+    if x.hypot(y) < 0.05 && vx.hypot(vy) < 1.0 {
+        return (Point::default(), Point::default());
+    }
+    ((x, y).into(), (vx, vy).into())
+}
+
+/// The captured pointer is still gliding: the displays draw on till it
+/// arrives.
+pub fn gliding() -> bool {
+    let c = CAPTURED.lock().unwrap();
+    c.smooth
+        && c.glide.is_some_and(|g| {
+            let off = g.at - g.to;
+            off.x.hypot(off.y) >= 0.05 || g.speed.x.hypot(g.speed.y) >= 1.0
+        })
+}
+
 /// Something is up (a ring spreading, a chord fading): the displays
 /// draw on.
 pub fn active() -> bool {
@@ -280,6 +357,29 @@ mod tests {
         for key in [28, 1, 15, 103, 108, 105, 106] {
             assert!(shown_alone(key));
         }
+    }
+
+    #[test]
+    fn the_pointer_glides_without_overshooting() {
+        // A jump of 400 points: 95% there in 0.26 s, never past it.
+        let (mut off, mut speed) = (Point::<f64, Logical>::from((-400.0, 0.0)), Point::default());
+        let mut t = 0.0;
+        while t < 0.26 {
+            (off, speed) = glide(off, speed, 1.0 / 120.0);
+            assert!(off.x <= 0.0, "overshot at {t}: {off:?}");
+            t += 1.0 / 120.0;
+        }
+        assert!(off.x > -25.0 && off.x < -5.0, "{off:?}");
+        // The same time in uneven steps: the same place.
+        let (mut o2, mut s2) = (Point::<f64, Logical>::from((-400.0, 0.0)), Point::default());
+        for dt in [0.1, 0.01, 0.05, 0.1] {
+            (o2, s2) = glide(o2, s2, dt);
+        }
+        let (o1, _) = glide((-400.0, 0.0).into(), Point::default(), 0.26);
+        assert!((o2.x - o1.x).abs() < 0.5, "{o1:?} {o2:?}");
+        let _ = s2;
+        // Long enough: arrived, still.
+        assert_eq!(glide((-400.0, 3.0).into(), (50.0, 0.0).into(), 2.0), (Point::default(), Point::default()));
     }
 
     #[test]

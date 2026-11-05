@@ -14,7 +14,7 @@
 //!                [--seconds N] [--fps N] [--no-pointer]
 //!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
 //!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--background]
-//!                [--to PATH]
+//!                [--pointer-size K] [--smooth-pointer] [--to PATH]
 //! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
 //! olo-screenshot --trim VIDEO.mp4 --start S --end E [--to PATH]
 //! olo-screenshot --stop          the recording on this display, finished
@@ -42,6 +42,14 @@
 //! `--show-clicks` and `--show-keys` (or the settings', Record…'s ticks)
 //! have app_server show clicks (a ring) and shortcuts (a key cap) while
 //! it records (`Request::SetShowing`), and stop after.
+//!
+//! `--pointer-size K` draws the pointer K times its size in the
+//! recording (1 to 4; the built-in cursors drawn at that size, not
+//! enlarged), and `--smooth-pointer` has it glide after the real one (a
+//! hand's jitter and an agent's jumps smoothed: app_server's
+//! `showing::captured_pointer`), as the settings say otherwise (Record… ▸
+//! Larger Pointer, 1.5×, and Smooth Pointer). Only in what's captured:
+//! the screen's pointer is as it was.
 //!
 //! `--background` (or the settings', Record… ▸ Window on a Background)
 //! shows a window's recording on the wallpaper, blurred, the window's
@@ -352,6 +360,11 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let as_gif = args.iter().any(|a| a == "--as-gif") || settings.as_ref().is_some_and(|s| s.gif);
     let show_clicks = args.iter().any(|a| a == "--show-clicks") || settings.as_ref().is_some_and(|s| s.show_clicks);
     let show_keys = args.iter().any(|a| a == "--show-keys") || settings.as_ref().is_some_and(|s| s.show_keys);
+    let pointer_size: f64 = match option(args, "--pointer-size") {
+        Some(v) => v.parse().ok().filter(|k: &f64| (1.0..=4.0).contains(k)).ok_or("--pointer-size takes 1 to 4 (times the pointer's size)")?,
+        None => settings.as_ref().map_or(1.0, |s| s.pointer_size.clamp(1.0, 4.0)),
+    };
+    let smooth_pointer = args.iter().any(|a| a == "--smooth-pointer") || settings.as_ref().is_some_and(|s| s.smooth_pointer);
     let countdown: u32 = option(args, "--countdown").map_or(Ok(0), str::parse).map_err(|_| "--countdown takes seconds")?;
     let sound = match option(args, "--sound").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.sound.clone())) {
         Some(s) => crate::sound::Which::parse(&s).ok_or("--sound is computer, microphone, both or none")?,
@@ -397,19 +410,20 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false, recording: false };
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
-    // Clicks and keys shown while it records, and not after.
-    let showing = show_clicks || show_keys;
-    let set_showing = |clicks: bool, keys: bool| {
+    // Clicks and keys shown while it records, the pointer as asked, and
+    // as before after.
+    let showing = show_clicks || show_keys || pointer_size != 1.0 || smooth_pointer;
+    let set_showing = |clicks: bool, keys: bool, pointer_size: f64, smooth_pointer: bool| {
         if let Ok(mut c) = olo_protocol::Client::connect() {
-            let _ = c.request(&olo_protocol::Request::SetShowing { clicks, keys });
+            let _ = c.request(&olo_protocol::Request::SetShowing { clicks, keys, pointer_size, smooth_pointer });
         }
     };
     if showing {
-        set_showing(show_clicks, show_keys);
+        set_showing(show_clicks, show_keys, pointer_size, smooth_pointer);
     }
     let result = record_into(&mut capture, &path, fps, seconds, choice, crop, backdrop, sound, countdown.min(10), &g, woken.as_raw_fd());
     if showing {
-        set_showing(false, false);
+        set_showing(false, false, 1.0, false);
     }
     let _ = std::fs::remove_file(going_path());
     WAKE.store(-1, Ordering::SeqCst);

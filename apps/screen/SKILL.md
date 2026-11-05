@@ -42,7 +42,7 @@ is `running`. Delete only screens you made, and only when asked.
 
 ```sh
 olo-screen start demo --size 1920x1080 --scale 2   # a 4K screen (3840 × 2160 pixels)
-olo-screen record-video demo --show-clicks --show-keys   # prints {"path": …, "pid": …} once it's recording
+olo-screen record-video demo --show-clicks --show-keys --smooth-pointer   # prints {"path": …, "pid": …} once it's recording
 # … do what the video shows, at a person's pace …
 olo-screen pause-video demo                        # set up the next part off camera…
 olo-screen resume-video demo                       # …the pause is cut out of the video
@@ -61,9 +61,12 @@ a ring where each click lands and `--show-keys` each shortcut on a key
 cap (typing is never shown), so a viewer can follow what you do; `--sound
 computer` records what the screen plays (screens are silent unless
 started with `--sound`), `--as-gif` makes it a GIF (no sound) for a
-short loop, and `--background` (with `--window ID`) shows the window on
+short loop, `--background` (with `--window ID`) shows the window on
 the blurred wallpaper with rounded corners and a shadow, as a polished
-demo of one app usually is. For a polished demo:
+demo of one app usually is, and `--smooth-pointer` makes your pointer's
+jumps (each `move`) glide in the video, as a hand moves it; with
+`--pointer-size 1.5` it's easier to follow. A glide takes about a
+quarter of a second: `move`, wait that long, then `click`. For a polished demo:
 rehearse it first (without recording), then record it in one go; move
 the pointer deliberately (`move` before `click`), pause a moment after
 each step so it can be seen, and pause the recording (not the demo)

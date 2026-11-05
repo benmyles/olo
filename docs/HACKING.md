@@ -6022,6 +6022,25 @@ Screens' Export Video uses too).
   bits, cached. Written as `.gif.part`, then put in place; SIGINT and
   SIGTERM stop it as they stop a recording. A 4 s recording of
   Terminal at 1280 × 800: 11 frames, 960 × 600, 294 KB.
+- **The pointer in a recording** (app_server `showing::captured_pointer`,
+  `render::captured_pointer`; `Request::SetShowing`'s `pointer_size` and
+  `smooth_pointer`): `--pointer-size K` (1 to 4; Record… ▸ Larger
+  Pointer is 1.5) draws it K times its size in what's captured, the
+  built-in cursor drawn at that size by `olo_hvif` (never enlarged; a
+  client's own cursor is stood in for by it then, as screenshots do);
+  `--smooth-pointer` (Record… ▸ Smooth Pointer) draws it gliding after
+  the real one, a critically damped spring (rate 18 a second: a jump 95%
+  done in 0.26 s, never past it), solved exactly for each frame's time so
+  uneven frames glide the same: a hand's jitter smoothed, an agent's
+  jumps made moves. Only captures have it: the screen's pointer is as it
+  was. While it glides the displays draw on (`keeps_awake`), so the
+  captures have the glide; arrived, nothing. A window's recording now
+  has the pointer too, where it is over the window's content
+  (`render::content_origin`, as screenshots and the IPC find it).
+  Measured (`tools/dev/cost` on app_server, a headless 2× screen
+  recorded, 4 s): the pointer still, 0.5% of a core and 12 wakeups a
+  second, smoothed or not; jumping twice a second, 0.8% plain and 2.5%
+  smoothed (the frames of the glides, 100 wakeups a second).
 - **A window on a background** (`backdrop.rs`; `--background`, the
   settings' `background`, Record… ▸ Window on a Background; only for a
   window): each frame is the window, its corners rounded (10 points'

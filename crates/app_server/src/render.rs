@@ -862,8 +862,7 @@ where
     (size.w > 0 && size.h > 0).then_some((elements, size, scale))
 }
 
-/// The pointer as drawn on `output`, if it is over it: the built-in
-/// cursor for a named shape, or the client's surface.
+/// The pointer as a capture of `output` draws it, if it is over it.
 pub fn pointer_elements<R>(
     renderer: &mut R,
     output: &Output,
@@ -876,16 +875,47 @@ where
     R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
 {
     let Some(geo) = space.output_geometry(output) else { return Vec::new() };
-    if !geo.to_f64().contains(at) {
+    captured_pointer(renderer, geo.to_f64(), output.current_scale().fractional_scale(), at, status)
+}
+
+/// The pointer as captures draw it into a picture of `area` (points, as
+/// the screen has them) at `scale`, the real one being at `at`: where and
+/// as large as `showing` has it for recordings (smoothed, larger), else
+/// as the screen shows it, the built-in cursor for a named shape or the
+/// client's surface. Larger, it's the built-in cursor drawn at that size
+/// (a client's own stood in for by it, as screenshots do), never
+/// enlarged. Nothing if it isn't over `area`.
+pub fn captured_pointer<R>(renderer: &mut R, area: Rectangle<f64, Logical>, scale: f64, at: Point<f64, Logical>, status: &smithay::input::pointer::CursorImageStatus) -> Vec<CustomRenderElements<R>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
+{
+    let (at, size) = crate::showing::captured_pointer(at);
+    if !area.contains(at) {
         return Vec::new();
     }
-    let scale = output.current_scale().fractional_scale();
+    let local = at - area.loc;
+    if size > 1.0 {
+        let Some(shape) = crate::cursor::pictured(status) else { return Vec::new() };
+        let image = crate::cursor::image(shape, scale * size);
+        let corner = local.to_physical(scale) - Point::from((f64::from(image.hotspot.0), f64::from(image.hotspot.1)));
+        let side = image.size as i32;
+        return picture(renderer, corner, &crate::cursor::buffer(shape, scale * size), (side, side), None, Kind::Unspecified).map(CustomRenderElements::Overlay).into_iter().collect();
+    }
     let shape = crate::cursor::named(status).unwrap_or(crate::cursor::Shape::SystemDefault);
     let mut pointer = crate::drawing::PointerElement::default();
     pointer.set_buffer(crate::cursor::buffer(shape, scale), crate::cursor::image(shape, scale).size as i32);
     pointer.set_status(status.clone());
-    let location = (at - geo.loc.to_f64() - crate::cursor::hotspot(status).to_f64()).to_physical(scale).to_i32_round();
+    let location = (local - crate::cursor::hotspot(status).to_f64()).to_physical(scale).to_i32_round();
     pointer.render_elements(renderer, location, scale.into(), 1.0)
+}
+
+/// Where window `id`'s content (what its client draws) starts on the
+/// screen, if it's shown: as screenshots and Olo's IPC find it.
+pub fn content_origin(space: &Space<WindowElement>, id: u64) -> Option<Point<i32, Logical>> {
+    let w = space.elements().find(|w| w.id() == id)?;
+    let at = space.element_location(w)?;
+    Some(if w.decorated() { at - smithay::desktop::space::SpaceElement::geometry(w).loc + crate::shell::deco::content_offset() } else { at })
 }
 
 /// Draw `elements` into a new `size` buffer and read it back, top row first

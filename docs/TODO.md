@@ -1526,10 +1526,12 @@ of Finished; a new one goes where its priority puts it.
   *Trimming* (2026-11-05): the Viewer's Edit ▸ Trim…, `--trim`, copied
   without encoding again. *A window on a background* (2026-11-05):
   Record… ▸ Window on a Background, `--background`: the blurred
-  wallpaper, rounded corners, a shadow.
+  wallpaper, rounded corners, a shadow. *The pointer larger and
+  smoothed* (2026-11-05): Record… ▸ Larger Pointer, Smooth Pointer,
+  `--pointer-size`, `--smooth-pointer`; a window's recording has the
+  pointer.
   *Left*: CleanShot X's
-  polish (pointer drawn larger and smoothed, zoom
-  following the action, a webcam bubble), and
+  polish (zoom following the action, a webcam bubble), and
   the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
   4K: 111 ms a frame).

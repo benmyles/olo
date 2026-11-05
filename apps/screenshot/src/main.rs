@@ -265,6 +265,8 @@ impl Screenshot {
             "show-clicks" => r.show_clicks = !r.show_clicks,
             "show-keys" => r.show_keys = !r.show_keys,
             "background" => r.background = !r.background,
+            "pointer-size" => r.pointer_size = if r.pointer_size > 1.0 { 1.0 } else { 1.5 },
+            "smooth-pointer" => r.smooth_pointer = !r.smooth_pointer,
             _ => return,
         }
         let mine = r.clone();
@@ -362,6 +364,10 @@ impl Screenshot {
                     .checked(r.show_clicks)
                     .item("Show Shortcuts", "show-keys")
                     .checked(r.show_keys)
+                    .item("Larger Pointer", "pointer-size")
+                    .checked(r.pointer_size > 1.0)
+                    .item("Smooth Pointer", "smooth-pointer")
+                    .checked(r.smooth_pointer)
                     .item("Window on a Background", "background")
                     .checked(r.background)
                     .separator()
@@ -373,7 +379,7 @@ impl Screenshot {
 
     fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let what = match command {
-            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" => {
+            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" => {
                 self.toggle(command);
                 cx.notify();
                 return;

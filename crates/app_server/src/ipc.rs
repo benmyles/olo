@@ -603,8 +603,11 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.lock_screen();
                 Reply::Ok
             }
-            Request::SetShowing { clicks, keys } => {
+            Request::SetShowing { clicks, keys, pointer_size, smooth_pointer } => {
                 crate::showing::set(clicks, keys);
+                crate::showing::set_pointer(pointer_size, smooth_pointer);
+                // (Captures draw the pointer anew.)
+                self.backend_data.wake(None);
                 Reply::Ok
             }
             Request::Countdown { n } => {

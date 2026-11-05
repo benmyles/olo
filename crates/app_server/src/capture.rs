@@ -77,7 +77,16 @@ where
             Some(Picture { elements, clear, size: size(output)?, scale: output.current_scale().fractional_scale() })
         }
         Target::Window(id) => {
-            let (elements, size, scale) = crate::render::window_picture(renderer, space, parked, output, id)?;
+            let (mut elements, size, scale) = crate::render::window_picture(renderer, space, parked, output, id)?;
+            // The pointer, over the window's content (a shown window's).
+            let (_, _, _, pointer) = screen();
+            if let Some((at, status)) = pointer
+                && let Some(origin) = crate::render::content_origin(space, id)
+            {
+                let area = smithay::utils::Rectangle::new(origin.to_f64(), size.to_f64().to_logical(scale));
+                let drawn = crate::render::captured_pointer(renderer, area, scale, at, status);
+                elements.splice(0..0, drawn.into_iter().map(|e| crate::render::FrameElements::Normal(crate::render::OutputRenderElements::Custom(e))));
+            }
             Some(Picture { elements, clear: Color32F::TRANSPARENT, size, scale })
         }
     }

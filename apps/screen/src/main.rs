@@ -42,7 +42,8 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen delete NAME             a screen and everything it kept, to the Trash
        olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
                                [--show-clicks] [--show-keys] [--sound computer|microphone|both|none] [--as-gif]
-                          [--no-pointer] [--background] [--encoder auto|cpu|nvidia] [--to PATH]
+                          [--no-pointer] [--pointer-size K] [--smooth-pointer] [--background]
+                          [--encoder auto|cpu|nvidia] [--to PATH]
                                              a video of the screen (or one window, or part), into
                                              ~/Videos unless told; prints its path (JSON) at once
        olo-screen pause-video NAME        nothing recorded till resume-video (the pause cut out)
@@ -273,12 +274,12 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 None => video_path(&s.name),
             };
             let mut argv: Vec<String> = vec!["olo-screenshot".into(), "--record".into(), "--to".into(), to.display().to_string()];
-            for flag in ["--seconds", "--fps", "--window", "--encoder", "--region"] {
+            for flag in ["--seconds", "--fps", "--window", "--encoder", "--region", "--pointer-size"] {
                 if let Some(v) = option(rest, flag) {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }
             }
-            for flag in ["--no-pointer", "--show-clicks", "--show-keys", "--as-gif", "--background"] {
+            for flag in ["--no-pointer", "--show-clicks", "--show-keys", "--as-gif", "--background", "--smooth-pointer"] {
                 if has(rest, flag) {
                     argv.push(flag.into());
                 }

@@ -279,10 +279,18 @@ pub enum Request {
     /// persisted.
     /// Clicks and keys shown on screen (app_server's `showing`: a ring
     /// where a button is pressed, a chord on a key cap), for a recording
-    /// or a demo; both off by default, not kept.
+    /// or a demo; and the pointer as captures draw it (screen recordings,
+    /// screen sharing): `pointer_size` times its size (1, or 0 from an
+    /// older client: as it is), `smooth_pointer` gliding after the real
+    /// one (a hand's jitter and an agent's jumps smoothed). All off by
+    /// default, not kept.
     SetShowing {
         clicks: bool,
         keys: bool,
+        #[serde(default)]
+        pointer_size: f64,
+        #[serde(default)]
+        smooth_pointer: bool,
     },
     /// A recording's countdown: `n` shown large in the middle of the
     /// screen under the pointer, till the next (0: taken down).
@@ -1468,7 +1476,7 @@ pub struct TrackerSettings {
 }
 
 /// What screen recordings are encoded on (olo-screenshot's recorder).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ScreenRecordingSettings {
     /// "auto" (the most powerful there is: an NVIDIA GPU's encoder
@@ -1489,11 +1497,26 @@ pub struct ScreenRecordingSettings {
     /// A window's recording shown on the wallpaper, blurred, its corners
     /// rounded and a shadow under it (Screenshot's `backdrop.rs`).
     pub background: bool,
+    /// The pointer in recordings this many times its size (1: as it is;
+    /// drawn at that size, not enlarged).
+    pub pointer_size: f64,
+    /// The pointer in recordings glides after the real one (smoothed).
+    pub smooth_pointer: bool,
 }
 
 impl Default for ScreenRecordingSettings {
     fn default() -> Self {
-        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into(), gif: false, show_clicks: false, show_keys: false, countdown: 3, background: false }
+        ScreenRecordingSettings {
+            encoder: "auto".into(),
+            sound: "computer".into(),
+            gif: false,
+            show_clicks: false,
+            show_keys: false,
+            countdown: 3,
+            background: false,
+            pointer_size: 1.0,
+            smooth_pointer: false,
+        }
     }
 }
 

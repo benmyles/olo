@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### The pointer in a recording, larger and smoothed
+
+*06:30* — Record… ▸ Larger Pointer and Smooth Pointer (or --pointer-size, --smooth-pointer): recordings draw the pointer bigger (drawn at that size, never enlarged) and gliding after the real one, so a hand's jitter is smoothed and an agent's jumps become moves. Here, the frames after one jump laid over each other, a thirtieth of a second apart. Only recordings have it; a window's recording now shows the pointer too.
+
+![The pointer in a recording, larger and smoothed](2026-11-05/063045-the-pointer-in-a-recording-larger-and-smoothed.png)
+
 ### A window recorded on a background
 
 *06:17* — Record… ▸ Window on a Background (or --background): a window's recording shows it on the wallpaper, blurred and a little dimmed, its corners rounded and a soft shadow under it, as a polished demo of one app usually looks. Made once as the recording starts; each frame copies only the window.
