@@ -671,8 +671,10 @@ const COMMITS: [&str; 5] = ["Apply", "Revert", "Save", "Save Changes", "Done"];
 fn after_commit(p: &Parts, out: &mut Vec<Finding>) {
     let all = items(p);
     let mut rows: Vec<f32> = Vec::new();
-    // (Enabled or not: a dimmed Apply ends its group all the same.)
-    for c in p.controls.iter().filter(|c| c.role == "Button" && COMMITS.contains(&c.name.as_str()) && c.shown().is_positive()) {
+    // (Enabled or not: a dimmed Apply ends its group all the same. Push
+    // buttons, a commit row's: a toolbar's Save is an icon, not one.)
+    let push_button = |c: &Control| c.shown().width() >= crate::metrics::BUTTON_MIN_WIDTH - SAME;
+    for c in p.controls.iter().filter(|c| c.role == "Button" && COMMITS.contains(&c.name.as_str()) && c.shown().is_positive() && push_button(c)) {
         let r = c.shown();
         // (One row once. A box it's in starts above it: only what starts
         // under it counts.)

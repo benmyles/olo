@@ -3143,8 +3143,9 @@ recorded otherwise.
     `control-edges` (controls down a column almost lined up, left or
     right, in the same section: check boxes' right edges are their
     labels'), `uneven-gaps` (a row of controls spaced unevenly by a
-    point or few), `after-commit` (a commit row, Apply, Revert, Save,
-    with anything under it closer than `metrics::SECTION`,
+    point or few), `after-commit` (a commit row, push buttons Apply,
+    Revert, Save or Done, not a toolbar's icons, with anything under it
+    closer than `metrics::SECTION`,
     two spacings: the row ends its group, so what follows is a new
     section; as close as the rows above, the row reads as the start of
     what follows, as Preferences ▸ GPUs' Screen Recordings did).
