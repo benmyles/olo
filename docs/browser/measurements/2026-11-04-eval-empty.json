@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "scope": "Curated 100-site coverage; not an estimate of whole-web compatibility. Token/standard conformance is separate. No masks; pixel delta >8, at most 0.01% changed pixels, mean delta <=0.05; geometry within 0.5 CSS px. Live scale changes require separate coverage.",
+  "suite_sha256": "9b957713ac1337c596b3be3d707001fec0945d99899083897a81b99533c7542d",
+  "total": 3000,
+  "passed": 0,
+  "failed": 0,
+  "blocked": 0,
+  "missing": 3000,
+  "sites_total": 100,
+  "sites_passed": 0,
+  "command": "target/release/olo-web-eval docs/browser/eval/sites.json NO_REFERENCE NO_CANDIDATE REPORT.json",
+  "exit_status": 1,
+  "stdout": "0 of 3000 cases passed; 0 failed, 0 blocked, 3000 missing. 0 of 100 sites passed all configurations.\n",
+  "time_observation": "Command exited with non-zero status 1\n\tCommand being timed: \"target/release/olo-web-eval docs/browser/eval/sites.json /var/tmp/olo-browser-research/no-reference /var/tmp/olo-browser-research/no-candidate /var/tmp/olo-browser-research/no-captures.json\"\n\tUser time (seconds): 0.00\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 81%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.01\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 7300\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 1279\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 0\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 3568\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 1\n"
+}

@@ -6,7 +6,9 @@ item means implemented and verified; a partial implementation stays open.
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
 - [ ] Build a reproducible 100-site corpus with explicit provenance,
-  journeys, independent baselines and fail-closed reporting.
+  journeys, independent baselines and fail-closed reporting. Curated
+  100-domain selection/ranks and native comparator implemented; site-specific
+  executable journeys, capture/replay driver and baselines remain.
 - [ ] Complete HTML tokenizer conformance (initial token implementation
   matches 7,042 html5lib cases; four UTF-16 cases unsupported; parse-error
   diagnostics and streaming byte-input interface remain).

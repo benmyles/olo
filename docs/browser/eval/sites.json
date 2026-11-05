@@ -1,0 +1,3438 @@
+{
+  "schema_version": 1,
+  "selection": {
+    "kind": "curated-popularity-and-complexity-coverage",
+    "description": "100 distinct ranked domains selected for popular-site and complex-application coverage across eight categories. This is NOT the numeric top 100, a measured complexity ranking, or an unbiased compatibility sample. Each full application journey needs independently captured, site-specific checkpoints; category recipes are requirements, not recorded successes.",
+    "ranking_url": "https://tranco-list.eu/download/JZPGY/1000000",
+    "ranking_sha256": "218ab1bd9fb2074559928bdef831c33539651ce5904eff3b78f31798f5b59de7",
+    "ranking_date": "2026-11-04"
+  },
+  "matrix": {
+    "viewports": [
+      {
+        "id": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      {
+        "id": "narrow",
+        "width": 390,
+        "height": 844
+      }
+    ],
+    "scales": [
+      100,
+      125,
+      150,
+      175,
+      200
+    ],
+    "themes": [
+      "light",
+      "dark",
+      "night"
+    ]
+  },
+  "sites": [
+    {
+      "id": "google-com",
+      "origin": "https://google.com/",
+      "domain": "google.com",
+      "rank": 1,
+      "category": "search",
+      "journey": "Enter the fixed query 'Olo browser engine', inspect results, open one result, scroll, return through history and verify query/results restoration.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "search_results",
+          "description": "Query was entered and matching result content appeared; input and result activation both worked."
+        }
+      ]
+    },
+    {
+      "id": "bing-com",
+      "origin": "https://bing.com/",
+      "domain": "bing.com",
+      "rank": 46,
+      "category": "search",
+      "journey": "Enter the fixed query 'Olo browser engine', inspect results, open one result, scroll, return through history and verify query/results restoration.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "search_results",
+          "description": "Query was entered and matching result content appeared; input and result activation both worked."
+        }
+      ]
+    },
+    {
+      "id": "yahoo-com",
+      "origin": "https://yahoo.com/",
+      "domain": "yahoo.com",
+      "rank": 70,
+      "category": "search",
+      "journey": "Enter the fixed query 'Olo browser engine', inspect results, open one result, scroll, return through history and verify query/results restoration.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "search_results",
+          "description": "Query was entered and matching result content appeared; input and result activation both worked."
+        }
+      ]
+    },
+    {
+      "id": "duckduckgo-com",
+      "origin": "https://duckduckgo.com/",
+      "domain": "duckduckgo.com",
+      "rank": 423,
+      "category": "search",
+      "journey": "Enter the fixed query 'Olo browser engine', inspect results, open one result, scroll, return through history and verify query/results restoration.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "search_results",
+          "description": "Query was entered and matching result content appeared; input and result activation both worked."
+        }
+      ]
+    },
+    {
+      "id": "baidu-com",
+      "origin": "https://baidu.com/",
+      "domain": "baidu.com",
+      "rank": 86,
+      "category": "search",
+      "journey": "Enter the fixed query 'Olo browser engine', inspect results, open one result, scroll, return through history and verify query/results restoration.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "search_results",
+          "description": "Query was entered and matching result content appeared; input and result activation both worked."
+        }
+      ]
+    },
+    {
+      "id": "yandex-ru",
+      "origin": "https://yandex.ru/",
+      "domain": "yandex.ru",
+      "rank": 116,
+      "category": "search",
+      "journey": "Enter the fixed query 'Olo browser engine', inspect results, open one result, scroll, return through history and verify query/results restoration.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "search_results",
+          "description": "Query was entered and matching result content appeared; input and result activation both worked."
+        }
+      ]
+    },
+    {
+      "id": "facebook-com",
+      "origin": "https://facebook.com/",
+      "domain": "facebook.com",
+      "rank": 5,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "instagram-com",
+      "origin": "https://instagram.com/",
+      "domain": "instagram.com",
+      "rank": 14,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "x-com",
+      "origin": "https://x.com/",
+      "domain": "x.com",
+      "rank": 48,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "reddit-com",
+      "origin": "https://reddit.com/",
+      "domain": "reddit.com",
+      "rank": 107,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "tiktok-com",
+      "origin": "https://tiktok.com/",
+      "domain": "tiktok.com",
+      "rank": 63,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "linkedin-com",
+      "origin": "https://linkedin.com/",
+      "domain": "linkedin.com",
+      "rank": 17,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "pinterest-com",
+      "origin": "https://pinterest.com/",
+      "domain": "pinterest.com",
+      "rank": 54,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "threads-net",
+      "origin": "https://threads.net/",
+      "domain": "threads.net",
+      "rank": 1742,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "snapchat-com",
+      "origin": "https://snapchat.com/",
+      "domain": "snapchat.com",
+      "rank": 157,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "quora-com",
+      "origin": "https://quora.com/",
+      "domain": "quora.com",
+      "rank": 502,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "tumblr-com",
+      "origin": "https://tumblr.com/",
+      "domain": "tumblr.com",
+      "rank": 155,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "weibo-com",
+      "origin": "https://weibo.com/",
+      "domain": "weibo.com",
+      "rank": 325,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "zhihu-com",
+      "origin": "https://zhihu.com/",
+      "domain": "zhihu.com",
+      "rank": 1220,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "discord-com",
+      "origin": "https://discord.com/",
+      "domain": "discord.com",
+      "rank": 187,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "mastodon-social",
+      "origin": "https://mastodon.social/",
+      "domain": "mastodon.social",
+      "rank": 2708,
+      "category": "community",
+      "journey": "Open a fixed public profile or topic, use its public search/filter, inspect a thread and its expanded content, scroll and return through history. Login walls require a dedicated eval account; otherwise record blocked. Do not post, react, follow or send messages.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "thread_interaction",
+          "description": "Public topic/profile opened and expanding/filtering changed its visible content."
+        }
+      ]
+    },
+    {
+      "id": "youtube-com",
+      "origin": "https://youtube.com/",
+      "domain": "youtube.com",
+      "rank": 10,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "netflix-com",
+      "origin": "https://netflix.com/",
+      "domain": "netflix.com",
+      "rank": 43,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "twitch-tv",
+      "origin": "https://twitch.tv/",
+      "domain": "twitch.tv",
+      "rank": 231,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "spotify-com",
+      "origin": "https://spotify.com/",
+      "domain": "spotify.com",
+      "rank": 77,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "soundcloud-com",
+      "origin": "https://soundcloud.com/",
+      "domain": "soundcloud.com",
+      "rank": 194,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "vimeo-com",
+      "origin": "https://vimeo.com/",
+      "domain": "vimeo.com",
+      "rank": 88,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "dailymotion-com",
+      "origin": "https://dailymotion.com/",
+      "domain": "dailymotion.com",
+      "rank": 444,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "bilibili-com",
+      "origin": "https://bilibili.com/",
+      "domain": "bilibili.com",
+      "rank": 351,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "disneyplus-com",
+      "origin": "https://disneyplus.com/",
+      "domain": "disneyplus.com",
+      "rank": 822,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "hulu-com",
+      "origin": "https://hulu.com/",
+      "domain": "hulu.com",
+      "rank": 1887,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "primevideo-com",
+      "origin": "https://primevideo.com/",
+      "domain": "primevideo.com",
+      "rank": 680,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "kick-com",
+      "origin": "https://kick.com/",
+      "domain": "kick.com",
+      "rank": 695,
+      "category": "media",
+      "journey": "Find a fixed playable public test item, inspect the media page, play/pause/seek/mute, scroll and return through history. Subscription/authentication requires a dedicated eval account; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "media_controls",
+          "description": "Playback, pause, seek and mute affected decoded media, with sound isolated from the person's session."
+        }
+      ]
+    },
+    {
+      "id": "wikipedia-org",
+      "origin": "https://wikipedia.org/",
+      "domain": "wikipedia.org",
+      "rank": 38,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "stackoverflow-com",
+      "origin": "https://stackoverflow.com/",
+      "domain": "stackoverflow.com",
+      "rank": 549,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "stackexchange-com",
+      "origin": "https://stackexchange.com/",
+      "domain": "stackexchange.com",
+      "rank": 1033,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "fandom-com",
+      "origin": "https://fandom.com/",
+      "domain": "fandom.com",
+      "rank": 497,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "imdb-com",
+      "origin": "https://imdb.com/",
+      "domain": "imdb.com",
+      "rank": 263,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "medium-com",
+      "origin": "https://medium.com/",
+      "domain": "medium.com",
+      "rank": 204,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "wordpress-com",
+      "origin": "https://wordpress.com/",
+      "domain": "wordpress.com",
+      "rank": 99,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "blogger-com",
+      "origin": "https://blogger.com/",
+      "domain": "blogger.com",
+      "rank": 518,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "nytimes-com",
+      "origin": "https://nytimes.com/",
+      "domain": "nytimes.com",
+      "rank": 162,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "bbc-com",
+      "origin": "https://bbc.com/",
+      "domain": "bbc.com",
+      "rank": 221,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "cnn-com",
+      "origin": "https://cnn.com/",
+      "domain": "cnn.com",
+      "rank": 192,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "theguardian-com",
+      "origin": "https://theguardian.com/",
+      "domain": "theguardian.com",
+      "rank": 199,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "reuters-com",
+      "origin": "https://reuters.com/",
+      "domain": "reuters.com",
+      "rank": 282,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "washingtonpost-com",
+      "origin": "https://washingtonpost.com/",
+      "domain": "washingtonpost.com",
+      "rank": 395,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "coursera-org",
+      "origin": "https://coursera.org/",
+      "domain": "coursera.org",
+      "rank": 1209,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "khanacademy-org",
+      "origin": "https://khanacademy.org/",
+      "domain": "khanacademy.org",
+      "rank": 2386,
+      "category": "content",
+      "journey": "Find a fixed reference article or lesson, open its full content, expand a section or follow an in-page anchor, scroll and return through history. Paywalls require a dedicated eval subscription; otherwise record blocked.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "article_navigation",
+          "description": "Full article/lesson content and an in-page anchor or expanded section worked."
+        }
+      ]
+    },
+    {
+      "id": "amazon-com",
+      "origin": "https://amazon.com/",
+      "domain": "amazon.com",
+      "rank": 29,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "ebay-com",
+      "origin": "https://ebay.com/",
+      "domain": "ebay.com",
+      "rank": 193,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "walmart-com",
+      "origin": "https://walmart.com/",
+      "domain": "walmart.com",
+      "rank": 483,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "etsy-com",
+      "origin": "https://etsy.com/",
+      "domain": "etsy.com",
+      "rank": 334,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "aliexpress-com",
+      "origin": "https://aliexpress.com/",
+      "domain": "aliexpress.com",
+      "rank": 469,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "taobao-com",
+      "origin": "https://taobao.com/",
+      "domain": "taobao.com",
+      "rank": 457,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "jd-com",
+      "origin": "https://jd.com/",
+      "domain": "jd.com",
+      "rank": 986,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "shopify-com",
+      "origin": "https://shopify.com/",
+      "domain": "shopify.com",
+      "rank": 171,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "target-com",
+      "origin": "https://target.com/",
+      "domain": "target.com",
+      "rank": 610,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "bestbuy-com",
+      "origin": "https://bestbuy.com/",
+      "domain": "bestbuy.com",
+      "rank": 784,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "ikea-com",
+      "origin": "https://ikea.com/",
+      "domain": "ikea.com",
+      "rank": 635,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "temu-com",
+      "origin": "https://temu.com/",
+      "domain": "temu.com",
+      "rank": 435,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "mercadolibre-com",
+      "origin": "https://mercadolibre.com/",
+      "domain": "mercadolibre.com",
+      "rank": 2237,
+      "category": "commerce",
+      "journey": "Search a fixed product, filter results, open a detail page and switch a photo or variant, scroll and return through history. Never add to cart, purchase, book or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "product_interaction",
+          "description": "Search, filtering and product photo/variant interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "booking-com",
+      "origin": "https://booking.com/",
+      "domain": "booking.com",
+      "rank": 288,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "airbnb-com",
+      "origin": "https://airbnb.com/",
+      "domain": "airbnb.com",
+      "rank": 828,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "tripadvisor-com",
+      "origin": "https://tripadvisor.com/",
+      "domain": "tripadvisor.com",
+      "rank": 583,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "expedia-com",
+      "origin": "https://expedia.com/",
+      "domain": "expedia.com",
+      "rank": 2334,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "uber-com",
+      "origin": "https://uber.com/",
+      "domain": "uber.com",
+      "rank": 702,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "lyft-com",
+      "origin": "https://lyft.com/",
+      "domain": "lyft.com",
+      "rank": 5049,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "openstreetmap-org",
+      "origin": "https://openstreetmap.org/",
+      "domain": "openstreetmap.org",
+      "rank": 526,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "flightaware-com",
+      "origin": "https://flightaware.com/",
+      "domain": "flightaware.com",
+      "rank": 3227,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "kayak-com",
+      "origin": "https://kayak.com/",
+      "domain": "kayak.com",
+      "rank": 4682,
+      "category": "maps-travel",
+      "journey": "Search a fixed destination or location, inspect results and a detail/map view, change a local filter or map zoom, scroll and return through history. Never book, request transport or change an account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "location_interaction",
+          "description": "Destination/location search and a map/view/filter interaction changed the correct content."
+        }
+      ]
+    },
+    {
+      "id": "microsoft-com",
+      "origin": "https://microsoft.com/",
+      "domain": "microsoft.com",
+      "rank": 9,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "apple-com",
+      "origin": "https://apple.com/",
+      "domain": "apple.com",
+      "rank": 12,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "github-com",
+      "origin": "https://github.com/",
+      "domain": "github.com",
+      "rank": 34,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "gitlab-com",
+      "origin": "https://gitlab.com/",
+      "domain": "gitlab.com",
+      "rank": 377,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "notion-so",
+      "origin": "https://notion.so/",
+      "domain": "notion.so",
+      "rank": 2132,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "figma-com",
+      "origin": "https://figma.com/",
+      "domain": "figma.com",
+      "rank": 912,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "canva-com",
+      "origin": "https://canva.com/",
+      "domain": "canva.com",
+      "rank": 287,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "miro-com",
+      "origin": "https://miro.com/",
+      "domain": "miro.com",
+      "rank": 2176,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "trello-com",
+      "origin": "https://trello.com/",
+      "domain": "trello.com",
+      "rank": 1820,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "asana-com",
+      "origin": "https://asana.com/",
+      "domain": "asana.com",
+      "rank": 2283,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "slack-com",
+      "origin": "https://slack.com/",
+      "domain": "slack.com",
+      "rank": 298,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "zoom-us",
+      "origin": "https://zoom.us/",
+      "domain": "zoom.us",
+      "rank": 64,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "office-com",
+      "origin": "https://office.com/",
+      "domain": "office.com",
+      "rank": 32,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "dropbox-com",
+      "origin": "https://dropbox.com/",
+      "domain": "dropbox.com",
+      "rank": 133,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "box-com",
+      "origin": "https://box.com/",
+      "domain": "box.com",
+      "rank": 662,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "proton-me",
+      "origin": "https://proton.me/",
+      "domain": "proton.me",
+      "rank": 2793,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "fastmail-com",
+      "origin": "https://fastmail.com/",
+      "domain": "fastmail.com",
+      "rank": 11664,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "linear-app",
+      "origin": "https://linear.app/",
+      "domain": "linear.app",
+      "rank": 8328,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "replit-com",
+      "origin": "https://replit.com/",
+      "domain": "replit.com",
+      "rank": 3636,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "codesandbox-io",
+      "origin": "https://codesandbox.io/",
+      "domain": "codesandbox.io",
+      "rank": 25697,
+      "category": "apps",
+      "journey": "Open the site's actual application in a dedicated eval workspace, inspect a fixed document/project, use search/navigation, type and undo an unsent local draft, scroll and return through history. Marketing pages do not satisfy this journey. Record blocked without the required test workspace/account.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "application_interaction",
+          "description": "The real app opened its test document/project, accepted input and undo without submitting or publishing."
+        }
+      ]
+    },
+    {
+      "id": "adobe-com",
+      "origin": "https://adobe.com/",
+      "domain": "adobe.com",
+      "rank": 61,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    },
+    {
+      "id": "salesforce-com",
+      "origin": "https://salesforce.com/",
+      "domain": "salesforce.com",
+      "rank": 286,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    },
+    {
+      "id": "hubspot-com",
+      "origin": "https://hubspot.com/",
+      "domain": "hubspot.com",
+      "rank": 260,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    },
+    {
+      "id": "atlassian-com",
+      "origin": "https://atlassian.com/",
+      "domain": "atlassian.com",
+      "rank": 587,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    },
+    {
+      "id": "vercel-com",
+      "origin": "https://vercel.com/",
+      "domain": "vercel.com",
+      "rank": 3041,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    },
+    {
+      "id": "cloudflare-com",
+      "origin": "https://cloudflare.com/",
+      "domain": "cloudflare.com",
+      "rank": 2,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    },
+    {
+      "id": "paypal-com",
+      "origin": "https://paypal.com/",
+      "domain": "paypal.com",
+      "rank": 175,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    },
+    {
+      "id": "stripe-com",
+      "origin": "https://stripe.com/",
+      "domain": "stripe.com",
+      "rank": 205,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    },
+    {
+      "id": "openai-com",
+      "origin": "https://openai.com/",
+      "domain": "openai.com",
+      "rank": 129,
+      "category": "platforms",
+      "journey": "Open an interactive public demo or dedicated eval dashboard, inspect a fixed item, change a read-only view/filter, scroll and return through history. Marketing pages do not satisfy this journey. Never submit payments, publish, send messages or change an account; record blocked when no test dashboard is available.",
+      "checks": [
+        {
+          "id": "document_ready",
+          "description": "Navigation committed and finished the recorded checkpoint without a renderer crash or security/network error."
+        },
+        {
+          "id": "meaningful_content",
+          "description": "Expected site content is visible, not a blank, bot challenge, consent wall, error, login wall or marketing substitute."
+        },
+        {
+          "id": "scroll_changed",
+          "description": "User scrolling changed the visible content and agent geometry consistently."
+        },
+        {
+          "id": "navigation_changed",
+          "description": "A real user/agent activation navigated to the intended content with the expected URL and history entry."
+        },
+        {
+          "id": "history_restored",
+          "description": "Back returned to the previous document, state and scroll position."
+        },
+        {
+          "id": "dashboard_interaction",
+          "description": "A real interactive demo/dashboard opened and its read-only filtering changed visible content."
+        }
+      ]
+    }
+  ]
+}
