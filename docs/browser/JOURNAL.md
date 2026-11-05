@@ -1111,3 +1111,24 @@ Next: property/style compilation and color integration, substitution/math,
 stylesheet contexts/rule indexing and remaining selector/HTML integrations;
 layout, painting, V8, native shell, Olo integration and actual site journeys
 remain substantial required work.
+
+## 2026-11-05 — relative-color detection guard
+
+Final review found that the early `from` check treated any function name
+as an unsupported relative color. Restrict it to the actual relative-color
+function families. `imaginary(from red r g b)` and
+`light-dark(from, blue)` now return Invalid; supported-family relative
+syntax remains explicitly Unsupported. Regression tests exercise both.
+All eight native color groups pass; independent counts remain 9,728 direct,
+2,760 reviewed current-spec and 215 unsupported. This is a classification
+fix, with no new style/rendering or website capability.
+
+Three alternating release CPU-0 runs, 20,000 parses per prebuilt value,
+before → after: hex **15.308 → 15.401 ns**, keyword **104.117 → 106.329**,
+RGB **71.710 → 71.038**, OKLCH **68.963 → 69.783**, color()
+**67.328 → 68.234**, nested light-dark **175.594 → 172.282**. No throughput
+improvement claimed; load/clocks/thermals uncontrolled. Full benchmark
+output and exact before/after identities are retained in
+`measurements/2026-11-05-color-relative-guard.json`; the initial color
+milestone remains independently rebuildable at `4f0cf03b`. Default and
+all-feature strict release clippy pass. Full goal remains active.

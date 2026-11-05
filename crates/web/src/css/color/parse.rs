@@ -97,7 +97,9 @@ impl Parser<'_> {
                 let name = name.as_str();
                 let mut args = c.children();
                 self.skip(&mut args)?;
-                if args.clone().next().is_some_and(|v| v.kind() == Kind::Ident && v.text().unwrap().eq_ignore_ascii_case("from")) {
+                if args.clone().next().is_some_and(|v| v.kind() == Kind::Ident && v.text().unwrap().eq_ignore_ascii_case("from"))
+                    && matches!(name, "rgb" | "rgba" | "hsl" | "hsla" | "hwb" | "lab" | "lch" | "oklab" | "oklch" | "color")
+                {
                     return Err(Error::Unsupported("relative colors"));
                 }
                 if name == "light-dark" {

@@ -107,7 +107,19 @@ fn color_spaces_missing_components_clamps_and_computed_phase() {
     for (space, missing) in [(Space::Hsl, 1), (Space::Hwb, 1), (Space::Lch, 4), (Space::Oklch, 4)] {
         assert_eq!(gray.convert_absolute(space).missing(), missing, "{space:?}");
     }
-    for bad in ["", "red blue", "rgb(1, 2%, 3)", "rgb(none,0,0)", "color(unknown 0 0 0)", "#12345", "light-dark(red)", "lab(2 3 4 / 2deg)", "oklch(1 2 30%)"] {
+    for bad in [
+        "",
+        "red blue",
+        "rgb(1, 2%, 3)",
+        "rgb(none,0,0)",
+        "color(unknown 0 0 0)",
+        "#12345",
+        "light-dark(red)",
+        "light-dark(from, blue)",
+        "imaginary(from red r g b)",
+        "lab(2 3 4 / 2deg)",
+        "oklch(1 2 30%)",
+    ] {
         assert_eq!(parse(bad).unwrap_err(), Error::Invalid, "{bad}");
     }
     for pending in ["var(--color)", "rgb(var(--r) 0 0)", "env(foo)"] {
