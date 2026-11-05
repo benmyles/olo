@@ -7899,13 +7899,37 @@ put it away.
   own thread for the newest query only, which sleeps until a query or a
   change), sums (`calc.rs`; Return copies)
   and, last, a web search (Google) in the web browser.
-* **Ranking** (`rank.rs`): every word typed must match the title (start,
-  word start, anywhere) or the item's keywords, or as initials ("nw");
-  then by kind (apps before files) and by how often and how lately each
-  thing was chosen (`~/.config/olo/palette.json`). An open window is
-  also found by its app's name and comes just before the app itself
-  (switching beats opening another), the one in front last. Nothing
-  typed lists what was chosen lately.
+* **Ranking** (`rank.rs`, `model.rs`): every word typed must match the
+  title (start, word start, anywhere) or the item's keywords, or as
+  initials ("nw"); what matches is ranked by a tiny model, as brush's
+  suggestions are (`olo_complete`'s kernels and trainer: 16 features →
+  16 hidden units (ReLU) → a score, in the processor's SIMD, never a
+  GPU). Its features (`model::FEATURE_NAMES`): how well it matches and
+  whether the title starts with or is what's typed, its kind, whether
+  it can be done now, and from the person's choices how often and how
+  lately it was chosen, at this hour (±1) and on this weekday, after
+  typing what's typed now, with the app in front now, whether it was
+  the last thing chosen, how often its kind is chosen, whether its app
+  is open, and the title's and the typing's lengths. Its weights start
+  written by hand (`model::baseline`) so that, knowing nothing, it ranks
+  as the palette's formula did (`sources::ranked`, the tests' reference:
+  `the_model_untrained_ranks_as_before`). Every choice of a match is
+  kept (`~/.local/state/olo/palette/choices.jsonl`, with what was
+  typed, the item's key, kind and the app in front; menu commands and
+  windows by their app, `model::key_of`) and is an example (the 24
+  best ranked, the chosen among them, `examples.jsonl`, the newest
+  1000); after each, the model is tuned on a worker (8 passes, Adam
+  pulled toward where it started, `model::PLAN`: 5.7 ms on a full 1000,
+  AVX2), the weights kept (`weights.json`) only if they rank the newest
+  tenth of the choices at least as well. Per keystroke it costs what
+  the formula did for most searches (103 µs either way for "end" over
+  614 things) and 34 µs more for one letter matching nearly all of them
+  (116 against 82). `olo-palette --model` prints what it weighs, how
+  many choices and examples it has, and whether it's tuned. An open
+  window is also found by its app's name and comes just before the app
+  itself (switching beats opening another), the one in front last.
+  Nothing typed lists what was chosen lately (`~/.config/olo/
+  palette.json`).
 * **Keys**: ↑/↓ and Page Up/Down move, Return chooses, the pointer
   hovers and clicks. ⌘Return (or ⌘-click) on a file opens it in Tracker
   instead (selected in its folder); while ⌘ is held the selected file's

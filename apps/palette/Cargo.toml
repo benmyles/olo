@@ -9,6 +9,8 @@ name = "olo-palette"
 path = "src/main.rs"
 
 [dependencies]
+libc = "0.2"
+olo-complete.workspace = true
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-ui.workspace = true

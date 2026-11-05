@@ -528,30 +528,53 @@ pub fn text_items(platform: olo_protocol::Platform, front: bool) -> Vec<Item> {
 /// The items matching `words`, best first (at most 60), with their scores:
 /// how well each matches, what kind it is, how lately it was chosen
 /// (`boost` of its recents key) and whether it can be done now.
+///
+/// (The palette's ranking before its model, `model`: kept as what the
+/// tests check the matching and the ordering rules by, and the model's
+/// hand-written start against.)
+#[cfg(test)]
 pub fn ranked<'a>(words: &[String], items: impl Iterator<Item = &'a Item>, boost: impl Fn(&str) -> i32) -> Vec<(i32, Item)> {
+    let found = ranked_with(words, items, |found| {
+        found
+            .iter()
+            .map(|(item, s)| {
+                let boost = item.action.key().map_or(0, |k| boost(&k));
+                let disabled = if item.enabled { 0 } else { -20 };
+                s + item.kind.weight() + boost + disabled
+            })
+            .collect()
+    });
+    found.into_iter().map(|(s, i, _)| (s, i)).collect()
+}
+
+/// [`ranked`], each found item's score `rank`'s (given every item found
+/// and how well it matched, at once: the palette's model scores them in
+/// one pass, `model::Ranker`); each with its place among those `rank`
+/// was given.
+pub fn ranked_with<'a>(words: &[String], items: impl Iterator<Item = &'a Item>, rank: impl FnOnce(&[(&Item, i32)]) -> Vec<i32>) -> Vec<(i32, Item, usize)> {
     // (Items are cloned only once they're among those shown.)
-    let mut scored: Vec<(i32, &Item)> = Vec::new();
+    let mut found: Vec<(&Item, i32)> = Vec::new();
     for item in items {
         let subtitle = if item.subtitle.chars().any(char::is_uppercase) { item.subtitle.to_lowercase().into() } else { std::borrow::Cow::Borrowed(item.subtitle.as_str()) };
         let own = crate::rank::score_in(words, &item.title, &[&item.keywords, &subtitle]);
         // A window is also found by its app's name, as the app is.
         let own = if item.kind == Kind::Window { own.max(crate::rank::score(words, &item.subtitle, "")) } else { own };
         let Some(s) = own else { continue };
-        let boost = item.action.key().map_or(0, |k| boost(&k));
-        let disabled = if item.enabled { 0 } else { -20 };
-        scored.push((s + item.kind.weight() + boost + disabled, item));
+        found.push((item, s));
     }
+    let scores = rank(&found);
+    let mut scored: Vec<(i32, &Item, usize)> = found.iter().zip(scores).enumerate().map(|(n, ((item, _), s))| (s, *item, n)).collect();
     // An app's open windows come just before the app: switching to one
     // is likelier wanted than another window.
-    let apps: Vec<(&str, i32)> = scored.iter().filter(|(_, i)| i.kind == Kind::Application).map(|(s, i)| (i.title.as_str(), *s)).collect();
-    for (s, item) in scored.iter_mut().filter(|(_, i)| i.kind == Kind::Window) {
+    let apps: Vec<(&str, i32)> = scored.iter().filter(|(_, i, _)| i.kind == Kind::Application).map(|(s, i, _)| (i.title.as_str(), *s)).collect();
+    for (s, item, _) in scored.iter_mut().filter(|(_, i, _)| i.kind == Kind::Window) {
         if let Some((_, a)) = apps.iter().find(|(t, _)| *t == item.subtitle) {
             *s = (*s).max(a + 1);
         }
     }
     best_first(&mut scored);
     scored.truncate(60);
-    scored.into_iter().map(|(s, i)| (s, i.clone())).collect()
+    scored.into_iter().map(|(s, i, n)| (s, i.clone(), n)).collect()
 }
 
 /// Best score first; of those that tie, windows first in the order they
@@ -560,8 +583,8 @@ pub fn ranked<'a>(words: &[String], items: impl Iterator<Item = &'a Item>, boost
 /// the rest wasn't one, and the sort panicked on it (Ben, 2026-11-03:
 /// "if i start by typing "n" it closes the pallette": an "n" ties many
 /// commands and windows).
-fn best_first(scored: &mut [(i32, &Item)]) {
-    scored.sort_by_key(|&(s, i)| (std::cmp::Reverse(s), i.kind != Kind::Window, if i.kind == Kind::Window { "" } else { i.title.as_str() }));
+fn best_first(scored: &mut [(i32, &Item, usize)]) {
+    scored.sort_by_key(|&(s, i, _)| (std::cmp::Reverse(s), i.kind != Kind::Window, if i.kind == Kind::Window { "" } else { i.title.as_str() }));
 }
 
 /// Do `action` (on a worker thread: it may wait on other processes).
@@ -820,17 +843,17 @@ mod tests {
             items.push(c(&format!("{t}{k}")));
         }
         for turn in 0..items.len() {
-            let mut scored: Vec<(i32, &Item)> = items.iter().cycle().skip(turn).take(items.len()).map(|i| (10, i)).collect();
-            let windows: Vec<u64> = scored.iter().filter_map(|(_, i)| if let Action::Activate(id) = i.action { Some(id) } else { None }).collect();
+            let mut scored: Vec<(i32, &Item, usize)> = items.iter().cycle().skip(turn).take(items.len()).enumerate().map(|(n, i)| (10, i, n)).collect();
+            let windows: Vec<u64> = scored.iter().filter_map(|(_, i, _)| if let Action::Activate(id) = i.action { Some(id) } else { None }).collect();
             best_first(&mut scored);
             let (front, rest) = scored.split_at(windows.len());
-            assert!(front.iter().all(|(_, i)| i.kind == Kind::Window));
-            assert_eq!(front.iter().map(|(_, i)| if let Action::Activate(id) = i.action { id } else { 99 }).collect::<Vec<_>>(), windows);
+            assert!(front.iter().all(|(_, i, _)| i.kind == Kind::Window));
+            assert_eq!(front.iter().map(|(_, i, _)| if let Action::Activate(id) = i.action { id } else { 99 }).collect::<Vec<_>>(), windows);
             assert!(rest.windows(2).all(|p| p[0].1.title <= p[1].1.title));
         }
         // A better score still comes first.
         let (a, b) = (c("z"), w(1, "a"));
-        let mut scored = vec![(1, &b), (5, &a)];
+        let mut scored = vec![(1, &b, 0), (5, &a, 1)];
         best_first(&mut scored);
         assert_eq!(scored[0].1.title, "z");
     }
@@ -857,6 +880,63 @@ mod tests {
     /// What ranking costs a keystroke, with and without text editing's
     /// keys among 600 things (release: `cargo test --release -p
     /// olo-palette ranking_cost -- --ignored --nocapture`).
+    #[test]
+    #[ignore]
+    fn ranking_cost_with_the_model() {
+        let others: Vec<Item> = (0..600).map(|i| Item::new(Kind::Command, format!("Command number {i} of the menus"), Action::Shortcut(i.to_string())).subtitle("App ▸ Menu")).collect();
+        let text = text_items(olo_protocol::Platform::Mac, true);
+        let items: Vec<&Item> = others.iter().chain(&text).collect();
+        let r = crate::model::Ranker::load_from(crate::model::baseline());
+        for q in ["e", "end", "command 5"] {
+            let words = crate::rank::words(q);
+            let now = crate::model::Now::new(1_800_000_000, q, "olo.styled-edit");
+            let n = 2000;
+            let t = std::time::Instant::now();
+            for _ in 0..n {
+                std::hint::black_box(ranked_with(&words, items.iter().copied(), |found| {
+                    let rows: Vec<[f32; crate::model::F]> = found.iter().map(|(item, s)| r.features(item, *s, words.len(), false, &now)).collect();
+                    r.scores(&rows).iter().map(|v| (v * 100.0).round() as i32).collect()
+                }));
+            }
+            let model = t.elapsed() / n;
+            let t = std::time::Instant::now();
+            for _ in 0..n {
+                std::hint::black_box(ranked(&words, items.iter().copied(), |_| 0));
+            }
+            let before = t.elapsed() / n;
+            let found = ranked(&words, items.iter().copied(), |_| 0).len();
+            eprintln!("ranking {q:?} over {} things ({found} found): {model:?} with the model, {before:?} by hand", items.len());
+        }
+    }
+
+    /// The model, as written by hand (nothing chosen yet), ranks the cases
+    /// these tests check as the palette did before it: the same first.
+    #[test]
+    fn the_model_untrained_ranks_as_before() {
+        let r = crate::model::Ranker::load_from(crate::model::baseline());
+        let text = text_items(olo_protocol::Platform::Mac, true);
+        let apps = [
+            Item::new(Kind::Application, "StyledEdit", Action::Launch("olo-styled-edit".into(), "olo-styled-edit".into())).subtitle("Application"),
+            Item::new(Kind::Preference, "Keyboard", Action::Shortcut("prefs-keyboard".into())).subtitle("Preferences"),
+            Item::new(Kind::Window, "notes.txt", Action::Activate(3)).subtitle("StyledEdit"),
+            Item::new(Kind::Command, "Save As…", Action::Menu { pid: 9, command: "Save As…".into() }).subtitle("File"),
+        ];
+        let items: Vec<&Item> = text.iter().chain(apps.iter()).collect();
+        for q in ["end", "styled", "StyledEdit", "save", "key", "word", "line", "sel"] {
+            let words = crate::rank::words(q);
+            let typed = q.to_lowercase();
+            let now = crate::model::Now::new(1_800_000_000, &typed, "olo.styled-edit");
+            let by_model = ranked_with(&words, items.iter().copied(), |found| {
+                let rows: Vec<[f32; crate::model::F]> = found.iter().map(|(item, s)| r.features(item, *s, words.len(), item.kind == Kind::Window, &now)).collect();
+                r.scores(&rows).iter().map(|v| (v * 100.0).round() as i32).collect()
+            });
+            let by_hand = ranked(&words, items.iter().copied(), |_| 0);
+            let first = |v: &[(i32, Item)]| v.first().map(|(_, i)| i.title.clone());
+            let model_first = by_model.first().map(|(_, i, _)| i.title.clone());
+            assert_eq!(model_first, first(&by_hand), "{q:?}");
+        }
+    }
+
     #[test]
     #[ignore]
     fn ranking_cost() {

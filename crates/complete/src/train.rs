@@ -199,9 +199,15 @@ pub struct Tuned {
 /// Fine-tune `start` on `train`, judged on `held`: the new weights if
 /// they do at least as well there, else `start`.
 pub fn fine_tune(b: &mut dyn Backend, start: &Weights, train: &[Example], held: &[Example], plan: Plan) -> (Weights, Tuned) {
+    fine_tune_with(b, start, &Weights::baseline(), train, held, plan)
+}
+
+/// [`fine_tune`] for a model whose hand-written weights are `baseline`
+/// (the command palette's, on its own features), reported against them.
+pub fn fine_tune_with(b: &mut dyn Backend, start: &Weights, baseline: &Weights, train: &[Example], held: &[Example], plan: Plan) -> (Weights, Tuned) {
     let t0 = std::time::Instant::now();
     let before = evaluate(b, start, held);
-    let baseline = evaluate(b, &Weights::baseline(), held);
+    let baseline = evaluate(b, baseline, held);
     // The newest tenth of what it learns from checks each pass (the best
     // pass is kept, the start among them, so it never ends worse there);
     // `held`, newer still, judges the result.

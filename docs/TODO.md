@@ -1073,17 +1073,6 @@ of Finished; a new one goes where its priority puts it.
   only if the voice trials (crates/voice tests, the AirPods chain) say
   quality holds. Measure on the ThinkPad and the MacBook.
 
-- **The command palette's suggestions from a tiny model, as the
-  Terminal's** (Ben, 2026-11-04): "similar to the terminal commands tiny
-  autocomplete model, make the command pallette suggestions also use a
-  tiny simd accelerated model. they should get similar features like
-  time of day, available commands, what the user has typed so far and so
-  on. make sure it also auto trains/fine tunes periodically like the
-  terminal one, keeping track of what the user types and ultimately
-  selects and so on. if the fine tuning / training is super fast and
-  lightweight then just do it after each new sample is collected." On
-  the CPU's SIMD (never the NVIDIA GPU), measured per keystroke.
-
 - **Other programs' file handling through Olo, fixed** (Ben,
   2026-11-04): "the gtk/qt integration doesn't seem to be working
   properly e.g. even in olo chrome i can't click on the folder for a
@@ -1221,6 +1210,24 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**The command palette's suggestions from a tiny model, as the
+  Terminal's**~~ (done 2026-11-04, HACKING's "Ranking": olo_complete's
+  kernels and trainer on 16 features of the palette's own (the match,
+  kind, enabled, how often, how lately, this hour and weekday, after
+  this typing, with this app, the last chosen, its kind's share, open,
+  lengths); hand-written weights ranking as before; every choice kept as
+  an example and the model tuned after each on a worker, 5.7 ms on a
+  full history; 0–34 µs more a keystroke; checked headless, twelve
+  choices tuning it) (Ben, 2026-11-04): "similar to the terminal commands tiny
+  autocomplete model, make the command pallette suggestions also use a
+  tiny simd accelerated model. they should get similar features like
+  time of day, available commands, what the user has typed so far and so
+  on. make sure it also auto trains/fine tunes periodically like the
+  terminal one, keeping track of what the user types and ultimately
+  selects and so on. if the fine tuning / training is super fast and
+  lightweight then just do it after each new sample is collected." On
+  the CPU's SIMD (never the NVIDIA GPU), measured per keystroke.
 
 - ~~**Agent Screens: Stop keeps a screen; Archive and Delete**~~ (done
   2026-11-04: Stop and Archive and Delete were there, but a stopped

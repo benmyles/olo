@@ -13,6 +13,7 @@
 //! `--shortcuts` (sheet.rs).
 
 mod calc;
+mod model;
 mod rank;
 mod sheet;
 mod sources;
@@ -144,8 +145,15 @@ struct Palette {
     /// has the keyboard.
     activation: Option<Subscription>,
     results: Vec<Item>,
+    /// Each result's features, as the model ranked it (None: not its,
+    /// a sum, a path typed, a web search): what a choice is learnt from.
+    features: Vec<Option<[f32; model::F]>>,
     front: Option<WindowInfo>,
     recents: Recents,
+    /// The model ranking what's typed, and what it knows of the choices.
+    ranker: model::Ranker,
+    /// A tune on its way (one at a time).
+    tuning: bool,
     workers: Workers,
     /// A window's menu, while it shows.
     window_menu: Option<WindowHandle<Frame>>,
@@ -267,6 +275,7 @@ impl Palette {
         let query = self.query_text.clone();
         let words = rank::words(&query);
         let mut scored: Vec<(i32, Item)> = Vec::new();
+        let mut features: Vec<Option<[f32; model::F]>> = Vec::new();
         if words.is_empty() {
             // Nothing typed: what was chosen lately.
             let all = self.fixed.iter().chain(&self.context);
@@ -290,15 +299,40 @@ impl Palette {
             // Files and folders, or (at first) everything else, no file
             // among them (Ben: "i only want to see commands unless i press
             // ctrl then only files"); the path in the clipboard either way.
-            if self.files_mode {
-                scored.extend(sources::ranked(&words, self.files.iter().chain(&self.copied), |k| self.recents.boost(k)));
+            // Ranked by the model (`model`): the matches' features, scored
+            // in one pass.
+            features.resize(scored.len(), None);
+            let typed = query.trim().to_lowercase();
+            let front_app = self.front.as_ref().map(|f| f.app_id.clone()).unwrap_or_default();
+            let now = model::Now::new(Recents::now(), &typed, &front_app);
+            let open: std::collections::HashSet<&str> = self.context.iter().chain(&self.fixed).filter(|i| i.kind == Kind::Window).map(|i| i.subtitle.as_str()).collect();
+            let ranker = &self.ranker;
+            let mut rows: Vec<[f32; model::F]> = Vec::new();
+            let by_model = |found: &[(&Item, i32)]| -> Vec<i32> {
+                rows = found
+                    .iter()
+                    .map(|(item, s)| ranker.features(item, *s, words.len(), item.kind == Kind::Window || (item.kind == Kind::Application && open.contains(item.title.as_str())), &now))
+                    .collect();
+                ranker.scores(&rows).iter().map(|v| (v * 100.0).round() as i32).collect()
+            };
+            let found = if self.files_mode {
+                sources::ranked_with(&words, self.files.iter().chain(&self.copied), by_model)
             } else {
                 let all = self.fixed.iter().chain(&self.context).chain(&self.menus).chain(&self.passwords).chain(&self.copied);
-                scored.extend(sources::ranked(&words, all, |k| self.recents.boost(k)));
+                sources::ranked_with(&words, all, by_model)
+            };
+            for (s, item, n) in found {
+                scored.push((s, item));
+                features.push(rows.get(n).copied());
+            }
+            if !self.files_mode {
                 let q = query.trim().to_owned();
                 scored.push((i32::MIN, Item::new(Kind::Web, format!("Search the web for “{q}”"), Action::Search(q)).icon("browser").subtitle("Web browser")));
+                features.push(None);
             }
         }
+        features.resize(scored.len(), None);
+        self.features = features;
         self.results = scored.into_iter().map(|(_, i)| i).collect();
         self.selected = self.selected.min(self.results.len().saturating_sub(1));
         if !self.results.get(self.selected).is_some_and(|i| i.enabled) {
@@ -396,12 +430,45 @@ impl Palette {
         if let Some(k) = item.action.key() {
             self.recents.note(k);
         }
+        self.learn(index, cx);
         if let Action::Copy(text) = &item.action {
             cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
         }
         let front = self.front.as_ref().map(|f| f.id);
         self.hide(cx);
         sources::perform(item.action, front);
+    }
+
+    /// The model learns that result `index` was chosen: the choice noted,
+    /// with what was shown, and the model tuned again on a worker (a few
+    /// milliseconds; one at a time).
+    fn learn(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(item) = self.results.get(index) else { return };
+        let front_app = self.front.as_ref().map(|f| f.app_id.clone()).unwrap_or_default();
+        let Some(key) = model::key_of(item, &front_app) else { return };
+        let typed = self.query_text.trim().to_lowercase();
+        let choice = model::Choice { at: Recents::now(), typed, key, kind: item.kind.label().to_owned(), app: front_app };
+        // The model's results, and where among them the one chosen is.
+        let rows: Vec<[f32; model::F]> = self.features.iter().flatten().copied().collect();
+        let chosen = self.features[..index.min(self.features.len())].iter().flatten().count();
+        let chosen = if self.features.get(index).is_some_and(Option::is_some) { chosen } else { usize::MAX };
+        self.ranker.chose(choice, &rows, chosen);
+        if self.tuning {
+            return;
+        }
+        self.tuning = true;
+        let (start, proxy) = (self.ranker.weights.clone(), olo_ui::proxy(cx));
+        std::thread::Builder::new()
+            .name("palette tune".into())
+            .spawn(move || {
+                let tuned = model::tune(&start);
+                if let Some(t) = &tuned {
+                    let r = &t.report;
+                    tracing::info!(target: "olo::palette", examples = r.examples, before = r.before.mrr, after = r.after.mrr, baseline = r.baseline.mrr, kept = r.kept, micros = r.micros, "the palette's model tuned");
+                }
+                proxy.send(model::Retuned(tuned.filter(|t| t.report.kept).map(|t| t.weights)));
+            })
+            .ok();
     }
 
     /// ⌘↩ or ⌘-click: a file or folder found shown in Tracker rather than
@@ -528,6 +595,16 @@ impl Palette {
                     let w = window_menu::open(*facts, cx);
                     me.update(cx, |p, _| p.window_menu = w);
                 });
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<model::Retuned>() {
+            Ok(r) => {
+                self.tuning = false;
+                if let Some(w) = r.0 {
+                    self.ranker.weights = w;
+                }
                 return;
             }
             Err(m) => m,
@@ -777,6 +854,11 @@ fn main() {
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // What the ranking model knows, for a terminal or an agent.
+    if args.first().is_some_and(|a| a == "--model") {
+        println!("{}", serde_json::to_string_pretty(&model::Ranker::load().describe()).unwrap_or_default());
+        return;
+    }
     if instance::forward(APP_ID, &args) {
         return;
     }
@@ -826,8 +908,11 @@ fn main() {
                 typed: None,
                 activation: None,
                 results: Vec::new(),
+                features: Vec::new(),
                 front: None,
                 recents: Recents::load(),
+                ranker: model::Ranker::load(),
+                tuning: false,
                 workers,
                 window_menu: None,
                 sheet: None,
