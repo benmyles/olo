@@ -641,3 +641,118 @@ select behavior, inert shadow markup, cancellation, quota errors, secret-
 free debug output and source immutability. No visible UI/session changes.
 Next: CSS syntax/style foundation and byte/stream input work. The full
 native browser, JS, website evaluations and compatibility goal remain active.
+
+
+## 2026-11-05 — original generic CSS syntax and measured linear parsing
+
+Added hand-written CSS tokenization, source preprocessing/escapes,
+strings/URLs, typed numeric values/units, hash flags, punctuation and the
+special unicode-range descriptor mode. Default tokenization uses the
+current 2026 identifier ranges and separate delimiter tokens. Long scans
+check cancellation; input/token/decoded-text/depth/diagnostic/item bounds
+are explicit. Diagnostics retain source-byte offsets. Their complete
+standards conformance is not established by the syntax fixtures.
+
+An immutable preorder arena stores components in **24-byte slots**.
+Container traversal skips subtrees; blocks/functions have no recursive
+Rust ownership, including error/drop paths. Unchanged values borrow the
+shared source. Only decoded values own text; empty decoded values do not
+allocate slots. Numeric values occupy the node; dimensions have sparse
+12-byte metadata. Retained byte counters make `memory()` constant time.
+Debug output omits CSS source and values. Read-only views borrow their
+owning arena, keeping raw indices private.
+
+Generic stylesheet/rule/declaration/single-item APIs retain source
+spelling, important flags, mixed statement order, custom-property blocks,
+modern whitespace and semicolon behavior. Declarations discard at-rules;
+invalid markers remain inspectable. Raw rule blocks are parsed on demand
+and the future style compiler must retain results. Selector/property and
+at-rule context grammars, descriptor retokenization, CSSOM, cascade,
+substitution, media queries, invalidation, encoding and streaming remain
+unfinished. These records cannot yet be applied as style.
+
+Pinned implementation-independent css-parsing-tests at
+`203ce36bffd617db7f118c551e32794561fb273d`, including CC0 license/README and
+per-file SHA-256. All **177 imported cases** run: **137 match** their old
+expectations, **12 match exact reviewed current-spec updates**, and **28
+byte-input cases remain unsupported**. No unexpected mismatch/error/panic
+remains. The adapter folds adjacent literal delimiter pairs only for the
+old representation, compares JSON numeric values without conflating their
+separate type/spelling fields, and explicitly exercises unicode-range
+mode for that old corpus. Default mode is checked independently.
+
+The 12 reviewed cases cover the modern non-ASCII ranges, whitespace,
+semicolon/end-of-input behavior, and discarded at-rules. Expectations are
+specified from current algorithms, not captured from engine output. Native
+ports additionally check identifier boundaries and nine whitespace/
+important cases from two pinned WPT resources. These do not run their
+JS/CSSOM/pages. The identifier source has a missing comma in its data
+list; linewise extraction leaves the original file unchanged and makes
+this limitation explicit. The native `css_eval` includes all cases and
+currently exits **1**, verified; unsupported bytes stay in the denominator.
+Summary: `measurements/2026-11-05-css-coverage.json`. No website or rendering
+compatibility follows from this coverage.
+
+Release measurements exposed two problems before accepting this milestone:
+
+- Mixed blocks speculatively scanned the remaining list for every nested
+  rule: quadratic behavior. Added header/block early exits, including the
+  sole-block `!important` case, and single-pass declaration-value checks.
+  `baseline-css-parser` retains the old lookahead as an equivalent-results
+  measurement control. Independent fixtures run in both modes.
+- The first SIMD string search scanned a full 64 KiB tail again at every
+  escape. Limit the second search to the prefix before the first candidate.
+  Also scan ASCII identifier/whitespace runs without repeated UTF-8 reads.
+  The initial decoded-string parse/drop sample was **87.275 ms**, final
+  median **2.626 ms** on the same input; initial stylesheet **23.596 ms**,
+  final **8.083 ms**. These within-milestone comparisons combine changes,
+  and the initial raw sample is retained, not a previous released CSS engine.
+
+Final release comparisons: Core Ultra 7 356H, CPU 0, rustc 1.99.1;
+three alternating runs, baseline parser three iterations per sample,
+scalar/default five. CPU clocks/load uncontrolled. Median parse/drop:
+
+| Synthetic workload | Quadratic lookahead | Scalar scans | Default |
+|---|---:|---:|---:|
+| 8,192 raw stylesheet rules | 8.264 ms | 8.163 ms | 8.083 ms |
+| Long literals/comment, 2.13 MB | 0.052 ms | 0.838 ms | 0.059 ms |
+| Escaped string, 500 KB | 2.664 ms | 2.557 ms | 2.626 ms |
+| 100,000 dimension values | 7.860 ms | 7.829 ms | 7.737 ms |
+| Mixed blocks, 2,000 rules | 41.000 ms | 0.564 ms | 0.561 ms |
+| Mixed blocks, 4,000 rules | 170.623 ms | 1.138 ms | 1.126 ms |
+| Mixed blocks, 8,000 rules | 688.525 ms | 2.242 ms | 2.240 ms |
+
+The default mixed workload scales linearly with these sizes. Pure
+literal/comment tokenization: scalar **0.833 ms**, default **0.057 ms**.
+Escaped tokenization: scalar **2.564 ms**, default **2.636 ms**; SIMD is not
+claimed faster on every short run. Default first complete parses:
+stylesheet **9.394 ms**, literals **0.081 ms**, escaped **2.648 ms**,
+long dimension values **8.426 ms**, 8,000 mixed rules **2.238 ms**.
+All APIs are worker-only. The stylesheet workload parses components/root
+rule boundaries; it does not recursively compile declarations or style.
+
+The stylesheet has **262,144 nodes**, **6,291,456 reserved node bytes**,
+**98,304 dimension bytes**, **zero owned text**, plus its 655,360-byte
+shared source. Literal workload: **10 nodes**, **384 reserved bytes**,
+zero owned text, shared source 2,128,598 bytes. Escaped workload:
+**9 nodes**, **300,000 owned text bytes**, plus source. Dimension stress:
+**200,005 nodes**, **6,291,456 node bytes**, **1,572,864 dimension bytes**.
+Peak RSS across full benchmark processes: quadratic **13,300–13,424 KiB**,
+scalar **13,276–13,400**, default **13,280–13,464**. String-slot capacity and
+all other recorded pools are included in raw observations.
+
+Reproduce `cargo build --release -p olo-web --example css_bench` (add
+`--features scalar-scans` or `--features baseline-css-parser` for the
+controls), then `taskset -c 0 /usr/bin/time -v target/release/examples/css_bench 5`.
+Raw samples and source hashes: `measurements/2026-11-05-css.json`.
+These are static syntax measurements, not selector/property validation,
+style calculation, layout, network, JS, UI frames or Chrome comparisons.
+
+Validation: release engine tests (six CSS, 17 DOM, four tokenizer, 12 tree),
+combined scalar/reference CSS tests, release clippy and workspace release
+build. CSS tests include 12,000 nested containers, long Unicode chunks,
+resource/cancellation bounds, source borrowing, private Debug output and
+10,000 malformed inputs through stylesheet/mixed/declaration entry points.
+Existing workspace GPUI warnings remain unchanged. No visible UI changes,
+GUI windows, session upgrades or installs. Next: byte decoding and CSS
+selector/property/style compilation. The complete browser goal stays active.

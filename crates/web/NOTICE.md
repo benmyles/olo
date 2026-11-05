@@ -25,3 +25,21 @@ contributors, BSD-3-Clause, reproduced in `tests/wpt-tree/LICENSE.md`.
 The fixture format is in that directory's README.md. Tree comparisons
 do not yet validate parse-error counts/codes/locations. Unsupported
 algorithms/JavaScript/fragment cases remain explicit non-passes.
+
+
+`tests/css-parsing-tests` contains unmodified generic CSS syntax fixtures
+from [css-parsing-tests](https://github.com/SimonSapin/css-parsing-tests),
+revision `203ce36bffd617db7f118c551e32794561fb273d`, written by Simon Sapin
+and dedicated under CC0; LICENSE and README.rst are included. SOURCE.json
+records every imported byte hash. This older corpus uses legacy delimiter
+serialization and global unicode ranges. The native adapter documents its
+format mapping and 12 exact, reviewed current-specification expectations;
+byte decoding remains explicitly unsupported. This is not CSS property,
+selector, cascade or rendering conformance.
+
+`tests/css-wpt` contains two unmodified CSS syntax WPT resources from the
+same pinned WPT revision above, with BSD-3-Clause license and byte hashes.
+Native tests port their syntax assertions/data, not their JavaScript,
+CSSOM or browser execution. The identifier resource has a missing comma
+in its JavaScript range list; the native test extracts its data linewise
+and does not claim to execute that page.

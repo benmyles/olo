@@ -1,0 +1,612 @@
+{
+  "counts": {
+    "passed": 137,
+    "unsupported": 28,
+    "updated_specification": 12
+  },
+  "scope": "Generic CSS syntax only; legacy delimiter serialization and optional unicode-range descriptor mode. No selectors/property grammar/cascade/layout/site claim.",
+  "total": 177,
+  "full_syntax_acceptance_exit": 1,
+  "reviewed_current_specification_cases": [
+    {
+      "actual": [
+        [
+          "ident",
+          "-"
+        ],
+        " ",
+        [
+          "ident",
+          "red0"
+        ],
+        " ",
+        [
+          "ident",
+          "-red"
+        ],
+        " ",
+        [
+          "ident",
+          "--red"
+        ],
+        " ",
+        [
+          "ident",
+          "--red blue"
+        ],
+        " ",
+        [
+          "dimension",
+          "0",
+          0.0,
+          "integer",
+          "red"
+        ],
+        " ",
+        [
+          "dimension",
+          "-0",
+          -0.0,
+          "integer",
+          "red"
+        ],
+        " ",
+        [
+          "ident",
+          "\ufffdred"
+        ],
+        " ",
+        [
+          "ident",
+          "_Red"
+        ],
+        " ",
+        ".",
+        [
+          "ident",
+          "red"
+        ],
+        " ",
+        [
+          "ident",
+          "r\u00ead"
+        ],
+        " ",
+        [
+          "ident",
+          "r\u00ead"
+        ],
+        " ",
+        "\u007f",
+        "\u0080",
+        "\u0081"
+      ],
+      "case": 7,
+      "file": "component_value_list.json",
+      "input": "\\- red0 -red --red -\\-red\\ blue 0red -0red \u0000red _Red .red r\u00ead r\\\u00ead \u007f\u0080\u0081",
+      "legacy_expected": [
+        [
+          "ident",
+          "-"
+        ],
+        " ",
+        [
+          "ident",
+          "red0"
+        ],
+        " ",
+        [
+          "ident",
+          "-red"
+        ],
+        " ",
+        [
+          "ident",
+          "--red"
+        ],
+        " ",
+        [
+          "ident",
+          "--red blue"
+        ],
+        " ",
+        [
+          "dimension",
+          "0",
+          0,
+          "integer",
+          "red"
+        ],
+        " ",
+        [
+          "dimension",
+          "-0",
+          0,
+          "integer",
+          "red"
+        ],
+        " ",
+        [
+          "ident",
+          "\ufffdred"
+        ],
+        " ",
+        [
+          "ident",
+          "_Red"
+        ],
+        " ",
+        ".",
+        [
+          "ident",
+          "red"
+        ],
+        " ",
+        [
+          "ident",
+          "r\u00ead"
+        ],
+        " ",
+        [
+          "ident",
+          "r\u00ead"
+        ],
+        " ",
+        "\u007f",
+        [
+          "ident",
+          "\u0080\u0081"
+        ]
+      ],
+      "outcome": "updated_specification",
+      "reason": "2026 non-ASCII identifier ranges exclude U+0080/U+0081; CSS Syntax 4.2"
+    },
+    {
+      "actual": [
+        [
+          "declaration",
+          "a",
+          [
+            [
+              "ident",
+              "b"
+            ]
+          ],
+          false
+        ]
+      ],
+      "case": 7,
+      "file": "declaration_list.json",
+      "input": "@import 'foo.css'; a:b; @import 'bar.css'",
+      "legacy_expected": [
+        [
+          "at-rule",
+          "import",
+          [
+            " ",
+            [
+              "string",
+              "foo.css"
+            ]
+          ],
+          null
+        ],
+        [
+          "declaration",
+          "a",
+          [
+            [
+              "ident",
+              "b"
+            ]
+          ],
+          false
+        ],
+        [
+          "at-rule",
+          "import",
+          [
+            " ",
+            [
+              "string",
+              "bar.css"
+            ]
+          ],
+          null
+        ]
+      ],
+      "outcome": "updated_specification",
+      "reason": "parse-list-of-declarations discards at-rules; CSS Syntax 5.4.5"
+    },
+    {
+      "actual": [
+        [
+          "declaration",
+          "a",
+          [
+            [
+              "ident",
+              "b"
+            ]
+          ],
+          false
+        ]
+      ],
+      "case": 8,
+      "file": "declaration_list.json",
+      "input": "@media screen { div{;}} a:b;; @media print{div{",
+      "legacy_expected": [
+        [
+          "at-rule",
+          "media",
+          [
+            " ",
+            [
+              "ident",
+              "screen"
+            ],
+            " "
+          ],
+          [
+            " ",
+            [
+              "ident",
+              "div"
+            ],
+            [
+              "{}",
+              ";"
+            ]
+          ]
+        ],
+        [
+          "declaration",
+          "a",
+          [
+            [
+              "ident",
+              "b"
+            ]
+          ],
+          false
+        ],
+        [
+          "at-rule",
+          "media",
+          [
+            " ",
+            [
+              "ident",
+              "print"
+            ]
+          ],
+          [
+            [
+              "ident",
+              "div"
+            ],
+            [
+              "{}"
+            ]
+          ]
+        ]
+      ],
+      "outcome": "updated_specification",
+      "reason": "parse-list-of-declarations discards at-rules; CSS Syntax 5.4.5"
+    },
+    {
+      "actual": [
+        [
+          "error",
+          "invalid"
+        ]
+      ],
+      "case": 9,
+      "file": "declaration_list.json",
+      "input": "@ media screen { div{;}} a:b;; @media print{div{",
+      "legacy_expected": [
+        [
+          "error",
+          "invalid"
+        ],
+        [
+          "at-rule",
+          "media",
+          [
+            " ",
+            [
+              "ident",
+              "print"
+            ]
+          ],
+          [
+            [
+              "ident",
+              "div"
+            ],
+            [
+              "{}"
+            ]
+          ]
+        ]
+      ],
+      "outcome": "updated_specification",
+      "reason": "parse-list-of-declarations discards at-rules; CSS Syntax 5.4.5"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [],
+        false
+      ],
+      "case": 12,
+      "file": "one_declaration.json",
+      "input": "\n/**/ foo: ",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " "
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [],
+        false
+      ],
+      "case": 13,
+      "file": "one_declaration.json",
+      "input": "foo:;",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          ";"
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration stops at semicolon; CSS Syntax 5.4.7/5.5.6"
+    },
+    {
+      "actual": [
+        "error",
+        "extra-input"
+      ],
+      "case": 15,
+      "file": "one_declaration.json",
+      "input": "foo:;bar:;",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          ";",
+          [
+            "ident",
+            "bar"
+          ],
+          ":",
+          ";"
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "parse-declaration rejects remaining input after semicolon; CSS Syntax 5.4.7"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ]
+        ],
+        true
+      ],
+      "case": 16,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  !Important",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " "
+        ],
+        true
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ]
+        ],
+        true
+      ],
+      "case": 17,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  ! /**/\t IMPORTant /**/\f",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " "
+        ],
+        true
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ],
+          " ",
+          "!",
+          [
+            "ident",
+            "\u0130mportant"
+          ]
+        ],
+        false
+      ],
+      "case": 18,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  /* Dotted capital I */!\u0130mportant",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " ",
+          "!",
+          [
+            "ident",
+            "\u0130mportant"
+          ]
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ],
+          " ",
+          "!",
+          [
+            "ident",
+            "important"
+          ],
+          "!"
+        ],
+        false
+      ],
+      "case": 19,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  !important!",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " ",
+          "!",
+          [
+            "ident",
+            "important"
+          ],
+          "!"
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ],
+          " ",
+          [
+            "ident",
+            "important"
+          ]
+        ],
+        false
+      ],
+      "case": 20,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  important",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " ",
+          [
+            "ident",
+            "important"
+          ]
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    }
+  ]
+}

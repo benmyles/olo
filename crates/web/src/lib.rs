@@ -2,5 +2,6 @@
 //! conforming browser. See docs/browser for measured compatibility.
 #![forbid(unsafe_code)]
 
+pub mod css;
 pub mod dom;
 pub mod html;

@@ -1,8 +1,9 @@
 # Engine implementation and checks
 
-The engine crate is `olo-web`. It currently parses supported static HTML
-into its own compact document storage. It has no network, CSS/layout,
-JavaScript execution, browser shell or demonstrated website compatibility.
+The engine crate is `olo-web`. It parses supported static HTML into its
+own compact document storage and constructs generic CSS syntax. It has no
+network, style calculation/layout, JavaScript execution, browser shell or
+demonstrated website compatibility.
 
 ## Parse API
 
@@ -136,3 +137,70 @@ empty. Temporary context/root nodes are reclaimed; retained source spans
 belong to the returned arena. Cross-document import/adoption, live mutation
 hooks, Web IDL innerHTML/setHTML APIs, script execution and real owner-
 document/realm semantics remain separate unfinished integration.
+
+
+## Generic CSS syntax
+
+`css::Tokenizer` consumes complete UTF-8 input with source-byte spans,
+preprocessing, escapes, strings, URLs, hash flags, numbers/units and typed
+punctuation. Unicode-range tokens are disabled normally and enabled only
+through the explicit descriptor-mode option. Strings/names borrow input
+unless decoding is necessary. Scans have cancellation checkpoints and
+bounds for input, tokens, decoded text, diagnostics and nesting. Diagnostic
+labels/offsets are exposed; their complete standards conformance is not
+established by the fixture comparisons.
+
+`css::Syntax::parse(Arc<str>, Limits, cancellation)` constructs an immutable
+24-byte-per-component preorder arena. Children skip subtrees; containers
+never recursively own nodes. Source spans/decoded buffers are retained
+once. Numeric values use node storage; dimension metadata is a sparse
+12-byte entry. `memory()` uses retained counters/capacities, not a tree walk.
+Read-only component views borrow their owning arena; public consumers
+cannot forge cross-arena indices. Debug output omits source/value strings.
+
+Syntax methods expose generic stylesheet/rule boundaries, declarations,
+ordered mixed block contents and single-item entry points. They preserve
+source spelling, trim declaration whitespace, handle important suffixes,
+discard at-rules in declaration lists, and distinguish custom-property
+blocks from nested rules. Invalid markers remain available for diagnostic
+inspection. These methods deliberately do not validate selector/property
+or at-rule context grammars. Consumers must validate and compile them
+before applying style. Blocks are parsed on demand and the style compiler
+must retain results rather than repeat work during layout/painting.
+Property grammars, unicode-range descriptor retokenization, selectors,
+cascade/layers, custom-property substitution, media queries, invalidation,
+CSSOM, byte encoding, and streaming remain unfinished.
+
+Independent fixtures are pinned in `tests/css-parsing-tests` (177 cases).
+The old serialization adapter folds adjacent literal delimiter pairs and
+compares numeric values across JSON integer/float representations, while
+retaining numeric type and original spelling. It runs the old corpus with
+unicode ranges enabled, explicitly exercising the optional descriptor
+mode. Default mode is checked separately. **137 cases match**, **12 use
+reviewed current-specification expectations**, and **28 byte-input cases
+are unsupported**. Those 12 exact mappings are in `css_fixtures.rs`:
+modern non-ASCII ident ranges, declaration whitespace/semicolon handling,
+and discarded at-rules in declaration lists. No emitted result is used as
+an expected value. Source hashes reject fixture edits.
+
+`tests/css-wpt` pins the two WPT resources used to port native syntax
+assertions for identifier ranges and nine whitespace/important examples.
+The port does not run their JS, CSSOM or page rendering. Its README/license
+and source hashes document the distinction and the missing comma in the
+upstream identifier script's data list.
+
+`css_eval` includes every imported case and exits nonzero until all are
+checked against pinned/reviewed expectations. It currently exits 1:
+
+```sh
+cargo run --release -p olo-web --example css_eval -- /var/tmp/css-report.json
+```
+
+`css_bench` measures tokenization and generic syntax/root statements only,
+including mixed-rule scaling; it does not compute style or recursively
+compile every rule's declarations. `scalar-scans` supplies equivalent
+scalar string/comment searches. `baseline-css-parser` reproduces the old
+mixed-block lookahead cost, with the same results. Default uses early
+exits and single-pass declaration-value checks. Raw release observations:
+`measurements/2026-11-05-css.json`. No Chrome, rendering or compatibility
+performance follows from these microbenchmarks.

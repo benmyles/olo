@@ -14,6 +14,8 @@ baseline-storage = []
 # Counterfactual parser measurements with repeated attribute lookup and
 # linear-pair formatting-attribute comparison; identical tree semantics.
 baseline-parser = []
+# Reproduce generic CSS mixed-block lookahead before the linear early exits.
+baseline-css-parser = []
 
 [dependencies]
 memchr = "2"

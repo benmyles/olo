@@ -1,0 +1,2 @@
+*.json -text -whitespace
+README.rst -text -whitespace

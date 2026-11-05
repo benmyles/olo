@@ -37,7 +37,12 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Declarative shadow roots, template content patching, inert owner-document/
   realm semantics and web-facing template APIs.
 - [ ] Add network/encoding/cache/cookies with security and memory bounds.
-- [ ] Implement CSS tokenizer/parser, selectors, cascade, media queries,
+- [x] Original CSS tokenizer, compact component arena and generic rule/
+  declaration/block construction; independent syntax corpus, reviewed
+  current-spec updates, native fail-closed evaluator and release comparisons.
+- [ ] CSS byte decoding and descriptor-aware unicode-range handling;
+  28 imported byte fixtures remain explicitly unsupported.
+- [ ] Implement CSS selector/property grammars, cascade, media queries,
   custom properties and style invalidation.
 - [ ] Implement block/inline, text shaping/bidi, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
@@ -66,7 +71,7 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: CSS syntax/style foundation and byte/stream input handling; complete
-tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
+Next: CSS byte decoding, selector/property/style compilation and byte/stream
+input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.

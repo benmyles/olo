@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "d7bb5bb848fcd304c10669288a211dbafd106d90",
+  "files": {
+    "non-ascii-codepoints.html": "088c26b4953dea137e486a8b4b7fefb89cea2420e7c86bd2ad23ff12bd1d288d",
+    "declarations-trim-whitespace.html": "af6e5414e18c8ce42c3d0f8614837493e7495b5a7f8f84f8bddb9d2654d4c62d",
+    "LICENSE.md": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570"
+  }
+}
