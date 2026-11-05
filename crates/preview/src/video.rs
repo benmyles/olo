@@ -1048,6 +1048,16 @@ impl Demux for Mkv {
 mod tests {
     use super::*;
 
+    /// A test's scratch folder, removed however the test ends (a failing
+    /// one too).
+    struct Gone(std::path::PathBuf);
+
+    impl Drop for Gone {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// What a seek costs at 4K (H.264, OpenH264's key frames two seconds
     /// apart): to just before the second key frame, so every picture
     /// before it is decoded (and, held in case it's the one showing,
@@ -1059,6 +1069,7 @@ mod tests {
         use olo_video::{H264, Mp4, Order};
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-preview-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _gone = Gone(dir.clone());
         let path = dir.join("4k.mp4");
         let (w, h) = (3840u32, 2160u32);
         let mut enc = H264::new(w, h, 30).unwrap();
@@ -1077,7 +1088,6 @@ mod tests {
                 t.elapsed().as_secs_f64() * 1000.0
             })
             .collect();
-        let _ = std::fs::remove_dir_all(&dir);
         ms.sort_by(f64::total_cmp);
         println!("seek to 1.95 s of 4K H.264 (59 pictures decoded): {:.0} ms (median of 5; {:.0}–{:.0})", ms[2], ms[0], ms[4]);
     }
@@ -1090,6 +1100,7 @@ mod tests {
         use olo_video::{H264, Mp4, Order};
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-preview-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _gone = Gone(dir.clone());
         let path = dir.join("still.mp4");
         let (w, h) = (64u32, 48u32);
         let mut enc = H264::new(w, h, 30).unwrap();
@@ -1106,7 +1117,6 @@ mod tests {
             image.rgba[(image.rgba.len() / 2) & !3]
         };
         let shown: Vec<(f64, u8)> = [0.0, 0.05, 0.1, 1.6, 3.09, 3.1, 3.4, 5.0].into_iter().map(|at| (at, level(at))).collect();
-        let _ = std::fs::remove_dir_all(&dir);
         let want = [40, 40, 140, 140, 140, 240, 240, 240];
         for ((at, got), want) in shown.iter().zip(want) {
             assert!((i32::from(*got) - want).abs() < 12, "at {at} s: {got}, not {want} ({shown:?})");
