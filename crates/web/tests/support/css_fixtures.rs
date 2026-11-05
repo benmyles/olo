@@ -135,6 +135,17 @@ fn run(file: &str, input: &str) -> std::result::Result<Value, String> {
     .map_err(|e| e.to_string())?;
     Ok(json!(statements.iter().map(statement).collect::<Vec<_>>()))
 }
+fn run_bytes(input: &Value) -> Result<Value, String> {
+    use olo_web::{css::ByteOptions, text::CharacterEncoding};
+    let bytes: Vec<u8> = input["css_bytes"].as_str().unwrap().chars().map(|c| u8::try_from(c as u32).expect("fixture byte")).collect();
+    let options = ByteOptions {
+        protocol_encoding: input["protocol_encoding"].as_str(),
+        environment_encoding: input["environment_encoding"].as_str().and_then(|label| CharacterEncoding::for_label(label.as_bytes())),
+    };
+    let parsed = Syntax::parse_bytes(&bytes, options, css::Limits::default(), None).map_err(|e| e.to_string())?;
+    let statements = parsed.syntax.stylesheet(None).map_err(|e| e.to_string())?;
+    Ok(json!([statements.iter().map(statement).collect::<Vec<_>>(), parsed.encoding.encoding.name().to_ascii_lowercase()]))
+}
 fn equivalent(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(a), Value::Number(b)) => a.as_f64() == b.as_f64(),
@@ -195,34 +206,29 @@ pub fn evaluate(dir: &Path) -> Value {
         assert!(remainder.is_empty(), "unpaired CSS fixture input");
         for (i, pair) in pairs.iter().enumerate() {
             let mut r = json!({"file":file,"case":i+1});
-            if file == "stylesheet_bytes.json" {
-                r["outcome"] = json!("unsupported");
-                r["reason"] = json!("byte decoding");
-            } else {
-                match std::panic::catch_unwind(|| run(file, pair[0].as_str().unwrap())) {
-                    Ok(Ok(actual)) => {
-                        if equivalent(&actual, &pair[1]) {
-                            r["outcome"] = json!("passed");
+            match std::panic::catch_unwind(|| if file == "stylesheet_bytes.json" { run_bytes(&pair[0]) } else { run(file, pair[0].as_str().unwrap()) }) {
+                Ok(Ok(actual)) => {
+                    if equivalent(&actual, &pair[1]) {
+                        r["outcome"] = json!("passed");
+                    } else {
+                        if let Some((modern, reason)) = modern_expected(file, i + 1, &pair[1])
+                            && equivalent(&actual, &modern)
+                        {
+                            r["outcome"] = json!("updated_specification");
+                            r["reason"] = json!(reason);
                         } else {
-                            if let Some((modern, reason)) = modern_expected(file, i + 1, &pair[1])
-                                && equivalent(&actual, &modern)
-                            {
-                                r["outcome"] = json!("updated_specification");
-                                r["reason"] = json!(reason);
-                            } else {
-                                r["outcome"] = json!("mismatch");
-                            }
-                            r["input"] = pair[0].clone();
-                            r["legacy_expected"] = pair[1].clone();
-                            r["actual"] = actual;
+                            r["outcome"] = json!("mismatch");
                         }
+                        r["input"] = pair[0].clone();
+                        r["legacy_expected"] = pair[1].clone();
+                        r["actual"] = actual;
                     }
-                    Ok(Err(e)) => {
-                        r["outcome"] = json!("error");
-                        r["reason"] = json!(e);
-                    }
-                    Err(_) => r["outcome"] = json!("panic"),
                 }
+                Ok(Err(e)) => {
+                    r["outcome"] = json!("error");
+                    r["reason"] = json!(e);
+                }
+                Err(_) => r["outcome"] = json!("panic"),
             }
             *counts.entry(r["outcome"].as_str().unwrap().to_owned()).or_default() += 1;
             results.push(r);

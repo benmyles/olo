@@ -153,7 +153,9 @@ established by the fixture comparisons.
 `css::Syntax::parse(Arc<str>, Limits, cancellation)` constructs an immutable
 24-byte-per-component preorder arena. Children skip subtrees; containers
 never recursively own nodes. Source spans/decoded buffers are retained
-once. Numeric values use node storage; dimension metadata is a sparse
+once. `parse_owned(String, …)` retains a decoded buffer without copying it;
+`source()` returns `&str` for either ownership form, and `memory()` includes
+reserved source capacity. Numeric values use node storage; dimension metadata is a sparse
 12-byte entry. `memory()` uses retained counters/capacities, not a tree walk.
 Read-only component views borrow their owning arena; public consumers
 cannot forge cross-arena indices. Debug output omits source/value strings.
@@ -169,16 +171,17 @@ before applying style. Blocks are parsed on demand and the style compiler
 must retain results rather than repeat work during layout/painting.
 Property grammars, unicode-range descriptor retokenization, selectors,
 cascade/layers, custom-property substitution, media queries, invalidation,
-CSSOM, byte encoding, and streaming remain unfinished.
+CSSOM and incremental tokenization remain unfinished. Streaming byte decoding
+is implemented below; it does not make the tokenizer incremental.
 
 Independent fixtures are pinned in `tests/css-parsing-tests` (177 cases).
 The old serialization adapter folds adjacent literal delimiter pairs and
 compares numeric values across JSON integer/float representations, while
 retaining numeric type and original spelling. It runs the old corpus with
 unicode ranges enabled, explicitly exercising the optional descriptor
-mode. Default mode is checked separately. **137 cases match**, **12 use
-reviewed current-specification expectations**, and **28 byte-input cases
-are unsupported**. Those 12 exact mappings are in `css_fixtures.rs`:
+mode. Default mode is checked separately. **165 cases match**, including
+all **28 byte-input cases**, and **12 use reviewed current-specification
+expectations**. No imported generic-syntax case is skipped. Those 12 exact mappings are in `css_fixtures.rs`:
 modern non-ASCII ident ranges, declaration whitespace/semicolon handling,
 and discarded at-rules in declaration lists. No emitted result is used as
 an expected value. Source hashes reject fixture edits.
@@ -190,7 +193,8 @@ and source hashes document the distinction and the missing comma in the
 upstream identifier script's data list.
 
 `css_eval` includes every imported case and exits nonzero until all are
-checked against pinned/reviewed expectations. It currently exits 1:
+checked against pinned/reviewed expectations. It currently exits 0 for this
+177-case generic-syntax corpus only:
 
 ```sh
 cargo run --release -p olo-web --example css_eval -- /var/tmp/css-report.json
@@ -204,3 +208,60 @@ mixed-block lookahead cost, with the same results. Default uses early
 exits and single-pass declaration-value checks. Raw release observations:
 `measurements/2026-11-05-css.json`. No Chrome, rendering or compatibility
 performance follows from these microbenchmarks.
+
+
+## Text and CSS byte decoding
+
+`text::Decoder` is a worker-only push decoder shared by future resource
+loaders. The caller selects a standard encoding and removes any initial
+BOM. UTF-8 borrows validated runs, carries at most three unfinished bytes,
+and uses `simdutf8` for ordinary runs with scalar malformed-sequence
+recovery. Legacy codecs use the pure Rust `encoding_rs` library already
+used elsewhere in Olo, with a fixed 16 KiB staging buffer. No external
+programs, I/O, threads, timers or polling are added by decoding. Its
+144-byte state (on this x86-64 build) allocates no UTF-8 heap buffer.
+
+`DecodeLimits` separately bounds received bytes and produced UTF-8 bytes.
+Cancellation is checked within 64 KiB input spans and between callbacks.
+Invalid sequences use standard replacement behavior; `had_errors` records
+it. Sinks borrow valid text and should not block. A final push, fatal error
+or rejected sink offer is terminal. Progress counts received input (even
+if a later error stops that push) and bytes offered to the sink; callers
+that can reject an offer must track accepted bytes themselves. `collect`
+provides quota-aware, amortized growth for an optional owned destination.
+
+`css::ByteDecoder` adds encoding selection with at most 1024 sniffing
+bytes. Precedence is BOM, valid protocol label, exact leading ASCII
+`@charset "LABEL";` inside those first 1024 bytes, referring environment,
+then UTF-8. UTF-16 charset labels resolve to UTF-8 as required by CSS.
+Labels use the standard alias table; invalid labels fall through.
+The selected encoding/provenance/BOM length are available separately from
+text. A BOM is stripped; generic syntax retains encoding declarations.
+The later style compiler must discard `@charset` rather than apply it.
+
+`Syntax::parse_bytes` decodes and builds a complete generic component
+arena. Its input limit bounds both raw bytes and decoded source bytes.
+It reserves an initial collector buffer once after quota/cancellation
+preflight, trims spare capacity after decoding, and moves it into shared
+owned storage. This avoids the previous full `String` → `Arc<str>` copy;
+`parse(Arc<str>, …)` still borrows its caller's shared source. The
+`baseline-css-byte-copy` control reproduces that extra copy, and
+`baseline-utf8-errors` reproduces repeated SIMD error localization.
+
+The 28 independent CSS byte fixtures verify expected syntax and canonical
+encoding. Every possible two-chunk split also checks decoded text using
+the fixture's expected codec, not a codec selected by the engine. Native
+tests cover all 65,536 two-byte UTF-8 sequences, malformed/overlong and
+surrogate sequences, split astral characters, all 40 standard encodings,
+stateful/large-buffer drains, the exact 1024-byte boundary, precedence,
+resource limits, terminal failures, cancellation and retained buffers.
+Legacy-codec differential tests verify our wrapper/state/bounds against
+`encoding_rs`; they do not independently revalidate that library's codec
+tables. The original UTF-8 decoder is compared against that library.
+
+Primary algorithms: [CSS input byte stream](https://drafts.csswg.org/css-syntax/#input-byte-stream)
+and [Encoding decode](https://encoding.spec.whatwg.org/#decode), consulted
+2026-11-05. HTML encoding sniffing/restarts, network loading, streaming
+HTML/CSS tokenization, Web IDL `TextDecoder` and script execution remain
+unimplemented. See `bytes_bench` and the journal for release measurements;
+none establishes website, UI, GPU, layout or Chrome performance.

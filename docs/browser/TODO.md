@@ -40,8 +40,11 @@ item means implemented and verified; a partial implementation stays open.
 - [x] Original CSS tokenizer, compact component arena and generic rule/
   declaration/block construction; independent syntax corpus, reviewed
   current-spec updates, native fail-closed evaluator and release comparisons.
-- [ ] CSS byte decoding and descriptor-aware unicode-range handling;
-  28 imported byte fixtures remain explicitly unsupported.
+- [x] Bounded/cancellable streaming text and CSS byte decoding, encoding
+  provenance/precedence and source-buffer retention; all 28 imported byte
+  fixtures match, 165 direct plus 12 reviewed current-spec syntax cases.
+- [ ] Descriptor-aware unicode-range retokenization and context grammars;
+  byte decoding does not make CSS tokenization incremental.
 - [ ] Implement CSS selector/property grammars, cascade, media queries,
   custom properties and style invalidation.
 - [ ] Implement block/inline, text shaping/bidi, flex/grid/table layout,
@@ -71,7 +74,7 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: CSS byte decoding, selector/property/style compilation and byte/stream
-input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
+Next: CSS selector/property/style compilation, descriptor-aware parsing and
+HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.

@@ -1,0 +1,1435 @@
+{
+  "counts": {
+    "passed": 165,
+    "updated_specification": 12
+  },
+  "results": [
+    {
+      "case": 1,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 7,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 8,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 9,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 10,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 11,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 12,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 13,
+      "file": "blocks_contents.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 1,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "actual": [
+        [
+          "ident",
+          "-"
+        ],
+        " ",
+        [
+          "ident",
+          "red0"
+        ],
+        " ",
+        [
+          "ident",
+          "-red"
+        ],
+        " ",
+        [
+          "ident",
+          "--red"
+        ],
+        " ",
+        [
+          "ident",
+          "--red blue"
+        ],
+        " ",
+        [
+          "dimension",
+          "0",
+          0.0,
+          "integer",
+          "red"
+        ],
+        " ",
+        [
+          "dimension",
+          "-0",
+          -0.0,
+          "integer",
+          "red"
+        ],
+        " ",
+        [
+          "ident",
+          "�red"
+        ],
+        " ",
+        [
+          "ident",
+          "_Red"
+        ],
+        " ",
+        ".",
+        [
+          "ident",
+          "red"
+        ],
+        " ",
+        [
+          "ident",
+          "rêd"
+        ],
+        " ",
+        [
+          "ident",
+          "rêd"
+        ],
+        " ",
+        "",
+        "",
+        ""
+      ],
+      "case": 7,
+      "file": "component_value_list.json",
+      "input": "\\- red0 -red --red -\\-red\\ blue 0red -0red \u0000red _Red .red rêd r\\êd ",
+      "legacy_expected": [
+        [
+          "ident",
+          "-"
+        ],
+        " ",
+        [
+          "ident",
+          "red0"
+        ],
+        " ",
+        [
+          "ident",
+          "-red"
+        ],
+        " ",
+        [
+          "ident",
+          "--red"
+        ],
+        " ",
+        [
+          "ident",
+          "--red blue"
+        ],
+        " ",
+        [
+          "dimension",
+          "0",
+          0,
+          "integer",
+          "red"
+        ],
+        " ",
+        [
+          "dimension",
+          "-0",
+          0,
+          "integer",
+          "red"
+        ],
+        " ",
+        [
+          "ident",
+          "�red"
+        ],
+        " ",
+        [
+          "ident",
+          "_Red"
+        ],
+        " ",
+        ".",
+        [
+          "ident",
+          "red"
+        ],
+        " ",
+        [
+          "ident",
+          "rêd"
+        ],
+        " ",
+        [
+          "ident",
+          "rêd"
+        ],
+        " ",
+        "",
+        [
+          "ident",
+          ""
+        ]
+      ],
+      "outcome": "updated_specification",
+      "reason": "2026 non-ASCII identifier ranges exclude U+0080/U+0081; CSS Syntax 4.2"
+    },
+    {
+      "case": 8,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 9,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 10,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 11,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 12,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 13,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 14,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 15,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 16,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 17,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 18,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 19,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 20,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 21,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 22,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 23,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 24,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 25,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 26,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 27,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 28,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 29,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 30,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 31,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 32,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 33,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 34,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 35,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 36,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 37,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 38,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 39,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 40,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 41,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 42,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 43,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 44,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 45,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 46,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 47,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 48,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 49,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 50,
+      "file": "component_value_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 1,
+      "file": "declaration_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "declaration_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "declaration_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "declaration_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "declaration_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "declaration_list.json",
+      "outcome": "passed"
+    },
+    {
+      "actual": [
+        [
+          "declaration",
+          "a",
+          [
+            [
+              "ident",
+              "b"
+            ]
+          ],
+          false
+        ]
+      ],
+      "case": 7,
+      "file": "declaration_list.json",
+      "input": "@import 'foo.css'; a:b; @import 'bar.css'",
+      "legacy_expected": [
+        [
+          "at-rule",
+          "import",
+          [
+            " ",
+            [
+              "string",
+              "foo.css"
+            ]
+          ],
+          null
+        ],
+        [
+          "declaration",
+          "a",
+          [
+            [
+              "ident",
+              "b"
+            ]
+          ],
+          false
+        ],
+        [
+          "at-rule",
+          "import",
+          [
+            " ",
+            [
+              "string",
+              "bar.css"
+            ]
+          ],
+          null
+        ]
+      ],
+      "outcome": "updated_specification",
+      "reason": "parse-list-of-declarations discards at-rules; CSS Syntax 5.4.5"
+    },
+    {
+      "actual": [
+        [
+          "declaration",
+          "a",
+          [
+            [
+              "ident",
+              "b"
+            ]
+          ],
+          false
+        ]
+      ],
+      "case": 8,
+      "file": "declaration_list.json",
+      "input": "@media screen { div{;}} a:b;; @media print{div{",
+      "legacy_expected": [
+        [
+          "at-rule",
+          "media",
+          [
+            " ",
+            [
+              "ident",
+              "screen"
+            ],
+            " "
+          ],
+          [
+            " ",
+            [
+              "ident",
+              "div"
+            ],
+            [
+              "{}",
+              ";"
+            ]
+          ]
+        ],
+        [
+          "declaration",
+          "a",
+          [
+            [
+              "ident",
+              "b"
+            ]
+          ],
+          false
+        ],
+        [
+          "at-rule",
+          "media",
+          [
+            " ",
+            [
+              "ident",
+              "print"
+            ]
+          ],
+          [
+            [
+              "ident",
+              "div"
+            ],
+            [
+              "{}"
+            ]
+          ]
+        ]
+      ],
+      "outcome": "updated_specification",
+      "reason": "parse-list-of-declarations discards at-rules; CSS Syntax 5.4.5"
+    },
+    {
+      "actual": [
+        [
+          "error",
+          "invalid"
+        ]
+      ],
+      "case": 9,
+      "file": "declaration_list.json",
+      "input": "@ media screen { div{;}} a:b;; @media print{div{",
+      "legacy_expected": [
+        [
+          "error",
+          "invalid"
+        ],
+        [
+          "at-rule",
+          "media",
+          [
+            " ",
+            [
+              "ident",
+              "print"
+            ]
+          ],
+          [
+            [
+              "ident",
+              "div"
+            ],
+            [
+              "{}"
+            ]
+          ]
+        ]
+      ],
+      "outcome": "updated_specification",
+      "reason": "parse-list-of-declarations discards at-rules; CSS Syntax 5.4.5"
+    },
+    {
+      "case": 10,
+      "file": "declaration_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 1,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 7,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 8,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 9,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 10,
+      "file": "one_component_value.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 1,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 7,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 8,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 9,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 10,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 11,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [],
+        false
+      ],
+      "case": 12,
+      "file": "one_declaration.json",
+      "input": "\n/**/ foo: ",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " "
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [],
+        false
+      ],
+      "case": 13,
+      "file": "one_declaration.json",
+      "input": "foo:;",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          ";"
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration stops at semicolon; CSS Syntax 5.4.7/5.5.6"
+    },
+    {
+      "case": 14,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "actual": [
+        "error",
+        "extra-input"
+      ],
+      "case": 15,
+      "file": "one_declaration.json",
+      "input": "foo:;bar:;",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          ";",
+          [
+            "ident",
+            "bar"
+          ],
+          ":",
+          ";"
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "parse-declaration rejects remaining input after semicolon; CSS Syntax 5.4.7"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ]
+        ],
+        true
+      ],
+      "case": 16,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  !Important",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " "
+        ],
+        true
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ]
+        ],
+        true
+      ],
+      "case": 17,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  ! /**/\t IMPORTant /**/\f",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " "
+        ],
+        true
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ],
+          " ",
+          "!",
+          [
+            "ident",
+            "İmportant"
+          ]
+        ],
+        false
+      ],
+      "case": 18,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  /* Dotted capital I */!İmportant",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " ",
+          "!",
+          [
+            "ident",
+            "İmportant"
+          ]
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ],
+          " ",
+          "!",
+          [
+            "ident",
+            "important"
+          ],
+          "!"
+        ],
+        false
+      ],
+      "case": 19,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  !important!",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " ",
+          "!",
+          [
+            "ident",
+            "important"
+          ],
+          "!"
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "actual": [
+        "declaration",
+        "foo",
+        [
+          [
+            "number",
+            "9000",
+            9000.0,
+            "integer"
+          ],
+          " ",
+          [
+            "ident",
+            "important"
+          ]
+        ],
+        false
+      ],
+      "case": 20,
+      "file": "one_declaration.json",
+      "input": "foo: 9000  important",
+      "legacy_expected": [
+        "declaration",
+        "foo",
+        [
+          " ",
+          [
+            "number",
+            "9000",
+            9000,
+            "integer"
+          ],
+          " ",
+          [
+            "ident",
+            "important"
+          ]
+        ],
+        false
+      ],
+      "outcome": "updated_specification",
+      "reason": "consume-declaration trims leading/trailing whitespace; CSS Syntax 5.5.6; WPT declarations-trim-whitespace.html"
+    },
+    {
+      "case": 21,
+      "file": "one_declaration.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 1,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 7,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 8,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 9,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 10,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 11,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 12,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 13,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 14,
+      "file": "one_rule.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 1,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 7,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 8,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 9,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 10,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 11,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 12,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 13,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 14,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 15,
+      "file": "rule_list.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 1,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 7,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 8,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 9,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 10,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 11,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 12,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 13,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 14,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 15,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 16,
+      "file": "stylesheet.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 1,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 2,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 3,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 4,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 5,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 6,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 7,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 8,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 9,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 10,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 11,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 12,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 13,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 14,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 15,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 16,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 17,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 18,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 19,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 20,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 21,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 22,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 23,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 24,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 25,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 26,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 27,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    },
+    {
+      "case": 28,
+      "file": "stylesheet_bytes.json",
+      "outcome": "passed"
+    }
+  ],
+  "scope": "Generic CSS syntax only; legacy delimiter serialization and optional unicode-range descriptor mode. No selectors/property grammar/cascade/layout/site claim.",
+  "total": 177
+}

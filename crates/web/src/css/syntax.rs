@@ -106,6 +106,7 @@ impl Node {
 #[derive(Clone, Copy, Debug)]
 pub struct Memory {
     pub source_bytes: usize,
+    pub source_reserved_bytes: usize,
     pub nodes: usize,
     pub node_size: usize,
     pub node_reserved_bytes: usize,
@@ -114,8 +115,34 @@ pub struct Memory {
     pub dimension_reserved_bytes: usize,
     pub diagnostic_reserved_bytes: usize,
 }
+#[derive(Clone)]
+enum Source {
+    Shared(Arc<str>),
+    Owned(Arc<String>),
+}
+impl std::ops::Deref for Source {
+    type Target = str;
+    fn deref(&self) -> &str {
+        match self {
+            Self::Shared(s) => s,
+            Self::Owned(s) => s,
+        }
+    }
+}
+impl Source {
+    fn capacity(&self) -> usize {
+        match self {
+            Self::Shared(s) => s.len(),
+            Self::Owned(s) => s.capacity(),
+        }
+    }
+}
 pub struct Syntax {
-    source: Arc<str>,
+    source: Source,
+    // Immutable backing range; avoid dispatching source ownership for
+    // every source-backed token stored during construction.
+    source_start: usize,
+    source_bytes: usize,
     nodes: Vec<Node>,
     decoded: Vec<Box<str>>,
     decoded_bytes: usize,
@@ -134,9 +161,29 @@ impl Syntax {
     }
     /// Special descriptor mode, not normal stylesheet tokenization.
     pub fn parse_with_unicode_ranges(source: Arc<str>, limits: Limits, cancelled: Option<&AtomicBool>, unicode_ranges: bool) -> Result<Self> {
+        Self::parse_source(Source::Shared(source), limits, cancelled, unicode_ranges)
+    }
+    /// Retain an already decoded buffer without copying the full source.
+    pub fn parse_owned(source: String, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+        if source.capacity() > limits.input_bytes {
+            return Err(Error::InputLimit);
+        }
+        Self::parse_source(Source::Owned(Arc::new(source)), limits, cancelled, false)
+    }
+    fn parse_source(source: Source, limits: Limits, cancelled: Option<&AtomicBool>, unicode_ranges: bool) -> Result<Self> {
         let mut tokenizer = Tokenizer::new(&source, limits, cancelled)?;
         tokenizer.set_unicode_ranges(unicode_ranges);
-        let mut tree = Self { source: source.clone(), nodes: Vec::new(), decoded: Vec::new(), decoded_bytes: 0, dimensions: Vec::new(), diagnostics: Vec::new(), limits };
+        let mut tree = Self {
+            source: source.clone(),
+            source_start: source.as_ptr() as usize,
+            source_bytes: source.len(),
+            nodes: Vec::new(),
+            decoded: Vec::new(),
+            decoded_bytes: 0,
+            dimensions: Vec::new(),
+            diagnostics: Vec::new(),
+            limits,
+        };
         let mut stack = Vec::<(u32, char)>::new();
         while let Some(token) = tokenizer.next_token()? {
             if let TokenKind::Close(c) = token.kind
@@ -219,7 +266,7 @@ impl Syntax {
     }
     fn store(&mut self, text: Cow<'_, str>) -> Result<Text> {
         if let Cow::Borrowed(s) = text
-            && let Some(start) = (s.as_ptr() as usize).checked_sub(self.source.as_ptr() as usize).filter(|&start| start <= self.source.len() && s.len() <= self.source.len() - start)
+            && let Some(start) = (s.as_ptr() as usize).checked_sub(self.source_start).filter(|&start| start <= self.source_bytes && s.len() <= self.source_bytes - start)
         {
             return Ok(Text { start: start as u32, len: s.len() as u32 });
         }
@@ -240,7 +287,7 @@ impl Syntax {
     fn text(&self, text: Text) -> &str {
         if text.len == u32::MAX { &self.decoded[text.start as usize] } else { &self.source[text.start as usize..(text.start + text.len) as usize] }
     }
-    pub fn source(&self) -> &Arc<str> {
+    pub fn source(&self) -> &str {
         &self.source
     }
     pub fn diagnostics(&self) -> &[Diagnostic] {
@@ -252,6 +299,7 @@ impl Syntax {
     pub fn memory(&self) -> Memory {
         Memory {
             source_bytes: self.source.len(),
+            source_reserved_bytes: self.source.capacity(),
             nodes: self.nodes.len(),
             node_size: std::mem::size_of::<Node>(),
             node_reserved_bytes: self.nodes.capacity() * std::mem::size_of::<Node>(),

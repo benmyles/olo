@@ -756,3 +756,131 @@ resource/cancellation bounds, source borrowing, private Debug output and
 Existing workspace GPUI warnings remain unchanged. No visible UI changes,
 GUI windows, session upgrades or installs. Next: byte decoding and CSS
 selector/property/style compilation. The complete browser goal stays active.
+
+
+## 2026-11-05 — Streaming text/CSS byte decoding and retained source buffers
+
+Added reusable worker-only `text::Decoder` and original CSS encoding
+selection/stream wrapper. UTF-8 validates borrowed runs with stable SIMD,
+keeps at most three unfinished bytes, and uses standard replacement
+semantics. Legacy encodings use Olo's existing pure Rust `encoding_rs`
+library in process; no C library or external executable is added.
+The decoder is **144 bytes** on this x86-64 build, with **no UTF-8 heap
+buffer**. Legacy codecs use a fixed **16,384-byte staging buffer**.
+The CSS wrapper is **1,256 bytes**, including its inline **1,024-byte**
+sniffing prefix. It does no I/O, starts no threads and wakes no timers.
+
+CSS selection follows BOM, valid protocol label, exact leading ASCII
+`@charset "LABEL";` completed in the first 1,024 bytes, environment, UTF-8.
+UTF-16 charset labels map to UTF-8. Selection reports provenance and BOM
+length; BOM is removed, while generic syntax retains declarations for the
+later style compiler to discard. Labels and legacy tables are supplied by
+`encoding_rs`, not handwritten approximations of the standard aliases.
+The common decoder intentionally has no HTML sniffing or BOM policy.
+
+Input/output budgets are separate. Cancellation is checked within 64 KiB
+spans and between sink callbacks; sinks must not block. Invalid data is
+recorded in `had_errors`; resource/cancellation/sink errors and finalization
+are terminal. Progress counts received input and bytes offered to the
+sink, including an offer a sink rejects. Failed prefix emission preserves
+that progress, rather than losing it in a temporary decoder.
+
+`Syntax::parse_bytes` bounds raw and decoded source by the CSS input quota.
+It allocates an initial destination once after preflight, trims spare
+capacity, and retains the owned String buffer via shared ownership. This
+removes the full String-to-Arc<str> source copy. `parse(Arc<str>, …)` keeps
+its existing shared input; `parse_owned` rejects a retained capacity over
+its input limit. `source()` now returns `&str`; `memory()` separately
+reports source length and reserved buffer capacity. Component nodes remain
+**24 bytes**. An immutable cached backing range avoids repeated source
+ownership dispatch when storing source-backed tokens.
+
+All **28 byte fixtures** now match their independent expected syntax and
+canonical encoding. Total generic CSS corpus: **165 direct matches**,
+**12 exact documented current-spec expectations**, **0 unsupported** out
+of **177**. The fail-closed `css_eval` now exits 0 for this corpus. It
+still checks the same pinned bytes/hashes and does not generate expectations
+from the engine. This is generic syntax coverage, not CSS conformance,
+selector/property validation, rendering or website compatibility.
+
+Six new native tests cover every possible two-chunk split of those byte
+fixtures, all **65,536 two-byte UTF-8 sequences**, malformed/overlong/
+surrogate UTF-8, unfinished sequences, split astral characters, all **40
+standard encodings**, stateful/large-output drains, every encoding
+precedence and 1,024-byte boundary, limits, cancellation, terminal errors,
+source-buffer retention and capacity reporting. Codec comparisons use
+`encoding_rs` as an independent implementation of our UTF-8 path and as a
+reference for our legacy wrapper/state/bounds. They do not independently
+validate that library's legacy tables. HTML/CSS tokenization still needs
+complete-input text; decoding alone does not make parsing incremental.
+
+Measurements found and corrected two issues during this milestone:
+
+- Repeated SIMD error localization was slower on dense malformed input.
+  After the first malformed sequence, enter a separately compiled scalar
+  loop for the rest of the bounded piece, returning to SIMD next piece.
+  `baseline-utf8-errors` retains repeated SIMD localization as a control.
+- The first fallback revision also revalidated a long *valid* prefix with
+  the scalar validator when only the final character was split. Preserve
+  SIMD validation for that prefix; an unfinished sequence is not itself a
+  decoding error. Intermediate raw observations are retained. Source
+  ownership initially added common-path lookup overhead; caching its
+  immutable range restored the principal stylesheet workload to baseline.
+
+Release measurements: Core Ultra 7 356H, CPU 0, rustc 1.99.1, three
+alternating runs per variant, 15 iterations per byte case. Clocks,
+thermals and other load are uncontrolled. Median milliseconds:
+
+| Synthetic workload | Source-copy control | Repeated SIMD errors | Scalar scans | Default |
+|---|---:|---:|---:|---:|
+| Decode 2.10 MB ASCII, whole push | 0.026 | 0.025 | 0.053 | 0.026 |
+| Decode 2.10 MB Unicode, whole push | 0.145 | 0.145 | 1.297 | 0.145 |
+| Decode 0.90 MB malformed, whole push | 1.683 | 3.136 | 1.652 | 1.856 |
+| Decode 1.05 MB Windows-1252 | 1.114 | 1.139 | 1.172 | 1.179 |
+| Decode 1.80 MB UTF-16LE | 0.682 | 0.679 | 0.684 | 0.683 |
+| Parse/drop 8,192 byte stylesheet rules | 8.678 | 8.803 | 8.742 | 9.039 |
+| Parse/drop 2.13 MB literal/comment CSS | 0.329 | 0.190 | 1.687 | 0.193 |
+| Parse/drop 1.05 MB Latin literal CSS | 1.348 | 1.250 | 2.185 | 1.268 |
+
+The source-copy control differs only in final source-buffer ownership;
+its decode results illustrate code-layout/load variation rather than a
+semantic reason for different decode speed. Scalar recovery improves
+dense-invalid throughput over repeated SIMD; scalar-only remains faster
+on that synthetic invalid case. No universal SIMD or parsing speedup is
+claimed. Default median first parses: stylesheet **11.233 ms**, literals
+**0.316 ms**, Latin literals **1.265 ms**; these run on workers.
+
+Retained source capacities equal decoded byte lengths for these cases:
+stylesheet **655,360**, literals **2,128,598**, Latin literals **2,097,165**.
+There are no additional owned token strings. The stylesheet still has
+262,144 nodes/6,291,456 reserved node bytes; literal workloads have 10/5
+nodes and 384/192 reserved node bytes. The copy control temporarily owns
+another full source buffer; process-wide RSS does not isolate that peak.
+RSS across complete benchmark processes: copy **16,244–16,356 KiB**,
+repeated SIMD **16,468–16,544**, scalar **16,400–16,500**, default
+**16,532–16,636**. No total-RSS improvement follows from these runs.
+
+Common existing UTF-8-input syntax benchmark, three alternating 10-iteration
+runs against the saved `1a5e78d9` executable, before → after milliseconds:
+stylesheet **7.995 → 7.996**, literals **0.058 → 0.063**, escaped strings
+**2.632 → 2.674**, long dimensions **7.748 → 7.875**, mixed 2k/4k/8k rules
+**0.564/1.124/2.238 → 0.564/1.129/2.255**. Small regressions/variation are
+reported; this milestone is not a blanket common-path acceleration.
+
+Reproduce with `cargo build --release -p olo-web --example bytes_bench`
+and `taskset -c 0 /usr/bin/time -v target/release/examples/bytes_bench 15`.
+Use `--features baseline-css-byte-copy`, `baseline-utf8-errors`, or
+`scalar-scans` for the controls. `css_bench 10` measures the existing text
+API. Raw samples, intermediate measurements, CPU/compiler identity and
+source/binary hashes: `measurements/2026-11-05-css-bytes.json`; independent
+coverage: `measurements/2026-11-05-css-bytes-coverage.json`.
+
+Validation: all release engine tests (six byte decoding, six CSS, 17 DOM,
+four tokenizer, 12 tree); separate byte/CSS reference runs for copy plus
+repeated-SIMD controls and scalar plus old generic lookahead; strict
+release clippy in default/all-feature modes; full workspace release build.
+Existing GPUI/future-incompatibility warnings remain unchanged. No GUI,
+visible UI changes, session upgrades or installs. Next: CSS selector/
+property/style compilation, descriptor grammars, and HTML encoding/stream
+input. The complete browser goal stays active; site validation is still
+0/3,000 configurations and no website is claimed working.

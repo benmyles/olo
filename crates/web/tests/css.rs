@@ -9,9 +9,9 @@ fn independent_generic_css_fixtures() {
         std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     }
     assert_eq!(report["total"], 177);
-    assert_eq!(report["counts"]["passed"], 137, "{report}");
+    assert_eq!(report["counts"]["passed"], 165, "{report}");
     assert_eq!(report["counts"]["updated_specification"], 12, "{report}");
-    assert_eq!(report["counts"]["unsupported"], 28, "{report}");
+    assert!(report["counts"].get("unsupported").is_none(), "{report}");
     assert!(report["counts"].get("mismatch").is_none(), "{report}");
     assert!(report["counts"].get("error").is_none());
     assert!(report["counts"].get("panic").is_none());

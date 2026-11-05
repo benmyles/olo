@@ -34,7 +34,7 @@ and dedicated under CC0; LICENSE and README.rst are included. SOURCE.json
 records every imported byte hash. This older corpus uses legacy delimiter
 serialization and global unicode ranges. The native adapter documents its
 format mapping and 12 exact, reviewed current-specification expectations;
-byte decoding remains explicitly unsupported. This is not CSS property,
+all 28 byte-decoding fixtures are exercised. This is not CSS property,
 selector, cascade or rendering conformance.
 
 `tests/css-wpt` contains two unmodified CSS syntax WPT resources from the

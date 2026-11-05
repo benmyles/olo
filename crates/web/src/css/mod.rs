@@ -1,5 +1,7 @@
 //! Original CSS syntax. Token/rule construction does not validate selectors,
 //! property grammars or implement cascade/layout. All long APIs are worker-only.
+mod bytes;
+pub use bytes::{ByteDecoder, ByteOptions, ByteParseError, ByteSyntax, EncodingChoice, EncodingSource, encoding};
 mod parser;
 mod syntax;
 pub use parser::{ParseError, Statement, StatementKind, SyntaxError};
