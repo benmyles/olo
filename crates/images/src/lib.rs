@@ -57,6 +57,8 @@ fn avif(data: &[u8]) -> Result<DynamicImage, String> {
     image::RgbaImage::from_raw(w, h, rgba).map(DynamicImage::ImageRgba8).ok_or_else(|| "bad image size".into())
 }
 
+pub mod hdr;
+
 /// AV1 through rav1d's dav1d API (stills and video), and YUV to RGB.
 pub mod av1 {
     use std::{mem::MaybeUninit, ptr::NonNull};
@@ -82,6 +84,13 @@ pub mod av1 {
         stride: [usize; 3],
         matrix: u32,
         full_range: bool,
+        /// H.273's colour primaries and transfer (`hdr::PRI_*`,
+        /// `hdr::TRC_*`; 2 when not said), and the brightest it was
+        /// mastered to, cd/m² (0 when not said): HDR and wide-gamut video
+        /// is converted for an sRGB screen (`hdr`).
+        primaries: u32,
+        transfer: u32,
+        peak: f32,
     }
 
     /// A still: the first picture in `obus`.
@@ -195,9 +204,12 @@ pub mod av1 {
                 DAV1D_PIXEL_LAYOUT_I422 => Some((1, 0)),
                 _ => Some((0, 0)),
             };
-            let (matrix, full_range) = match pic.seq_hdr {
-                Some(s) => unsafe { (s.as_ref().mtrx, s.as_ref().color_range != 0) },
-                None => (DAV1D_MC_UNKNOWN, false),
+            let (matrix, full_range, primaries, transfer) = match pic.seq_hdr {
+                Some(s) => unsafe {
+                    let s = s.as_ref();
+                    (s.mtrx, s.color_range != 0, s.pri, s.trc)
+                },
+                None => (DAV1D_MC_UNKNOWN, false, super::hdr::PRI_UNKNOWN, super::hdr::TRC_UNKNOWN),
             };
             let mut planes: [Vec<u16>; 3] = Default::default();
             let mut stride = [0; 3];
@@ -218,7 +230,7 @@ pub mod av1 {
                 }
                 stride[i] = pw;
             }
-            Ok(Frame { width: w as u32, height: h as u32, bpc, chroma, planes, stride, matrix, full_range })
+            Ok(Frame { width: w as u32, height: h as u32, bpc, chroma, planes, stride, matrix, full_range, primaries, transfer, peak: 0.0 })
         }
 
         fn sample(&self, plane: usize, x: u32, y: u32) -> f32 {
@@ -239,13 +251,37 @@ pub mod av1 {
         /// `DAV1D_MC_*` (ISO/IEC 23091-4's matrix coefficients).
         #[allow(clippy::too_many_arguments)]
         pub(crate) fn from_planes(width: u32, height: u32, bpc: u32, chroma: Option<(u32, u32)>, planes: [Vec<u16>; 3], stride: [usize; 3], matrix: u32, full_range: bool) -> Frame {
-            Frame { width, height, bpc, chroma, planes, stride, matrix, full_range }
+            let (primaries, transfer) = (super::hdr::PRI_UNKNOWN, super::hdr::TRC_UNKNOWN);
+            Frame { width, height, bpc, chroma, planes, stride, matrix, full_range, primaries, transfer, peak: 0.0 }
+        }
+
+        /// What its container says of its colour, where the stream itself
+        /// said nothing (VP9 and HEVC streams rarely carry it: MP4's
+        /// `colr`, Matroska's Colour do).
+        pub fn with_colour(mut self, c: &super::hevc::Colour) -> Frame {
+            use super::hdr::{PRI_UNKNOWN, TRC_UNKNOWN};
+            if let Some(p) = c.primaries.filter(|_| matches!(self.primaries, PRI_UNKNOWN | 0)) {
+                self.primaries = p;
+            }
+            if let Some(t) = c.transfer.filter(|_| matches!(self.transfer, TRC_UNKNOWN | 0)) {
+                self.transfer = t;
+            }
+            if self.peak <= 0.0 {
+                self.peak = c.peak.unwrap_or(0.0);
+            }
+            self
+        }
+
+        /// HDR (PQ or HLG): its light goes past SDR's white.
+        pub fn is_hdr(&self) -> bool {
+            matches!(self.transfer, super::hdr::TRC_PQ | super::hdr::TRC_HLG)
         }
 
         #[cfg(test)]
         pub(crate) fn synthetic(width: u32, height: u32, bpc: u32, chroma: (u32, u32), planes: [Vec<u16>; 3], matrix: u32, full_range: bool) -> Frame {
             let cw = (width as usize + chroma.0 as usize) >> chroma.0;
-            Frame { width, height, bpc, chroma: Some(chroma), planes, stride: [width as usize, cw, cw], matrix, full_range }
+            let (primaries, transfer) = (super::hdr::PRI_UNKNOWN, super::hdr::TRC_UNKNOWN);
+            Frame { width, height, bpc, chroma: Some(chroma), planes, stride: [width as usize, cw, cw], matrix, full_range, primaries, transfer, peak: 0.0 }
         }
 
         /// Kr and Kb; unspecified is BT.601, as libavif and browsers assume.
@@ -267,6 +303,12 @@ pub mod av1 {
             let (kr, kb) = self.coefficients();
             let kg = 1.0 - kr - kb;
             let (w, h) = (self.width, self.height);
+            if let Some(chroma) = self.chroma
+                && !matches!(self.matrix, DAV1D_MC_IDENTITY | DAV1D_MC_SMPTE_YCGCO)
+                && super::hdr::needed(self.primaries, self.transfer)
+            {
+                return self.to_rgba_mapped(chroma, (y0, ys, cs, half), (kr, kb, kg));
+            }
             if let Some((sx, sy)) = self.chroma
                 && !matches!(self.matrix, DAV1D_MC_IDENTITY | DAV1D_MC_SMPTE_YCGCO)
             {
@@ -296,6 +338,56 @@ pub mod av1 {
                 return out;
             }
             self.to_rgba_exact()
+        }
+
+        /// HDR or wide-gamut video for an sRGB screen (`hdr::Mapping`):
+        /// Y′CbCr to R′G′B′ by tables in 16.16 fixed point, as the plain
+        /// path does but to the mapping's steps, then each sample mapped;
+        /// rows split over up to four threads for a picture of a
+        /// megapixel or more.
+        fn to_rgba_mapped(&self, (sx, sy): (u32, u32), (y0, ys, cs, half): (f32, f32, f32, f32), (kr, kb, kg): (f32, f32, f32)) -> Vec<u8> {
+            use super::hdr::{Mapping, STEPS};
+            let mapping = Mapping::new(self.primaries, self.transfer, self.peak);
+            let n = 1usize << self.bpc;
+            let scale = (STEPS - 1) as f32 * 65536.0;
+            let fix = |v: f32| (v * scale).round() as i32;
+            let luma: Vec<i32> = (0..n).map(|v| fix((v as f32 - y0) / ys) + 32768).collect();
+            let c = |k: f32| -> Vec<i32> { (0..n).map(|v| fix(k * (v as f32 - half) / cs)).collect() };
+            let (cr_r, cb_b) = (c(2.0 * (1.0 - kr)), c(2.0 * (1.0 - kb)));
+            let (cr_g, cb_g) = (c(-2.0 * (1.0 - kr) * kr / kg), c(-2.0 * (1.0 - kb) * kb / kg));
+            let top = n - 1;
+            let step = |v: i32| (v >> 16).clamp(0, STEPS as i32 - 1) as usize;
+            let (w, h) = (self.width as usize, self.height as usize);
+            let mut out = vec![255u8; w * h * 4];
+            let rows = |first: usize, chunk: &mut [u8]| {
+                for (i, row) in chunk.chunks_exact_mut(w * 4).enumerate() {
+                    let y = first + i;
+                    let ly = &self.planes[0][y * self.stride[0]..][..w];
+                    let cy = (y >> sy) * self.stride[1];
+                    let (us, vs) = (&self.planes[1][cy..], &self.planes[2][cy..]);
+                    for (x, (px, &l)) in row.as_chunks_mut::<4>().0.iter_mut().zip(ly).enumerate() {
+                        let (u, v) = (us[x >> sx] as usize & top, vs[x >> sx] as usize & top);
+                        let l = luma[l as usize & top];
+                        let [r, g, b] = mapping.map(step(l + cr_r[v]), step(l + cr_g[v] + cb_g[u]), step(l + cb_b[u]));
+                        px[0] = r;
+                        px[1] = g;
+                        px[2] = b;
+                    }
+                }
+            };
+            let threads = if w * h >= 1 << 20 { std::thread::available_parallelism().map_or(1, |n| n.get()).min(8) } else { 1 };
+            if threads <= 1 {
+                rows(0, &mut out);
+            } else {
+                let per = h.div_ceil(threads);
+                std::thread::scope(|scope| {
+                    for (k, chunk) in out.chunks_mut(per * w * 4).enumerate() {
+                        let rows = &rows;
+                        scope.spawn(move || rows(k * per, chunk));
+                    }
+                });
+            }
+            out
         }
 
         /// The same in floating point, for every matrix and layout.
@@ -429,7 +521,11 @@ pub mod vp9 {
         };
         let planes = [copy(&p.y, p.y_stride, w, h)?, copy(&p.u, p.uv_stride, cw, ch)?, copy(&p.v, p.uv_stride, cw, ch)?];
         let chroma = Some((p.subsampling_x as u32, p.subsampling_y as u32));
-        Some(Frame::from_planes(p.width, p.height, p.bit_depth, chroma, planes, [w, cw, cw], matrix(p.color.color_space), p.color.full_range))
+        let f = Frame::from_planes(p.width, p.height, p.bit_depth, chroma, planes, [w, cw, cw], matrix(p.color.color_space), p.color.full_range);
+        // (VP9 says BT.2020 by its colour space; its transfer only the
+        // container says: `Frame::with_colour`.)
+        let bt2020 = super::hevc::Colour { primaries: Some(super::hdr::PRI_BT2020), ..Default::default() };
+        Some(if p.color.color_space == 5 { f.with_colour(&bt2020) } else { f })
     }
 }
 
@@ -470,13 +566,19 @@ pub mod hevc {
         Some(Config { nal_len, sets })
     }
 
-    /// How the samples are coloured: H.273's matrix (MP4's `colr`, nclx;
-    /// Matroska's MatrixCoefficients) and full range. Unknown, BT.709 for
-    /// a picture 720 lines and up and BT.601 under, as players assume.
+    /// How the samples are coloured, as a track's container says: H.273's
+    /// matrix (MP4's `colr`, nclx; Matroska's MatrixCoefficients) and full
+    /// range (unknown matrix: BT.709 for a picture 720 lines and up and
+    /// BT.601 under, as players assume); its primaries and transfer (HDR:
+    /// PQ or HLG, `hdr`); and the brightest it was mastered to, cd/m²
+    /// (MaxCLL, else the mastering display's peak).
     #[derive(Clone, Copy, Debug, Default, PartialEq)]
     pub struct Colour {
         pub matrix: Option<u32>,
         pub full_range: bool,
+        pub primaries: Option<u32>,
+        pub transfer: Option<u32>,
+        pub peak: Option<f32>,
     }
 
     /// Whether a sample (length-prefixed NAL units) holds a picture that
@@ -563,7 +665,7 @@ pub mod hevc {
         };
         let planes = [plane(&f.y, w * h)?, plane(&f.u, cw * ch)?, plane(&f.v, cw * ch)?];
         let matrix = colour.matrix.unwrap_or(if h >= 720 { DAV1D_MC_BT709 } else { DAV1D_MC_BT601 });
-        Some(Frame::from_planes(f.width, f.height, f.bit_depth as u32, Some((sx as u32, sy as u32)), planes, [w, cw, cw], matrix, colour.full_range))
+        Some(Frame::from_planes(f.width, f.height, f.bit_depth as u32, Some((sx as u32, sy as u32)), planes, [w, cw, cw], matrix, colour.full_range).with_colour(&colour))
     }
 }
 
@@ -692,6 +794,110 @@ mod tests {
             let (fast, exact) = (f.to_rgba(), f.to_rgba_exact());
             let worst = fast.iter().zip(&exact).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
             assert!(worst <= 1, "{bpc} bit, full {full}, matrix {matrix}: off by {worst}");
+        }
+    }
+
+    /// A 10-bit HDR10 picture (BT.2020, PQ, limited range), as phones and
+    /// streaming record it, shown for an sRGB screen: BT.2408's paper
+    /// white nearly white, a dimmer grey as sRGB shows that light, a
+    /// saturated BT.2020 red red; and the same picture without its
+    /// container's colour, as before (its samples taken as sRGB-ish).
+    #[test]
+    fn hdr10_video_is_shown_for_an_srgb_screen() {
+        use hdr::{PRI_BT2020, TRC_PQ};
+        let pq = |nits: f64| olo_color::pq_encode(nits / 10_000.0);
+        // Limited-range 10-bit Y′CbCr of a BT.2020 R′G′B′.
+        let ycc = |r: f64, g: f64, b: f64| {
+            let (kr, kb) = (0.2627, 0.0593);
+            let y = kr * r + (1.0 - kr - kb) * g + kb * b;
+            let (cb, cr) = ((b - y) / (2.0 * (1.0 - kb)), (r - y) / (2.0 * (1.0 - kr)));
+            [(64.0 + 876.0 * y).round() as u16, (512.0 + 896.0 * cb).round() as u16, (512.0 + 896.0 * cr).round() as u16]
+        };
+        let pixels = [ycc(pq(203.0), pq(203.0), pq(203.0)), ycc(pq(50.0), pq(50.0), pq(50.0)), ycc(pq(400.0), pq(5.0), pq(5.0)), ycc(pq(4000.0), pq(4000.0), pq(4000.0))];
+        // Four pictures 2×2 each, side by side (4:4:4, so each its own).
+        let (w, h) = (8u32, 2u32);
+        let plane = |c: usize| (0..h).flat_map(|_| (0..w).map(move |x| x)).map(|x| pixels[x as usize / 2][c]).collect::<Vec<u16>>();
+        let frame = av1::Frame::synthetic(w, h, 10, (0, 0), [plane(0), plane(1), plane(2)], 9, false);
+        let colour = hevc::Colour { primaries: Some(PRI_BT2020), transfer: Some(TRC_PQ), peak: Some(1000.0), ..Default::default() };
+        let hdr = frame.with_colour(&colour);
+        assert!(hdr.is_hdr());
+        let rgba = hdr.to_rgba();
+        let px = |i: usize| [rgba[i * 8], rgba[i * 8 + 1], rgba[i * 8 + 2]];
+        let [white, dim, red, bright] = [px(0), px(1), px(2), px(3)];
+        assert!(white.iter().all(|&v| (238..=250).contains(&v)), "paper white {white:?}");
+        let want = (olo_color::Transfer::Srgb.encode(50.0 / 203.0) * 255.0) as i32;
+        assert!(dim.iter().all(|&v| (i32::from(v) - want).abs() <= 3), "50 cd/m² {dim:?}, not {want}");
+        assert!(red[0] > 200 && red[1] < 60 && red[2] < 60, "red {red:?}");
+        assert_eq!(bright, [255, 255, 255], "4,000 cd/m²");
+        // Without: paper white came out a mid grey (PQ's 0.58), dull.
+        let plain = av1::Frame::synthetic(w, h, 10, (0, 0), [plane(0), plane(1), plane(2)], 9, false).to_rgba();
+        assert!(plain[0] < 160, "{}", plain[0]);
+    }
+
+    /// An HDR10 test pattern (a PQ grey ramp to 1,000 cd/m², then BT.2020
+    /// colour bars at 100 and 600 cd/m²) as it shows now and as it did
+    /// (its samples taken as sRGB), side by side, to `OLO_HDR_OUT`:
+    /// `OLO_HDR_OUT=dir cargo test --release -p olo-images hdr_pattern -- --ignored`.
+    #[test]
+    #[ignore]
+    fn hdr_pattern() {
+        let out = std::path::PathBuf::from(std::env::var("OLO_HDR_OUT").expect("OLO_HDR_OUT"));
+        let (w, h) = (960u32, 240u32);
+        let pq = |nits: f64| olo_color::pq_encode(nits / 10_000.0);
+        let ycc = |r: f64, g: f64, b: f64| {
+            let (kr, kb) = (0.2627, 0.0593);
+            let y = kr * r + (1.0 - kr - kb) * g + kb * b;
+            let (cb, cr) = ((b - y) / (2.0 * (1.0 - kb)), (r - y) / (2.0 * (1.0 - kr)));
+            [(64.0 + 876.0 * y).round() as u16, (512.0 + 896.0 * cb).round() as u16, (512.0 + 896.0 * cr).round() as u16]
+        };
+        let bars = [(1.0, 1.0, 1.0), (1.0, 1.0, 0.0), (0.0, 1.0, 1.0), (0.0, 1.0, 0.0), (1.0, 0.0, 1.0), (1.0, 0.0, 0.0), (0.0, 0.0, 1.0)];
+        let at = |x: u32, y: u32| -> [u16; 3] {
+            if y < h / 2 {
+                let nits = 1000.0 * (x as f64 / (w - 1) as f64).powi(2);
+                ycc(pq(nits), pq(nits), pq(nits))
+            } else {
+                let (r, g, b) = bars[(x * bars.len() as u32 / w) as usize];
+                let nits = if y < h * 3 / 4 { 100.0 } else { 600.0 };
+                ycc(pq(r * nits), pq(g * nits), pq(b * nits))
+            }
+        };
+        let plane = |c: usize| (0..h).flat_map(|y| (0..w).map(move |x| (x, y))).map(|(x, y)| at(x, y)[c]).collect::<Vec<u16>>();
+        let frame = || av1::Frame::synthetic(w, h, 10, (0, 0), [plane(0), plane(1), plane(2)], 9, false);
+        let colour = hevc::Colour { primaries: Some(hdr::PRI_BT2020), transfer: Some(hdr::TRC_PQ), peak: Some(1000.0), ..Default::default() };
+        let now = frame().with_colour(&colour).to_rgba();
+        let before = frame().to_rgba();
+        let mut both = image::RgbaImage::new(w, h * 2 + 8);
+        for (i, rows) in [now, before].iter().enumerate() {
+            for (k, px) in rows.chunks_exact(4).enumerate() {
+                let (x, y) = (k as u32 % w, k as u32 / w + i as u32 * (h + 8));
+                both.put_pixel(x, y, image::Rgba([px[0], px[1], px[2], 255]));
+            }
+        }
+        both.save(out.join("hdr10-pattern.png")).unwrap();
+    }
+
+    /// What converting an HDR picture costs, 1080p and 4K (4:2:0, 10-bit):
+    /// `cargo test --release -p olo-images hdr_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn hdr_cost() {
+        for (w, h) in [(1920u32, 1080u32), (3840, 2160)] {
+            let (cw, ch) = (w as usize / 2, h as usize / 2);
+            let luma: Vec<u16> = (0..w as usize * h as usize).map(|i| 64 + (i % 876) as u16).collect();
+            let chroma: Vec<u16> = (0..cw * ch).map(|i| 300 + (i % 400) as u16).collect();
+            let colour = hevc::Colour { primaries: Some(hdr::PRI_BT2020), transfer: Some(hdr::TRC_PQ), ..Default::default() };
+            let f = av1::Frame::synthetic(w, h, 10, (1, 1), [luma.clone(), chroma.clone(), chroma.clone()], 9, false);
+            let sdr = av1::Frame::synthetic(w, h, 10, (1, 1), [luma, chroma.clone(), chroma], 9, false);
+            let f = f.with_colour(&colour);
+            let time = |f: &av1::Frame| {
+                let _ = f.to_rgba();
+                let t = std::time::Instant::now();
+                for _ in 0..10 {
+                    std::hint::black_box(f.to_rgba());
+                }
+                t.elapsed().as_secs_f64() * 100.0
+            };
+            println!("{w}x{h}: HDR {:.1} ms a picture, SDR {:.1} ms", time(&f), time(&sdr));
         }
     }
 

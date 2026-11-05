@@ -3166,5 +3166,11 @@
   "title": "Window menu: a dialog floats always",
   "caption": "An alert or a dialog that names its window floats over it whatever is asked: in auto-tiling its window menu shows Float Over the Tiles checked and dimmed, and app_server leaves it floating when asked to tile it (an alert tiled by hand had stayed over its app's floating windows as their child: a tile over floats, found by the auto fuzzer).",
   "image": "2026-11-04/235741-window-menu-a-dialog-floats-always.png"
+ },
+ {
+  "time": "2026-11-05T01:26:56",
+  "title": "HDR video shown for an sRGB screen",
+  "caption": "HDR10 and HLG video (phones', streaming's: BT.2020, PQ or HLG) converted for an ordinary screen: its light counted in SDR's white (203 cd/m\u00b2), BT.2020 converted to sRGB, highlights rolled off up to the brightest it was mastered to. A test pattern, a PQ ramp to 1,000 cd/m\u00b2 over BT.2020 colour bars at 100 and 600 cd/m\u00b2: above as it shows now, below as before (dull and grey, its samples taken as sRGB).",
+  "image": "2026-11-05/012656-hdr-video-shown-for-an-srgb-screen.png"
  }
 ]

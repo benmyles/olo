@@ -485,7 +485,10 @@ of Finished; a new one goes where its priority puts it.
     own colours (`wp_color_management_v1`, tried with a test client),
     pictures converted from their profiles (`olo_images`), Viewer
     drawing in Display P3 while it shows a wide photo (GPUI's
-    `Window::set_gamut`, tried headless), night light in HDR.
+    `Window::set_gamut`, tried headless), night light in HDR, and HDR
+    video (HDR10, HLG) shown for SDR screens (2026-11-05). Left besides
+    the panel: HDR video as HDR on an HDR display (its pictures handed
+    over in PQ), and wide SDR video in P3.
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole
@@ -2837,7 +2840,12 @@ Open; making fast things faster waits here.
   (the container's matrix and range, else BT.709 from 720 lines up):
   160–240 pictures/s at 1080p through the player (VP9 124–132, AV1
   111–125). `hevc_plays` checks all of it; phone footage (10-bit HDR)
-  still to try: no HDR tone mapping yet, as for AV1.
+  still to try: no HDR tone mapping yet, as for AV1. *HDR tone mapping
+  done* (2026-11-05, HACKING's "HDR and wide-gamut video"): HDR10 and
+  HLG (and BT.2020 or P3 SDR) from AV1, HEVC and VP9, the colour from the
+  stream or its container, shown for an sRGB screen (tested on
+  synthetic HDR10 pictures and sample entries; real phone footage still
+  to try).
 
 - ~~**Logs: a drag in its second list is uneven at 1.5× now and then**~~
   (found by `tools/dev/bench`, 2026-11-03): "frames moved 0.73–1.27× as

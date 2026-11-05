@@ -462,6 +462,11 @@ trait Demux: Send {
     fn hevc(&self) -> Option<(hevc::Config, hevc::Colour)> {
         None
     }
+    /// What the container says of the track's colour (HDR's transfer and
+    /// primaries among it), for pictures whose stream doesn't.
+    fn colour(&self) -> hevc::Colour {
+        Default::default()
+    }
     fn next(&mut self) -> Option<Packet>;
     /// Go to the key frame at or before `secs`.
     fn seek(&mut self, secs: f64);
@@ -599,6 +604,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
     let mut demux = open(input)?;
     let codec = demux.codec();
     let mut dec = Decoder::new(codec, demux.as_ref())?;
+    let colour = demux.colour();
     // Presentation times of packets sent and not yet out: decoders hand
     // pictures back in display order, so each takes the earliest.
     // (Each with its duration, -1 where not known.)
@@ -717,7 +723,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     None => d.flush(&mut av1_out),
                 }
                 for f in av1_out.drain(..) {
-                    let f = Arc::new(f);
+                    let f = Arc::new(f.with_colour(&colour));
                     if !push(&mut times, from, &mut lead, &|| Pic::Planes(f.clone())) {
                         break;
                     }
@@ -758,7 +764,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     while times.peek().is_some_and(|Reverse((e, _))| *e < t) {
                         times.pop();
                     }
-                    let f = Arc::new(f);
+                    let f = Arc::new(f.with_colour(&colour));
                     if !push(&mut times, from, &mut lead, &|| Pic::Planes(f.clone())) {
                         break;
                     }
@@ -794,6 +800,8 @@ struct Mp4 {
     /// starts from its own, `hevc`).
     sets: Vec<u8>,
     hevc: Option<(hevc::Config, hevc::Colour)>,
+    /// The track's colour as its sample entry says (AV1's, HEVC's).
+    colour: hevc::Colour,
     nal_len: usize,
     /// Each sample's decode time, and the key frames (1-based).
     times: Vec<u64>,
@@ -866,11 +874,16 @@ impl Mp4 {
                 break;
             }
         }
-        Ok(Mp4 { track, codec, timescale, shift, sets, hevc, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
+        let colour = av1.as_ref().map(|a| a.colour).or(hv.as_ref().map(|h| h.colour)).unwrap_or_default();
+        Ok(Mp4 { track, codec, timescale, shift, sets, hevc, colour, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
     }
 }
 
 impl Demux for Mp4 {
+    fn colour(&self) -> hevc::Colour {
+        self.colour
+    }
+
     fn codec(&self) -> Codec {
         self.codec
     }
@@ -922,6 +935,8 @@ struct Mkv {
     sets: Vec<u8>,
     nal_len: usize,
     hevc: Option<(hevc::Config, hevc::Colour)>,
+    /// The track's Colour element, whatever its codec.
+    colour: hevc::Colour,
     frame: matroska_demuxer::Frame,
     /// Send the parameter sets before the next picture (start, seeks).
     fresh: bool,
@@ -955,8 +970,9 @@ impl Mkv {
             })
             .ok_or("This video's format can't be played.")?;
         // HEVC's CodecPrivate is its decoder configuration record.
+        let colour = t.video().map(media::mkv_colour).unwrap_or_default();
         let hevc = match codec {
-            Codec::Hevc => Some((t.codec_private().and_then(hevc::config).ok_or("no HEVC configuration")?, t.video().map(media::mkv_colour).unwrap_or_default())),
+            Codec::Hevc => Some((t.codec_private().and_then(hevc::config).ok_or("no HEVC configuration")?, colour)),
             _ => None,
         };
         // AV1 blocks are OBUs as the decoder takes them, with sequence
@@ -970,11 +986,26 @@ impl Mkv {
                 sets.extend_from_slice(&p);
             }
         }
-        Ok(Mkv { track: t.track_number().get(), codec, scale: file.info().timestamp_scale().get() as f64 / 1e9, sets, nal_len, hevc, frame: matroska_demuxer::Frame::default(), fresh: true, file })
+        Ok(Mkv {
+            track: t.track_number().get(),
+            codec,
+            scale: file.info().timestamp_scale().get() as f64 / 1e9,
+            sets,
+            nal_len,
+            hevc,
+            colour,
+            frame: matroska_demuxer::Frame::default(),
+            fresh: true,
+            file,
+        })
     }
 }
 
 impl Demux for Mkv {
+    fn colour(&self) -> hevc::Colour {
+        self.colour
+    }
+
     fn codec(&self) -> Codec {
         self.codec
     }

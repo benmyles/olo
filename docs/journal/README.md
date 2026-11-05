@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-05
+
+### HDR video shown for an sRGB screen
+
+*01:26* — HDR10 and HLG video (phones', streaming's: BT.2020, PQ or HLG) converted for an ordinary screen: its light counted in SDR's white (203 cd/m²), BT.2020 converted to sRGB, highlights rolled off up to the brightest it was mastered to. A test pattern, a PQ ramp to 1,000 cd/m² over BT.2020 colour bars at 100 and 600 cd/m²: above as it shows now, below as before (dull and grey, its samples taken as sRGB).
+
+![HDR video shown for an sRGB screen](2026-11-05/012656-hdr-video-shown-for-an-srgb-screen.png)
+
 ## 2026-11-04
 
 ### Window menu: a dialog floats always

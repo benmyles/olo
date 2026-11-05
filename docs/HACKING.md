@@ -3036,6 +3036,25 @@ Colour, kept per monitor in its `OutputConfig`):
   "Everything else's brightness" (203 cd/m², BT.2408's, unless set);
   Preferences' band reverts HDR unless kept, as it does a resolution.
 
+*HDR and wide-gamut video* (`olo_images::hdr`): a decoded picture knows
+its primaries and transfer (H.273's codes: AV1's sequence header; else
+its container's, MP4's `colr` and Matroska's Colour, through
+`Frame::with_colour`, which also takes how bright it was mastered,
+MaxCLL or the mastering display's peak), and `Frame::to_rgba` converts
+one in BT.2020 or Display P3, or with PQ or HLG, for an sRGB screen: its
+signal to light by tables (PQ absolute, counted in SDR's white, 203
+cd/m²; HLG through BT.2100's display mapping for a 1,000 cd/m² screen),
+BT.2020 to sRGB in light, highlights above four fifths of white rolled
+off by the brightest channel (hue kept) to reach white at the mastered
+peak (1,000 cd/m² unsaid), what's outside sRGB clipped, sRGB's curve.
+Every step per sample is a table or a few multiplies, on up to eight
+threads for a megapixel or more: a 1080p picture 4.6 ms, 4K 14.6 ms
+(SDR's plain path, one thread: 5.2 and 16.8). Viewer's facts say it
+("Colour: HDR (PQ), BT.2020, mastered to 1,000 cd/m²"). Not yet: HDR
+shown as HDR on an HDR display (the picture handed to app_server in
+PQ, `wp_color_management_v1`), and wide SDR video in Display P3 rather
+than clipped to sRGB.
+
 The display hardware's own colour stages (the CRTC's degamma, CTM and
 gamma LUTs; Intel's per-plane pipelines, `COLOR_PIPELINE`) aren't used:
 their lookup tables are uniformly spaced, 129 and 1024 entries, and
