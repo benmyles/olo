@@ -7,22 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Terminal tells coding agents to keep scratch in /var/tmp** (Ben,
-  2026-11-05, after the items above): "the olo terminal claude/codex
-  integration should also inject instructions to those coding harnesses
-  that if they need to write/use files to a temp location they should
-  use /var/tmp and not /tmp and explain why". Terminal's hook that
-  gives Claude Code and Codex the group context and the tab-title
-  instructions (`agent_context.rs`, `agent_title::INSTRUCTIONS`) also
-  says, when /tmp is a tmpfs: temporary files (scratch, build
-  directories, downloads, screenshots, copies of builds) go in a
-  directory of the agent's own under /var/tmp, removed when done, never
-  in /tmp, because /tmp is held in RAM and whatever goes there takes
-  the person's memory (as CLAUDE.md's rule for Olo's own agents says).
-  Said once at the start, short; checked by reading what each agent is
-  given (Claude Code's hook output, Codex's) in a test, and off with the
-  group context's setting.
-
 - **Viewer crashed when brought back from Deskbar after a video**
   (Ben, 2026-11-04): "i was watching a video in viewer, then left it
   open while i did some other stuff, then when i tried to click it in
@@ -1818,6 +1802,25 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Terminal tells coding agents to keep scratch in /var/tmp**~~ (done
+  2026-11-05, HACKING's agent context: `SCRATCH`, said at the start with
+  the group context where /tmp is a tmpfs; checked by running the hook as
+  Codex would and reading what it says) (Ben,
+  2026-11-05, after the items above): "the olo terminal claude/codex
+  integration should also inject instructions to those coding harnesses
+  that if they need to write/use files to a temp location they should
+  use /var/tmp and not /tmp and explain why". Terminal's hook that
+  gives Claude Code and Codex the group context and the tab-title
+  instructions (`agent_context.rs`, `agent_title::INSTRUCTIONS`) also
+  says, when /tmp is a tmpfs: temporary files (scratch, build
+  directories, downloads, screenshots, copies of builds) go in a
+  directory of the agent's own under /var/tmp, removed when done, never
+  in /tmp, because /tmp is held in RAM and whatever goes there takes
+  the person's memory (as CLAUDE.md's rule for Olo's own agents says).
+  Said once at the start, short; checked by reading what each agent is
+  given (Claude Code's hook output, Codex's) in a test, and off with the
+  group context's setting.
 
 - ~~**Olo Doctor: programs' temporary files on disk, not in /tmp**~~
   (done 2026-11-05, HACKING's Olo Doctor: "Temporary files take memory"

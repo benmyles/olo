@@ -46,6 +46,12 @@ const EVENTS: [&str; 2] = ["SessionStart", "UserPromptSubmit"];
 /// screens' skill, apps/screen/SKILL.md, which says the rest).
 pub const SCREENS: &str = include_str!("../../screen/agent-context.md");
 
+/// What agents are told about temporary files at the start, where /tmp is
+/// held in memory (Ben, 2026-11-05: "inject instructions to those coding
+/// harnesses that if they need to write/use files to a temp location they
+/// should use /var/tmp and not /tmp and explain why").
+pub const SCRATCH: &str = "Temporary files: on this computer /tmp is held in RAM (a tmpfs), so whatever is written there takes the person's memory until it's removed. Put scratch files, build directories (a CARGO_TARGET_DIR), downloads, screenshots and copies of builds in a directory of your own under /var/tmp, which is on disk, and remove it when you're done. Don't write to /tmp.";
+
 /// A tab, as the hook needs it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TabInfo {
@@ -310,6 +316,11 @@ pub fn run() -> std::process::ExitCode {
     if s.screens && event == "SessionStart" && std::env::var_os("OLO_SESSION").is_some() {
         said.push(SCREENS.trim().to_owned());
     }
+    // Scratch on disk: at the start, with the group context, where /tmp is
+    // in memory.
+    if s.groups && event == "SessionStart" && olo_system::env::in_memory(Path::new("/tmp")) {
+        said.push(SCRATCH.to_owned());
+    }
     let Some(tab) = tab_of(&s, &ancestors, cwd.as_deref(), agent) else {
         if !said.is_empty() {
             println!("{}", said.join("\n\n"));
@@ -357,6 +368,7 @@ mod tests {
         assert!(SCREENS.contains("olo-screen run NAME olo-chrome URL"));
         assert!(SCREENS.contains("Never start `google-chrome`"));
         assert!(SCREENS.contains("olo-screen start"));
+        assert!(SCRATCH.contains("/var/tmp") && SCRATCH.contains("held in RAM") && SCRATCH.contains("Don't write to /tmp"));
         let s: Snapshot = serde_json::from_str(r#"{"tabs":[],"screens":true}"#).unwrap();
         assert!(s.screens && s.groups && !s.titles);
         // From a Terminal before the setting: off.

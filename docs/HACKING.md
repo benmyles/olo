@@ -8055,6 +8055,10 @@ Preferences ▸ Terminal ▸ Coding Agents, off by default).
 - The words are `apps/screen/agent-context.md`, beside the skill
   (`apps/screen/SKILL.md`, whose Chrome section says the same), so the
   two are changed together.
+- Where /tmp is held in memory (a tmpfs, `olo_system::env::in_memory`),
+  the hook also says at the start, with the group context, where
+  scratch goes (`SCRATCH`: a directory of the agent's own under
+  /var/tmp, removed when done, never /tmp, and why).
 - Terminal's file carries `screens` for the hook. It waits for the
   agent's tab (up to 2.5 s) only when the group or title settings need
   it: with this one alone, the hook answers in about 3 ms.
