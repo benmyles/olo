@@ -59,6 +59,14 @@ pub enum Request {
     /// From `op`: answered once unlocked and the asking terminal session
     /// is allowed.
     Cli { query: CliQuery },
+    /// From Passwords' SSH agent, for a program asking it (ssh, git): the
+    /// SSH keys there are, once unlocked.
+    SshKeys,
+    /// From Passwords' SSH agent: sign `data` (base64) with the key whose
+    /// public key is `key` (base64, SSH's encoding), with `flags` as ssh
+    /// gives them (2 and 4: RSA with SHA-256 or SHA-512); once unlocked and
+    /// the asking program's terminal session is allowed.
+    SshSign { key: String, data: String, flags: u32 },
     /// What's shared with agent screens (Agent Screens' Passwords tab and
     /// Shared with Every Screen), with every item it could share: once
     /// unlocked. Never answered to a program on an agent screen.
@@ -181,6 +189,8 @@ impl Request {
             | Request::PasskeyCreate { .. }
             | Request::PasskeySign { .. }
             | Request::Cli { .. }
+            | Request::SshKeys
+            | Request::SshSign { .. }
             | Request::Shares
             | Request::SetShares { .. } => Duration::from_secs(300),
         }
@@ -302,6 +312,22 @@ pub enum Response {
     },
     /// For `SetShares`: kept, and the screens' copies written.
     Shared,
+    /// For `SshKeys`.
+    SshKeys {
+        keys: Vec<SshKey>,
+    },
+    /// For `SshSign`: the signature, base64 of SSH's encoding.
+    SshSignature {
+        signature: String,
+    },
+}
+
+/// An SSH key Passwords has: its public key (base64 of SSH's encoding) and
+/// what it's called (the item's title).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SshKey {
+    pub key: String,
+    pub comment: String,
 }
 
 impl Drop for Response {
@@ -413,6 +439,14 @@ impl Incoming {
         n > 0 && fd.revents & (libc::POLLRDHUP | libc::POLLHUP | libc::POLLERR) != 0
     }
 
+    /// A request made in this process for another program (Passwords'
+    /// SSH agent, for ssh at `pid`): answered on the stream given back, a
+    /// line of JSON as over the socket ([`read_reply`]).
+    pub fn local(request: Request, from: String, pid: i32) -> std::io::Result<(Incoming, UnixStream)> {
+        let (ours, theirs) = UnixStream::pair()?;
+        Ok((Incoming { request, from, pid, stream: ours }, theirs))
+    }
+
     pub fn reply(mut self, response: Response) {
         let Ok(mut line) = serde_json::to_string(&response) else { return };
         line.push('\n');
@@ -425,6 +459,16 @@ impl std::fmt::Debug for Incoming {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Incoming")
     }
+}
+
+/// The answer to an [`Incoming::local`] request, read from its stream
+/// (None if it was dropped unanswered).
+pub fn read_reply(stream: &UnixStream) -> Option<Response> {
+    let mut line = String::new();
+    BufReader::new(stream).read_line(&mut line).ok()?;
+    let r = serde_json::from_str(&line).ok();
+    line.zeroize();
+    r
 }
 
 /// Serve requests: each goes to `deliver` (from a thread) as an
@@ -659,5 +703,75 @@ mod tests {
         let r = call(&Request::Logins { url: "https://a.example/".into() });
         assert!(matches!(r, Ok(Response::Error { .. })), "{r:?}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// `~/.ssh/config` and Passwords' SSH agent: ssh uses the agent in
+/// `SSH_AUTH_SOCK` unless an `IdentityAgent` line names another (1Password's
+/// app writes `IdentityAgent ~/.1password/agent.sock`).
+pub mod ssh_config {
+    /// The person's ssh configuration.
+    pub fn path() -> std::path::PathBuf {
+        std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".ssh/config")
+    }
+
+    /// The agent `text` sends ssh to instead of `SSH_AUTH_SOCK`'s, if it
+    /// names one (its first `IdentityAgent` that isn't `SSH_AUTH_SOCK` or
+    /// `none`).
+    pub fn other_agent(text: &str) -> Option<String> {
+        text.lines().find_map(|l| {
+            let (key, value) = split(l)?;
+            (key.eq_ignore_ascii_case("IdentityAgent") && !value.eq_ignore_ascii_case("SSH_AUTH_SOCK") && !value.eq_ignore_ascii_case("none")).then(|| value.to_owned())
+        })
+    }
+
+    /// `text` with each `IdentityAgent` naming another agent set to
+    /// `SSH_AUTH_SOCK` (Passwords'), the line it was kept above as a
+    /// comment, to put back by hand.
+    pub fn use_session_agent(text: &str) -> String {
+        let mut out = String::new();
+        for l in text.split_inclusive('\n') {
+            let line = l.trim_end_matches('\n');
+            match split(line) {
+                Some((key, value)) if key.eq_ignore_ascii_case("IdentityAgent") && !value.eq_ignore_ascii_case("SSH_AUTH_SOCK") && !value.eq_ignore_ascii_case("none") => {
+                    let indent = &line[..line.len() - line.trim_start().len()];
+                    out.push_str(&format!("{indent}# {} (before Olo Passwords was the SSH agent: Preferences ▸ Security)\n", line.trim()));
+                    out.push_str(&format!("{indent}IdentityAgent SSH_AUTH_SOCK\n"));
+                }
+                _ => out.push_str(l),
+            }
+        }
+        out
+    }
+
+    /// A line's keyword and value (`Key value` or `Key=value`), comments
+    /// and blank lines none.
+    fn split(line: &str) -> Option<(&str, &str)> {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('#') {
+            return None;
+        }
+        let at = t.find(|c: char| c.is_whitespace() || c == '=')?;
+        let value = t[at..].trim_start_matches(|c: char| c.is_whitespace() || c == '=').trim().trim_matches('"');
+        Some((&t[..at], value))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn finds_and_replaces_another_agent() {
+            let text = "Host *\n\tIdentityAgent ~/.1password/agent.sock\n\nHost work\n  User me\n";
+            assert_eq!(other_agent(text).as_deref(), Some("~/.1password/agent.sock"));
+            let new = use_session_agent(text);
+            assert_eq!(
+                new,
+                "Host *\n\t# IdentityAgent ~/.1password/agent.sock (before Olo Passwords was the SSH agent: Preferences ▸ Security)\n\tIdentityAgent SSH_AUTH_SOCK\n\nHost work\n  User me\n"
+            );
+            assert_eq!(other_agent(&new), None);
+            assert_eq!(other_agent("Host x\n  IdentityAgent none\n"), None);
+            assert_eq!(other_agent("IdentityAgent=\"/run/a.sock\"\n").as_deref(), Some("/run/a.sock"));
+        }
     }
 }

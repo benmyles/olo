@@ -1652,42 +1652,6 @@ of Finished; a new one goes where its priority puts it.
   and switched, a hotspot). Agents read and change all of it through
   IPC as the person does.
 
-- **Passwords is the SSH agent, on by default** (Ben, 2026-11-05): "build
-  and enable by default ssh agent support in olo passwords so that the
-  ssh keys in it are available for use automatically". Passwords keeps
-  1Password items and fields of the SSH Key kind (`ItemFieldType::SshKey`,
-  `onepassword::types`) and shows them; nothing serves them to ssh. To do:
-  an agent speaking the SSH agent protocol (draft-miller-ssh-agent: list
-  identities, sign, with RSA SHA-2, Ed25519 and ECDSA keys; in Rust, the
-  `ssh-agent-lib`/`ssh-key` crates or our own, in process, no `ssh-agent`)
-  on a socket in the runtime dir, `SSH_AUTH_SOCK` set for the whole
-  session (olo-session's environment, systemd's user manager's, so
-  Terminal's shells, git and editors use it), on by default with a
-  setting in Passwords (and in Preferences) to turn it off. Each use
-  asks as 1Password's agent does: which program (its process and
-  command line) wants which key, approved by the person (Touch ID's
-  equivalent here: the password, a security key or face, per the
-  YubiKey and face items above), remembered for that program for a
-  while; keys locked with Passwords lock. `ssh -T git@github.com` and a
-  `git push` from Terminal work with a key from Passwords, tested
-  headless with a fixture vault and an `sshd` of the test's own on a
-  local port (or a Rust SSH server in-process).
-
-- **Viewer: select and copy text in PDFs and other documents** (Ben,
-  2026-11-05, for later): "Viewer needs to support selecting and copying
-  text in PDFs and any other relevant document type". In a PDF (and
-  other documents Viewer shows with text in them: EPUB, a Markdown or
-  plain-text file, Office documents if shown, a picture's OCR later
-  perhaps), text is selected by dragging over it (by word with a
-  double-click, by line with a triple), Select All, and copied with ⌘C
-  and the right-click menu, as a selection anywhere in Olo is (the
-  selection's colour from the palette, drawn over the page at every
-  scale); the text read natively from the document (the PDF's text
-  layer, its glyphs' positions and Unicode mapping, in Rust), in reading
-  order, line breaks and hyphenation as a person would want them pasted.
-  Find (⌘F) finds in it too and shows each match. Agents read a page's
-  text from the widget tree and select it as a person does.
-
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a
   markdown file StyledEdit should natively support the Markdown and be
@@ -1777,6 +1741,50 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Passwords is the SSH agent, on by default**~~ (done 2026-11-05,
+  HACKING's Passwords: the agent protocol on a socket of its own in
+  `SSH_AUTH_SOCK`, olo-session starting Passwords without a window for
+  it; listing once unlocked, signing once the terminal session is
+  allowed, as `op`; OpenSSH and PKCS#8 keys. ssh-add -L and ssh-keygen -Y
+  sign tried through it. Ben's `~/.ssh/config` sends ssh to 1Password's
+  app's agent: Security says so and switches it when he asks, from his
+  next login; not done without asking. Left: a security key or face as
+  the approval, with those items) (Ben, 2026-11-05): "build
+  and enable by default ssh agent support in olo passwords so that the
+  ssh keys in it are available for use automatically". Passwords keeps
+  1Password items and fields of the SSH Key kind (`ItemFieldType::SshKey`,
+  `onepassword::types`) and shows them; nothing serves them to ssh. To do:
+  an agent speaking the SSH agent protocol (draft-miller-ssh-agent: list
+  identities, sign, with RSA SHA-2, Ed25519 and ECDSA keys; in Rust, the
+  `ssh-agent-lib`/`ssh-key` crates or our own, in process, no `ssh-agent`)
+  on a socket in the runtime dir, `SSH_AUTH_SOCK` set for the whole
+  session (olo-session's environment, systemd's user manager's, so
+  Terminal's shells, git and editors use it), on by default with a
+  setting in Passwords (and in Preferences) to turn it off. Each use
+  asks as 1Password's agent does: which program (its process and
+  command line) wants which key, approved by the person (Touch ID's
+  equivalent here: the password, a security key or face, per the
+  YubiKey and face items above), remembered for that program for a
+  while; keys locked with Passwords lock. `ssh -T git@github.com` and a
+  `git push` from Terminal work with a key from Passwords, tested
+  headless with a fixture vault and an `sshd` of the test's own on a
+  local port (or a Rust SSH server in-process).
+
+- **Viewer: select and copy text in PDFs and other documents** (Ben,
+  2026-11-05, for later): "Viewer needs to support selecting and copying
+  text in PDFs and any other relevant document type". In a PDF (and
+  other documents Viewer shows with text in them: EPUB, a Markdown or
+  plain-text file, Office documents if shown, a picture's OCR later
+  perhaps), text is selected by dragging over it (by word with a
+  double-click, by line with a triple), Select All, and copied with ⌘C
+  and the right-click menu, as a selection anywhere in Olo is (the
+  selection's colour from the palette, drawn over the page at every
+  scale); the text read natively from the document (the PDF's text
+  layer, its glyphs' positions and Unicode mapping, in Rust), in reading
+  order, line breaks and hyphenation as a person would want them pasted.
+  Find (⌘F) finds in it too and shows each match. Agents read a page's
+  text from the widget tree and select it as a person does.
 
 - ~~**Arrow keys skip 10 s in a video, in Viewer and Quick Look**~~ (done
   2026-11-05, HACKING's Viewer: ← and → seek a video or a sound by 10 s,

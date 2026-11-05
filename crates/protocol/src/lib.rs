@@ -1480,11 +1480,15 @@ pub struct PasswordsSecurity {
     /// Olo's `op` (1Password's command-line tool, answered by
     /// Passwords) is installed and answers.
     pub op_cli: bool,
+    /// Passwords is the session's SSH agent (`SSH_AUTH_SOCK`): the SSH
+    /// keys in it sign for ssh, git and the rest, each program's first
+    /// use allowed by the person. On by default.
+    pub ssh_agent: bool,
 }
 
 impl Default for PasswordsSecurity {
     fn default() -> Self {
-        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true }
+        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true, ssh_agent: true }
     }
 }
 

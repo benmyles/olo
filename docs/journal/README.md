@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Passwords is the SSH agent
+
+*14:02* — Preferences ▸ Security ▸ Be the SSH agent (on by default): ssh and git sign in with the SSH keys in Passwords, each terminal allowed the first time; where ~/.ssh/config sends ssh to another agent (1Password's app's), it says so and offers the switch once the session has Passwords' agent.
+
+![Passwords is the SSH agent](2026-11-05/140222-passwords-is-the-ssh-agent.png)
+
 ### Olo Doctor: temporary files on disk
 
 *12:26* — Doctor finds programs keeping their temporary files in memory (/tmp a tmpfs, TMPDIR unset) and offers to keep them in /var/tmp: an environment.d file of Olo's and the running session's environment.

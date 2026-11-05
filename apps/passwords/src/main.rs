@@ -8,6 +8,7 @@
 //! pane alone. The generator, Review Sync and Sync Problems windows and
 //! the alerts are views of their own that read it.
 
+mod agent;
 mod cli;
 mod edit;
 mod generator;
@@ -175,8 +176,9 @@ fn approving_without_asking() -> bool {
 }
 
 /// The question for letting `op` use the passwords.
-fn allow_message(a: &cli::Asker) -> String {
-    let mut m = format!("Allow “{}” to use your passwords?", a.command);
+fn allow_message(a: &cli::Asker, ssh: bool) -> String {
+    let what = if ssh { "sign in with your SSH keys" } else { "use your passwords" };
+    let mut m = format!("Allow “{}” to {what}?", a.command);
     match (&a.parent, &a.cwd) {
         (Some(p), Some(d)) => m.push_str(&format!(" It was run by {p} in {d}.")),
         (Some(p), None) => m.push_str(&format!(" It was run by {p}.")),
@@ -819,6 +821,10 @@ impl Passwords {
                 return;
             }
         }
+        if matches!(incoming.request, Request::SshKeys | Request::SshSign { .. }) && !self.security.ssh_agent {
+            let message = "Passwords isn’t the SSH agent (Preferences ▸ Security).".into();
+            return incoming.reply(Response::Error { message });
+        }
         if !self.set_up() {
             return incoming.reply(Response::NotSetUp);
         }
@@ -854,7 +860,20 @@ impl Passwords {
         // The items the request may concern, by their websites.
         let fits: Box<dyn Fn(&onepassword::Website) -> bool> = match &incoming.request {
             Request::Unlock => return incoming.reply(Response::Unlocked),
-            Request::Shares | Request::SetShares { .. } => {
+            Request::Shares | Request::SetShares { .. } | Request::SshKeys => {
+                return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
+            }
+            // A signature with an SSH key: once the asking program's
+            // terminal session is allowed, as `op` is (one grant for both).
+            Request::SshSign { .. } => {
+                let Some(session) = cli::session_of(incoming.pid) else {
+                    return incoming.reply(Response::Error { message: "the program went away".into() });
+                };
+                if !on_screen() && !self.grants.check(session) {
+                    self.cli_waiting.push((session, incoming));
+                    self.ask_approval(Some(session));
+                    return;
+                }
                 return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
             }
             Request::Cli { query } => {
@@ -1064,6 +1083,7 @@ impl Passwords {
             None => self.open_main(cx),
             Some(session) => {
                 let Some(pid) = self.cli_waiting.iter().find(|(s, _)| *s == session).map(|(_, i)| i.pid) else { return };
+                let ssh = self.cli_waiting.iter().any(|(s, i)| *s == session && matches!(i.request, Request::SshSign { .. }));
                 let asker = cli::asker(pid);
                 if on {
                     tracing::info!(command = asker.command, "op allowed without asking");
@@ -1072,7 +1092,7 @@ impl Passwords {
                 } else {
                     self.allow_shown.insert(session);
                     let me = cx.entity();
-                    self.alert("Passwords", "warning", allow_message(&asker), &["Deny", "Allow"], cx, move |choice, cx| {
+                    self.alert("Passwords", "warning", allow_message(&asker, ssh), &["Deny", "Allow"], cx, move |choice, cx| {
                         me.update(cx, |a, cx| a.answer_cli(session, choice == Some(1), cx));
                     });
                 }
@@ -2089,7 +2109,11 @@ impl Passwords {
             }
             Err(m) => m,
         };
-        if msg.downcast::<Launch>().is_ok() {
+        // Opened (Deskbar, a link), its window shows; olo-session's
+        // `--agent` for a Passwords already running asks nothing to show.
+        if let Ok(launch) = msg.downcast::<Launch>()
+            && launch.args.first().map(String::as_str) != Some(AGENT_FLAG)
+        {
             self.open_main(cx);
         }
     }
@@ -2300,6 +2324,10 @@ pub fn category_menu(menu: Menu, prefix: &str) -> Menu {
     menu
 }
 
+/// How olo-session starts Passwords at login: the SSH agent (and the
+/// keychain), no window until it's opened.
+const AGENT_FLAG: &str = "--agent";
+
 fn main() {
     olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
@@ -2308,7 +2336,8 @@ fn main() {
     if instance::forward(APP_ID, &args) {
         return;
     }
-    olo_ui::run(APP_ID, |cx| {
+    let agent_only = args.first().map(String::as_str) == Some(AGENT_FLAG);
+    olo_ui::run(APP_ID, move |cx| {
         let proxy = olo_ui::proxy(cx);
         instance::listen(APP_ID, proxy.clone());
         // Logins for Chrome's pages, the palette's search and op.
@@ -2327,6 +2356,18 @@ fn main() {
         // Preferences ▸ Security, carrying over what was chosen here
         // before it moved there.
         let mut security = olo_ui::settings::current().map(|s| s.security.passwords).unwrap_or_default();
+        // The SSH agent (on by default): its socket served while Passwords
+        // runs, and Passwords kept running without a window for it.
+        if agent_only && !security.ssh_agent {
+            std::process::exit(olo_xdg::SERVICE_NOT_WANTED);
+        }
+        if security.ssh_agent {
+            let to = proxy.clone();
+            match agent::serve(&olo_xdg::ssh_agent_socket(), move |incoming| to.send(incoming)) {
+                Ok(()) => olo_ui::stay_resident(cx),
+                Err(e) => tracing::warn!("ssh agent: {e}"),
+            }
+        }
         let (old_lock, old_clear) = (settings.lock_minutes.take(), settings.clear_seconds.take());
         if (old_lock.is_some() || old_clear.is_some()) && security == PasswordsSecurity::default() {
             security.lock_minutes = old_lock.unwrap_or(security.lock_minutes);
@@ -2452,6 +2493,9 @@ fn main() {
                 }),
             };
             let mut unlocked_before = false;
+            // Started for the SSH agent, no window: unless it's coming back
+            // from an upgrade with its window open.
+            let show = !agent_only || saved.is_some();
             if let Some(saved) = saved {
                 app.source = saved.source;
                 app.selected = saved.selected;
@@ -2465,7 +2509,9 @@ fn main() {
                     tracing::info!("unlocked as before the upgrade");
                 }
             }
-            app.open_main(cx);
+            if show {
+                app.open_main(cx);
+            }
             if unlocked_before {
                 app.now_unlocked(cx);
             }

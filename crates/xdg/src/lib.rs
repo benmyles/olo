@@ -282,6 +282,19 @@ pub fn runtime_dir() -> std::path::PathBuf {
     }
 }
 
+/// What a session service exits with when it isn't wanted (turned off in
+/// its settings): olo-session doesn't start it again (until an upgrade
+/// asks its services to start once more).
+pub const SERVICE_NOT_WANTED: i32 = 75;
+
+/// Passwords' SSH agent's socket for this session (`SSH_AUTH_SOCK`): in
+/// the runtime folder, one a display (an Agent Screen's Passwords has its
+/// own).
+pub fn ssh_agent_socket() -> std::path::PathBuf {
+    let display: String = display_name().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    runtime_dir().join(format!("olo-ssh-agent-{}.sock", if display.is_empty() { "wayland-0".into() } else { display }))
+}
+
 /// This session's Wayland display by its name (`wayland-1`; empty if
 /// none), for files and sockets kept per display: `WAYLAND_DISPLAY` may
 /// name the socket by its full path instead.

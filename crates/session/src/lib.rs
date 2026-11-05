@@ -71,6 +71,9 @@ const REAL_SHELL: &[&[&str]] = &[
     &["olo-doctor", "--watch"],
     &["olo-airpods", "--service"],
     &["olo-voice", "--service"],
+    // The SSH agent (Passwords without a window; it exits, not wanted,
+    // with the agent turned off).
+    &["olo-passwords", "--agent"],
 ];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
@@ -117,6 +120,17 @@ pub fn run() {
             Session::start(args).run()
         }
     }
+}
+
+/// Passwords is the SSH agent (`security.passwords.ssh_agent` in the
+/// settings app_server keeps; on unless turned off).
+fn ssh_agent_on() -> bool {
+    let path = std::env::var_os("OLO_APP_SERVER_SETTINGS").map(PathBuf::from).unwrap_or_else(|| {
+        let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
+        config.join("olo/app_server.json")
+    });
+    let Ok(text) = std::fs::read_to_string(path) else { return true };
+    serde_json::from_str::<serde_json::Value>(&text).ok().and_then(|v| v.pointer("/security/passwords/ssh_agent")?.as_bool()).unwrap_or(true)
 }
 
 /// Where programs keep temporary files, from Olo Doctor's file for it
@@ -924,6 +938,11 @@ impl Session {
                     continue;
                 }
                 let c = &mut self.shell[i];
+                if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == olo_xdg::SERVICE_NOT_WANTED {
+                    log(format!("{} isn't wanted (turned off); not started again", c.argv[0]));
+                    c.pid = 0;
+                    continue;
+                }
                 log(format!("{} exited ({}); restarting it", c.argv[0], describe(status)));
                 if note_crash(c) {
                     c.pid = spawn(&c.argv, &[]).unwrap_or(0);
@@ -1177,6 +1196,12 @@ fn set_session_env(display: &str, ipc: &Path) {
         // SAFETY: single-threaded start-up.
         unsafe { std::env::set_var(k, v) };
     }
+    // Passwords as the SSH agent (Preferences ▸ Security, on by default),
+    // unless the login gave one.
+    if std::env::var_os("SSH_AUTH_SOCK").is_none() && ssh_agent_on() {
+        // SAFETY: single-threaded start-up.
+        unsafe { std::env::set_var("SSH_AUTH_SOCK", olo_xdg::ssh_agent_socket()) };
+    }
     // The login screen's PATH needn't include where we're installed
     // (~/.local/bin): put our directory first, for everything we start.
     if let Some(dir) = exe().parent() {
@@ -1193,8 +1218,10 @@ fn set_session_env(display: &str, ipc: &Path) {
 /// Tell systemd and D-Bus activation about the session, so portals and
 /// services started on demand find our display.
 fn export_environment() {
-    let vars: Vec<(&str, String)> =
-        ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET", "XCURSOR_THEME", "XCURSOR_SIZE"].into_iter().filter_map(|k| Some((k, std::env::var(k).ok()?))).collect();
+    let vars: Vec<(&str, String)> = ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET", "XCURSOR_THEME", "XCURSOR_SIZE", "SSH_AUTH_SOCK"]
+        .into_iter()
+        .filter_map(|k| Some((k, std::env::var(k).ok()?)))
+        .collect();
     // D-Bus calls can stall if a bus is slow to answer; don't hold up start-up.
     std::thread::spawn(move || {
         let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();

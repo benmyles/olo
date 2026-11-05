@@ -10051,6 +10051,34 @@ command" (`PasswordsSecurity::op_cli`, on by default) at startup and on
 each change, skipping `target/` builds; Passwords refuses `op` while it
 is off.
 
+Passwords is the session's SSH agent (`agent.rs`; Preferences ▸ Security
+▸ "Be the SSH agent", on by default): the agent protocol
+(draft-miller-ssh-agent: identities and signatures; adding, removing
+and locking refused, Passwords keeps the keys) on
+`olo_xdg::ssh_agent_socket()` (one a display), which olo-session puts in
+`SSH_AUTH_SOCK` as a login starts (unless the login gave one) and
+exports to systemd and D-Bus activation. olo-session starts `olo-passwords
+--agent` at login (`REAL_SHELL`): Passwords without a window, staying
+when its window closes (`stay_resident`), opened by a launch as before;
+off, it exits `SERVICE_NOT_WANTED` and isn't started again. Each request
+of a program of the person's own (`SO_PEERCRED`) is a keychain request
+(`Request::SshKeys`, `SshSign`, made in process with
+`Incoming::local` and the program's pid), so it's answered as `op`'s:
+once unlocked (an agent-only Passwords opens its window to be unlocked),
+a signature once that terminal session is allowed ("Allow “ssh …” to
+sign in with your SSH keys?", one grant with `op`'s), the keys read and
+used only on the store's thread (`agent::keys`, `agent::sign`): SSH Key
+fields of active items, OpenSSH text or PKCS#8 (Ed25519, RSA with
+SHA-256/512 as asked, ECDSA P-256), through RustCrypto's `ssh-key`.
+`~/.ssh/config` naming another agent (1Password's app writes
+`IdentityAgent ~/.1password/agent.sock`) is said in Security, with "Use
+Passwords for ssh" once this session's `SSH_AUTH_SOCK` is Passwords'
+(`olo_keychain::ssh_config`: `IdentityAgent SSH_AUTH_SOCK`, the old line
+kept as a comment). Tried headless with a store shared to a screen
+(`ssh_fixture`): `ssh-add -L` lists its key, `ssh-keygen -Y sign` through
+the agent makes a signature `ssh-keygen -Y verify` accepts. Idle, agent
+only: 59 MB, no CPU.
+
 `op` asks over the keychain socket (`Request::Cli { query: CliQuery }` →
 `Response::Cli { json }`, in 1Password's JSON shapes), starting Passwords
 if it isn't running; the shapes, field types and `op://vault/item/[section/]field[?attribute=…]`

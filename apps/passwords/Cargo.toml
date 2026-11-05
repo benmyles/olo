@@ -27,6 +27,12 @@ url = "2"
 getrandom = "0.3"
 base64 = "0.22"
 p256 = { version = "0.14", features = ["pkcs8"] }
+# The SSH agent (`agent`): OpenSSH keys parsed and signed with, natively.
+ssh-key = { version = "=0.7.0-rc.11", default-features = false, features = ["std", "ed25519", "rsa", "p256", "p384"] }
+# (ssh-key's own: PKCS#8 RSA keys read, its signing trait.)
+rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["std", "encoding"] }
+signature = "3"
+libc = "0.2"
 sha2 = "0.11"
 zeroize = "1"
 chacha20poly1305 = "0.11"

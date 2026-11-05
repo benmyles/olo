@@ -12,6 +12,8 @@ path = "src/main.rs"
 olo-crash.workspace = true
 olo-ui.workspace = true
 olo-xdg.workspace = true
+# (The ssh configuration's agent, for Security's SSH agent setting.)
+olo-keychain.workspace = true
 olo-palm.workspace = true
 olo-voice.workspace = true
 olo-theme.workspace = true

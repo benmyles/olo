@@ -865,6 +865,23 @@ mod tests {
         v.create(&note).unwrap();
     }
 
+    /// A store with an SSH key in it, to try the SSH agent with
+    /// (`OLO_FIXTURE_VAULT`, its key in `OLO_FIXTURE_KEY`): an Ed25519 key
+    /// made from a fixed seed; its public key printed. `cargo test --release
+    /// -p olo-passwords ssh_fixture -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn ssh_fixture() {
+        use ssh_key::private::{Ed25519Keypair, KeypairData};
+        let (Some(file), Some(key)) = (std::env::var_os("OLO_FIXTURE_VAULT"), std::env::var_os("OLO_FIXTURE_KEY")) else { return };
+        let mut v = Vault::open_at(PathBuf::from(file), Some(Path::new(&key))).unwrap();
+        let private = ssh_key::PrivateKey::new(KeypairData::Ed25519(Ed25519Keypair::from_seed(&[5u8; 32])), "").unwrap();
+        let mut p = ItemCreateParams::new(ItemCategory::SshKey, v.data.vaults[0].id.clone(), "Test SSH key");
+        p.fields = vec![ItemField::new("private_key", "private key", ItemFieldType::SshKey, private.to_openssh(ssh_key::LineEnding::LF).unwrap().as_str())];
+        v.create(&p).unwrap();
+        println!("{}", private.public_key().to_openssh().unwrap());
+    }
+
     #[test]
     fn sealed_and_reopened() {
         let (mut v, dir) = fresh("seal");

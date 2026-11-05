@@ -3292,5 +3292,11 @@
   "title": "Olo Doctor: temporary files on disk",
   "caption": "Doctor finds programs keeping their temporary files in memory (/tmp a tmpfs, TMPDIR unset) and offers to keep them in /var/tmp: an environment.d file of Olo's and the running session's environment.",
   "image": "2026-11-05/122649-olo-doctor-temporary-files-on-disk.png"
+ },
+ {
+  "time": "2026-11-05T14:02:22",
+  "title": "Passwords is the SSH agent",
+  "caption": "Preferences \u25b8 Security \u25b8 Be the SSH agent (on by default): ssh and git sign in with the SSH keys in Passwords, each terminal allowed the first time; where ~/.ssh/config sends ssh to another agent (1Password's app's), it says so and offers the switch once the session has Passwords' agent.",
+  "image": "2026-11-05/140222-passwords-is-the-ssh-agent.png"
  }
 ]

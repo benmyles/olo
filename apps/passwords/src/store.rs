@@ -576,7 +576,22 @@ fn login_fields(item: &Item) -> (Option<&ItemField>, Option<&ItemField>) {
 }
 
 fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], vault: &str, reply: &impl Fn(Reply)) -> Response {
+    let b64 = base64::engine::general_purpose::STANDARD;
     match request {
+        // The SSH agent's (`agent`): the keys never leave this thread.
+        Request::SshKeys => Response::SshKeys { keys: crate::agent::keys(&c.data) },
+        Request::SshSign { key, data, flags } => {
+            let (Ok(key), Ok(data)) = (b64.decode(key), b64.decode(data)) else {
+                return Response::Error { message: "not base64".into() };
+            };
+            match crate::agent::sign(&c.data, &key, &data, *flags) {
+                Ok((signature, title)) => {
+                    tracing::info!(key = title, "signed for the SSH agent");
+                    Response::SshSignature { signature: b64.encode(signature) }
+                }
+                Err(message) => Response::Error { message },
+            }
+        }
         Request::Fill { url, vault, id } => {
             let item = match c.get(vault, id) {
                 Ok(i) => i,
