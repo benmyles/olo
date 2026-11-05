@@ -1559,12 +1559,26 @@ of Finished; a new one goes where its priority puts it.
     `--encoder auto|cpu|nvidia`, auto taking NVENC where it opens: 4K in
     13.4 ms a frame against the processor's 111; the setting in
     Preferences ▸ GPUs ▸ Screen Recordings (the most powerful by
-    default, named; the NVIDIA GPU; the processor). *Left*: each encoder
-    with what it can encode (sizes, H.264/HEVC/AV1), Intel's and AMD's
-    (VA-API or Vulkan Video),
-    HEVC and AV1 (NVENC has both on this RTX 50 part), the frames as
-    dmabufs (CUDA's external memory) rather than copied, and falling back
-    mid-recording.
+    default, named; the NVIDIA GPU; the processor). *Then*
+    (2026-11-05): HEVC and AV1 on NVENC, each codec at a measured
+    constant quality; an encoder failing mid-recording opened again,
+    else the recording kept to there (not yet falling back to another
+    encoder: the file's sample entry describes one stream).
+    *Found* (2026-11-05), for Intel's and AMD's: Fedora's own VA-API
+    drivers (iHD from Fedora, Mesa's) leave out the patented codecs: on
+    this ThinkPad's Intel GPU (xe, renderD128) iHD encodes only JPEG,
+    VP9 (profiles 0–3) and AV1 profile 0, no H.264 or HEVC (those need
+    RPM Fusion's `intel-media-driver` / `mesa-va-drivers-freeworld`). An
+    H.264 encoder through VA-API was written (libva opened at run time,
+    bindgen declarations from libva 2.24's headers, NV12 on a few
+    threads, CQP, the driver writing the headers) and set aside: it
+    couldn't be run here. What would run here is AV1 through VA-API,
+    which needs its sequence and frame headers written by us (packed
+    headers with the offsets the driver patches, as FFmpeg's
+    vaapi_encode_av1 does). *Left*: that, if recording on the Intel GPU
+    (the NVIDIA one left asleep on battery) is wanted; each encoder with
+    what it can encode in Preferences; the frames as dmabufs (CUDA's
+    external memory) rather than copied.
 
 ## Maybe one day
 
