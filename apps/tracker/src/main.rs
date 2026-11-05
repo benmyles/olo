@@ -1525,9 +1525,14 @@ fn main() {
                     proxy.send(Launch { args, cwd: None, taken: None });
                 };
                 match filemanager::serve(reveal) {
-                    Ok(_conn) => loop {
-                        std::thread::park();
-                    },
+                    Ok((_conn, ours)) => {
+                        if !ours {
+                            tracing::info!("tracker: {} is another program's for now: waiting for it", filemanager::NAME);
+                        }
+                        loop {
+                            std::thread::park();
+                        }
+                    }
                     Err(e) => tracing::info!("tracker: not serving {}: {e}", filemanager::NAME),
                 }
             });

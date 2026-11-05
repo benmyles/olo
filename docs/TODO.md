@@ -1467,6 +1467,27 @@ of Finished; a new one goes where its priority puts it.
   `busctl --user monitor org.freedesktop.FileManager1` (and
   `org.freedesktop.portal.Desktop`) running while its download's folder
   is clicked (a test session's Chrome stops at its terms on first run).
+  *Found and fixed* (2026-11-05): Chrome 157 calls ShowItems itself
+  (it asks whether `org.freedesktop.portal.Desktop` and FileManager1 are
+  on the bus first; with the portal there too, as in Ben's session, it
+  still calls ShowItems), and Tracker serves it: a folder's window with
+  the file selected, brought back from minimized or opened on this
+  workspace, focused (checked on a test session's bus with Chrome, the
+  portal frontend and Olo's backend). But Ben's journal said, at each
+  Olo upgrade on Nov 4, "tracker: not serving org.freedesktop.FileManager1:
+  name already taken on the bus": Tracker asked for the name with
+  ReplaceExisting and DoNotQueue, so when anyone held it (the last
+  Tracker's connection not yet gone as it restarts, or Nautilus, which
+  the system's activation file `org.freedesktop.FileManager1.service`
+  starts whenever no Tracker has the name, and which doesn't allow it
+  taken) Tracker gave up for the session and every "show in folder"
+  went nowhere. It now waits in line for the name and allows it taken
+  (the next Tracker takes over at once): checked with a stand-in owner
+  that doesn't allow it taken (Tracker logs that it waits, takes the
+  name the moment the other lets go, and Chrome's Show in folder opens
+  Downloads). *Left*: Ben's try after the upgrade; and whether an Olo
+  session should keep D-Bus from starting Nautilus at all (a user
+  activation file for FileManager1 would reach a GNOME session too).
 
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
