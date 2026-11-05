@@ -7,28 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Agents can't set their Terminal tab's title** (Ben, 2026-11-05,
-  next after HDR): "it seems like in codex (and maybe claude code too)
-  setting the olo terminal title isn't working (the session most
-  definitely was/is running in olo terminal)". Codex in the tab at
-  ~/worktrees/olo/browser (group "olo") called
-  `olo-terminal.set_tab_title({"title": "Browser CSS syntax", "cwd":
-  "/home/ben/worktrees/olo/browser"})` and was told "This session isn't
-  in an Olo Terminal tab (or Terminal's setting for it is off)": so
-  `agent_title::find_tab` found no tab, even given the folder (Codex
-  runs the server in its daemon, so it goes by the folder; the group
-  context the hook gives that session lists the tab at that folder, so
-  the snapshot has it). Claude Code fails another way: in the tab at
-  ~/src/olo, after the conversation was compacted, the olo-terminal
-  server was "disconnected" and the tool gone for the rest of the
-  session (was the server's binary replaced by an upgrade under it, or
-  did it exit?). Find each cause (the snapshot the server reads and
-  where from: its environment in Codex's daemon, XDG_RUNTIME_DIR,
-  display; how `tab_of` matches a folder; what ends the server under
-  Claude Code), fix them, and keep tests that drive the server as each
-  agent runs it (Codex: from a daemon outside the tab, by folder;
-  Claude Code: under the tab's shell, across an upgrade of Terminal).
-
 - **HDR versions of the wallpapers, shown in HDR** (Ben, 2026-11-05,
   after HDR and the tab-title bug): "generate and add hdr versions of
   all the olo wallpapers that are used when in hdr mode". Every
@@ -1848,6 +1826,43 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Agents can't set their Terminal tab's title**~~ (done
+  2026-11-05, HACKING's "Coding agents' tab titles": three causes.
+  Terminal took no handed-over launches since its GPUI port (no
+  `instance::listen`), so every title failed "Terminal isn't
+  answering"; Codex starts MCP servers with a bare environment (no
+  XDG_RUNTIME_DIR), so its server found no snapshot and said the session
+  wasn't in a tab (now `olo_xdg::runtime_dir()`, /run/user/UID); and
+  olo-session stopped Claude Code's server 90 s after an upgrade as an
+  old version, which Claude Code never restarts (now it re-executes in
+  place between messages, and the stale check leaves alone what another
+  program started). By folder, the tab running the same agent first.
+  `tools/dev/agent-title-check` drives it as each agent runs it: all
+  as they should be. Servers running from before are left as they
+  are: Claude Code's work once Terminal is the new version (they have
+  the runtime dir); Codex's need Codex started again; one already
+  stopped comes back with its agent's next start) (Ben, 2026-11-05,
+  next after HDR): "it seems like in codex (and maybe claude code too)
+  setting the olo terminal title isn't working (the session most
+  definitely was/is running in olo terminal)". Codex in the tab at
+  ~/worktrees/olo/browser (group "olo") called
+  `olo-terminal.set_tab_title({"title": "Browser CSS syntax", "cwd":
+  "/home/ben/worktrees/olo/browser"})` and was told "This session isn't
+  in an Olo Terminal tab (or Terminal's setting for it is off)": so
+  `agent_title::find_tab` found no tab, even given the folder (Codex
+  runs the server in its daemon, so it goes by the folder; the group
+  context the hook gives that session lists the tab at that folder, so
+  the snapshot has it). Claude Code fails another way: in the tab at
+  ~/src/olo, after the conversation was compacted, the olo-terminal
+  server was "disconnected" and the tool gone for the rest of the
+  session (was the server's binary replaced by an upgrade under it, or
+  did it exit?). Find each cause (the snapshot the server reads and
+  where from: its environment in Codex's daemon, XDG_RUNTIME_DIR,
+  display; how `tab_of` matches a folder; what ends the server under
+  Claude Code), fix them, and keep tests that drive the server as each
+  agent runs it (Codex: from a daemon outside the tab, by folder;
+  Claude Code: under the tab's shell, across an upgrade of Terminal).
 
 - ~~**Activity Monitor: several processes chosen, one action on all**~~
   (done 2026-11-05, HACKING's Activity Monitor: chosen the usual way,

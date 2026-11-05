@@ -2543,6 +2543,11 @@ fn main() {
     };
     olo_ui::run(APP_ID, move |cx| {
         ui::bind_keys(cx);
+        // Launches handed over by another `olo-terminal` (a new window from
+        // Deskbar, `--tab`, a coding agent's tab title): without it each
+        // started a Terminal of its own, and agents' titles never arrived
+        // ("Terminal isn't answering").
+        instance::listen(APP_ID, olo_ui::proxy(cx));
         sudo::listen(olo_ui::proxy(cx));
         let proxy = olo_ui::proxy(cx);
         let look = olo_ui::theme::palette(cx);

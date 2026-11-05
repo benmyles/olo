@@ -264,6 +264,24 @@ pub fn upgrade_env(cmd: &mut std::process::Command) {
     }
 }
 
+/// The user's runtime directory (`XDG_RUNTIME_DIR`, where the session's
+/// sockets and per-display files are). A program started with a bare
+/// environment (a coding agent's MCP server: Codex passes only HOME, PATH
+/// and a few more) finds the standard one, /run/user/UID, when it's
+/// there and the user's; else the temporary directory.
+pub fn runtime_dir() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
+        return dir.into();
+    }
+    // SAFETY: getuid can't fail.
+    let uid = unsafe { libc::getuid() };
+    let standard = std::path::PathBuf::from(format!("/run/user/{uid}"));
+    match std::fs::metadata(&standard) {
+        Ok(m) if m.is_dir() && std::os::unix::fs::MetadataExt::uid(&m) == uid => standard,
+        _ => std::env::temp_dir(),
+    }
+}
+
 /// This session's Wayland display by its name (`wayland-1`; empty if
 /// none), for files and sockets kept per display: `WAYLAND_DISPLAY` may
 /// name the socket by its full path instead.

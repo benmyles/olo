@@ -2317,7 +2317,13 @@ stopped: a service of the session's is restarted by it, an app starts
 as the new version when next opened. The proxies are never touched
 (a retired one serves the outside programs it had until they close),
 nor olo-portal (it may be waiting out a screen share,
-`upgrade_waits_while`), which is only named.
+`upgrade_waits_while`), which is only named, nor a program of ours that
+another program started (`upgrade::started_by_another`: its parent is
+neither ours, the session's service manager nor init): a coding agent's
+`olo-terminal --mcp`, a browser's messaging host, a command run from a
+shell. Stopped, what that program had open with it broke and it never
+started it again (Claude Code's tab-title tool was gone for the rest of
+its session, 2026-11-05).
 
 Login items (`session/src/autostart.rs`, the freedesktop Autostart
 spec): once a real session's graphical side is up (the environment
@@ -2578,7 +2584,11 @@ state and re-executes, as after a reload, and app_server puts its windows
 back where they were. A program with no kit loop takes it with
 `olo_kit_base::restore::on_upgrade` (a self-pipe and a thread):
 `exec_on_upgrade` re-executes with the same arguments (`olo-doctor
---watch`, whose state is on disk), and the Chrome extension's host
+--watch`, whose state is on disk); one with a poll loop of its own takes
+`upgrade_signal()` (a file that becomes readable) and calls
+`exec_new_version()` when it's between things (`olo-terminal --mcp`
+re-executes between messages, its stdin and stdout carried over to the
+new version, so its agent sees nothing), and the Chrome extension's host
 (`olo-chrome chrome-extension://…`) exits once no request is being
 answered, for the extension to start the new one. Whatever is still
 old 90 s after is stopped (`check_stale`). A new olo-session re-executes itself without a
@@ -7975,10 +7985,23 @@ isn't asked each time), and in Codex's `config.toml`
 file as it was); off, it takes them out. Agents see it from their next
 start (`claude mcp list` and `codex mcp list` show it). The server finds
 its tab as the hook does (Claude Code starts it under the tab's shell;
-Codex's daemon by the folder the agent passes as `cwd`, else its own)
-and hands the title to that tab's Terminal on the tab's display
-(`olo-terminal --set-tab-title SHELL TITLE` through the single-instance
-socket, `instance::forward_on`). The tab shows it (`Tab::agent_title`,
+Codex's daemon by the folder the agent passes as `cwd`, else its own,
+the tab running the same agent first, `agent_context::own_agent` from
+the server's ancestors) and hands the title to that tab's Terminal on
+the tab's display (`olo-terminal --set-tab-title SHELL TITLE` through
+the single-instance socket, `instance::forward_on`, which Terminal
+listens on: the GPUI port had dropped `instance::listen`, so no title
+and no second launch ever arrived). Codex starts its MCP servers with a
+bare environment (HOME, PATH, LANG, LOGNAME, SHELL, TERM, USER,
+SSL_CERT_FILE: no `XDG_RUNTIME_DIR`, no display), so the snapshot and
+the socket are found in `olo_xdg::runtime_dir()` (`XDG_RUNTIME_DIR`,
+else /run/user/UID). An upgrade re-executes the server in place between
+messages (its own read buffer, so nothing is half-read; SIGURG through
+`restore::upgrade_signal`), and olo-session leaves a stale one alone
+(its agent started it). `tools/dev/agent-title-check` drives it both
+ways in a headless session: as Codex (a bare environment, outside the
+tab, by folder) and as Claude Code (from the tab's shell, across the
+server's file replaced and SIGURG). The tab shows it (`Tab::agent_title`,
 one line, at most 60 characters) ahead of the program's own title until
 the agent leaves the tab or sets an empty one; it is saved with the
 window, and after a restart kept only if the tab's agent is seen again

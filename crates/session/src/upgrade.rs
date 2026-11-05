@@ -207,6 +207,25 @@ impl Watcher {
     }
 }
 
+/// The program that started `pid`, if it isn't one of ours (nor the
+/// session's service manager, nor init, which adopt what's started
+/// detached): a coding agent running an MCP server of ours, a browser
+/// its messaging host, a shell a command. Stopping such a process breaks
+/// what that program had open with it, and it won't start it again (an
+/// agent's tool was gone for the rest of its session): left alone.
+pub fn started_by_another(pid: i32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let ppid: i32 = stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()?;
+    if ppid <= 1 {
+        return None;
+    }
+    let comm = std::fs::read_to_string(format!("/proc/{ppid}/comm")).ok()?.trim().to_owned();
+    let exe = std::fs::read_link(format!("/proc/{ppid}/exe")).ok()?;
+    let name = exe.file_name()?.to_str()?.trim_end_matches(" (deleted)");
+    let ours = name.starts_with("olo-") || name.starts_with("tabula-") || name == "app_server";
+    (!ours && comm != "systemd").then_some(comm)
+}
+
 /// Was the program at `exe` (as /proc shows it) one of ours in `dir`
 /// whose file has since been replaced?
 fn replaced(exe: &Path, dir: &Path) -> bool {
@@ -441,6 +460,19 @@ fn install(src: &Path, dir: &Path, name: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_program_another_started_is_known_so() {
+        // This test (not one of ours) starting a program: it says who.
+        let mut child = std::process::Command::new("sleep").arg("5").spawn().unwrap();
+        let by = started_by_another(child.id() as i32);
+        let _ = child.kill();
+        let _ = child.wait();
+        let own = std::fs::read_to_string("/proc/self/comm").unwrap().trim().to_owned();
+        assert_eq!(by.as_deref(), Some(own.as_str()));
+        // Gone: nothing to say.
+        assert_eq!(started_by_another(i32::MAX), None);
+    }
 
     fn program(dir: &Path, name: &str, age: u64) {
         let p = dir.join(name);

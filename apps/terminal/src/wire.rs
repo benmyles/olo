@@ -161,7 +161,7 @@ impl Frame {
 }
 
 pub fn runtime_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
+    olo_xdg::runtime_dir()
 }
 
 pub fn display() -> String {

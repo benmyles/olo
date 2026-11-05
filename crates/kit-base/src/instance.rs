@@ -44,7 +44,7 @@ fn socket_path(app_id: &str) -> PathBuf {
 }
 
 fn socket_on(app_id: &str, display: &str) -> PathBuf {
-    let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let rt = olo_xdg::runtime_dir();
     let display = if display.is_empty() { "wayland-0" } else { display };
     rt.join(format!("{app_id}-{display}.sock"))
 }

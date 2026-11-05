@@ -18,7 +18,7 @@
 //! leaves the tab or gives an empty one.
 
 use std::{
-    io::{BufRead, Write},
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -65,7 +65,7 @@ fn find_tab(cwd: Option<&Path>) -> Option<TabInfo> {
     let snapshot = agent_context::read_all()?;
     let ancestors = agent_context::ancestors();
     let own = std::env::current_dir().ok();
-    agent_context::tab_of(&snapshot, &ancestors, cwd.or(own.as_deref())).cloned()
+    agent_context::tab_of(&snapshot, &ancestors, cwd.or(own.as_deref()), agent_context::own_agent(&ancestors)).cloned()
 }
 
 /// Set `tab`'s title through its Terminal.
@@ -119,30 +119,85 @@ fn answer(msg: &Value, set: &mut Set) -> Option<Value> {
 }
 
 /// `olo-terminal --mcp`: the server, until its agent closes its stdin.
+/// An upgrade (olo-session's SIGURG) makes it the new version in place,
+/// between messages, its stdin and stdout carried over: the agent sees
+/// nothing. (Neither agent starts a server again: one stopped as an old
+/// version, as olo-session stops what hasn't become the new one 90 s
+/// after an upgrade, was gone for the rest of the agent's session.)
 pub fn serve() -> std::process::ExitCode {
     let mut set = |title: &str, cwd: Option<&Path>| -> Result<String, String> {
         let tab = find_tab(cwd).ok_or("This session isn't in an Olo Terminal tab (or Terminal's setting for it is off).")?;
         hand_over(&tab, title)?;
         Ok(if title.is_empty() { "The tab's title is its own again.".into() } else { format!("The tab is titled \u{201c}{title}\u{201d}.") })
     };
-    let stdin = std::io::stdin();
+    let upgrade = olo_kit_base::restore::upgrade_signal();
     let mut out = std::io::stdout().lock();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
+    serve_on(0, upgrade.as_ref().map(std::os::fd::AsRawFd::as_raw_fd), &mut out, &mut set, &mut || {
+        let e = olo_kit_base::restore::exec_new_version();
+        eprintln!("olo-terminal --mcp: couldn't become the new version: {e}");
+    })
+}
+
+/// The server's loop: requests read from `input` (a line each) into a
+/// buffer of its own, so none is half-read in a reader's buffer when it
+/// becomes the new version (`become_new`, once `upgrade` is readable and
+/// what came has been answered).
+fn serve_on(input: std::os::fd::RawFd, upgrade: Option<std::os::fd::RawFd>, out: &mut dyn Write, set: &mut Set, become_new: &mut dyn FnMut()) -> std::process::ExitCode {
+    let mut pending: Vec<u8> = Vec::new();
+    let mut upgrading = false;
+    let mut ended = false;
+    loop {
+        // Every whole line that came, answered.
+        while let Some(n) = pending.iter().position(|&b| b == b'\n').or(if ended && !pending.is_empty() { Some(pending.len() - 1) } else { None }) {
+            let line: Vec<u8> = pending.drain(..=n).collect();
+            let line = String::from_utf8_lossy(&line);
+            if line.trim().is_empty() {
+                continue;
+            }
+            let reply = match serde_json::from_str::<Value>(line.trim()) {
+                Ok(msg) => answer(&msg, set),
+                Err(_) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": "parse error"}})),
+            };
+            if let Some(reply) = reply
+                && (writeln!(out, "{reply}").is_err() || out.flush().is_err())
+            {
+                return std::process::ExitCode::SUCCESS;
+            }
         }
-        let reply = match serde_json::from_str::<Value>(&line) {
-            Ok(msg) => answer(&msg, &mut set),
-            Err(_) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": "parse error"}})),
-        };
-        if let Some(reply) = reply
-            && (writeln!(out, "{reply}").is_err() || out.flush().is_err())
-        {
-            break;
+        if ended {
+            return std::process::ExitCode::SUCCESS;
+        }
+        // Asked to upgrade, nothing half-read: the new version carries on.
+        if upgrading && pending.is_empty() {
+            upgrading = false;
+            become_new();
+        }
+        let mut fds = [libc::pollfd { fd: input, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd: upgrade.unwrap_or(-1), events: libc::POLLIN, revents: 0 }];
+        // SAFETY: two pollfds of ours.
+        if unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) } < 0 {
+            if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return std::process::ExitCode::FAILURE;
+        }
+        if fds[1].revents & libc::POLLIN != 0 {
+            let mut b = [0u8; 16];
+            // SAFETY: reading the signal's pipe into a buffer of ours.
+            unsafe { libc::read(fds[1].fd, b.as_mut_ptr().cast(), b.len()) };
+            upgrading = true;
+        }
+        if fds[0].revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0 {
+            let mut buf = [0u8; 8192];
+            // SAFETY: reading the input into a buffer of ours.
+            let n = unsafe { libc::read(input, buf.as_mut_ptr().cast(), buf.len()) };
+            match n {
+                0 => ended = true,
+                n if n > 0 => pending.extend_from_slice(&buf[..n as usize]),
+                _ if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted => {}
+                _ => ended = true,
+            }
         }
     }
-    std::process::ExitCode::SUCCESS
 }
 
 fn home() -> PathBuf {
@@ -311,6 +366,80 @@ pub fn register(on: bool, exe: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A pipe: (read end, write end).
+    fn pipe() -> (std::fs::File, std::fs::File) {
+        use std::os::fd::FromRawFd as _;
+        let mut fds = [0; 2];
+        // SAFETY: a new pipe, both ends ours.
+        unsafe {
+            assert_eq!(libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC), 0);
+            (std::fs::File::from_raw_fd(fds[0]), std::fs::File::from_raw_fd(fds[1]))
+        }
+    }
+
+    /// The server's loop on pipes, `script` writing to its input and its
+    /// upgrade signal: the replies, and how many had been written when it
+    /// became the new version (each time).
+    fn run(script: impl FnOnce(&mut std::fs::File, &mut std::fs::File) + Send + 'static) -> (Vec<Value>, Vec<usize>) {
+        use std::os::fd::AsRawFd as _;
+        let ((input, mut feed), (signal, mut poke)) = (pipe(), pipe());
+        let writer = std::thread::spawn(move || script(&mut feed, &mut poke));
+        let mut out: Vec<u8> = Vec::new();
+        let replies = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut set = |_: &str, _: Option<&Path>| -> Result<String, String> { Ok("done".into()) };
+        let counted = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        struct Counting<'a>(&'a mut Vec<u8>, std::rc::Rc<std::cell::Cell<usize>>);
+        impl Write for Counting<'_> {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.1.set(self.1.get() + b.iter().filter(|&&c| c == b'\n').count());
+                self.0.write(b)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let execs = replies.clone();
+        let seen = counted.clone();
+        serve_on(input.as_raw_fd(), Some(signal.as_raw_fd()), &mut Counting(&mut out, counted), &mut set, &mut || execs.borrow_mut().push(seen.get()));
+        writer.join().unwrap();
+        let got = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        (got, replies.take())
+    }
+
+    fn sleep() {
+        std::thread::sleep(std::time::Duration::from_millis(60));
+    }
+
+    #[test]
+    fn an_upgrade_waits_for_a_message_half_read() {
+        let (replies, execs) = run(|feed, poke| {
+            // The first message whole and half the second, and the upgrade.
+            feed.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"id\":2,").unwrap();
+            poke.write_all(&[1]).unwrap();
+            sleep();
+            feed.write_all(b"\"method\":\"tools/list\"}\n").unwrap();
+            sleep();
+            feed.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}").unwrap();
+        });
+        assert_eq!(replies.iter().map(|r| r["id"].clone()).collect::<Vec<_>>(), [json!(1), json!(2), json!(3)]);
+        assert_eq!(replies[1]["result"]["tools"][0]["name"], TOOL);
+        // Not with the second half-read: once it was answered.
+        assert_eq!(execs, [2]);
+    }
+
+    #[test]
+    fn an_upgrade_while_waiting_goes_at_once() {
+        let (replies, execs) = run(|feed, poke| {
+            feed.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n").unwrap();
+            sleep();
+            poke.write_all(&[1]).unwrap();
+            sleep();
+            feed.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}\n").unwrap();
+        });
+        assert_eq!(replies.len(), 2);
+        assert_eq!(execs, [1]);
+    }
 
     #[test]
     fn answers_as_a_tool_server() {

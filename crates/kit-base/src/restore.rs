@@ -70,8 +70,7 @@ pub fn take() -> Option<String> {
 /// there is nothing to carry.
 pub fn hand_over(cmd: &mut Command, state: Option<&str>) {
     let Some(state) = state.filter(|s| !s.is_empty()) else { return };
-    let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let file = dir.join(format!("olo-restore-{}.json", std::process::id()));
+    let file = olo_xdg::runtime_dir().join(format!("olo-restore-{}.json", std::process::id()));
     if std::fs::write(&file, state).is_ok() {
         cmd.env(ENV, &file);
     }
@@ -88,18 +87,18 @@ extern "C" fn on_upgrade_signal(_: libc::c_int) {
     }
 }
 
-/// For a program with no kit loop (a session service's watcher, a
-/// browser's messaging host): `then` runs, on a thread of its own, when
-/// olo-session says the program's file was replaced (SIGURG, ignored by
-/// default), to become the new version ([`exec_on_upgrade`]) or make
-/// way for it.
-pub fn on_upgrade(then: impl FnOnce() + Send + 'static) {
+/// For a program with a loop of its own (polling its input): a file
+/// that becomes readable (a byte in it) when olo-session says the
+/// program's file was replaced (SIGURG, ignored by default), for it to
+/// become the new version ([`exec_new_version`]) when it's between
+/// things. Once per program; None if it can't be had.
+pub fn upgrade_signal() -> Option<std::fs::File> {
     use std::os::fd::FromRawFd as _;
     let mut fds = [0; 2];
     // SAFETY: a pipe, and a handler that only writes to it.
     unsafe {
         if libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) != 0 {
-            return;
+            return None;
         }
         UPGRADE_PIPE.store(fds[1], std::sync::atomic::Ordering::Relaxed);
         let mut action: libc::sigaction = std::mem::zeroed();
@@ -107,9 +106,31 @@ pub fn on_upgrade(then: impl FnOnce() + Send + 'static) {
         action.sa_flags = libc::SA_RESTART;
         libc::sigemptyset(&mut action.sa_mask);
         libc::sigaction(libc::SIGURG, &action, std::ptr::null_mut());
+        // SAFETY: the read end, ours alone.
+        Some(std::fs::File::from_raw_fd(fds[0]))
     }
-    // SAFETY: the read end, ours alone.
-    let mut signals = unsafe { std::fs::File::from_raw_fd(fds[0]) };
+}
+
+/// Becomes the new version of this program, with the same arguments
+/// and what's open without close-on-exec (stdin, stdout and stderr: a
+/// server over them carries on); returns only if it couldn't.
+pub fn exec_new_version() -> std::io::Error {
+    use std::os::unix::process::CommandExt as _;
+    // (The file it ran from was replaced: /proc names it "(deleted)".)
+    let exe = match std::env::current_exe() {
+        Ok(exe) => PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")),
+        Err(e) => return e,
+    };
+    Command::new(&exe).args(std::env::args_os().skip(1)).exec()
+}
+
+/// For a program with no kit loop (a session service's watcher, a
+/// browser's messaging host): `then` runs, on a thread of its own, when
+/// olo-session says the program's file was replaced (SIGURG, ignored by
+/// default), to become the new version ([`exec_on_upgrade`]) or make
+/// way for it.
+pub fn on_upgrade(then: impl FnOnce() + Send + 'static) {
+    let Some(mut signals) = upgrade_signal() else { return };
     let _ = std::thread::Builder::new().name("upgrade".into()).spawn(move || {
         use std::io::Read as _;
         let mut b = [0u8; 1];
@@ -124,12 +145,8 @@ pub fn on_upgrade(then: impl FnOnce() + Send + 'static) {
 /// already.
 pub fn exec_on_upgrade() {
     on_upgrade(|| {
-        use std::os::unix::process::CommandExt as _;
-        // (The file it ran from was replaced: /proc names it "(deleted)".)
-        let Ok(exe) = std::env::current_exe() else { return };
-        let exe = PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
-        let e = Command::new(&exe).args(std::env::args_os().skip(1)).exec();
-        eprintln!("{}: couldn't become the new version: {e}", exe.display());
+        let e = exec_new_version();
+        eprintln!("couldn't become the new version: {e}");
     });
 }
 
