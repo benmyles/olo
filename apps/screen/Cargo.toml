@@ -24,6 +24,6 @@ libc = "0.2"
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 png = "0.18"
 zstd = "0.14"
-openh264 = "0.9"
+olo-video.workspace = true
 ab_glyph = "0.2"
 fontdb = "0.23"

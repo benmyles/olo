@@ -1,0 +1,12 @@
+[package]
+name = "olo-video"
+description = "Video made in process: H.264 from OpenH264 into an MP4 of Olo's own writing, for screen recordings and Agent Screens' exports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+openh264 = "0.9"
+
+[dev-dependencies]
+mp4 = "0.14"

@@ -38,6 +38,23 @@ screen keeps its history, its Chrome profile and the passwords shared
 with it, and starts again as it was. Act only on a screen whose `state`
 is `running`. Delete only screens you made, and only when asked.
 
+## Recording a video of your screen
+
+```sh
+olo-screen start demo --size 1920x1080 --scale 2   # a 4K screen (3840 × 2160 pixels)
+olo-screen record-video demo                       # prints {"path": …, "pid": …} at once
+# … do what the video shows, at a person's pace …
+olo-screen stop-video demo                         # finishes the MP4; prints where it went
+```
+
+It records only when something changes (a still screen costs nothing),
+up to 30 frames a second (`--fps`), into ~/Videos unless `--to PATH`;
+`--window ID` records one window, `--seconds N` stops by itself. For a
+polished demo: rehearse it first (without recording), then record it in
+one go; move the pointer deliberately (`move` before `click`), pause a
+moment after each step so it can be seen, and look at the video after
+(`olo-screen run demo olo-viewer PATH`, then `look`).
+
 ## A web browser: Olo's Chrome, only
 
 The browser is **Olo's Chrome, `olo-chrome`**, started on your screen:

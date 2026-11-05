@@ -9,6 +9,9 @@ name = "olo-screenshot"
 path = "src/main.rs"
 
 [dependencies]
+olo-capture.workspace = true
+olo-video.workspace = true
+libc = "0.2"
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-ui.workspace = true

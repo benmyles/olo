@@ -40,6 +40,10 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen archive NAME            a stopped screen out of the way (listed as archived)
        olo-screen unarchive NAME          back among the stopped ones
        olo-screen delete NAME             a screen and everything it kept, to the Trash
+       olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--no-pointer] [--to PATH]
+                                             a video of the screen (or one window), into ~/Videos
+                                             unless told; prints its path (JSON) at once
+       olo-screen stop-video NAME         the video finished; prints where it went
        olo-screen history NAME [--json] [--kind KIND] [--search TEXT] [--last N] [--clear]
                                              what was done on it: each action, what it matched, how it went
        olo-screen history NAME --look N [OUT.png]
@@ -254,6 +258,44 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         }),
         // (Started with each screen: its frames for its history.)
         "record" => name().and_then(|n| record::run(&n)),
+        // A video of the screen (olo-screenshot's recorder, on the screen's
+        // display): started, its path said at once; `stop-video` finishes it.
+        "record-video" => screen().and_then(|s| {
+            let to = match option(rest, "--to") {
+                Some(p) => std::path::PathBuf::from(p),
+                None => video_path(&s.name),
+            };
+            let mut argv: Vec<String> = vec!["olo-screenshot".into(), "--record".into(), "--to".into(), to.display().to_string()];
+            for flag in ["--seconds", "--fps", "--window"] {
+                if let Some(v) = option(rest, flag) {
+                    argv.extend([flag.to_owned(), v.to_owned()]);
+                }
+            }
+            if has(rest, "--no-pointer") {
+                argv.push("--no-pointer".into());
+            }
+            let pid = s.run(&argv)?;
+            let v = json!({ "pid": pid, "path": to });
+            println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            answered(v);
+            Ok(())
+        }),
+        "stop-video" => screen().and_then(|s| {
+            let program = olo_xdg::find_program("olo-screenshot").ok_or("olo-screenshot isn't installed")?;
+            let mut cmd = std::process::Command::new(program);
+            cmd.arg("--stop").env_remove("DISPLAY");
+            for (k, v) in s.env() {
+                cmd.env(k, v);
+            }
+            let out = cmd.output().map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(String::from_utf8_lossy(&out.stderr).trim().trim_start_matches("olo-screenshot: ").to_owned());
+            }
+            let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+            println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+            answered(v);
+            Ok(())
+        }),
         "history" => (|| {
             let n = name()?;
             if has(rest, "--clear") {
@@ -1028,4 +1070,15 @@ fn main() {
         let saving = app.clone();
         olo_ui::on_upgrade(cx, move |cx| Some(saving.read(cx).saved()));
     });
+}
+
+/// Where a video of screen `name` goes unless told: the Videos folder,
+/// named for the screen and when.
+fn video_path(name: &str) -> std::path::PathBuf {
+    let dir = olo_xdg::user_dir("VIDEOS").unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join("Videos"));
+    let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as libc::time_t;
+    // SAFETY: localtime_r fills `tm` from `t`.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    unsafe { libc::localtime_r(&t, &mut tm) };
+    dir.join(format!("Agent Screen {name} {:04}-{:02}-{:02} at {:02}.{:02}.{:02}.mp4", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
 }

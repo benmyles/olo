@@ -11,6 +11,7 @@
 //! it is saved, the file's path goes on the clipboard.
 
 mod capture;
+mod recording;
 mod region;
 
 use std::{
@@ -598,6 +599,17 @@ fn main() -> std::process::ExitCode {
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Recording the screen (recording.rs): no window, for people's
+    // shortcuts and agents alike.
+    if args.iter().any(|a| a == "--record") {
+        std::process::exit(recording::run(&args));
+    }
+    if args.iter().any(|a| a == "--stop") {
+        std::process::exit(recording::stop());
+    }
+    if args.iter().any(|a| a == "--recording") {
+        std::process::exit(recording::status());
+    }
     // The Screenshot portal's PickColor: "R G B" (0–255), nothing if
     // cancelled.
     if args.iter().any(|a| a == "--pick-color") {

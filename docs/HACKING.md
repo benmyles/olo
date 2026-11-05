@@ -5569,6 +5569,49 @@ Saved with no window (`--silent`, `--region`), it prints the file's path
 and puts it on the clipboard (`olo_ui::clipboard::hold`), staying until
 something else is copied. ⌘⇧5 opens the app.
 
+## Screen recording (apps/screenshot recording.rs, crates/video)
+
+`olo-screenshot --record` records a display (or `--window ID`, or
+`--display NAME`) into an MP4, all in process: frames from app_server's
+capture (`olo_capture`, the same ext-image-copy-capture sessions as
+screen sharing, a dmabuf where the GPU allows), H.264 from OpenH264 in
+its screen-content mode (`olo_video::H264`; its non-real-time screen
+mode is refused by this OpenH264, "Invalid usage type"), into an MP4 of
+Olo's own writing (`olo_video::Mp4`: each sample written as it comes,
+with its own duration, the index at the end; the shared writer Agent
+Screens' Export Video uses too).
+
+- **Only what changed.** A frame is asked for at most `--fps` times a
+  second (30 by default, 60 at most) and comes only once the screen has
+  changed; the recorder waits for it on the connection (`poll(2)` on its
+  fd, woken a few times a second to see whether to stop), and holds each
+  picture until the next comes, so a still screen costs nothing and the
+  video still keeps its time (the Viewer shows such a video's average,
+  "13 fps").
+- **Encoded on a worker** as frames come; one that comes while the last
+  is still being encoded waits in its place, a newer taking it. Encoding
+  on this x86 (AVX2, one thread): 16 ms a frame at 1440 × 900, 56 at
+  2560 × 1600, 111 at 4K (`cargo test -p olo-video encode_cost --
+  --ignored`): a 4K recording of much motion keeps about 9 a second,
+  which a GPU's encoder is for (TODO). A window that changes size is cut
+  or shown on black at the size it began.
+- **Ends** on `olo-screenshot --stop` (SIGTERM to the recorder, which
+  finishes the file; `--stop` waits for it on a pidfd, then prints the
+  path), `--seconds N`, SIGINT, or the window closing. Written as
+  `.mp4.part` until whole, then into the Videos folder as "Screen
+  Recording 2026-11-04 at 18.30.05.mp4" (or `--to PATH`); it prints what
+  it made as JSON (`path`, `seconds`, `frames`, `width`, `height`). One
+  recording at a time on each display: what's going is in
+  `$XDG_RUNTIME_DIR/olo-recording-<display>.json`
+  (`olo-screenshot --recording` says it), so an Agent Screen's and the
+  person's don't meet.
+- **For agents**, on their screen: `olo-screen record-video NAME
+  [--seconds N] [--fps N] [--window ID] [--no-pointer] [--to PATH]`
+  starts it on the screen's display and prints the path at once;
+  `olo-screen stop-video NAME` finishes it. A screen started at 4K
+  (`--size 1920x1080 --scale 2`) records at 3840 × 2160: checked, its
+  video played back in the Viewer on that screen.
+
 ## Screen sharing (apps/portal, app_server capture.rs)
 
 Apps never capture the screen themselves on Wayland: Chrome, Slack,

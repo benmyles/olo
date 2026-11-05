@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### A screen recording, played back in the Viewer
+
+*18:29* — olo-screenshot --record made it (frames only as the screen changed, H.264 into an MP4 written as it goes); Agent Screens record theirs with olo-screen record-video, at 4K too.
+
+![A screen recording, played back in the Viewer](2026-11-04/182948-a-screen-recording-played-back-in-the-viewer.png)
+
 ### Preferences ▸ Keyboard knows the Magic Keyboard with Touch ID
 
 *18:15* — The A2520 recognised by its name, in a box of its own with a picture (the keyboard icon for now), what it is, and why its Touch ID isn't used: its sensor is sealed to the Mac it's paired with.

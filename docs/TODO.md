@@ -1191,6 +1191,20 @@ of Finished; a new one goes where its priority puts it.
   skill (olo-screens): how to plan, pace and record a polished demo
   (rehearse, then record; the pointer's path, pauses, zooms; checking
   the result).
+  *Started* (2026-11-04, HACKING's "Screen recording"): the recording
+  itself, for people and agents: `olo-screenshot --record` (a display
+  or a window, frames only as they change, H.264 into an MP4 written as
+  it goes, `--stop`, `--seconds`), `olo-screen record-video` and
+  `stop-video` on an Agent Screen, 4K checked (played back in the
+  Viewer); `olo_video` shared with Agent Screens' Export Video; the
+  skill says how. *Left*: the app's own window and shortcut (Record
+  Screen / Window / Region in Screenshot, the region picker shared, a
+  Deskbar tray item while recording with Stop, a notification when
+  saved), sound, CleanShot X's polish (pointer drawn larger and smoothed,
+  clicks and keys shown, zoom following the action, a background and
+  frame, a webcam bubble, pause), the trimming editor, GIF, and the GPU
+  encoder below (OpenH264 on the CPU keeps about 9 frames a second at
+  4K: 111 ms a frame).
   - **Encoding on the best GPU, chosen in its settings** (Ben,
     2026-11-04): "the screen recording app should also take advantage
     of a discrete graphics card for encoding when available (and make it

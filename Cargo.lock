@@ -7464,8 +7464,8 @@ dependencies = [
  "olo-sync",
  "olo-theme",
  "olo-ui",
+ "olo-video",
  "olo-xdg",
- "openh264",
  "png 0.18.1",
  "serde",
  "serde_json",
@@ -7499,10 +7499,13 @@ name = "olo-screenshot"
 version = "0.1.0"
 dependencies = [
  "image",
+ "libc",
+ "olo-capture",
  "olo-crash",
  "olo-protocol",
  "olo-sync",
  "olo-ui",
+ "olo-video",
  "olo-xdg",
  "serde",
  "serde_json",
@@ -7760,6 +7763,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "olo-video"
+version = "0.1.0"
+dependencies = [
+ "mp4",
+ "openh264",
 ]
 
 [[package]]
