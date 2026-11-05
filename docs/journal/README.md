@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Preferences ▸ Network ▸ VPN, with WireGuard imported natively
+
+*15:42* — The VPNs saved (WireGuard, and NetworkManager's plugins' OpenVPN, IPsec…) are each connected and disconnected here, and removed after asking. A WireGuard file (wg-quick's .conf) is imported natively: keys checked, addresses by family, and its DNS asked alone while it's up so a full tunnel's names don't leak. Here “Office” was imported and connected. Also new: a hotspot under Wi-Fi, and IPv6 and MTU on a wired link (nm-fake standing in for NetworkManager).
+
+![Preferences ▸ Network ▸ VPN, with WireGuard imported natively](2026-11-05/154256-preferences-network-vpn-with-wireguard-imported-.png)
+
 ### Preferences ▸ Network ▸ Shaping, as a link conditioner
 
 *15:25* — A link made slower, later and lossier than it is, each way, to try a program on a poor network: bandwidth, delay, jitter and loss, from a network to start from (Edge, 3G, LTE, DSL, Busy Wi-Fi, Very Bad Network, Offline). The kernel's netem does it, spoken to over rtnetlink by olo-net-admin as root (an ifb device carries what's received). Here 3G was chosen and is ready to turn on.

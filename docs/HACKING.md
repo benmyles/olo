@@ -3714,18 +3714,31 @@ opened, its own `panel::State` and text fields).
   `olo_system::network` on a worker thread (devices, addresses,
   networks in range merged by SSID, saved connections; a scan every 30 s)
   and joins (saved connection, or a new WPA-PSK one), disconnects and
-  forgets. Its tabs (`TABS`; `olo-preferences network --tab Ethernet`
-  opens at one, as Deskbar's link icons do):
+  forgets. Under the networks, **Hotspot**: a name (the computer's) and
+  a password, Start (`nm::start_hotspot`: WPA2, `ipv4.method shared`,
+  kept as the "Olo Hotspot" connection), and while it's on, what it's
+  called and Stop. Its tabs (`TABS`; `olo-preferences network --tab
+  Ethernet` opens at one, as Deskbar's link icons do):
   - **Ethernet** (`ethernet.rs`): each wired link (an Adapter menu with
     several), No cable / Connected with “…”, 1 Gb/s, Connect or
     Disconnect (`nm::connect`: its saved connection, else a new one), and
     its connection's IPv4: Using DHCP (the address and router DHCP gave
     shown, dim) or Manually (address/prefix, router), and DNS servers of
-    its own; Apply writes the connection (`nm::update_profile`,
-    `set_ipv4_in`: `Update2`, secrets kept) and `Reapply`s the link, so
-    it changes without disconnecting. NetworkManager lets wheel users on
+    its own, Configure IPv6 (Automatically, Link-Local Only, Off; one
+    set Manually elsewhere is left as it is) and the MTU; Apply writes the
+    connection (`nm::update_profile`, `set_addressing_in`: `Update2`,
+    secrets kept) and `Reapply`s the link, so it changes without
+    disconnecting. NetworkManager lets wheel users on
     the console change system connections themselves; for anyone else it
     goes through the root helper.
+  - **VPN** (`vpn.rs`): the VPNs saved (WireGuard, and NetworkManager's
+    plugins': OpenVPN, IPsec…; `nm::vpns`), each Connected or not,
+    Connect / Disconnect, Remove (asked first: its keys go with it), and
+    Import WireGuard… (a file panel): `wg-quick`'s `.conf` read natively
+    (`nm::wireguard_settings`: keys checked as 32 bytes of base64,
+    addresses by family, DNS servers and search domains, the DNS asked
+    first and alone while it's up, `dns-priority` -50, so a full tunnel's
+    names don't leak; unit-tested) and saved (`AddConnection`).
   - **Service Order** (`order.rs`), as a Mac's Set Service Order: Ethernet
     and Wi-Fi in the order traffic prefers them, the one in use checked,
     Move Up / Move Down, Use the Usual Order, Apply.

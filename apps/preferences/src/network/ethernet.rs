@@ -2,7 +2,7 @@
 //! several): whether a cable's in and it's connected, Connect and
 //! Disconnect, and its connection's IPv4 settings, from DHCP or its own
 //! (address, router), with DNS servers of its own, applied at once
-//! without disconnecting (`nm::set_ipv4_in`, then `Reapply`).
+//! without disconnecting (`nm::set_addressing_in`, then `Reapply`).
 
 use olo_system::network::{self as nm, Device, Kind, Status};
 use olo_ui::{
@@ -22,27 +22,52 @@ pub struct Edit {
     address: Entity<TextField>,
     gateway: Entity<TextField>,
     dns: Entity<TextField>,
+    ipv6: nm::Ipv6,
+    mtu: Entity<TextField>,
     /// What the fields were filled from (the link, its connection's
     /// settings): filled again as that changes, not as it's typed in.
-    loaded: Option<(String, nm::Ipv4)>,
+    loaded: Option<(String, nm::Addressing)>,
 }
 
 impl Edit {
     pub fn new(cx: &mut Context<PanelView>) -> Edit {
-        Edit { device: 0, manual: false, address: field(cx, "192.168.1.20/24"), gateway: field(cx, "192.168.1.1"), dns: field(cx, "From the network"), loaded: None }
+        Edit {
+            device: 0,
+            manual: false,
+            address: field(cx, "192.168.1.20/24"),
+            gateway: field(cx, "192.168.1.1"),
+            dns: field(cx, "From the network"),
+            ipv6: nm::Ipv6::Auto,
+            mtu: field(cx, "Automatic"),
+            loaded: None,
+        }
     }
 
     /// The settings as the fields have them (from DHCP, the address and
-    /// router shown are DHCP's, not settings).
-    fn edited(&self, cx: &olo_ui::gpui::App) -> nm::Ipv4 {
+    /// router shown are DHCP's, not settings); Err if the MTU isn't a
+    /// number.
+    fn edited(&self, cx: &olo_ui::gpui::App) -> Result<nm::Addressing, String> {
         let dns = self.dns.read(cx).text().split([',', ' ']).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
+        let mtu = match self.mtu.read(cx).text().trim() {
+            "" => 0,
+            t => t.parse::<u32>().map_err(|_| "The MTU is a number of bytes.".to_owned())?,
+        };
         if !self.manual {
-            return nm::Ipv4 { manual: false, dns, ..nm::Ipv4::default() };
+            return Ok(nm::Addressing { manual: false, dns, ipv6: self.ipv6, mtu, ..nm::Addressing::default() });
         }
         let address = self.address.read(cx).text().trim().to_owned();
         let address = if address.is_empty() || address.contains('/') { address } else { format!("{address}/24") };
-        nm::Ipv4 { manual: true, address, gateway: self.gateway.read(cx).text().trim().to_owned(), dns }
+        Ok(nm::Addressing { manual: true, address, gateway: self.gateway.read(cx).text().trim().to_owned(), dns, ipv6: self.ipv6, mtu })
     }
+}
+
+/// The IPv6 menu's choices (Manually only when it is, set elsewhere).
+fn ipv6_choices(now: nm::Ipv6) -> Vec<(nm::Ipv6, &'static str)> {
+    let mut c = vec![(nm::Ipv6::Auto, "Automatically"), (nm::Ipv6::LinkLocal, "Link-Local Only"), (nm::Ipv6::Off, "Off")];
+    if now == nm::Ipv6::Manual {
+        c.push((nm::Ipv6::Manual, "Manually (Set Elsewhere)"));
+    }
+    c
 }
 
 /// A link's state in words, as the tab heads it.
@@ -91,14 +116,16 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     ui.add(super::labelled(DIVIDER, "Status:", div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(StringView::new(state_text(&d)))).child(action)));
 
     // The connection's IPv4 settings.
-    let (profile, saved) = extra.ipv4.iter().find(|(p, ..)| *p == d.path).map(|(_, p, v)| (p.clone(), v.clone())).unwrap_or((None, nm::Ipv4::default()));
+    let (profile, saved) = extra.ipv4.iter().find(|(p, ..)| *p == d.path).map(|(_, p, v)| (p.clone(), v.clone())).unwrap_or((None, nm::Addressing::default()));
     let key = (d.path.clone(), saved.clone());
     if e.loaded.as_ref() != Some(&key) {
         // From DHCP: what it gave, to see (and start from, made one's own).
         let (address, gateway) = if saved.manual { (saved.address.clone(), saved.gateway.clone()) } else { (d.addresses.first().cloned().unwrap_or_default(), d.gateway.clone().unwrap_or_default()) };
         let dns = saved.dns.join(", ");
+        let mtu = if saved.mtu == 0 { String::new() } else { saved.mtu.to_string() };
         e.manual = saved.manual;
-        for (f, text) in [(&e.address, address), (&e.gateway, gateway), (&e.dns, dns)] {
+        e.ipv6 = saved.ipv6;
+        for (f, text) in [(&e.address, address), (&e.gateway, gateway), (&e.dns, dns), (&e.mtu, mtu)] {
             f.update(ui.cx, |f, cx| f.set_text(text, cx));
         }
         e.loaded = Some(key);
@@ -110,10 +137,10 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         }
     }
     let edited = e.edited(ui.cx);
-    let valid = edited.check();
-    let changed = profile.is_some() && edited != saved;
-    let (address, gateway, dns) = (e.address.clone(), e.gateway.clone(), e.dns.clone());
-    ui.bbox("IPv4", |ui| {
+    let valid = edited.as_ref().map_err(String::clone).and_then(|a| a.check().map_err(|e| format!("{}{}.", e[..1].to_uppercase(), &e[1..])));
+    let changed = (profile.is_some() && edited.as_ref().is_ok_and(|a| *a != saved)) || edited.is_err();
+    let (address, gateway, dns, mtu, ipv6) = (e.address.clone(), e.gateway.clone(), e.dns.clone(), e.mtu.clone(), e.ipv6);
+    ui.bbox("TCP/IP", |ui| {
         let how: Vec<SharedString> = ["Using DHCP", "Manually"].into_iter().map(SharedString::from).collect();
         let choose = ui.on_view(|v, i: usize, _, cx| {
             if let Some(st) = state_of(v) {
@@ -125,6 +152,17 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         ui.add(TextControl::new(address).label("IP address:").divider(DIVIDER));
         ui.add(TextControl::new(gateway).label("Router:").divider(DIVIDER));
         ui.add(TextControl::new(dns).label("DNS servers:").divider(DIVIDER));
+        let choices = ipv6_choices(ipv6);
+        let names: Vec<SharedString> = choices.iter().map(|(_, n)| SharedString::from(*n)).collect();
+        let at = choices.iter().position(|(c, _)| *c == ipv6).unwrap_or(0);
+        let pick6 = ui.on_view(move |v, i: usize, _, cx| {
+            if let (Some(st), Some((c, _))) = (state_of(v), choices.get(i)) {
+                st.eth.ipv6 = *c;
+            }
+            cx.notify();
+        });
+        ui.add(MenuField::new("ethernet-ipv6", names, at).label("Configure IPv6:").divider(DIVIDER).enabled(profile.is_some()).on_change(pick6));
+        ui.add(TextControl::new(mtu).label("MTU:").divider(DIVIDER));
         ui.note(if profile.is_none() {
             "Connect it once to have settings of its own."
         } else {
@@ -142,9 +180,10 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         let (profile, device) = (profile.clone(), d.path.clone());
         let apply = ui.on_click_view(move |v, _, cx| {
             let Some(st) = state_of(v) else { return };
-            let ipv4 = st.eth.edited(cx);
-            if let (Some(profile), Ok(())) = (profile.clone(), ipv4.check()) {
-                let _ = st.link.tx.send(Request::Ipv4 { device: device.clone(), profile, ipv4 });
+            if let (Some(profile), Ok(ipv4)) = (profile.clone(), st.eth.edited(cx))
+                && ipv4.check().is_ok()
+            {
+                let _ = st.link.tx.send(Request::Addressing { device: device.clone(), profile, ipv4 });
             }
             cx.notify();
         });

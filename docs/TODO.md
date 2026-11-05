@@ -1621,57 +1621,6 @@ of Finished; a new one goes where its priority puts it.
     what it can encode in Preferences; the frames as dmabufs (CUDA's
     external memory) rather than copied.
 
-- **Ethernet beside Wi-Fi: Deskbar, and Preferences ▸ Network in full**
-  (Ben, 2026-11-05, for later): "in addition to the wifi icon that is
-  shown in the deskbar tray, when ethernet is connected it should also
-  show an ethernet icon. on both of them right-clicking the icon should
-  also show some stats/metrics and have a link to open the relevant
-  preferences. also, if both are connected at once the one that is the
-  default route/link should be shown as "stronger" or in some way active
-  vs the other one. and in preferences -> network it should also have
-  full support for managing ethernet links as well as wifi and have the
-  ability to choose/change the priority/preference of each link like you
-  can in macos so e.g. by default you'd want ethernet highest priority,
-  then wifi but if the user wanted to change they could. also have other
-  common network settings in here like the ability to set custom dns
-  servers, a tab to manage custom host entries, a tab to enable/disable
-  and configure shaping, and whatever else might be useful to have." To
-  do: an Ethernet icon in Deskbar's tray while a wired link is up (icons
-  per ICONS.md); the one carrying the default route drawn as the active
-  one (the other dimmer, or marked); right-click on either: its stats
-  (address, gateway, DNS, speed or signal and rate, bytes in and out,
-  live) and "Network Preferences…". Preferences ▸ Network: wired links
-  managed as Wi-Fi is (DHCP or manual addresses, IPv6, MTU, 802.1X), the
-  services' order as macOS's Set Service Order (Ethernet, then Wi-Fi by
-  default, dragged to change: route metrics through NetworkManager's
-  D-Bus API, natively), DNS servers and search domains of the person's
-  own (per link and for all), a Hosts tab (entries of their own, kept in
-  /etc/hosts through polkit), a Shaping tab (bandwidth and latency
-  limits per link, on and off: the kernel's traffic control over netlink,
-  in Rust), and what else a network panel wants (proxies, VPNs listed
-  and switched, a hotspot). Agents read and change all of it through
-  IPC as the person does.
-  *Deskbar done* 2026-11-05: an Ethernet port beside Wi-Fi while a wired
-  link is connected, the link not carrying the default route faint, and
-  a right-click menu on each (joined to, in use or standing by, signal
-  and rate or speed, addresses, router, DNS, interface, hardware
-  address, bytes in and out, Network Preferences…), following
-  NetworkManager's signals (`network::watch_links`; a strength or rate
-  change taken from the signal, under a wakeup a second idle). `nm-fake`
-  is a whole stand-in now (links, routes, profiles, Reapply, `--tell`).
-  *Preferences done* 2026-11-05: Network has Wi-Fi, Ethernet (connect,
-  DHCP or its own address, router and DNS, applied without
-  disconnecting), Service Order (as a Mac's; each kind's route metric in
-  NetworkManager's conf.d, so later networks fall in line), DNS (servers
-  and search domains for every link, public resolvers to start from),
-  Hosts (/etc/hosts, entries on and off, comments kept), Shaping (as a
-  Mac's Network Link Conditioner: netem over rtnetlink, each way, with
-  presets) and Details; root through `olo-net-admin`, asked for once
-  while the panel is open. Tested against `nm-fake` end to end (the
-  route moving, Deskbar's icons following) and shaping as root in a
-  namespace of its own. Left: VPNs listed and switched, a hotspot, IPv6
-  and MTU on a wired link.
-
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a
   markdown file StyledEdit should natively support the Markdown and be
@@ -1761,6 +1710,65 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Ethernet beside Wi-Fi: Deskbar, and Preferences ▸ Network in full**~~
+  (done 2026-11-05: HACKING's Deskbar tray and Preferences ▸ Network)
+  (Ben, 2026-11-05, for later): "in addition to the wifi icon that is
+  shown in the deskbar tray, when ethernet is connected it should also
+  show an ethernet icon. on both of them right-clicking the icon should
+  also show some stats/metrics and have a link to open the relevant
+  preferences. also, if both are connected at once the one that is the
+  default route/link should be shown as "stronger" or in some way active
+  vs the other one. and in preferences -> network it should also have
+  full support for managing ethernet links as well as wifi and have the
+  ability to choose/change the priority/preference of each link like you
+  can in macos so e.g. by default you'd want ethernet highest priority,
+  then wifi but if the user wanted to change they could. also have other
+  common network settings in here like the ability to set custom dns
+  servers, a tab to manage custom host entries, a tab to enable/disable
+  and configure shaping, and whatever else might be useful to have." To
+  do: an Ethernet icon in Deskbar's tray while a wired link is up (icons
+  per ICONS.md); the one carrying the default route drawn as the active
+  one (the other dimmer, or marked); right-click on either: its stats
+  (address, gateway, DNS, speed or signal and rate, bytes in and out,
+  live) and "Network Preferences…". Preferences ▸ Network: wired links
+  managed as Wi-Fi is (DHCP or manual addresses, IPv6, MTU, 802.1X), the
+  services' order as macOS's Set Service Order (Ethernet, then Wi-Fi by
+  default, dragged to change: route metrics through NetworkManager's
+  D-Bus API, natively), DNS servers and search domains of the person's
+  own (per link and for all), a Hosts tab (entries of their own, kept in
+  /etc/hosts through polkit), a Shaping tab (bandwidth and latency
+  limits per link, on and off: the kernel's traffic control over netlink,
+  in Rust), and what else a network panel wants (proxies, VPNs listed
+  and switched, a hotspot). Agents read and change all of it through
+  IPC as the person does.
+  *Deskbar done* 2026-11-05: an Ethernet port beside Wi-Fi while a wired
+  link is connected, the link not carrying the default route faint, and
+  a right-click menu on each (joined to, in use or standing by, signal
+  and rate or speed, addresses, router, DNS, interface, hardware
+  address, bytes in and out, Network Preferences…), following
+  NetworkManager's signals (`network::watch_links`; a strength or rate
+  change taken from the signal, under a wakeup a second idle). `nm-fake`
+  is a whole stand-in now (links, routes, profiles, Reapply, `--tell`).
+  *Preferences done* 2026-11-05: Network has Wi-Fi, Ethernet (connect,
+  DHCP or its own address, router and DNS, applied without
+  disconnecting), Service Order (as a Mac's; each kind's route metric in
+  NetworkManager's conf.d, so later networks fall in line), DNS (servers
+  and search domains for every link, public resolvers to start from),
+  Hosts (/etc/hosts, entries on and off, comments kept), Shaping (as a
+  Mac's Network Link Conditioner: netem over rtnetlink, each way, with
+  presets) and Details; root through `olo-net-admin`, asked for once
+  while the panel is open. Tested against `nm-fake` end to end (the
+  route moving, Deskbar's icons following) and shaping as root in a
+  namespace of its own.
+  *The rest done* 2026-11-05: a VPN tab (WireGuard and NetworkManager's
+  plugins' VPNs listed, connected and disconnected, removed; a WireGuard
+  `.conf` imported natively, its DNS kept from leaking), a hotspot under
+  Wi-Fi (WPA2, the connection shared), and IPv6 and the MTU on a wired
+  link. Proxies were left out: NetworkManager's proxy setting reaches
+  only programs that ask libproxy for it, and Olo's own programs and
+  browsers take theirs elsewhere; a proxy for the whole desktop is a
+  thing of its own if wanted.
 
 - ~~**Passwords is the SSH agent, on by default**~~ (done 2026-11-05,
   HACKING's Passwords: the agent protocol on a socket of its own in

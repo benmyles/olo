@@ -134,12 +134,23 @@ impl Saved {
         }
     }
 
+    /// A VPN (WireGuard, or a plugin's): up without a device of its own.
+    fn is_vpn(&self) -> bool {
+        matches!(self.text("connection", "type").as_str(), "wireguard" | "vpn")
+    }
+
+    /// A hotspot this computer makes.
+    fn is_hotspot(&self) -> bool {
+        self.text("802-11-wireless", "mode") == "ap"
+    }
+
     fn ssid(&self) -> Option<String> {
         let raw = self.settings.get("802-11-wireless").and_then(|w| w.get("ssid")).and_then(|v| Vec::<u8>::try_from(v.clone()).ok())?;
         Some(String::from_utf8_lossy(&raw).into_owned())
     }
 
     fn dump(&self) -> serde_json::Value {
+        let mtu = ["802-3-ethernet", "802-11-wireless"].iter().find_map(|g| self.settings.get(*g).and_then(|x| x.get("mtu")).and_then(|v| u32::try_from(v).ok())).unwrap_or(0);
         serde_json::json!({
             "id": self.text("connection", "id"),
             "type": self.text("connection", "type"),
@@ -156,6 +167,8 @@ impl Saved {
             "addresses": addresses_of(&self.settings).into_iter().map(|(a, p)| format!("{a}/{p}")).collect::<Vec<_>>(),
             "gateway": self.text("ipv4", "gateway"),
             "searches": self.settings.get("ipv4").and_then(|x| x.get("dns-search")).and_then(|v| Vec::<String>::try_from(v.clone()).ok()).unwrap_or_default(),
+            "ipv6": self.text("ipv6", "method"),
+            "mtu": mtu,
         })
     }
 }
@@ -205,6 +218,12 @@ struct Model {
     /// Each kind's route metric by default, from Olo's conf.d file as
     /// last read (at start and `Reload`; under `OLO_NET_ROOT`).
     defaults: Vec<(u32, i64)>,
+    /// The VPNs up (their saved connections' numbers).
+    vpns: Vec<usize>,
+}
+
+fn vpn_path(n: usize) -> String {
+    format!("{NM_PATH}/ActiveConnection/vpn{n}")
 }
 
 /// The route metrics Olo's conf.d file gives each kind of link.
@@ -277,6 +296,10 @@ impl Model {
     /// Its addresses, router and DNS servers.
     fn ip(&self, i: usize) -> (Vec<(String, u32)>, String, Vec<String>) {
         let d = &self.devices[i];
+        // A hotspot: NetworkManager's shared network, no router.
+        if text_of(&d.applied, "802-11-wireless", "mode") == "ap" {
+            return (vec![("10.42.0.1".into(), 24)], String::new(), Vec::new());
+        }
         let manual = text_of(&d.applied, "ipv4", "method") == "manual";
         let (addresses, gateway) = if manual { (addresses_of(&d.applied), text_of(&d.applied, "ipv4", "gateway")) } else { (vec![(d.lease.address.clone(), 24)], d.lease.gateway.clone()) };
         let mut dns = dns_of(&d.applied);
@@ -301,9 +324,9 @@ impl Model {
         if d.kind == TYPE_WIFI && !self.wireless {
             return Err(fail("Wi-Fi is off"));
         }
-        let (settings, ssid) = (s.settings.clone(), s.ssid());
-        let ap = ssid.and_then(|ssid| self.aps.iter().position(|a| a.ssid == ssid));
-        if self.devices[i].kind == TYPE_WIFI && ap.is_none() {
+        let (settings, ssid, hotspot) = (s.settings.clone(), s.ssid(), s.is_hotspot());
+        let ap = if hotspot { None } else { ssid.and_then(|ssid| self.aps.iter().position(|a| a.ssid == ssid)) };
+        if self.devices[i].kind == TYPE_WIFI && ap.is_none() && !hotspot {
             return Err(fail("the network isn't in range"));
         }
         let default_metric = self.default_for(self.devices[i].kind);
@@ -324,7 +347,7 @@ impl Model {
         let primary = self.primary();
         out.push((NM_PATH.to_owned(), NM, "PrimaryConnection", format!("{primary:?}")));
         out.push((NM_PATH.to_owned(), NM, "PrimaryConnectionType", format!("{:?}", primary.map(|i| self.devices[i].kind))));
-        out.push((NM_PATH.to_owned(), NM, "ActiveConnections", format!("{:?}", (0..self.devices.len()).filter(|&i| self.connected(i)).collect::<Vec<_>>())));
+        out.push((NM_PATH.to_owned(), NM, "ActiveConnections", format!("{:?} {:?}", (0..self.devices.len()).filter(|&i| self.connected(i)).collect::<Vec<_>>(), self.vpns)));
         out.push((NM_PATH.to_owned(), NM, "WirelessEnabled", self.wireless.to_string()));
         for (i, d) in self.devices.iter().enumerate() {
             let p = dev_path(i);
@@ -432,7 +455,9 @@ impl Nm {
     #[zbus(property)]
     fn active_connections(&self) -> Vec<OwnedObjectPath> {
         let m = self.model.lock().unwrap();
-        (0..m.devices.len()).filter(|&i| m.connected(i)).map(|i| opath(active_path(i))).collect()
+        let mut out: Vec<OwnedObjectPath> = (0..m.devices.len()).filter(|&i| m.connected(i)).map(|i| opath(active_path(i))).collect();
+        out.extend(m.vpns.iter().map(|n| opath(vpn_path(*n))));
+        out
     }
 
     #[zbus(property)]
@@ -506,8 +531,24 @@ impl Nm {
         device: OwnedObjectPath,
         _specific: OwnedObjectPath,
         #[zbus(connection)] conn: &zbus::Connection,
+        #[zbus(object_server)] server: &zbus::ObjectServer,
     ) -> zbus::fdo::Result<OwnedObjectPath> {
         let n = number(connection.as_str()).ok_or_else(|| fail("no connection"))?;
+        // A VPN: up over whatever carries the traffic.
+        let vpn = self.model.lock().unwrap().saved(n).is_some_and(Saved::is_vpn);
+        if vpn {
+            let before = {
+                let mut m = self.model.lock().unwrap();
+                let before = m.seen();
+                if !m.vpns.contains(&n) {
+                    m.vpns.push(n);
+                }
+                before
+            };
+            let _ = server.at(vpn_path(n).as_str(), VpnActiveObj { model: self.model.clone(), n }).await;
+            announce(conn, &self.model, before).await;
+            return Ok(opath(vpn_path(n)));
+        }
         let before = {
             let mut m = self.model.lock().unwrap();
             let i = match number(device.as_str()) {
@@ -561,7 +602,21 @@ impl Nm {
         Ok((opath(conn_path(n)), opath(active_path(i))))
     }
 
-    async fn deactivate_connection(&self, active: OwnedObjectPath, #[zbus(connection)] conn: &zbus::Connection) -> zbus::fdo::Result<()> {
+    async fn deactivate_connection(&self, active: OwnedObjectPath, #[zbus(connection)] conn: &zbus::Connection, #[zbus(object_server)] server: &zbus::ObjectServer) -> zbus::fdo::Result<()> {
+        if let Some(n) = active.as_str().rsplit('/').next().and_then(|l| l.strip_prefix("vpn")).and_then(|n| n.parse::<usize>().ok()) {
+            let before = {
+                let mut m = self.model.lock().unwrap();
+                if !m.vpns.contains(&n) {
+                    return Err(fail("not active"));
+                }
+                let before = m.seen();
+                m.vpns.retain(|x| *x != n);
+                before
+            };
+            let _ = server.remove::<VpnActiveObj, _>(vpn_path(n).as_str()).await;
+            announce(conn, &self.model, before).await;
+            return Ok(());
+        }
         let i = number(active.as_str()).map(|d| d - 1).ok_or_else(|| fail("no active connection"))?;
         let before = {
             let mut m = self.model.lock().unwrap();
@@ -847,6 +902,45 @@ impl ActiveObj {
     }
 }
 
+/// A VPN up.
+struct VpnActiveObj {
+    model: Shared,
+    n: usize,
+}
+
+#[zbus::interface(name = "org.freedesktop.NetworkManager.Connection.Active")]
+impl VpnActiveObj {
+    #[zbus(property)]
+    fn id(&self) -> String {
+        self.model.lock().unwrap().saved(self.n).map(|s| s.text("connection", "id")).unwrap_or_default()
+    }
+
+    #[zbus(property, name = "Type")]
+    fn kind(&self) -> String {
+        self.model.lock().unwrap().saved(self.n).map(|s| s.text("connection", "type")).unwrap_or_default()
+    }
+
+    #[zbus(property)]
+    fn connection(&self) -> OwnedObjectPath {
+        opath(conn_path(self.n))
+    }
+
+    #[zbus(property)]
+    fn devices(&self) -> Vec<OwnedObjectPath> {
+        Vec::new()
+    }
+
+    #[zbus(property)]
+    fn state(&self) -> u32 {
+        2
+    }
+
+    #[zbus(property)]
+    fn vpn(&self) -> bool {
+        true
+    }
+}
+
 struct Ip4Obj {
     model: Shared,
     i: usize,
@@ -896,8 +990,8 @@ impl SettingsObj {
 
     async fn add_connection(&self, mut settings: Settings, #[zbus(object_server)] server: &zbus::ObjectServer) -> zbus::fdo::Result<OwnedObjectPath> {
         let kind = text_of(&settings, "connection", "type");
-        if !matches!(kind.as_str(), "802-11-wireless" | "802-3-ethernet") || text_of(&settings, "connection", "uuid").len() != 36 {
-            return Err(zbus::fdo::Error::InvalidArgs("not a Wi-Fi or Ethernet connection with a uuid".into()));
+        if !matches!(kind.as_str(), "802-11-wireless" | "802-3-ethernet" | "wireguard" | "vpn") || text_of(&settings, "connection", "uuid").len() != 36 {
+            return Err(zbus::fdo::Error::InvalidArgs("not a Wi-Fi, Ethernet or VPN connection with a uuid".into()));
         }
         if kind == "802-11-wireless" && !settings.get("802-11-wireless").is_some_and(|w| w.contains_key("ssid")) {
             return Err(zbus::fdo::Error::InvalidArgs("no ssid".into()));
@@ -962,6 +1056,7 @@ impl Connection {
             let mut m = self.model.lock().unwrap();
             let before = m.seen();
             m.saved.retain(|s| s.n != self.n);
+            m.vpns.retain(|x| *x != self.n);
             for i in 0..m.devices.len() {
                 if m.devices[i].active == Some(self.n) {
                     m.deactivate(i, DISCONNECTED, 0);
@@ -1069,7 +1164,7 @@ fn wired_settings(n: usize) -> Settings {
 fn main() {
     olo_crash::install();
     let mut address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
-    let mut model = Model { saved: Vec::new(), next: 0, devices: Vec::new(), aps: Vec::new(), wireless: true, dump: None, defaults: conf_defaults() };
+    let mut model = Model { saved: Vec::new(), next: 0, devices: Vec::new(), aps: Vec::new(), wireless: true, dump: None, defaults: conf_defaults(), vpns: Vec::new() };
     let (mut wired, mut wifi, mut adapter, mut tell, mut in_range) = (false, None::<String>, false, None::<String>, Vec::new());
     let mut args = std::env::args().skip(1);
     let usage = || -> ! {

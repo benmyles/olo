@@ -13,6 +13,7 @@ mod ethernet;
 mod hosts_tab;
 mod order;
 mod shaping_tab;
+mod vpn;
 
 use olo_sync::Mutex;
 use std::{
@@ -49,10 +50,10 @@ enum Request {
     /// A wired link connected (its saved connection, or a new one).
     Connect(String),
     /// A connection's IPv4 settings, and its link given them.
-    Ipv4 {
+    Addressing {
         device: String,
         profile: String,
-        ipv4: nm::Ipv4,
+        ipv4: nm::Addressing,
     },
     /// The services' order and DNS of one's own (root).
     Conf(NetConf),
@@ -68,6 +69,20 @@ enum Request {
     },
     /// The panel closed: the root helper let go.
     EndAdmin,
+    /// A VPN brought up (its saved connection).
+    VpnUp(String),
+    /// An active connection taken down (a VPN, the hotspot).
+    Deactivate(String),
+    /// A saved connection deleted (a VPN).
+    Delete(String),
+    /// A WireGuard configuration file saved as a VPN.
+    ImportWireguard(PathBuf),
+    /// The Wi-Fi adapter made a hotspot.
+    StartHotspot {
+        device: String,
+        ssid: String,
+        password: String,
+    },
 }
 
 /// What the tabs past Wi-Fi show, read at the start, after each change
@@ -82,7 +97,11 @@ pub(crate) struct Extra {
     pub shaping: Vec<(String, Shaping)>,
     /// Each wired link's connection (its path, its saved connection) and
     /// that one's IPv4 settings.
-    pub ipv4: Vec<(String, Option<String>, nm::Ipv4)>,
+    pub ipv4: Vec<(String, Option<String>, nm::Addressing)>,
+    /// The VPNs saved, and whether each is up.
+    pub vpns: Vec<nm::Vpn>,
+    /// The hotspot this computer makes, if it's on.
+    pub hotspot: Option<nm::Hotspot>,
 }
 
 fn read_extra(status: Option<&Status>) -> Extra {
@@ -96,17 +115,24 @@ fn read_extra(status: Option<&Status>) -> Extra {
             .filter(|d| d.kind == Kind::Ethernet)
             .map(|d| {
                 let profile = nm::profile_of(&d.path).ok().flatten();
-                let ipv4 = profile.as_deref().and_then(|p| nm::profile_ipv4(p).ok()).unwrap_or_default();
+                let ipv4 = profile.as_deref().and_then(|p| nm::profile_addressing(p).ok()).unwrap_or_default();
                 (d.path.clone(), profile, ipv4)
             })
             .collect(),
+        vpns: nm::vpns().unwrap_or_default(),
+        hotspot: nm::hotspot().ok().flatten(),
     }
 }
 
-/// What the links are, as far as what [`Extra`] reads follows them.
+/// What the links are, as far as what [`Extra`] reads follows them: each
+/// device's state and connection, and the connections up (VPNs too).
 fn links_key(status: &Option<Result<Status, String>>) -> Vec<(String, u32, Option<String>)> {
     match status {
-        Some(Ok(s)) => s.devices.iter().map(|d| (d.path.clone(), d.state, d.connection.clone())).collect(),
+        Some(Ok(s)) => {
+            let mut key: Vec<_> = s.devices.iter().map(|d| (d.path.clone(), d.state, d.connection.clone())).collect();
+            key.extend(nm::active_connections().unwrap_or_default().into_iter().map(|a| (a, 0, None)));
+            key
+        }
         _ => Vec::new(),
     }
 }
@@ -203,11 +229,29 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                     };
                     let r = match req {
                         Request::EndAdmin => Ok(()),
+                        Request::VpnUp(p) => nm::vpn_up(&p).map_err(|e| (e, "The VPN couldn't be connected.")),
+                        Request::Deactivate(a) => nm::deactivate(&a).map_err(|e| (e, "It couldn't be disconnected.")),
+                        Request::Delete(p) => nm::delete_profile(&p).map_err(|e| (e, "The VPN couldn't be removed.")),
+                        Request::ImportWireguard(path) => {
+                            let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                            done = Some(format!("“{name}” is imported."));
+                            match std::fs::read_to_string(&path) {
+                                Ok(text) => nm::import_wireguard(&name, &text).map_err(|e| {
+                                    said = Some(match &e {
+                                        olo_system::Error::Failure(why) => format!("It isn't a WireGuard configuration: {why}."),
+                                        _ => "The VPN couldn't be saved.".to_owned(),
+                                    });
+                                    (e, "")
+                                }),
+                                Err(e) => Err((olo_system::Error::Failure(e.to_string()), "The file couldn't be read.")),
+                            }
+                        }
+                        Request::StartHotspot { device, ssid, password } => nm::start_hotspot(&device, &ssid, &password).map_err(|e| (e, "The hotspot couldn't be started.")),
                         Request::Connect(dev) => nm::connect(&dev).map_err(|e| (e, "The link couldn't be connected.")),
-                        Request::Ipv4 { device, profile, ipv4 } => {
+                        Request::Addressing { device, profile, ipv4 } => {
                             // As this account, as NetworkManager lets it; else
                             // as root.
-                            let own = nm::update_profile(&profile, |s| nm::set_ipv4_in(s, &ipv4)).and_then(|_| nm::reapply(&device));
+                            let own = nm::update_profile(&profile, |s| nm::set_addressing_in(s, &ipv4)).and_then(|_| nm::reapply(&device));
                             match own {
                                 Err(olo_system::Error::MethodError(name, ..)) if name.as_str().ends_with("PermissionDenied") => {
                                     ask(serde_json::json!({ "profile": { "profile": profile, "ipv4": ipv4, "device": device } }))
@@ -356,6 +400,9 @@ pub struct State {
     dns: dns::Edit,
     hosts: hosts_tab::Edit,
     shape: shaping_tab::Edit,
+    vpn: vpn::Edit,
+    hotspot_name: Entity<TextField>,
+    hotspot_password: Entity<TextField>,
 }
 
 impl Drop for State {
@@ -366,7 +413,7 @@ impl Drop for State {
 }
 
 /// The tabs, as `--tab` names them too.
-const TABS: [&str; 7] = ["Wi-Fi", "Ethernet", "Service Order", "DNS", "Hosts", "Shaping", "Details"];
+const TABS: [&str; 8] = ["Wi-Fi", "Ethernet", "VPN", "Service Order", "DNS", "Hosts", "Shaping", "Details"];
 
 /// A text field that redraws the panel as it's typed in.
 fn field(cx: &mut Context<PanelView>, hint: &str) -> Entity<TextField> {
@@ -420,6 +467,18 @@ impl State {
             dns: dns::Edit::new(cx),
             hosts: hosts_tab::Edit::new(cx),
             shape: shaping_tab::Edit::new(cx),
+            vpn: vpn::Edit::new(cx),
+            hotspot_name: {
+                let f = field(cx, "Network name");
+                let name = host_name();
+                f.update(cx, |f, cx| f.set_text(name, cx));
+                f
+            },
+            hotspot_password: {
+                let f = field(cx, "8+ characters");
+                f.update(cx, |f, cx| f.set_password(true, cx));
+                f
+            },
         }
     }
 
@@ -481,13 +540,17 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         Some(Ok(s)) => s,
     };
     let items = ui.collect(|ui| {
-        match st.tab {
-            0 => wifi(ui, st, &status, busy),
-            1 => ethernet::ui(ui, st, &status, &extra, busy),
-            2 => order::ui(ui, st, &status, &extra, busy),
-            3 => dns::ui(ui, st, &status, &extra, busy),
-            4 => hosts_tab::ui(ui, st, &extra, busy),
-            5 => shaping_tab::ui(ui, st, &status, &extra, busy),
+        match TABS.get(st.tab).copied().unwrap_or_default() {
+            "Wi-Fi" => {
+                wifi(ui, st, &status, busy);
+                hotspot(ui, st, &status, &extra, busy);
+            }
+            "Ethernet" => ethernet::ui(ui, st, &status, &extra, busy),
+            "VPN" => vpn::ui(ui, st, &extra, busy),
+            "Service Order" => order::ui(ui, st, &status, &extra, busy),
+            "DNS" => dns::ui(ui, st, &status, &extra, busy),
+            "Hosts" => hosts_tab::ui(ui, st, &extra, busy),
+            "Shaping" => shaping_tab::ui(ui, st, &status, &extra, busy),
             _ => details(ui, st, &status),
         }
         if busy {
@@ -531,7 +594,7 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
     } else if !status.wireless_enabled {
         "Off".to_owned()
     } else if let (true, Some(name)) = (dev.connected(), &dev.connection) {
-        format!("Connected to “{name}”")
+        if name == "Olo Hotspot" { "Making a hotspot (below)".to_owned() } else { format!("Connected to “{name}”") }
     } else if dev.state == 120 || (dev.state == 30 && dev.failure().is_some()) {
         dev.failure().unwrap_or("Couldn't connect").to_owned()
     } else {
@@ -647,6 +710,58 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
         );
     }
     ui.add(div().flex().flex_row().gap(px(m::SPACING)).children(row));
+}
+
+// ---- Hotspot ---------------------------------------------------------------------
+
+/// This computer's name, for its hotspot's.
+fn host_name() -> String {
+    let mut b = [0u8; 64];
+    // SAFETY: into a buffer of its length.
+    let ok = unsafe { libc::gethostname(b.as_mut_ptr() as *mut libc::c_char, b.len()) } == 0;
+    let n = b.iter().position(|c| *c == 0).unwrap_or(b.len());
+    if ok { String::from_utf8_lossy(&b[..n]).split('.').next().unwrap_or_default().to_owned() } else { String::new() }
+}
+
+/// The Wi-Fi tab's hotspot: this computer's connection shared as a Wi-Fi
+/// network of its own (WPA2), or, while it is, what it's called and Stop.
+fn hotspot(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: bool) {
+    let Some(dev) = status.devices.iter().find(|d| d.kind == Kind::Wifi).cloned() else { return };
+    if !status.wireless_enabled {
+        return;
+    }
+    let link = st.link;
+    let (name, password) = (st.hotspot_name.clone(), st.hotspot_password.clone());
+    ui.bbox("Hotspot", |ui| match &extra.hotspot {
+        Some(h) => {
+            let active = h.active.clone();
+            ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(StringView::new(format!("Sharing this computer's connection as “{}”.", h.ssid)))).child(
+                Button::new("Stop").enabled(!busy).on_click(move |_, _| {
+                    let _ = link.tx.send(Request::Deactivate(active.clone()));
+                }),
+            ));
+        }
+        None => {
+            let ready = !name.read(ui.cx).text().trim().is_empty() && (8..=63).contains(&password.read(ui.cx).text().len());
+            let (n, p, device) = (name.clone(), password.clone(), dev.path.clone());
+            let start = move |_: &mut Window, cx: &mut App| {
+                let ssid = n.read(cx).text().trim().to_owned();
+                let pw = p.read(cx).text().to_owned();
+                let _ = link.tx.send(Request::StartHotspot { device: device.clone(), ssid, password: pw });
+            };
+            ui.add(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING * 2.0))
+                    .child(div().flex_1().child(TextControl::new(name).label("Name:").divider(60.0)))
+                    .child(div().flex_1().child(TextControl::new(password).label("Password:").divider(80.0)))
+                    .child(Button::new("Start").enabled(ready && !busy).on_click(start)),
+            );
+            ui.note("Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.");
+        }
+    });
 }
 
 // ---- Enterprise sheet ------------------------------------------------------------
