@@ -1575,6 +1575,16 @@ of Finished; a new one goes where its priority puts it.
   when the parent is chosen collapsed. Agents get the same: the
   table's chosen rows readable, and the actions taking several pids.
 
+- **wm fuzzer: two faults left** (2026-11-05, `olo-fuzz sweep --confirm
+  -- wm`, each failing again by itself): seed 38, step 87: Zoom
+  Horizontally twice on a Tracker didn't bring it back (1036 wide, then
+  1180); seed 45, step 96: Tile Bottom-Left on a Terminal grouped with
+  one placed mostly below the screen tiled it, then the group pulled it
+  back into the other's frame, then it left the group 24 px off it, out
+  of the tiling area. Fix at the cause, then a clean wave of wm. (Seeds
+  6, 8, 19 and 25 fixed: a zoomed window kept its size when its app
+  resized itself; the check's straddling window.)
+
 ## Maybe one day
 
 Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
