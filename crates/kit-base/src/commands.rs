@@ -324,13 +324,18 @@ fn peer(s: &UnixStream) -> String {
     format!("{} ({})", name.trim(), cred.pid)
 }
 
-/// Remove the sockets of apps that died without cleaning up.
+/// Remove the sockets of apps that died without cleaning up, and the
+/// state an app left for its next self that never came (`restore`: killed
+/// between writing it and re-executing, as a session ends): named by a
+/// pid that has gone, nothing can claim it.
 fn sweep(ours: &std::path::Path) {
     let Some(dir) = ours.parent() else { return };
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for e in entries.flatten() {
         let name = e.file_name();
-        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix("olo-menus-")).and_then(|n| n.strip_suffix(".sock")) else { continue };
+        let Some(name) = name.to_str() else { continue };
+        let pid = name.strip_prefix("olo-menus-").and_then(|n| n.strip_suffix(".sock")).or_else(|| name.strip_prefix("olo-restore-").and_then(|n| n.strip_suffix(".json")));
+        let Some(pid) = pid else { continue };
         if pid.parse::<u32>().is_ok() && !std::path::Path::new("/proc").join(pid).exists() {
             let _ = std::fs::remove_file(e.path());
         }
