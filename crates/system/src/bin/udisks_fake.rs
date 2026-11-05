@@ -851,6 +851,7 @@ impl Ata {
 }
 
 fn main() {
+    olo_crash::install();
     let mut address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {

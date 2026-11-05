@@ -10,6 +10,7 @@ name = "olo-wlproxy"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-xdg.workspace = true
 olo-system.workspace = true
 libc = "0.2"

@@ -423,6 +423,7 @@ fn watch_server(proxy: Proxy) {
 }
 
 fn main() {
+    olo_crash::install();
     // Above everything, before any thread (they inherit it): what's left
     // when something has taken the computer.
     if let Err(e) = olo_system::priority::raise_self(olo_protocol::performance::RESCUE_NICE) {

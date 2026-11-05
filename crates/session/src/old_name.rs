@@ -3,5 +3,6 @@
 //! (see Cargo.toml and `Session::bridge` in lib.rs).
 
 fn main() {
+    olo_crash::install();
     olo_session::run();
 }

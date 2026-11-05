@@ -12,6 +12,7 @@ name = "olo-wifi-heal"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
 zvariant = { version = "5", features = ["gvariant"] }
 serde.workspace = true

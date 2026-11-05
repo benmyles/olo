@@ -448,6 +448,7 @@ fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool, only: Option<Vec
 }
 
 fn main() {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let [flag, file, rest @ ..] = &args[..]
         && let Some((sealed, only)) = backup_options(rest)

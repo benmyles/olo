@@ -35,6 +35,7 @@ impl<T: std::fmt::Display> From<T> for Fail {
 type Result<T> = std::result::Result<T, Fail>;
 
 fn main() -> ExitCode {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();

@@ -304,6 +304,69 @@ How Olo keeps it (do the same):
 * **The GPU draws, the CPU decides.** Upload once and keep textures;
   meshes made once and handed over as they are.
 
+## Crash reports (crates/crash, applies to every program)
+
+**Every Olo program leaves what's needed to look into its crash.**
+`olo_crash::install()` is the first thing each program's `main` does
+(`olo_ui::run` does it again, harmlessly; `crates/crash/tests/
+every_program.rs` fails for a `main` in apps/ or crates/ that doesn't
+start with it). It has nothing but libc, so app_server, the session,
+brush and the root Wi-Fi healer carry it as lightly as the kit's apps.
+
+- **A report**, one JSON file a crash, in `olo_crash::dir()`
+  (`~/.local/state/olo/crashes/PROGRAM-PID-MILLIS.json`; a service
+  with no home, as root, /var/lib/olo/crashes), written beside as
+  `.NAME` and renamed, so a reader never sees half of one; the newest
+  ten of each program kept, four at most from one process. Every
+  report has `program`, `pid`, `exe`, `build` (the executable's time),
+  `started_ms`, `at_ms`, `kind` and `thread`, and:
+  - a panic (any thread's, the program going on or not: a worker's
+    panic is reported though the window stays): `message`, `place`
+    (file:line:column) and `backtrace` (release builds keep line
+    tables, so it names files and lines), from a panic hook that then
+    calls std's (its message on stderr as ever);
+  - a fatal signal (SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT): `signal`,
+    `code`, and the fault's `address` or, for one sent (kill), `sent_by`;
+    `core` names `coredumpctl info PID`. The handler is
+    async-signal-safe (system calls into buffers on its stack, the
+    folders made one by one with mkdir, nothing allocated or locked),
+    kept out of line so the handler's own frame is small (a signal can
+    come on what's left of a thread's alternate stack: std's
+    stack-overflow abort does). Then it hands the signal on: a fault
+    to what had it before (std's overflow check, which still prints
+    "has overflowed its stack", then the default action, so the core is
+    made as it would have been), a sent one to the default action, so
+    the program ends as its sender meant (std alone lets a program go
+    on after a sent SIGSEGV). An abort after a panic is that panic's
+    crash: not reported twice.
+- **stderr to the journal when it goes nowhere.** A program whose
+  stderr is /dev/null (or closed), as everything started by Tracker,
+  Deskbar or another app is (`olo_xdg::open::spawn_app`), connects it
+  to the journal's stream socket itself (`/run/systemd/journal/stdout`,
+  the stream protocol's header naming it for the program), non-blocking
+  so a journal that can't keep up loses a line rather than holding the
+  program up. Before, such a program's log and its panic's message went
+  nowhere (Viewer's crash in TODO left no trace). A crash's own line
+  goes there marked an error (`<3>`), "PROGRAM: SIGSEGV; the report is
+  PATH". The kit's log writes colour codes only to a terminal.
+- **Told**: the session's `olo-doctor --watch` follows the folder by
+  inotify and tells of each new report once ("Viewer crashed", what and
+  in which thread, the program's own icon; more than three at once in
+  one note); its click opens Log Viewer on the program's lines from
+  just before (`olo-logs --query "program:P since:Nm"`).
+  `olo-doctor --crashes [--json]` lists them for a terminal or an
+  agent.
+
+Cost: nothing while the program runs (no thread, timer or check);
+installing at start measured at 18 µs median (35 µs when it also
+connects stderr to the journal; `cargo test -p olo-crash --test crashes
+install_cost -- --ignored`), and 33 KB of code in a binary.
+`crates/crash/tests/crashes.rs` crashes children for real (a panic, a
+worker's panic, a segfault, a sent SIGSEGV, an abort, a stack
+overflow; no core, as `PR_SET_DUMPABLE` 0) and checks each report and
+how the program ended, and the journal stream against a stand-in
+socket.
+
 ## Layout
 
 | Path | What |
@@ -8644,7 +8707,10 @@ profile and a page served from 127.0.0.1.
 
 `olo-logs` shows every Olo program's log in one place: what they
 write to stderr goes to the user's journal (through the session's
-journal stream), and Log Viewer reads that journal natively. Kit apps
+journal stream, or, for a program started by another with its stderr
+on /dev/null, its own: "Crash reports"), and Log Viewer reads that
+journal natively. `olo-logs --query TEXT` opens it on that search (and
+a running one takes it: Olo Doctor's "Viewer crashed" does). Kit apps
 log `warn,usvg=error,olo=info` unless `RUST_LOG` says otherwise
 (`olo_ui::run`; tsession starts clients with `RUST_LOG=warn`): Olo's
 own crates keep their info for what is rare and worth knowing after

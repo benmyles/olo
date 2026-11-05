@@ -1028,6 +1028,7 @@ fn daemonize() -> OwnedFd {
 }
 
 fn main() {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let carried: Option<Carried> = std::env::var_os(RESTORE_ENV).and_then(|path| {

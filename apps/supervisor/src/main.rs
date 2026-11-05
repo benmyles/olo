@@ -639,6 +639,7 @@ fn status(json: bool) -> std::process::ExitCode {
 }
 
 fn main() -> std::process::ExitCode {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let has = |a: &str| args.iter().any(|x| x == a);
     if has("-h") || has("--help") {

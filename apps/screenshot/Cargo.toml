@@ -9,6 +9,7 @@ name = "olo-screenshot"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-sync.workspace = true
 olo-ui.workspace = true
 olo-xdg.workspace = true

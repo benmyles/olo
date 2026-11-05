@@ -338,6 +338,7 @@ fn reply(mut stream: &UnixStream, r: &Reply) {
 }
 
 fn main() {
+    olo_crash::install();
     let settings = Settings::load();
     if !settings.enabled {
         return;

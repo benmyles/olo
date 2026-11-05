@@ -9,6 +9,7 @@ name = "olo-deskcalc"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-ui.workspace = true
 olo-xdg.workspace = true
 olo-theme.workspace = true

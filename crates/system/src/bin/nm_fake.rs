@@ -138,6 +138,7 @@ impl Connection {
 }
 
 fn main() {
+    olo_crash::install();
     let mut address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
     let (mut saved, mut dump) = (Vec::new(), None);
     let mut args = std::env::args().skip(1);

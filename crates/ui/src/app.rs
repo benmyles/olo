@@ -838,8 +838,14 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
     // Olo's own crates keep their info (what is rare and worth knowing
     // after: a chat list loaded, sudo approved without asking),
     // dependencies only their warnings.
+    // (Ready for a crash first: its report, and stderr to the journal
+    // when it went nowhere; `main` has done it already, as every
+    // program's should.)
+    olo_crash::install();
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,usvg=error,olo=info"));
-    let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
+    // Colours only for a terminal: not in the journal's lines.
+    let ansi = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let _ = tracing_subscriber::fmt().with_env_filter(filter).with_ansi(ansi).with_writer(std::io::stderr).try_init();
     let app_id = app_id.to_owned();
     Application::new().run(move |cx: &mut App| {
         cx.set_global(AppId(app_id.clone()));

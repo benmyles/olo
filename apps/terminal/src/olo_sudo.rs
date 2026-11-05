@@ -41,6 +41,7 @@ const PROMPT: &str = "[olo-sudo] Password: ";
 static CHILD: AtomicI32 = AtomicI32::new(0);
 
 fn main() -> ExitCode {
+    olo_crash::install();
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     let Some(sudo) = real_sudo() else {
         eprintln!("sudo: command not found");

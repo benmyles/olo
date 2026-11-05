@@ -25,6 +25,7 @@ name = "olo-open"
 path = "src/olo_open.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-ui.workspace = true
 olo-kit-base.workspace = true
 olo-theme.workspace = true

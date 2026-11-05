@@ -25,6 +25,7 @@ fn bogus_error(m: &tracing::Metadata<'_>) -> bool {
 // Allow in this function because of existing usage
 #[allow(clippy::uninlined_format_args)]
 fn main() {
+    olo_crash::install();
     // Started in Olo Rescue (the session's, after app_server kept
     // failing): taken out of the environment, before any thread is, so
     // what it starts (and itself, restarting) doesn't.

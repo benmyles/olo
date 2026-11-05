@@ -10,6 +10,7 @@ name = "olo-op"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-keychain.workspace = true
 olo-xdg.workspace = true
 serde_json.workspace = true

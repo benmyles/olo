@@ -659,10 +659,16 @@ impl Logs {
     fn message(&mut self, message: Box<dyn std::any::Any + Send>, cx: &mut Context<Self>) {
         let message = match message.downcast::<Launch>() {
             Ok(launch) => {
+                let (query, file) = window_args(&launch.args);
                 // A log file to read (from Tracker, or `olo-logs FILE`).
-                if let Some(a) = launch.args.iter().find(|a| !a.starts_with('-')) {
-                    let path = launch.cwd.as_ref().map_or_else(|| PathBuf::from(a), |c| c.join(a));
+                if let Some(a) = file {
+                    let path = launch.cwd.as_ref().map_or_else(|| PathBuf::from(&a), |c| c.join(&a));
                     self.read(Some(path), cx);
+                }
+                // A search to show (Olo Doctor's "Viewer crashed").
+                if let Some(q) = query {
+                    self.set_search(q, cx);
+                    self.query_changed(cx);
                 }
                 if let Some(w) = self.win {
                     cx.defer(move |cx| {
@@ -893,6 +899,21 @@ impl Render for Logs {
 }
 
 /// `--print`: the query's lines on standard output, for agents and scripts.
+/// The window's arguments: `--query TEXT` (the search to show) and a
+/// log file to read.
+fn window_args(args: &[String]) -> (Option<String>, Option<String>) {
+    let (mut query, mut file) = (None, None);
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--query" => query = it.next().cloned(),
+            a if !a.starts_with('-') && file.is_none() => file = Some(a.to_owned()),
+            _ => {}
+        }
+    }
+    (query, file)
+}
+
 fn print(args: &[String]) -> i32 {
     // The flags say it as filters, and --query as typed in the search.
     let mut text = String::new();
@@ -993,7 +1014,7 @@ fn print(args: &[String]) -> i32 {
 
 fn usage() -> i32 {
     eprintln!(
-        "usage: olo-logs --print [--query TEXT] [--since 10m|2h|1d|today|boot|all] [--level debug|info|warning|error]\n                    [--program NAME | --all-programs] [--find TEXT] [--json] [--follow] [--file LOG]\n       olo-logs [LOG]   (the journal, or a log file such as an Agent Screen's)\n  TEXT as in the search: words, \"phrases\", -word, program:a,b (or all), -program:x, level:, since:, pid:"
+        "usage: olo-logs --print [--query TEXT] [--since 10m|2h|1d|today|boot|all] [--level debug|info|warning|error]\n                    [--program NAME | --all-programs] [--find TEXT] [--json] [--follow] [--file LOG]\n       olo-logs [--query TEXT] [LOG]   (the journal, or a log file such as an Agent Screen's)\n  TEXT as in the search: words, \"phrases\", -word, program:a,b (or all), -program:x, level:, since:, pid:"
     );
     2
 }
@@ -1011,6 +1032,7 @@ fn iso_time(micros: u64) -> String {
 }
 
 fn main() {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -1029,6 +1051,10 @@ fn main() {
         }
         // A search's words are for now; its filters stay.
         settings.search = search::filters_only(&settings.search, model::KEYS);
+        let (query, file) = window_args(&args);
+        if let Some(q) = query {
+            settings.search = q;
+        }
         let query = Query::from_text(&settings.search);
         let list = ListModel::new(cx, true);
         let search = search_field(cx, "Search: words, program:, level:, since:");
@@ -1067,7 +1093,7 @@ fn main() {
                 loaded: false,
                 failed: None,
                 // A log file named on the command line, else the journal.
-                source: args.iter().find(|a| !a.starts_with('-')).map(PathBuf::from).map(|p| std::fs::canonicalize(&p).unwrap_or(p)),
+                source: file.map(PathBuf::from).map(|p| std::fs::canonicalize(&p).unwrap_or(p)),
                 generation: Arc::new(AtomicU64::new(0)),
                 panel: None,
                 screen_logs: (None, Vec::new()),

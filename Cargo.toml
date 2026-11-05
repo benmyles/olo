@@ -14,6 +14,7 @@ olo-protocol = { path = "crates/protocol" }
 olo-kit-base = { path = "crates/kit-base" }
 olo-color = { path = "crates/color" }
 olo-sync = { path = "crates/sync" }
+olo-crash = { path = "crates/crash" }
 olo-ui = { path = "crates/ui" }
 gpui = { path = "gpui/gpui" }
 olo-theme = { path = "crates/theme" }

@@ -404,6 +404,7 @@ fn listen(conn: &Connection, tx: mpsc::Sender<Ev>) -> zbus::Result<()> {
 pub static SOURCE: &str = concat!("olo-wifi-heal source ", env!("OLO_HEAL_SOURCE"), ";");
 
 fn main() {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--status") {
         println!("{}", std::fs::read_to_string(REPORT).unwrap_or_else(|_| "{\"heals\":[]}".into()));

@@ -9,6 +9,7 @@ name = "olo-portal"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-sync.workspace = true
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }

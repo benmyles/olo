@@ -9,6 +9,7 @@ name = "olo-activity"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 jiff = "0.2"
 olo-sync.workspace = true
 olo-ui.workspace = true

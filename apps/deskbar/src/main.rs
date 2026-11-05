@@ -2695,6 +2695,7 @@ fn watch_server(proxy: olo_ui::Proxy) {
 }
 
 fn main() {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     // The shell: above apps and background work (olo_protocol::performance::tier).

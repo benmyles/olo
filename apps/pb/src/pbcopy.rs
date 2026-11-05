@@ -9,6 +9,7 @@
 use std::io::{Read as _, Write as _};
 
 fn main() {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "-help" || a == "--help") {
         println!("usage: pbcopy [-pboard {{general | ruler | find | font}}]\n  Copies what it reads to the clipboard, as text.");

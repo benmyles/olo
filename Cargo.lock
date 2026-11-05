@@ -281,6 +281,7 @@ dependencies = [
  "libc",
  "mlua",
  "olo-color",
+ "olo-crash",
  "olo-hvif",
  "olo-images",
  "olo-palm",
@@ -6813,6 +6814,7 @@ dependencies = [
  "libc",
  "nvml-wrapper",
  "olo-complete",
+ "olo-crash",
  "olo-kit-base",
  "olo-palm",
  "olo-protocol",
@@ -6843,6 +6845,7 @@ name = "olo-airpods"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-crash",
  "olo-eld",
  "olo-kit-base",
  "olo-protocol",
@@ -6863,6 +6866,7 @@ dependencies = [
  "brush-shell",
  "nu-ansi-term",
  "olo-complete",
+ "olo-crash",
  "reedline",
 ]
 
@@ -6886,6 +6890,7 @@ dependencies = [
  "flate2",
  "getrandom 0.3.4",
  "liblzma",
+ "olo-crash",
  "olo-keychain",
  "olo-kit-base",
  "olo-protocol",
@@ -6930,8 +6935,16 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "olo-complete",
+ "olo-crash",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "olo-crash"
+version = "0.1.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -6940,6 +6953,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "libc",
+ "olo-crash",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -6955,6 +6969,7 @@ dependencies = [
 name = "olo-deskcalc"
 version = "0.1.0"
 dependencies = [
+ "olo-crash",
  "olo-theme",
  "olo-ui",
  "olo-xdg",
@@ -6967,6 +6982,7 @@ name = "olo-disk-usage"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-crash",
  "olo-kit-base",
  "olo-sync",
  "olo-theme",
@@ -6985,6 +7001,7 @@ dependencies = [
  "libc",
  "liblzma",
  "memchr",
+ "olo-crash",
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",
@@ -7006,6 +7023,7 @@ dependencies = [
 name = "olo-drive-setup"
 version = "0.1.0"
 dependencies = [
+ "olo-crash",
  "olo-system",
  "olo-theme",
  "olo-ui",
@@ -7041,6 +7059,7 @@ dependencies = [
  "fontdb",
  "memmap2",
  "olo-ai",
+ "olo-crash",
  "olo-emoji",
  "olo-kit-base",
  "olo-protocol",
@@ -7110,6 +7129,7 @@ dependencies = [
 name = "olo-lock"
 version = "0.1.0"
 dependencies = [
+ "olo-crash",
  "olo-system",
  "olo-theme",
  "olo-ui",
@@ -7125,6 +7145,7 @@ dependencies = [
  "liblzma",
  "lz4_flex",
  "memchr",
+ "olo-crash",
  "olo-kit-base",
  "olo-theme",
  "olo-ui",
@@ -7141,6 +7162,7 @@ dependencies = [
  "futures-channel",
  "image",
  "libc",
+ "olo-crash",
  "olo-kit-base",
  "olo-preview",
  "olo-protocol",
@@ -7163,6 +7185,7 @@ dependencies = [
  "data-encoding",
  "getrandom 0.3.4",
  "hmac 0.13.0",
+ "olo-crash",
  "olo-sync",
  "rusqlite",
  "serde",
@@ -7181,6 +7204,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "libc",
+ "olo-crash",
  "olo-keychain",
  "olo-xdg",
  "serde_json",
@@ -7191,6 +7215,7 @@ name = "olo-palette"
 version = "0.1.0"
 dependencies = [
  "ignore",
+ "olo-crash",
  "olo-keychain",
  "olo-kit-base",
  "olo-protocol",
@@ -7219,6 +7244,7 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "getrandom 0.3.4",
+ "olo-crash",
  "olo-keychain",
  "olo-kit-base",
  "olo-onepassword",
@@ -7241,6 +7267,7 @@ name = "olo-pb"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-crash",
  "olo-kit-base",
 ]
 
@@ -7248,6 +7275,7 @@ dependencies = [
 name = "olo-polkit-agent"
 version = "0.1.0"
 dependencies = [
+ "olo-crash",
  "olo-system",
  "olo-ui",
  "olo-xdg",
@@ -7259,6 +7287,7 @@ name = "olo-pool"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "olo-crash",
  "olo-token-pool",
  "olo-ui",
  "olo-xdg",
@@ -7276,6 +7305,7 @@ dependencies = [
  "libc",
  "memmap2",
  "olo-capture",
+ "olo-crash",
  "olo-images",
  "olo-print",
  "olo-protocol",
@@ -7305,6 +7335,7 @@ dependencies = [
  "libc",
  "olo-color",
  "olo-complete",
+ "olo-crash",
  "olo-palm",
  "olo-protocol",
  "olo-screensavers",
@@ -7342,6 +7373,7 @@ dependencies = [
  "lofty",
  "matroska-demuxer",
  "mp4",
+ "olo-crash",
  "olo-images",
  "olo-kit-base",
  "olo-richtext",
@@ -7398,6 +7430,7 @@ version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "libc",
+ "olo-crash",
  "olo-protocol",
  "olo-system",
  "olo-theme",
@@ -7423,6 +7456,7 @@ dependencies = [
  "fontdb",
  "libc",
  "olo-capture",
+ "olo-crash",
  "olo-keychain",
  "olo-protocol",
  "olo-sync",
@@ -7442,6 +7476,7 @@ dependencies = [
 name = "olo-screensaver"
 version = "0.1.0"
 dependencies = [
+ "olo-crash",
  "olo-screensavers",
  "olo-ui",
  "olo-xdg",
@@ -7462,6 +7497,7 @@ name = "olo-screenshot"
 version = "0.1.0"
 dependencies = [
  "image",
+ "olo-crash",
  "olo-protocol",
  "olo-sync",
  "olo-ui",
@@ -7476,6 +7512,7 @@ name = "olo-session"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-crash",
  "olo-system",
  "olo-xdg",
  "serde",
@@ -7488,6 +7525,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "olo-ai",
+ "olo-crash",
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",
@@ -7501,6 +7539,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "libc",
+ "olo-crash",
  "olo-images",
  "olo-print",
  "olo-richtext",
@@ -7516,6 +7555,7 @@ name = "olo-supervisor"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-crash",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -7549,6 +7589,7 @@ dependencies = [
  "num-bigint 0.4.8",
  "nvml-wrapper",
  "olo-color",
+ "olo-crash",
  "olo-protocol",
  "olo-sync",
  "pulseaudio",
@@ -7566,6 +7607,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "image",
+ "olo-crash",
  "olo-emoji",
  "olo-images",
  "olo-preview",
@@ -7589,6 +7631,7 @@ dependencies = [
  "git2",
  "image",
  "libc",
+ "olo-crash",
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",
@@ -7679,6 +7722,7 @@ dependencies = [
  "ignore",
  "image",
  "libc",
+ "olo-crash",
  "olo-images",
  "olo-kit-base",
  "olo-preview",
@@ -7701,6 +7745,7 @@ dependencies = [
  "gpui",
  "image",
  "libc",
+ "olo-crash",
  "olo-images",
  "olo-kit-base",
  "olo-protocol",
@@ -7722,6 +7767,7 @@ dependencies = [
  "hayro",
  "image",
  "lopdf",
+ "olo-crash",
  "olo-preview",
  "olo-ui",
  "olo-xdg",
@@ -7746,6 +7792,7 @@ name = "olo-voice-service"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-crash",
  "olo-kit-base",
  "olo-protocol",
  "olo-sync",
@@ -7761,6 +7808,7 @@ dependencies = [
 name = "olo-wifi-heal"
 version = "0.1.0"
 dependencies = [
+ "olo-crash",
  "serde",
  "serde_json",
  "zbus",
@@ -7772,6 +7820,7 @@ name = "olo-wlproxy"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "olo-crash",
  "olo-system",
  "olo-xdg",
  "wayland-backend",

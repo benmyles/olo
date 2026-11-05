@@ -40,6 +40,7 @@ where they are now when there is no reason to move them. Rectangles are percenta
 tiling area (0–100) from its top left. Also say in one short sentence how you arranged them.";
 
 fn main() -> ExitCode {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     match run() {

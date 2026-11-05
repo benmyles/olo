@@ -14,5 +14,6 @@ name = "olo-pbpaste"
 path = "src/pbpaste.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-kit-base.workspace = true
 libc = "0.2"

@@ -28,6 +28,7 @@ const RULE: &str =
     "# Olo: each GPU's tuning (Preferences ▸ GPUs), set again as it appears.\nACTION==\"add\", SUBSYSTEM==\"drm\", KERNEL==\"card[0-9]*\", RUN+=\"/usr/local/libexec/olo-gpu-tune apply %k\"\n";
 
 fn main() {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         Some("show") => show(args.iter().any(|a| a == "--wake")),

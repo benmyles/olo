@@ -886,6 +886,7 @@ fn capitalised(name: &str) -> String {
 }
 
 fn main() {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if instance::forward(APP_ID, &args) {
         return;

@@ -32,28 +32,6 @@ of Finished; a new one goes where its priority puts it.
   report says, else: behind other windows rather than minimized, on
   another workspace, across a lock or the display sleeping.
 
-- **Every Olo program leaves what's needed to debug its crash**
-  (Ben, 2026-11-04): "make sure we capture debugging information
-  anytime an olo app crashes -- they should all dump the debugging data
-  we need consistently and universally and it should have zero perf
-  overhead". Viewer's crash above left nothing to go on. One mechanism
-  for every program (the kit's apps, app_server, the helpers and
-  services), put in by what they all start with (`olo_ui::run`,
-  `olo_kit_base`), nothing for an app to remember: a panic hook and a
-  fatal-signal handler (SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE, on
-  its own stack, async-signal-safe, then the default action so a core
-  is still made) writing a crash report to
-  `~/.local/state/olo/crashes/`: program, build, thread, the panic's
-  message and backtrace (symbolized: release builds keep line tables,
-  or split debug info beside them), the signal and its address, how
-  long it had run, and what it was doing (a few last log lines).
-  Shown in Logs, told once by Olo Doctor ("Viewer crashed", with
-  Report to copy), kept to a few per program. Zero cost until a
-  crash: nothing polled or recorded per frame, measured (startup time,
-  idle wakeups, binary size before and after). Then exits that aren't
-  crashes (a program quitting on its own when it shouldn't) say why
-  in the journal too.
-
 - **app_server crashes as it exits** (found 2026-11-04 in the core
   dumps of headless test sessions, `coredumpctl list`): a SIGSEGV in
   the `dmabuf check` thread freeing what it keeps
@@ -1242,6 +1220,38 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Every Olo program leaves what's needed to debug its crash**~~
+  (done 2026-11-04: `olo-crash`, installed first by every program's
+  `main` (a test fails one that doesn't): a JSON report for a panic
+  (message, place, thread, backtrace with files and lines) or a fatal
+  signal (async-signal-safe; the core still made), in
+  ~/.local/state/olo/crashes; stderr that went to /dev/null now goes to
+  the journal, so Logs has every program's log and panic; Olo Doctor
+  tells of each crash once, its click opening Logs there;
+  `olo-doctor --crashes`. Nothing runs until a crash: 18–35 µs at
+  start. Not done: the last log lines in the report (it would cost on
+  every line logged; the journal has them, a click away), and "Report
+  to copy" (the report's path is a link in Logs)) (Ben, 2026-11-04): "make sure we capture debugging information
+  anytime an olo app crashes -- they should all dump the debugging data
+  we need consistently and universally and it should have zero perf
+  overhead". Viewer's crash above left nothing to go on. One mechanism
+  for every program (the kit's apps, app_server, the helpers and
+  services), put in by what they all start with (`olo_ui::run`,
+  `olo_kit_base`), nothing for an app to remember: a panic hook and a
+  fatal-signal handler (SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE, on
+  its own stack, async-signal-safe, then the default action so a core
+  is still made) writing a crash report to
+  `~/.local/state/olo/crashes/`: program, build, thread, the panic's
+  message and backtrace (symbolized: release builds keep line tables,
+  or split debug info beside them), the signal and its address, how
+  long it had run, and what it was doing (a few last log lines).
+  Shown in Logs, told once by Olo Doctor ("Viewer crashed", with
+  Report to copy), kept to a few per program. Zero cost until a
+  crash: nothing polled or recorded per frame, measured (startup time,
+  idle wakeups, binary size before and after). Then exits that aren't
+  crashes (a program quitting on its own when it shouldn't) say why
+  in the journal too.
 
 - ~~**Olo Suggestions: install just, uv and mise**~~ (done 2026-11-04:
   just and uv from Fedora's repositories through PackageKit, mise from

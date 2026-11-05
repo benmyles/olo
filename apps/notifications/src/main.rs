@@ -958,6 +958,7 @@ fn to_next_minute() -> Duration {
 }
 
 fn main() -> std::process::ExitCode {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let mut args: Vec<String> = std::env::args().skip(1).collect();

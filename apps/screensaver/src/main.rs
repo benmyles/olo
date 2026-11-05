@@ -141,6 +141,7 @@ fn screen_seed(output: &Option<String>, index: usize) -> u64 {
 }
 
 fn main() {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let (module, options, desktop) = args();

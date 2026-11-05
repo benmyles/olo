@@ -9,6 +9,7 @@ name = "olo-emoji-picker"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-ui.workspace = true
 olo-kit-base.workspace = true
 olo-xdg.workspace = true

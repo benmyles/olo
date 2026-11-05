@@ -21,6 +21,7 @@ path = "src/old_name.rs"
 test = false
 
 [dependencies]
+olo-crash.workspace = true
 olo-xdg.workspace = true
 olo-system.workspace = true
 libc = "0.2"

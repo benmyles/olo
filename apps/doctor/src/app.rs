@@ -529,6 +529,7 @@ pub fn run(which: Kind) {
             return;
         }
         Some("--fix" | "--apply") => std::process::exit(fix_from_the_command_line(&args[1..])),
+        Some("--crashes") if which == Kind::Doctor => return crate::crashes::print(args.get(1).is_some_and(|a| a == "--json")),
         _ => {}
     }
     let app_id = which.app_id();

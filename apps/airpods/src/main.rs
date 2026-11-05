@@ -38,6 +38,7 @@ const USAGE: &str = "usage: olo-airpods [--address AA:BB:CC:DD:EE:FF] [COMMAND]
   --service                   run the service (the session starts it)";
 
 fn main() -> ExitCode {
+    olo_crash::install();
     let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();
     let mut args: Vec<String> = std::env::args().skip(1).collect();

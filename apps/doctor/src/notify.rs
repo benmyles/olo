@@ -12,10 +12,14 @@
 //! "Update brush" after "Use brush" is another. A suggestion with
 //! nothing to apply yet (brush before Olo's build of it) waits to be
 //! told until it has.
+//! And it follows the crash reports Olo's programs leave (`olo_crash`,
+//! by inotify on their folder): each new one told once ("Viewer
+//! crashed", what and in which thread), a click opening Logs on that
+//! program's lines around it.
 
 use std::{collections::BTreeSet, path::PathBuf, sync::mpsc, time::Duration};
 
-use olo_kit_base::notify::{Note, NoteEvent, Notifier};
+use olo_kit_base::notify::{Note, NoteEvent, NoteId, Notifier};
 use serde::{Deserialize, Serialize};
 
 use crate::checks::{self, Finding, Severity};
@@ -36,6 +40,8 @@ struct Told {
     heals: u64,
     /// Olo Suggestions' suggestions told of (`told_as`), never forgotten.
     suggested: BTreeSet<String>,
+    /// Crash reports told of (their file names; one gone is forgotten).
+    crashes: BTreeSet<String>,
 }
 
 /// The Wi-Fi healer's report, as much as is told of it.
@@ -65,7 +71,7 @@ fn news<'a>(findings: &'a [Finding], told: &Told) -> (Vec<&'a Finding>, Told) {
     let problems: Vec<&Finding> = findings.iter().filter(|f| f.severity == Severity::Problem).collect();
     let new = problems.iter().filter(|f| !told.ids.contains(&f.id)).copied().collect();
     // What isn't found now is forgotten, to be told again if it comes back.
-    (new, Told { ids: problems.iter().map(|f| f.id.clone()).collect(), heals: told.heals, suggested: told.suggested.clone() })
+    (new, Told { ids: problems.iter().map(|f| f.id.clone()).collect(), heals: told.heals, suggested: told.suggested.clone(), crashes: told.crashes.clone() })
 }
 
 /// What a suggestion is remembered as told by: its id and title, so a
@@ -130,6 +136,55 @@ fn look(notes: &Notifier) -> bool {
     true
 }
 
+/// Crashes at most told one by one in a look; more are one note.
+const CRASHES_AT_ONCE: usize = 3;
+
+/// The crashes to tell of (not told before), what's told then (those
+/// still there).
+fn new_crashes(all: &[crate::crashes::Crash], told: &Told) -> (Vec<crate::crashes::Crash>, BTreeSet<String>) {
+    let new = all.iter().filter(|c| !told.crashes.contains(&c.file)).cloned().collect();
+    (new, all.iter().map(|c| c.file.clone()).collect())
+}
+
+/// Which crash each crash note is, for its click.
+type Shown = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<NoteId, crate::crashes::Crash>>>;
+
+/// Tell of the crashes not told before.
+fn tell_crashes(notes: &Notifier, shown: &Shown) {
+    let all = crate::crashes::list();
+    let mut told = read_told();
+    let (new, remember) = new_crashes(&all, &told);
+    if new.is_empty() && remember == told.crashes {
+        return;
+    }
+    told.crashes = remember;
+    write_told(&told);
+    if new.len() > CRASHES_AT_ONCE {
+        let names: BTreeSet<String> = new.iter().map(|c| crate::crashes::name(&c.program)).collect();
+        let body = names.into_iter().collect::<Vec<_>>().join(", ");
+        let id = notes.show(None, Note::new(format!("{} crashes", new.len())).body(body).icon("doctor").action("default", "Show").action("show", "Show in Logs"));
+        shown.lock().unwrap_or_else(|e| e.into_inner()).insert(id, new[0].clone());
+        return;
+    }
+    for c in new {
+        let note = Note::new(format!("{} crashed", crate::crashes::name(&c.program)))
+            .body(crate::crashes::summary(&c))
+            .icon(crate::crashes::icon(&c.program))
+            .action("default", "Show")
+            .action("show", "Show in Logs");
+        let id = notes.show(None, note);
+        shown.lock().unwrap_or_else(|e| e.into_inner()).insert(id, c);
+    }
+}
+
+/// Logs, on the program's lines around the crash.
+fn open_logs(c: &crate::crashes::Crash) {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let beside = std::env::current_exe().ok().map(|p| PathBuf::from(p.to_string_lossy().trim_end_matches(" (deleted)")).with_file_name("olo-logs"));
+    let exe = beside.filter(|p| p.is_file()).unwrap_or_else(|| "olo-logs".into());
+    let _ = olo_xdg::open::spawn_app(&[exe.into_os_string(), "--query".into(), crate::crashes::logs_query(c, now).into()], "olo.logs");
+}
+
 /// What the Wi-Fi healer did since last told, in a notification each.
 fn tell_heals(notes: &Notifier) {
     let Some(report) = std::fs::read_to_string(HEAL_REPORT).ok().and_then(|t| serde_json::from_str::<Heals>(&t).ok()) else { return };
@@ -169,10 +224,28 @@ pub fn watch() -> ! {
             open_suggestions();
         }
     });
+    let shown: Shown = Shown::default();
+    let crash_notes = Notifier::with_events("Olo Doctor", "olo-doctor", {
+        let shown = shown.clone();
+        move |e| {
+            if let NoteEvent::Action { id, .. } = e {
+                let c = shown.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned();
+                if let Some(c) = c {
+                    open_logs(&c);
+                }
+            }
+        }
+    });
     std::thread::sleep(SETTLE);
     look(&notes);
     look_for_suggestions(&suggestions);
     tell_heals(&notes);
+    // Crashes as they're reported (the folder made, so it can be
+    // watched before the first).
+    let crashes_dir = olo_crash::dir();
+    let _ = std::fs::create_dir_all(&crashes_dir);
+    tell_crashes(&crash_notes, &shown);
+    let _crash_watch = olo_kit_base::watch::watch([crashes_dir], move |_| tell_crashes(&crash_notes, &shown));
     let watching = notes.clone();
     let _watch = olo_kit_base::watch::watch([PathBuf::from(HEAL_REPORT)], move |_| tell_heals(&watching));
     // Then again every quarter of an hour: a problem that came since is
@@ -247,5 +320,29 @@ mod tests {
         // A problem's look keeps what's been suggested.
         let (_, remember) = news(&[], &told);
         assert_eq!(remember.suggested, told.suggested);
+    }
+
+    #[test]
+    fn a_crash_is_told_once_and_forgotten_when_its_report_goes() {
+        let crash = |file: &str| crate::crashes::Crash {
+            file: file.into(),
+            path: file.into(),
+            program: "olo-viewer".into(),
+            pid: 1,
+            at_ms: 0,
+            started_ms: 0,
+            kind: "panic".into(),
+            thread: "main".into(),
+            what: "boom".into(),
+            place: String::new(),
+            backtrace: String::new(),
+        };
+        let mut told = Told::default();
+        let (new, remember) = new_crashes(&[crash("a.json"), crash("b.json")], &told);
+        assert_eq!(new.len(), 2);
+        told.crashes = remember;
+        let (new, remember) = new_crashes(&[crash("b.json"), crash("c.json")], &told);
+        assert_eq!(new.iter().map(|c| c.file.as_str()).collect::<Vec<_>>(), ["c.json"], "b was told");
+        assert_eq!(remember, ["b.json".to_owned(), "c.json".to_owned()].into(), "a's report went: forgotten");
     }
 }

@@ -46,6 +46,7 @@ extern "C" fn retire(_: libc::c_int) {
 }
 
 fn main() {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     // Every outside program's Wayland traffic goes through here: with the

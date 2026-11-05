@@ -1695,6 +1695,7 @@ fn cli(args: &[String]) -> Option<i32> {
 }
 
 fn main() {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();

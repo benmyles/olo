@@ -17,6 +17,7 @@ name = "olo-suggestions"
 path = "src/bin/olo-suggestions.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-protocol.workspace = true
 olo-sync.workspace = true
 olo-ui.workspace = true

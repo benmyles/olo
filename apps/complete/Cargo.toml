@@ -10,6 +10,7 @@ name = "olo-complete"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-complete.workspace = true
 serde.workspace = true
 serde_json.workspace = true

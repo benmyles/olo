@@ -1,0 +1,12 @@
+[package]
+name = "olo-crash"
+description = "What every Olo program leaves when it crashes: a report of the panic or the fatal signal, and its log in the journal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+libc = "0.2"

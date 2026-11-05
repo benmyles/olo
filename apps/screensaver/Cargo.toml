@@ -9,6 +9,7 @@ name = "olo-screensaver"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-ui.workspace = true
 olo-screensavers = { workspace = true, features = ["gpui"] }
 olo-xdg.workspace = true

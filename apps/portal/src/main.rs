@@ -282,6 +282,7 @@ fn usage() -> std::process::ExitCode {
 }
 
 fn main() -> std::process::ExitCode {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let fail = |e: String| {
         eprintln!("olo-portal: {e}");

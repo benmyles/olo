@@ -55,6 +55,7 @@ struct Client {
 }
 
 fn main() {
+    olo_crash::install();
     let path = std::env::args().nth(1).expect("usage: olo-fakesound SOCKET");
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path).expect("bind");

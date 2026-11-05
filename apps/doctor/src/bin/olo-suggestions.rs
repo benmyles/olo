@@ -3,5 +3,6 @@
 //! machinery: app.rs; the suggestions: suggest.rs).
 
 fn main() {
+    olo_crash::install();
     olo_doctor::run(olo_doctor::Kind::Suggestions);
 }

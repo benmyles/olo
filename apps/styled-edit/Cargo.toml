@@ -9,6 +9,7 @@ name = "olo-styled-edit"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-ui.workspace = true
 olo-xdg.workspace = true
 serde.workspace = true

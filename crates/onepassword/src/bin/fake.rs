@@ -6,6 +6,7 @@
 //! `OLO_1PASSWORD_DATA` at DIR).
 
 fn main() {
+    olo_crash::install();
     let mut account = "Olo Test".to_string();
     let mut socket = onepassword::desktop::SOCKET.to_string();
     let mut data = None;

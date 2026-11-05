@@ -301,6 +301,7 @@ fn panel(lock: &Lock, window: &mut Window) -> impl IntoElement {
 }
 
 fn main() {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     olo_ui::run(APP_ID, |cx| {

@@ -10,6 +10,7 @@ license.workspace = true
 lint = ["gpui/test-support"]
 
 [dependencies]
+olo-crash.workspace = true
 olo-sync.workspace = true
 gpui.workspace = true
 olo-kit-base.workspace = true

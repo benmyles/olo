@@ -10,6 +10,7 @@ name = "olo-voice"
 path = "src/main.rs"
 
 [dependencies]
+olo-crash.workspace = true
 olo-voice.workspace = true
 olo-protocol.workspace = true
 olo-system.workspace = true

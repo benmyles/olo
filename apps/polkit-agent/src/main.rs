@@ -362,6 +362,7 @@ fn message(message: Box<dyn std::any::Any + Send>, cx: &mut App) {
 }
 
 fn main() -> std::process::ExitCode {
+    olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();

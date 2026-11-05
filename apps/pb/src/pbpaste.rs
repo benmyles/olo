@@ -8,6 +8,7 @@ use std::io::Write as _;
 const TEXT: [&str; 5] = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "STRING", "TEXT"];
 
 fn main() {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "-help" || a == "--help") {
         println!("usage: pbpaste [-pboard {{general | ruler | find | font}}] [-Prefer {{txt | rtf | ps}}]\n  Writes the clipboard's text to its output.");
