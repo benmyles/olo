@@ -186,7 +186,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
         }
         if !focus.is_empty() {
-            self.keep_floating_over_focus(&windows);
+            self.keep_floating_over_focus();
         }
         mark_covered(&self.space);
     }
@@ -204,12 +204,18 @@ impl<B: Backend + 'static> AnvilState<B> {
         w.meta().focus_zoomed.set(true);
     }
 
-    /// Floating windows over the one Focus shows, in the order they were
-    /// (as over auto-tiling's tiles).
-    fn keep_floating_over_focus(&mut self, order: &[WindowElement]) {
+    /// Floating windows over the one Focus shows, and among themselves in
+    /// the order they are (as over auto-tiling's tiles,
+    /// `keep_floating_above`).
+    pub(crate) fn keep_floating_over_focus(&mut self) {
+        let order: Vec<WindowElement> = self.space.elements().cloned().collect();
         let Some(top) = order.iter().rposition(|w| w.meta().focus_on.get().is_some()) else { return };
-        let under: Vec<WindowElement> = order[..top].iter().filter(|w| w.meta().focus_on.get().is_none() && self.floats(w)).cloned().collect();
-        for w in under {
+        let float = |w: &&WindowElement| w.meta().focus_on.get().is_none() && self.floats(w);
+        if !order[..top].iter().any(|w| float(&w)) {
+            return;
+        }
+        let floats: Vec<WindowElement> = order.iter().filter(float).cloned().collect();
+        for w in floats {
             self.space.raise_element(&w, false);
         }
     }

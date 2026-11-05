@@ -174,6 +174,23 @@ of Finished; a new one goes where its priority puts it.
   click each, activate each, open a third), and keep a test; then a
   wm-fuzz check that the window just activated is the top one of its
   layer.
+  *Fixed* (2026-11-04, HACKING's auto-tiling floats): seen headless with
+  two Terminal windows floated by hand over a tiled one: activating the
+  tile put it over both floats, and nothing put them back till a layout
+  pass, which then raised only the float left under the tile, over the
+  one just brought forward. Now the floats stay over the tiles (and
+  Focus's window) on every raise, in their own order, all raised
+  together when any is under. And a window joining a floating group
+  floats with it (found by the new `auto-fuzz --floats`: it was a tile
+  at the group's frame, over its neighbour). Two floats of different
+  apps clicked and activated in turn, and a tile, behave; `--floats`
+  seeds 1–4 pass 80 to 120 steps; 5 (step 51) and 6 (step 73) find an
+  older mid-drag fault with groups (on HEAD's app_server too: a group's
+  window behind showing as a tile over the one dragged), now in the
+  auto-fuzz entry. An activation costs app_server the same (1.75–1.90
+  ms of CPU each, 200 in a row, before and after). *Left*: Ben's go
+  with the windows he had (which "on top priority" ones?), and Standard
+  mode, where nothing keeps floats over others.
 
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
@@ -237,6 +254,18 @@ of Finished; a new one goes where its priority puts it.
   in a sweep stopped early: seed 2 at step 67 ("reloading: settled,
   then moved") and seed 3 at step 103 (bringing a tab to the front of
   its group, then the tiles moved); then the sweep again to 16.
+  *Seed 2's step 67, read* (its app_server log): the reload brought back
+  29 windows, and some twenty of Terminal's came back as new windows,
+  their saved places not matched at their first commit (only the first
+  of each group is, by its key), so each split a tile ("a new window
+  into its tile"), then folded into its group as it was put back, the
+  tree churning for 0.7 s and the tiles still moving after the fuzzer
+  saw them settle. To do: match a returning tab to its saved place at
+  its first commit (Terminal's windows have keys), or hold back
+  inserting a window of an app whose saved places aren't all claimed
+  yet while `RESTORING`. Also with `--floats` (older, on HEAD too):
+  seeds 5 (step 51) and 6 (step 73), a group's window behind showing
+  as a tile over the window being dragged.
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery

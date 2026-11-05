@@ -2809,7 +2809,12 @@ that gap apart in every look (`check_mid_drag`). The build before drag
 rounds failed every drag of it, by up to 632 px. An edge is grabbed
 below both windows' tabs (beside a tab is whatever is behind it, the
 desktop: a press there took the keyboard from every window). Each
-step's line has the time, to find it in the session's log. Run it after changing
+step's line has the time, to find it in the session's log.
+`--floats` adds floating: a tile floated or a float tiled (the window
+menu's Float Over the Tiles), and windows brought forward, a float then
+being the front one of the floats; after every step, with it or not,
+no floating window may be under a tile (`check_floats_over`). (A flag,
+so the seeds without it keep their sequences.) Run it after changing
 anything in `autotile.rs`, `tiling.rs`, `rounds.rs` or the resize
 grabs.
 
@@ -4499,8 +4504,17 @@ programs portal dialogs (`floating_kind`) and picture in picture. An
 xdg-dialog alone doesn't make a window float (nor keep it out of its
 app's tab group, `groups::is_dialog`): GTK 4 gives every toplevel one,
 its main windows too, which then floated over the tiles and never
-grouped. Floating windows stay in front of the tiles
-(`keep_floating_above`). Anyone can float or tile a window by hand: the
+grouped. Floating windows stay in front of the tiles, and of the
+window Focus shows (`keep_floating_above`, `keep_floating_over_focus`),
+and among themselves stack as windows do: the one clicked or activated
+comes to the front of them, one that opens starts at the very top, and
+a tile activated takes the keyboard with the floats still over it. Both
+run wherever a window is raised (`focus_window`) and as the tiles are
+laid out; when one is under a tile they raise every float, bottom
+first, so their order among themselves stays (raising only those
+under a tile put one over the float brought forward last, again and
+again: Ben's "one of them keeps itself on top and i can't go to the
+other floating one"). Anyone can float or tile a window by hand: the
 window menu's Float Over the Tiles (only where auto-tiling is on),
 ⌃⌥⌘F (`float-window`), or `{"type":"set_floating","id":ID,"floating":true}`
 (`null` leaves it to app_server again); `WindowInfo` says `tiled`,
@@ -4508,6 +4522,9 @@ window menu's Float Over the Tiles (only where auto-tiling is on),
 a group is one tile, or floats, as its front window does, so every
 window in it is given it (`set_floating`), and whichever comes back in
 front after a restart says the same (a floating group came back tiled).
+A window that joins a group later (one the app opens, grouped by its
+app) takes the group's choice (`sync_groups`): it was a tile at the
+floating group's frame, over the tiles beside.
 A window placed (`place`) onto an auto-tiled display from another
 floats there where it was put, its group with it. A window that leaves for a
 while (hidden, to another workspace) leaves a `Kept` place that takes no

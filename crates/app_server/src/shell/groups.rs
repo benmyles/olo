@@ -533,6 +533,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let tiled: Vec<WindowElement> = g.iter().filter(|w| self.tree_of(w).is_some()).cloned().collect();
             let pool = if tiled.is_empty() { g } else { &tiled };
             let leader = pool.iter().rev().filter(leads).find(|w| was_member(w)).or_else(|| pool.iter().rev().filter(leads).find(|w| was_seen(w))).unwrap_or(&pool[pool.len() - 1]).clone();
+            // Floated by hand, a group floats as one: a window that joins
+            // it (one the app opens, grouped by its app) floats too, else
+            // it was a tile at the floating group's frame, over the tiles
+            // beside. (Tiled by hand is what a tile is anyway: not handed
+            // on.)
+            if Self::float_override(&leader) == Some(true) {
+                for w in g.iter().filter(|w| Self::float_override(w).is_none()) {
+                    Self::restore_float_override(w, Some(true));
+                }
+            }
             let Some(mut frame) = self.space.element_geometry(&leader) else { continue };
             // Where it is going, not the size it is leaving: a window that
             // has just joined (opened, come back, arrived) leads from the

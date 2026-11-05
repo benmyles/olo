@@ -228,6 +228,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         self.space.raise_element(window, true);
+        // Floating windows stay over auto-tiled tiles and Focus's window
+        // (a tile activated takes the keyboard under them), in their own
+        // order; then children over parents.
+        self.keep_floating_above();
+        self.keep_floating_over_focus();
         self.keep_children_above();
         let serial = smithay::utils::SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().unwrap();

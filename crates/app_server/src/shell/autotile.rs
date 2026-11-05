@@ -1701,17 +1701,28 @@ impl<B: Backend + 'static> AnvilState<B> {
             && self.space.elements().any(|o| o != w && self.groupable(o) && self.group_key(o).as_ref() == Some(&key) && self.window_output(o) == display)
     }
 
-    /// Floating windows over the tiles of auto-tiled displays, in the
-    /// order they were.
-    fn keep_floating_above(&mut self) {
+    /// Floating windows over the tiles of auto-tiled displays, and among
+    /// themselves in the order they are (the one brought forward last on
+    /// top). Run as the tiles are laid out and wherever a window is raised
+    /// (`focus_window`: a tile activated comes over them only for a
+    /// moment).
+    pub(crate) fn keep_floating_above(&mut self) {
         if !self.auto.trees.keys().any(|(ws, o)| *ws == self.showing_named(o)) {
             return;
         }
         let leaves = self.auto_leaves();
         let order: Vec<WindowElement> = self.space.elements().cloned().collect();
         let Some(top_tile) = order.iter().rposition(|w| leaves.contains_key(&w.id())) else { return };
-        let under: Vec<WindowElement> = order[..top_tile].iter().filter(|w| !leaves.contains_key(&w.id()) && self.floats(w)).cloned().collect();
-        for w in under {
+        let float = |w: &&WindowElement| !leaves.contains_key(&w.id()) && self.floats(w);
+        if !order[..top_tile].iter().any(|w| float(&w)) {
+            return;
+        }
+        // Every one raised, bottom first: over the tiles, in the order they
+        // were. (Only those under a tile raised, one came over the float
+        // brought forward last, and kept doing so: Ben's "one of them keeps
+        // itself on top".)
+        let floats: Vec<WindowElement> = order.iter().filter(float).cloned().collect();
+        for w in floats {
             self.space.raise_element(&w, false);
         }
     }

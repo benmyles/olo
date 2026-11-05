@@ -4,7 +4,7 @@ drags, windows opening, closing and grouping, tabs, workspaces and
 in-place restarts, on real apps, and check after each step that the
 tiles are still where they belong.
 
-  auto-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--reloads]
+  auto-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--reloads] [--floats]
 
 NAME is a tsession with the shell, e.g.
 
@@ -117,6 +117,7 @@ class AutoFuzz(wm.Fuzz):
     def __init__(self, name, seed, quiet, reloads):
         super().__init__(name, seed, quiet)
         self.reloads = reloads
+        self.floats = False
         for ws in range(4):
             self.req({"type": "set_auto_tiling", "on": True, "workspace": ws})
 
@@ -170,11 +171,29 @@ class AutoFuzz(wm.Fuzz):
                 return
             time.sleep(0.01)
 
+    def floating(self, wins):
+        """The floating windows shown now (floated by hand, dialogs,
+        fixed-size ones)."""
+        ws = self.workspace()
+        return [i for i in sorted(wins) if wins[i].get("floating") and wins[i]["workspace"] == ws and not wins[i]["minimized"] and fr(wins[i])]
+
+    def check_floats_over(self, what, wins):
+        """Floating windows over every tile (in `stack`, 0 is the
+        front)."""
+        tiles, floats = self.tiles(wins), self.floating(wins)
+        if not tiles or not floats:
+            return
+        top_tile = min(wins[i]["stack"] for i in tiles)
+        under = [i for i in floats if wins[i]["stack"] > top_tile]
+        if under:
+            self.fail(f"{what}: floating {under} under a tile\n  {wm.state(wins)}")
+
     def after(self, what, timeout=3.0):
         """Settle, and check everything."""
         wins = self.settle(timeout)
         self.check_sane(wins)
         self.check_auto_tiles(what, wins)
+        self.check_floats_over(what, wins)
         self.check_still(what, wins)
         return wins
 
@@ -188,6 +207,9 @@ class AutoFuzz(wm.Fuzz):
                (2, self.op_group), (2, self.op_ungroup), (2, self.op_tab)]
         if self.reloads:
             ops.append((1, self.op_reload))
+        # (Behind a flag: new steps would change every seed's sequence.)
+        if self.floats:
+            ops += [(2, self.op_float), (3, self.op_activate_float)]
         if self.only:
             ops = [(w, op) for w, op in ops if op.__name__[3:] in self.only]
         if len(self.tiles(wins)) < 2:
@@ -361,6 +383,41 @@ class AutoFuzz(wm.Fuzz):
         self.req({"type": "activate", "id": w})
         self.after(f"bringing {w} to the front of its group")
 
+    def op_float(self, wins, shown):
+        """Float a tile over the others, or tile a floating window again
+        (the window menu's Float Over the Tiles)."""
+        tiles = [i for i in self.tiles(wins) if wins[i].get("group") is None]
+        # (A dialog or fixed-size window stays floating: asked, it says so.)
+        floating = self.floating(wins)
+        if floating and (len(tiles) < 3 or self.rng.random() < 0.4):
+            w, on = self.pick(floating), False
+        elif len(tiles) >= 3:
+            w, on = self.pick(tiles), True
+        else:
+            return
+        self.log(f"{'float' if on else 'tile'} {w} ({wins[w]['app_id']})")
+        self.req({"type": "set_floating", "id": w, "floating": on})
+        self.after(f"{'floating' if on else 'tiling'} {w}")
+
+    def op_activate_float(self, wins, shown):
+        """Bring a floating window forward (it's the front one then), or a
+        tile (it takes the keyboard, the floats staying over it)."""
+        floating = self.floating(wins)
+        if not floating:
+            return
+        w = self.pick(floating + self.tiles(wins))
+        kind = "floating" if w in floating else "a tile"
+        self.log(f"activate {w} ({kind})")
+        self.req({"type": "activate", "id": w})
+        after = self.after(f"activating {w} ({kind})")
+        if not after.get(w, {}).get("focused"):
+            self.fail(f"activated window {w} ({kind}) doesn't have the keyboard")
+        floats = self.floating(after)
+        if w in floats:
+            front = min(floats, key=lambda i: after[i]["stack"])
+            if front != w:
+                self.fail(f"activated floating window {w} is under floating {front}\n  {wm.state(after)}")
+
     def op_reload(self, wins, shown):
         self.log("reload app_server in place")
         subprocess.run([wm.TSESSION, "reload", self.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
@@ -400,6 +457,7 @@ def main():
     seed = int(a[a.index("--seed") + 1]) if "--seed" in a else wm.random.randrange(1 << 30)
     steps = int(a[a.index("--steps") + 1]) if "--steps" in a else 200
     fuzz = AutoFuzz(a[0], seed, "--quiet" in a, "--reloads" in a)
+    fuzz.floats = "--floats" in a
     if "--only" in a:
         fuzz.only = set(a[a.index("--only") + 1].split(","))
         unknown = fuzz.only - {m[3:] for m in dir(fuzz) if m.startswith("op_")}
