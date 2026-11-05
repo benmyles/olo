@@ -45,7 +45,16 @@ item means implemented and verified; a partial implementation stays open.
   fixtures match, 165 direct plus 12 reviewed current-spec syntax cases.
 - [ ] Descriptor-aware unicode-range retokenization and context grammars;
   byte decoding does not make CSS tokenization incremental.
-- [ ] Implement CSS selector/property grammars, cascade, media queries,
+- [x] Original bounded selector compilation/matching against native DOM and
+  borrowed trees; compact arenas, specificity, namespaces, logical/structural
+  selectors, filtered sibling indices, public history masking and host-state
+  hooks. 432/463 independent cases match; two modern grammar expectations,
+  29 explicit non-passes; 128 independent An+B cases checked.
+- [ ] Complete selector integration: live state, nesting, shadow/functional
+  pseudo-elements, remaining fixture contexts, full standards behavior and
+  document/style invalidation. Rule indexing and namespace at-rule contexts
+  remain unimplemented.
+- [ ] Implement CSS property grammars, cascade, media queries,
   custom properties and style invalidation.
 - [ ] Implement block/inline, text shaping/bidi, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
@@ -74,7 +83,8 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: CSS selector/property/style compilation, descriptor-aware parsing and
+Next: CSS property/style compilation, stylesheet contexts/rule indexing,
+remaining selector integrations, descriptor-aware parsing and
 HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.

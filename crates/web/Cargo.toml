@@ -20,11 +20,14 @@ baseline-css-parser = []
 baseline-css-byte-copy = []
 # Reproduce repeated SIMD error localization on malformed UTF-8.
 baseline-utf8-errors = []
+# Reproduce per-candidate sibling scans instead of query-local nth indices.
+baseline-selector-nth = []
 
 [dependencies]
 memchr = "2"
 encoding_rs = "0.8"
 simdutf8 = "0.1"
+smallvec = "1"
 
 [dev-dependencies]
 serde_json.workspace = true

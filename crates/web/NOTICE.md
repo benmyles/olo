@@ -43,3 +43,15 @@ Native tests port their syntax assertions/data, not their JavaScript,
 CSSOM or browser execution. The identifier resource has a missing comma
 in its JavaScript range list; the native test extracts its data linewise
 and does not claim to execute that page.
+
+
+`tests/selector-fixtures` imports unmodified cssselect2 test code/vectors
+and static documents at `fc22accd5fdba764d95263fa8e6c97ce24f75f3e`.
+CSSSELECT2-LICENSE is BSD-3-Clause; the WPT-derived vectors/documents have
+the upstream tests/LICENSE notice and full WPT-LICENSE.md. An+B.json and
+CC0-LICENSE use the same pinned css-parsing-tests revision above. The local
+extraction script never executes a selector engine or creates expected
+results from Olo. Its README and byte hashes distinguish literal native
+ports/static XML models from upstream Python/JS, XML loading, CSSOM,
+HTML parsing, rendering or full selector conformance. Production selector
+compilation/matching is original Rust; no cssselect2 engine is embedded.

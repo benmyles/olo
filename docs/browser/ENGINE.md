@@ -1,7 +1,8 @@
 # Engine implementation and checks
 
 The engine crate is `olo-web`. It parses supported static HTML into its
-own compact document storage and constructs generic CSS syntax. It has no
+own compact document storage, constructs generic CSS syntax and compiles/matches
+selectors against a stable borrowed tree. It has no
 network, style calculation/layout, JavaScript execution, browser shell or
 demonstrated website compatibility.
 
@@ -169,8 +170,8 @@ inspection. These methods deliberately do not validate selector/property
 or at-rule context grammars. Consumers must validate and compile them
 before applying style. Blocks are parsed on demand and the style compiler
 must retain results rather than repeat work during layout/painting.
-Property grammars, unicode-range descriptor retokenization, selectors,
-cascade/layers, custom-property substitution, media queries, invalidation,
+Property grammars, unicode-range descriptor retokenization, complete selector
+integrations, cascade/layers, custom-property substitution, media queries, invalidation,
 CSSOM and incremental tokenization remain unfinished. Streaming byte decoding
 is implemented below; it does not make the tokenizer incremental.
 
@@ -265,3 +266,117 @@ and [Encoding decode](https://encoding.spec.whatwg.org/#decode), consulted
 HTML/CSS tokenization, Web IDL `TextDecoder` and script execution remain
 unimplemented. See `bytes_bench` and the journal for release measurements;
 none establishes website, UI, GPU, layout or Chrome performance.
+
+
+## Selector compilation and matching
+
+`css::selectors::Selectors::compile(Components, CompileOptions, CompileLimits,
+cancellation)` consumes component views from a standalone selector or a
+rule's prelude. It owns flat list/complex/step/test arenas and one shared
+symbol pool, independent of the source Syntax's lifetime. Tests are
+24 bytes on the measured x86-64 build. A temporary symbol lookup map is
+released after compilation; invalid forgiving branches rewind all their
+arenas/symbols. Unusually sparse arenas are trimmed after rollback.
+`memory()` reports counts, symbol payload and accounted vector/header
+bytes, excluding allocator bookkeeping, the root struct and temporary
+compiler maps. Debug omits source, class/ID and attribute-value strings.
+
+Implemented grammar covers lists, namespace-qualified types/universals,
+ID/class/attribute operators and ASCII flags, descendant/child/adjacent/
+subsequent sibling relations, structural/typed/filtered An+B selectors,
+`:is`/`:where`/`:not`/relative `:has`, language ranges, host direction/state
+hooks and common named pseudo-element targets. Specificity uses a saturating
+lexicographic tuple; logical-function maxima and zero-specificity `:where`
+are compiled once. Only `:is`/`:where` forgive invalid branches; unsupported
+known features and resource errors remain failures. Nested `:has` and
+pseudo-elements in real-selector argument lists are rejected. Default
+namespace exceptions for logical subjects are explicit. Namespace bindings
+are supplied after stylesheet namespace resolution; repeated prefixes use
+the last binding. Parsing those at-rule contexts is still future work.
+
+`AnB::parse` implements the token-level CSS microsyntax; `matches` uses
+wide intermediate arithmetic and positive one-based indices. Coefficients
+outside i64 are explicit `NumberLimit` failures, never silently saturated.
+`:empty` currently uses the established nonempty-text-blocks-emptiness
+behavior. The newer draft's whitespace exception remains unimplemented;
+no complete Selectors conformance is claimed.
+
+`matches` returns the maximum matching root-branch specificity. `query`
+streams document-order matches through a nonblocking sink with explicit
+include-root, context, cancellation and work/result limits. It allocates
+no full result vector. A shared small backtracking stack walks long
+complex selectors iteratively; only bounded logical/filter calls nest.
+Both compilation and matching enforce a hard maximum nested-call depth
+of 128 even if callers request more. All long APIs run on workers.
+
+`Tree` borrows names, links, attributes and text with typed element IDs.
+`DomTree` directly reads the compact Olo Document and validates scoped
+handles; templates' content and shadow boundaries are not crossed as light
+children. An explicit scoping handle is validated before matching, and a
+virtual fragment root matches explicitly eligible `:scope` combinations,
+including logical functions and guarded `:has`. Compiled featureless
+eligibility prevents accidental matches such as `:not(.class)` and ignores
+an implicit default namespace for an otherwise eligible virtual root. Document
+HTML/quirks mode and optional normalized document language come from the
+loader through `MatchOptions`; ancestor matching can extend outside the
+queried subtree as required. A custom Tree supports arbitrary namespace
+URIs without pretending the current DOM arena already supports XML loading.
+
+Live focus, interaction, form, media, direction and other host states use
+`Tree`/`StateSource`. Missing state yields `StateUnavailable`; it is never
+invented from attributes or silently treated as false. Pseudo-state hooks
+distinguish origin and pseudo-element states. Default public queries mask
+`:visited` and treat `:link` via any-link state. `visited_style` is reserved
+for a future private paint path with restricted visited-style effects;
+it must not be exposed to DOM/agent queries. No renderer or live state
+system is connected yet, and matching a pseudo target does not paint it.
+
+Queries lazily build sibling indices only when an nth selector needs them.
+They cache ordinary, per-type and selector-filtered positions/totals over
+the stable borrowed tree. Index entries plus pending nested-filter entries
+share one explicit quota; tables are dropped at query end, so later DOM or
+state changes cannot reuse stale indices. Individual-element `matches`
+uses a bounded scan rather than indexing an entire sibling group.
+`baseline-selector-nth` reproduces repeated sibling scans with equivalent
+results. The initial implementation was quadratic in sibling count;
+release measurements and the final linear cases are in the journal.
+
+Case-sensitive substring attributes use memchr's accelerated search;
+ASCII-insensitive substrings use compiled prefix tables and linear KMP
+recovery, with work/cancellation accounting. No per-match lowercase copies
+or repeated-tail substring scans. HTML name folding applies to selectors,
+preserving foreign-element case and namespaced attribute identity. HTML's
+attribute-value table and quirks ID/class behavior are separate from explicit
+`i`/`s` flags. UTF-8 substring boundaries are checked before slicing.
+
+Independent evidence: `tests/selector-fixtures` pins cssselect2's original
+literal vectors/documents, a deterministic static XML data adapter and
+128 CC0 An+B cases. No third-party selector engine runs in production or
+generates expectations. The native selector runner accounts for **463
+cases: 432 direct matches, two exact modern grammar expectations and
+29 unsupported cases**. Those non-passes include live state, shadow/
+functional pseudo-elements, nesting and two fixture driver contexts.
+The evaluator continues to exit 1; the regression gate accepts no new
+mismatch/error/panic and protects the exact counts. See its README for
+licenses, scope and the two nth-of-type grammar adjustments.
+
+```sh
+cargo run --release -p olo-web --example selector_eval -- /var/tmp/selectors.json
+cargo test --release -p olo-web --test selectors
+cargo build --release -p olo-web --example selector_bench
+# Repeat with --features baseline-selector-nth for equivalent scan control.
+taskset -c 0 /usr/bin/time -v target/release/examples/selector_bench 10
+```
+
+Native tests also cover DOM changes, stale/wrong-document/scoping handles,
+virtual fragment scope, inert template boundaries, private Debug, host
+state changes/history masking, namespace/specificity rules, Unicode and
+case behavior, limits/sink errors/cancellation, nested index reservations,
+10,001-compound chains, 5,000 nested functions and 10,000 malformed inputs.
+No CSSOM/JS, dynamic invalidation, stylesheet rule indexing, property grammar,
+cascade, style, layout, rendering, UI or website compatibility follows from
+these selector tests. Primary references consulted 2026-11-05:
+[Selectors 4](https://drafts.csswg.org/selectors/),
+[An+B syntax](https://drafts.csswg.org/css-syntax/#anb-microsyntax),
+[HTML selector case rules](https://html.spec.whatwg.org/multipage/semantics-other.html#case-sensitivity-of-selectors),
+[HTML language determination](https://html.spec.whatwg.org/multipage/dom.html#language).

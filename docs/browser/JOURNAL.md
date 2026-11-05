@@ -884,3 +884,131 @@ visible UI changes, session upgrades or installs. Next: CSS selector/
 property/style compilation, descriptor grammars, and HTML encoding/stream
 input. The complete browser goal stays active; site validation is still
 0/3,000 configurations and no website is claimed working.
+
+## 2026-11-05 — Original selector compiler and bounded native tree queries
+
+Implemented original Rust selector compilation/matching, bridging the
+existing CSS component arena to the native DOM. Compiled lists, complexes,
+steps, tests and nth metadata live in flat arenas. Tests are **24 bytes**
+on this x86-64 build; shared symbols use integer references. The compiler's
+symbol lookup map is released at completion. Invalid forgiving branches
+rewind all arenas/symbols, and unusually sparse arenas are trimmed.
+Selector Debug omits source, IDs/classes and attribute values.
+
+The grammar covers namespaces/types/universals, IDs/classes, attribute
+operators/ASCII flags, four combinators, structural/typed/filtered An+B,
+logical functions and relative `:has`, specificity, inherited language
+ranges, host direction/state hooks and common named pseudo targets.
+Unknown invalid branches are forgiven only inside `:is`/`:where`; recognized
+unsupported features and limits remain explicit errors. Nested `:has` and
+pseudo-elements in real-selector arguments are invalid. Default namespace
+exceptions, HTML folding, foreign case, attribute-value rules and quirks
+ID/class behavior are separate. Coefficients beyond i64 fail explicitly;
+`:empty` retains the established nonempty-text behavior, with the newer
+whitespace exception still open. Full Selectors conformance is not claimed.
+
+The matcher borrows a stable light tree. `DomTree` reads actual scoped DOM
+handles, without flattening/copying snapshots or walking template content
+as light children. Queries stream document-order IDs and specificity;
+individual matches return the maximum matching branch's specificity.
+Wrong-document/stale/scoping handles fail explicitly. A small shared
+backtracking stack handles long complex chains iteratively; bounded
+logical/filter calls have a hard nesting ceiling of 128. Work, result,
+backtracking and index budgets, cancellation and sink failures are checked.
+Virtual fragment scopes use compiled featureless eligibility: logical
+`:scope` combinations and guarded `:has` work, while `*`, `:not(.class)`
+and ineligible compounds cannot accidentally select the virtual root.
+An implicit default namespace does not block an eligible featureless root.
+
+Live interaction/control/media/direction state comes from `Tree`/
+`StateSource`. Missing host data is `StateUnavailable`, not invented
+attribute-derived state. Origin/pseudo states are distinguished. Public
+queries mask visited history; a future private paint path must enforce
+visited-style restrictions separately. No live state model, shadow tree,
+Web IDL, CSSOM or renderer has been connected by this milestone.
+
+Independent fixtures: unmodified cssselect2 test vectors/documents at
+`fc22accd5fdba764d95263fa8e6c97ce24f75f3e`, original licenses, deterministic
+literal/static-XML extraction, all hashes checked. Extraction never runs
+a selector engine or creates expected matches from Olo. The native runner
+accounts for **463 cases: 432 direct matches**, **two exact modern grammar
+expectations**, **29 explicit unsupported cases**. The two adjustments
+reject `of` arguments on nth-of-type/nth-last-of-type, whose current
+grammars do not accept them. Non-passes include live state, nesting,
+shadow/functional pseudo-elements, an HTML fixture context and an upstream
+matches-only scope. The evaluator still exits **1**, and those cases stay
+in its denominator. Native regression tests reject every unexpected
+mismatch/error/panic and protect exact counts. XML models test the generic
+tree interface; they do not establish XML loading or HTML parsing behavior.
+
+Also checked **128 independent CC0 An+B cases**, an independent arithmetic
+model, actual DOM queries/mutations, stale handles, inert templates,
+virtual scopes, namespace/specificity rules, privacy/state hooks, Unicode,
+resource/sink/cancellation behavior, nested index reservations,
+**10,001-compound chains**, **5,000 nested functions**, **10,000 malformed
+inputs**, oversized unknown pseudo names and linear adversarial substring
+work. Case-sensitive substring searches use memchr; ASCII-insensitive
+searches use compiled prefix tables with linear recovery. No per-match
+lowercase copies. Huge unknown pseudo names are charged before any case
+conversion and rejected without making huge lowercase copies.
+
+Initial release measurements found quadratic repeated sibling counting.
+Queries now lazily cache ordinary, typed and selector-filtered positions/
+totals. Cache entries and pending nested-filter entries share an explicit
+quota, including rechecking after nested filters allocate their indices.
+Only queries needing nth indices build a table. Tables live for one query
+against an immutably borrowed tree, then drop; later changes cannot reuse
+stale indices. Individual-element matches use bounded scans. The equivalent
+`baseline-selector-nth` feature retains repeated scans as a control.
+
+Release measurements: Core Ultra 7 356H, CPU 0, rustc 1.99.1, three
+alternating runs; reference three iterations per case, default ten.
+Clocks/thermals/load uncontrolled. DOM construction and selector compilation
+are outside query timing; the sink black-boxes IDs. Benchmark work budget
+is explicitly raised to usize::MAX to observe the reference quadratic
+cases. Normal default budgets remain in production APIs. Medians in ms:
+
+| Selector workload | 1k scan → index | 2k scan → index | 4k scan → index |
+|---|---:|---:|---:|
+| `li.item > a` | 0.237 → 0.233 | 0.460 → 0.465 | 0.925 → 0.929 |
+| `li:nth-child(2n+1)` | 13.702 → 0.295 | 57.615 → 0.570 | 218.778 → 1.136 |
+| `li:nth-of-type(2n+1)` | 19.636 → 0.338 | 78.512 → 0.668 | 326.167 → 1.347 |
+| `li:nth-last-child(2n of .selected)` | 32.700 → 0.332 | 134.979 → 0.644 | 529.928 → 1.288 |
+| `li:has(> a)` | 0.259 → 0.256 | 0.514 → 0.513 | 1.002 → 1.020 |
+| `[data-x*='aBABc' i]` | 0.214 → 0.226 | 0.444 → 0.442 | 0.875 → 0.878 |
+
+The indexed cases scale linearly at these sizes; no universal speedup is
+claimed. Default first 4k queries: child **0.925 ms**, nth-child **1.307**,
+nth-of-type **1.343**, filtered nth **1.314**, has **1.028**, substring
+**0.875**. Warm compilation of the benchmark's three-branch logical/
+attribute/has/nth selector list: scan-control **1.402 µs**, default
+**1.372 µs**. Identical compilation code is exercised in both modes;
+the small difference is not attributed to indexing.
+
+At 4k siblings: unfiltered work count **16,072,033 → 84,033**; filtered
+work **224,124,033 → 188,033**. Indexed tables hold **4,000 entries**,
+**7,168 usable hash-table slots**, peak **4,000 pending indices**. Common
+child/has/substring cases have **zero** index entries/capacity. Compiled
+selectors in these workloads account for **451–554 bytes** of retained
+vector capacities/symbol data/headers, plus their root struct and allocator
+bookkeeping. Index slot capacity is reported as slots, not misrepresented
+as exact allocator bytes. Whole-process peak RSS: scan **4,096–4,132 KiB**,
+default **4,548–4,716**. The temporary index memory buys the measured
+scaling improvement; no total-RSS reduction is claimed.
+
+Reproduce `cargo build --release -p olo-web --example selector_bench`,
+then `taskset -c 0 /usr/bin/time -v target/release/examples/selector_bench 10`;
+use `--features baseline-selector-nth` for the scan control. Raw samples,
+intermediate observations, compiler/CPU identity and source/binary hashes:
+`measurements/2026-11-05-selectors.json`. Coverage:
+`measurements/2026-11-05-selector-coverage.json`.
+
+Validation: all engine release tests; 13 selector groups in default and
+scan-control modes; strict release clippy default/all-features; full
+workspace release build; deterministic fixture extraction reproduced every
+pinned hash. Existing GPUI/future-incompatibility warnings remain unchanged.
+No GUI, visible UI changes, personal session actions, upgrades or installs.
+Next: property/style compilation and stylesheet contexts/rule indexing,
+remaining selector integrations and the rest of the browser architecture.
+There is still no usable browser or demonstrated website compatibility:
+site evidence remains 0/3,000 configurations. The complete goal stays active.

@@ -1,0 +1,2 @@
+# Keep the upstream XML fixture byte-exact, including its trailing spaces.
+content.xhtml -text -whitespace

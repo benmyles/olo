@@ -328,6 +328,11 @@ pub struct Components<'a> {
     next: u32,
     end: u32,
 }
+impl Components<'_> {
+    pub(in crate::css) fn between(&self, start: u32, end: u32) -> Self {
+        Self { tree: self.tree, next: start, end }
+    }
+}
 impl<'a> Iterator for Components<'a> {
     type Item = Component<'a>;
     fn next(&mut self) -> Option<Self::Item> {

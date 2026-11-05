@@ -1,0 +1,6395 @@
+{
+  "counts": {
+    "passed": 432,
+    "unsupported": 29,
+    "updated_specification": 2
+  },
+  "results": [
+    {
+      "case": 1,
+      "document": "ids.html",
+      "expected": [
+        "html",
+        "nil",
+        "link-href",
+        "link-nohref",
+        "nil",
+        "outer-div",
+        "name-anchor",
+        "tag-anchor",
+        "nofollow-anchor",
+        "first-ol",
+        "first-li",
+        "second-li",
+        "li-div",
+        "third-li",
+        "fourth-li",
+        "fifth-li",
+        "sixth-li",
+        "seventh-li",
+        "paragraph",
+        "p-b",
+        "p-em",
+        "p-b2",
+        "checkbox-unchecked",
+        "checkbox-disabled",
+        "text-checked",
+        "input-hidden",
+        "input-hidden-disabled",
+        "checkbox-checked",
+        "checkbox-disabled-checked",
+        "fieldset",
+        "checkbox-fieldset-disabled",
+        "hidden-fieldset-disabled",
+        "second-ol",
+        "nil",
+        "area-href",
+        "area-nohref",
+        "foobar-div",
+        "foobar-span"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "*",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 2,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 3,
+      "document": "ids.html",
+      "expected": [
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 4,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div, div div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 5,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div , div div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 6,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[name]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 7,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor",
+        "nofollow-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[rel]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 8,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[rel=\"tag\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 9,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href*=\"localhost\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 10,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href*=\"\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 11,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor",
+        "nofollow-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href^=\"http\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 12,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href^=\"http:\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 13,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href^=\"\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 14,
+      "document": "ids.html",
+      "expected": [
+        "nofollow-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href$=\"org\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 15,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href$=\"\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 16,
+      "document": "ids.html",
+      "expected": [
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div[foobar~=\"bc\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 17,
+      "document": "ids.html",
+      "expected": [
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div[foobar~=\"cde\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 18,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "[foobar~=\"ab bc\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 19,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "[foobar~=\"\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 20,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "[foobar~=\" \t\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 21,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div[foobar~=\"cd\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 22,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[rel=\"tAg\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 23,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[rel=\"tAg\" s]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 24,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[rel=\"tAg\" i]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 25,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href*=\"localHOST\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 26,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href*=\"localHOST\" s]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 27,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href*=\"localHOST\" i]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 28,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href^=\"hTtp\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 29,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href^=\"hTtp\" s]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 30,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor",
+        "nofollow-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href^=\"hTtp\" i]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 31,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href$=\"Org\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 32,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href$=\"Org\" S]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 33,
+      "document": "ids.html",
+      "expected": [
+        "nofollow-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href$=\"Org\" I]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 34,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div[foobar~=\"BC\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 35,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div[foobar~=\"BC\" s]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 36,
+      "document": "ids.html",
+      "expected": [
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div[foobar~=\"BC\" i]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 37,
+      "document": "ids.html",
+      "expected": [
+        "second-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "*[lang|=\"En\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 38,
+      "document": "ids.html",
+      "expected": [
+        "second-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "[lang|=\"En-us\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 39,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "*[lang|=\"en\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 40,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "[lang|=\"en-US\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 41,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "*[lang|=\"e\"]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 42,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":lang(EN)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 43,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "*:lang(en-US)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 44,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":lang(En)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 45,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":lang(e)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 46,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":lang(\"en-US\")",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 47,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":lang(\"*-US\")",
+      "suite": "test_select",
+      "upstream_xfail": true
+    },
+    {
+      "case": 48,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":lang(\\*-US)",
+      "suite": "test_select",
+      "upstream_xfail": true
+    },
+    {
+      "case": 49,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":lang(en /* English */, fr /* French */)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 50,
+      "document": "ids.html",
+      "expected": [
+        "third-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(3)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 51,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(10)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 52,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "fourth-li",
+        "sixth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(2n)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 53,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "fourth-li",
+        "sixth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(even)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 54,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "fourth-li",
+        "sixth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(+2n+0)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 55,
+      "document": "ids.html",
+      "expected": [
+        "first-li",
+        "third-li",
+        "fifth-li",
+        "seventh-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(2n+1)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 56,
+      "document": "ids.html",
+      "expected": [
+        "first-li",
+        "third-li",
+        "fifth-li",
+        "seventh-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(odd)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 57,
+      "document": "ids.html",
+      "expected": [
+        "fourth-li",
+        "sixth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(2n+4)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 58,
+      "document": "ids.html",
+      "expected": [
+        "first-li",
+        "fourth-li",
+        "seventh-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-child(3n+1)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 59,
+      "document": "ids.html",
+      "expected": [
+        "checkbox-disabled",
+        "checkbox-disabled-checked"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "p > input:nth-child(2n of p input[type=checkbox])",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 60,
+      "document": "ids.html",
+      "expected": [
+        "seventh-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-last-child(1)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 61,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-last-child(0)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 62,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "fourth-li",
+        "sixth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-last-child(2n+2)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 63,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "fourth-li",
+        "sixth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-last-child(even)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 64,
+      "document": "ids.html",
+      "expected": [
+        "second-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:nth-last-child(2n+4)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 65,
+      "document": "ids.html",
+      "expected": [
+        "checkbox-disabled-checked",
+        "checkbox-fieldset-disabled"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":nth-last-child(1 of [type=checkbox])",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 66,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:first-of-type",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 67,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:nth-child(1)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 68,
+      "document": "ids.html",
+      "expected": [
+        "second-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:nth-of-type(2)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 69,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor",
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "modern_expected": "invalid",
+      "outcome": "updated_specification",
+      "reason": "Selectors 4 nth-of-type grammar has no of-selector-list; the imported upstream library accepts this extension",
+      "selector": ":nth-of-type(1 of .e)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 70,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:nth-last-of-type(2)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 71,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor",
+        "second-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "modern_expected": "invalid",
+      "outcome": "updated_specification",
+      "reason": "Selectors 4 nth-of-type grammar has no of-selector-list; the imported upstream library accepts this extension",
+      "selector": ":nth-last-of-type(1 of .e)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 72,
+      "document": "ids.html",
+      "expected": [
+        "foobar-span"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "span:only-child",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 73,
+      "document": "ids.html",
+      "expected": [
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div:only-child",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 74,
+      "document": "ids.html",
+      "expected": [
+        "li-div",
+        "foobar-span"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div *:only-child",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 75,
+      "document": "ids.html",
+      "expected": [
+        "p-em",
+        "fieldset"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "p *:only-of-type",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 76,
+      "document": "ids.html",
+      "expected": [
+        "paragraph"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "p:only-of-type",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 77,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a:empty",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 78,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a:EMpty",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 79,
+      "document": "ids.html",
+      "expected": [
+        "third-li",
+        "fourth-li",
+        "fifth-li",
+        "sixth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:empty",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 80,
+      "document": "ids.html",
+      "expected": [
+        "html"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":root",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 81,
+      "document": "ids.html",
+      "expected": [
+        "html"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "html:root",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 82,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:root",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 83,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "* :root",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 84,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ".a",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 85,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ".b",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 86,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "*.a",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 87,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol.a",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 88,
+      "document": "ids.html",
+      "expected": [
+        "first-ol",
+        "third-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ".c",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 89,
+      "document": "ids.html",
+      "expected": [
+        "first-ol",
+        "third-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "*.c",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 90,
+      "document": "ids.html",
+      "expected": [
+        "third-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol *.c",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 91,
+      "document": "ids.html",
+      "expected": [
+        "third-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol li.c",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 92,
+      "document": "ids.html",
+      "expected": [
+        "third-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li ~ li.c",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 93,
+      "document": "ids.html",
+      "expected": [
+        "third-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol > li.c",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 94,
+      "document": "ids.html",
+      "expected": [
+        "first-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "#first-li",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 95,
+      "document": "ids.html",
+      "expected": [
+        "first-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li#first-li",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 96,
+      "document": "ids.html",
+      "expected": [
+        "first-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "*#first-li",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 97,
+      "document": "ids.html",
+      "expected": [
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 98,
+      "document": "ids.html",
+      "expected": [
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li > div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 99,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div > div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 100,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div>.c",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 101,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div > .c",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 102,
+      "document": "ids.html",
+      "expected": [
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div + div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 103,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor",
+        "nofollow-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a ~ a",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 104,
+      "document": "ids.html",
+      "expected": [
+        "nofollow-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[rel=\"tag\"] ~ a",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 105,
+      "document": "ids.html",
+      "expected": [
+        "seventh-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol#first-ol li:last-child",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 106,
+      "document": "ids.html",
+      "expected": [
+        "li-div",
+        "seventh-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol#first-ol *:last-child",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 107,
+      "document": "ids.html",
+      "expected": [
+        "outer-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "#outer-div:first-child",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 108,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "first-li",
+        "li-div",
+        "p-b",
+        "checkbox-fieldset-disabled",
+        "area-href"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "#outer-div :first-child",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 109,
+      "document": "ids.html",
+      "expected": [
+        "tag-anchor",
+        "nofollow-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[href]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 110,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":not(*)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 111,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a:not([href])",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 112,
+      "document": "ids.html",
+      "expected": [
+        "first-li",
+        "second-li",
+        "li-div",
+        "fifth-li",
+        "sixth-li",
+        "seventh-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol :Not([class])",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 113,
+      "document": "ids.html",
+      "expected": [
+        "fourth-li",
+        "sixth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:not(:nth-child(odd), #second-li)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 114,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:not(li)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 115,
+      "document": "ids.html",
+      "expected": [
+        "html",
+        "nil",
+        "link-href",
+        "link-nohref",
+        "nil",
+        "outer-div",
+        "name-anchor",
+        "tag-anchor",
+        "nofollow-anchor",
+        "first-ol",
+        "first-li",
+        "second-li",
+        "li-div",
+        "third-li",
+        "fourth-li",
+        "fifth-li",
+        "sixth-li",
+        "seventh-li",
+        "paragraph",
+        "p-b",
+        "p-em",
+        "p-b2",
+        "checkbox-unchecked",
+        "checkbox-disabled",
+        "text-checked",
+        "input-hidden",
+        "input-hidden-disabled",
+        "checkbox-checked",
+        "checkbox-disabled-checked",
+        "fieldset",
+        "checkbox-fieldset-disabled",
+        "hidden-fieldset-disabled",
+        "second-ol",
+        "nil",
+        "area-href",
+        "area-nohref",
+        "foobar-div",
+        "foobar-span"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":is(*)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 116,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":is(div)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 117,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "fieldset",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":is(div, fieldset)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 118,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":is(:::wrong)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 119,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "fieldset",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":is(div, :::wrong, fieldset)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 120,
+      "document": "ids.html",
+      "expected": [
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div :is(div, div)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 121,
+      "document": "ids.html",
+      "expected": [
+        "third-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:is(.c)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 122,
+      "document": "ids.html",
+      "expected": [
+        "text-checked"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "input:is([type=\"text\"])",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 123,
+      "document": "ids.html",
+      "expected": [
+        "li-div",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div:is(:not(#outer-div))",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 124,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div:is(div::before)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 125,
+      "document": "ids.html",
+      "expected": [
+        "html",
+        "nil",
+        "link-href",
+        "link-nohref",
+        "nil",
+        "outer-div",
+        "name-anchor",
+        "tag-anchor",
+        "nofollow-anchor",
+        "first-ol",
+        "first-li",
+        "second-li",
+        "li-div",
+        "third-li",
+        "fourth-li",
+        "fifth-li",
+        "sixth-li",
+        "seventh-li",
+        "paragraph",
+        "p-b",
+        "p-em",
+        "p-b2",
+        "checkbox-unchecked",
+        "checkbox-disabled",
+        "text-checked",
+        "input-hidden",
+        "input-hidden-disabled",
+        "checkbox-checked",
+        "checkbox-disabled-checked",
+        "fieldset",
+        "checkbox-fieldset-disabled",
+        "hidden-fieldset-disabled",
+        "second-ol",
+        "nil",
+        "area-href",
+        "area-nohref",
+        "foobar-div",
+        "foobar-span"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":where(*)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 126,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":where(div)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 127,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "fieldset",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":where(div, fieldset)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 128,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":where(:::wrong)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 129,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "fieldset",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":where(div, :::wrong, fieldset)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 130,
+      "document": "ids.html",
+      "expected": [
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div :where(div, div)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 131,
+      "document": "ids.html",
+      "expected": [
+        "third-li",
+        "fourth-li"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "li:where(.c)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 132,
+      "document": "ids.html",
+      "expected": [
+        "text-checked"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "input:where([type=\"text\"])",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 133,
+      "document": "ids.html",
+      "expected": [
+        "li-div",
+        "foobar-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div:where(:not(#outer-div))",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 134,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div:where(div::before)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 135,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":has(:hover)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 136,
+      "document": "ids.html",
+      "expected": [
+        "paragraph"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "p:has(input)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 137,
+      "document": "ids.html",
+      "expected": [
+        "paragraph"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "p:has(fieldset input)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 138,
+      "document": "ids.html",
+      "expected": [
+        "paragraph"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "p:has(> fieldset)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 139,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(> div)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 140,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(input, li)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 141,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(input, fieldset)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 142,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(+ p)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 143,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(~ ol)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 144,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(>a, ~ ol)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 145,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(a,ol,  li  )",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 146,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(*)",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 147,
+      "document": "ids.html",
+      "expected": [
+        "first-ol"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(:not(li))",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 148,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has( > :not( li ))",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 149,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "ol:has(:not(li, div))",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 150,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "di\\a0 v",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 151,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "div\\[",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 152,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "[h\\a0 ref]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 153,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "[h\\]ref]",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 154,
+      "document": "ids.html",
+      "expected": [
+        "link-href",
+        "tag-anchor",
+        "nofollow-anchor",
+        "area-href"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":link",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 155,
+      "document": "ids.html",
+      "expected": [
+        "link-href",
+        "tag-anchor",
+        "nofollow-anchor",
+        "area-href"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":any-link",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 156,
+      "document": "ids.html",
+      "expected": [
+        "link-href",
+        "area-href"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":local-link",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 157,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": ":visited",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 158,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":hover",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 159,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":active",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 160,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":focus",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 161,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":target",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 162,
+      "document": "ids.html",
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector Unsupported(\"host or draft pseudo-class\")",
+      "selector": ":host",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 163,
+      "document": "ids.html",
+      "expected": [
+        "link-href",
+        "tag-anchor",
+        "nofollow-anchor",
+        "checkbox-unchecked",
+        "text-checked",
+        "input-hidden",
+        "checkbox-checked",
+        "area-href"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":enabled",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 164,
+      "document": "ids.html",
+      "expected": [
+        "checkbox-disabled",
+        "input-hidden-disabled",
+        "checkbox-disabled-checked",
+        "fieldset",
+        "checkbox-fieldset-disabled",
+        "hidden-fieldset-disabled"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":disabled",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 165,
+      "document": "ids.html",
+      "expected": [
+        "checkbox-checked",
+        "checkbox-disabled-checked"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":checked",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 166,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a:not([href]), div div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 167,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a:not([href]) /* test */, div div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 168,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a:not([href]), /* test */ div div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 169,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "/* test */a:not([href]),div div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 170,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a:not([href]) , div div/* test */",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 171,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "/* test */a:not([href]), /* test */ div div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 172,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "/* test */a:not([href])/* test */,div  div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 173,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "/* test */ a:not([href]), div/* test */ div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 174,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor",
+        "li-div"
+      ],
+      "html": false,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a:not([href]) /* test */,/* test */div  div",
+      "suite": "test_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 1,
+      "document": "ids.html",
+      "expected": [
+        "outer-div",
+        "li-div",
+        "foobar-div"
+      ],
+      "html": true,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "DIV",
+      "suite": "test_html_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 2,
+      "document": "ids.html",
+      "expected": [
+        "name-anchor"
+      ],
+      "html": true,
+      "mode": "ids",
+      "outcome": "passed",
+      "selector": "a[NAme]",
+      "suite": "test_html_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 3,
+      "document": "ids.html",
+      "expected": [
+        "link-href",
+        "tag-anchor",
+        "nofollow-anchor",
+        "area-href"
+      ],
+      "html": true,
+      "mode": "ids",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "HTML :link",
+      "suite": "test_html_select",
+      "upstream_xfail": false
+    },
+    {
+      "case": 1,
+      "document": "shakespeare.html",
+      "expected": 246,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "*",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 2,
+      "document": "shakespeare.html",
+      "expected": 22,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div:only-child",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 3,
+      "document": "shakespeare.html",
+      "expected": 106,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div:nth-child(even)",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 4,
+      "document": "shakespeare.html",
+      "expected": 106,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div:nth-child(2n)",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 5,
+      "document": "shakespeare.html",
+      "expected": 137,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div:nth-child(odd)",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 6,
+      "document": "shakespeare.html",
+      "expected": 137,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div:nth-child(2n+1)",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 7,
+      "document": "shakespeare.html",
+      "expected": 243,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div:nth-child(n)",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 8,
+      "document": "shakespeare.html",
+      "expected": 53,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div:last-child",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 9,
+      "document": "shakespeare.html",
+      "expected": 51,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div:first-child",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 10,
+      "document": "shakespeare.html",
+      "expected": 242,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div > div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 11,
+      "document": "shakespeare.html",
+      "expected": 190,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div + div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 12,
+      "document": "shakespeare.html",
+      "expected": 190,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div ~ div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 13,
+      "document": "shakespeare.html",
+      "expected": 1,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "body",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 14,
+      "document": "shakespeare.html",
+      "expected": 243,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "body div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 15,
+      "document": "shakespeare.html",
+      "expected": 243,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 16,
+      "document": "shakespeare.html",
+      "expected": 242,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 17,
+      "document": "shakespeare.html",
+      "expected": 241,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div div div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 18,
+      "document": "shakespeare.html",
+      "expected": 243,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div, div, div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 19,
+      "document": "shakespeare.html",
+      "expected": 243,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div, a, span",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 20,
+      "document": "shakespeare.html",
+      "expected": 51,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": ".dialog",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 21,
+      "document": "shakespeare.html",
+      "expected": 51,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.dialog",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 22,
+      "document": "shakespeare.html",
+      "expected": 51,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div .dialog",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 23,
+      "document": "shakespeare.html",
+      "expected": 99,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.character, div.dialog",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 24,
+      "document": "shakespeare.html",
+      "expected": 0,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.direction.dialog",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 25,
+      "document": "shakespeare.html",
+      "expected": 0,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.dialog.direction",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 26,
+      "document": "shakespeare.html",
+      "expected": 1,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.dialog.scene",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 27,
+      "document": "shakespeare.html",
+      "expected": 1,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.scene.scene",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 28,
+      "document": "shakespeare.html",
+      "expected": 0,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.scene .scene",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 29,
+      "document": "shakespeare.html",
+      "expected": 0,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.direction .dialog ",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 30,
+      "document": "shakespeare.html",
+      "expected": 4,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div .dialog .direction",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 31,
+      "document": "shakespeare.html",
+      "expected": 4,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.dialog .dialog .direction",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 32,
+      "document": "shakespeare.html",
+      "expected": 1,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "#speech5",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 33,
+      "document": "shakespeare.html",
+      "expected": 1,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div#speech5",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 34,
+      "document": "shakespeare.html",
+      "expected": 1,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div #speech5",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 35,
+      "document": "shakespeare.html",
+      "expected": 49,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div.scene div.dialog",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 36,
+      "document": "shakespeare.html",
+      "expected": 142,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div#scene1 div.dialog div",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 37,
+      "document": "shakespeare.html",
+      "expected": 1,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "#scene1 #speech1",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 38,
+      "document": "shakespeare.html",
+      "expected": 103,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div[class]",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 39,
+      "document": "shakespeare.html",
+      "expected": 50,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div[class=dialog]",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 40,
+      "document": "shakespeare.html",
+      "expected": 51,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div[class^=dia]",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 41,
+      "document": "shakespeare.html",
+      "expected": 50,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div[class$=log]",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 42,
+      "document": "shakespeare.html",
+      "expected": 1,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div[class*=sce]",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 43,
+      "document": "shakespeare.html",
+      "expected": 50,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div[class|=dialog]",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 44,
+      "document": "shakespeare.html",
+      "expected": 51,
+      "html": false,
+      "mode": "count",
+      "outcome": "passed",
+      "selector": "div[class~=dialog]",
+      "suite": "test_select_shakespeare",
+      "upstream_xfail": false
+    },
+    {
+      "case": 1,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Empty String",
+      "outcome": "passed",
+      "selector": "",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 2,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid character",
+      "outcome": "passed",
+      "selector": "[",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 3,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid character",
+      "outcome": "passed",
+      "selector": "]",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 4,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid character",
+      "outcome": "passed",
+      "selector": "(",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 5,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid character",
+      "outcome": "passed",
+      "selector": ")",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 6,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid character",
+      "outcome": "passed",
+      "selector": "{",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 7,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid character",
+      "outcome": "passed",
+      "selector": "}",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 8,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid character",
+      "outcome": "passed",
+      "selector": "<",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 9,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid character",
+      "outcome": "passed",
+      "selector": ">",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 10,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid ID",
+      "outcome": "passed",
+      "selector": "#",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 11,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid group of selectors",
+      "outcome": "passed",
+      "selector": "div,",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 12,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid class",
+      "outcome": "passed",
+      "selector": ".",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 13,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid class",
+      "outcome": "passed",
+      "selector": ".5cm",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 14,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid class",
+      "outcome": "passed",
+      "selector": "..test",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 15,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid class",
+      "outcome": "passed",
+      "selector": ".foo..quux",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 16,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid class",
+      "outcome": "passed",
+      "selector": ".bar.",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 17,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid combinator",
+      "outcome": "unsupported",
+      "reason": "Selector Unsupported(\"nesting selector\")",
+      "selector": "div & address, p",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 18,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid combinator",
+      "outcome": "passed",
+      "selector": "div ++ address, p",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 19,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid combinator",
+      "outcome": "passed",
+      "selector": "div ~~ address, p",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 20,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid [att=value] selector",
+      "outcome": "passed",
+      "selector": "[*=test]",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 21,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid [att=value] selector",
+      "outcome": "passed",
+      "selector": "[*|*=test]",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 22,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid [att=value] selector",
+      "outcome": "passed",
+      "selector": "[class= space unquoted ]",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 23,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Unknown pseudo-class",
+      "outcome": "passed",
+      "selector": "div:example",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 24,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Unknown pseudo-class",
+      "outcome": "passed",
+      "selector": ":example",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 25,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Unknown pseudo-class",
+      "outcome": "passed",
+      "selector": "div:linkexample",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 26,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Unknown pseudo-element",
+      "outcome": "passed",
+      "selector": "div::example",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 27,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Unknown pseudo-element",
+      "outcome": "passed",
+      "selector": "::example",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 28,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid pseudo-element",
+      "outcome": "passed",
+      "selector": ":::before",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 29,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid pseudo-element",
+      "outcome": "passed",
+      "selector": ":: before",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 30,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Undeclared namespace",
+      "outcome": "passed",
+      "selector": "ns|div",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 31,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Undeclared namespace",
+      "outcome": "passed",
+      "selector": ":not(ns|div)",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 32,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid arguments",
+      "outcome": "passed",
+      "selector": ":nth-child(3 of)",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 33,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid namespace",
+      "outcome": "passed",
+      "selector": "^|div",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 34,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Invalid namespace",
+      "outcome": "passed",
+      "selector": "$|div",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 35,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": null,
+      "html": false,
+      "mode": "invalid",
+      "name": "Relative selector",
+      "outcome": "passed",
+      "selector": ">*",
+      "suite": "invalid_selectors"
+    },
+    {
+      "case": 1,
+      "document": "content.xhtml",
+      "exclude": [
+        "element",
+        "fragment",
+        "detached"
+      ],
+      "expected": [
+        "html"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Type selector, matching html element",
+      "outcome": "passed",
+      "selector": "html",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 2,
+      "document": "content.xhtml",
+      "exclude": [
+        "document"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Type selector, matching html element",
+      "outcome": "passed",
+      "selector": "html",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 3,
+      "document": "content.xhtml",
+      "exclude": [
+        "element",
+        "fragment",
+        "detached"
+      ],
+      "expected": [
+        "body"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Type selector, matching body element",
+      "outcome": "passed",
+      "selector": "body",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 4,
+      "document": "content.xhtml",
+      "exclude": [
+        "document"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Type selector, matching body element",
+      "outcome": "passed",
+      "selector": "body",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 5,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "universal",
+        "universal-p1",
+        "universal-code1",
+        "universal-hr1",
+        "universal-pre1",
+        "universal-span1",
+        "universal-p2",
+        "universal-a1",
+        "universal-address1",
+        "universal-code2",
+        "universal-a2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Universal selector, matching all elements",
+      "outcome": "unsupported",
+      "reason": "Selector Unsupported(\"upstream matches-only fixture scope\")",
+      "selector": "*",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 6,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "universal-p1",
+        "universal-hr1",
+        "universal-pre1",
+        "universal-p2",
+        "universal-address1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Universal selector, matching all children of element with specified ID",
+      "outcome": "passed",
+      "selector": "#universal>*",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 7,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "universal-code1",
+        "universal-span1",
+        "universal-a1",
+        "universal-code2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Universal selector, matching all grandchildren of element with specified ID",
+      "outcome": "passed",
+      "selector": "#universal>*>*",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 8,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Universal selector, matching all children of empty element with specified ID",
+      "outcome": "passed",
+      "selector": "#empty>*",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 9,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "universal-p1",
+        "universal-code1",
+        "universal-hr1",
+        "universal-pre1",
+        "universal-span1",
+        "universal-p2",
+        "universal-a1",
+        "universal-address1",
+        "universal-code2",
+        "universal-a2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Universal selector, matching all descendants of element with specified ID",
+      "outcome": "passed",
+      "selector": "#universal *",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 10,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-presence-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, matching align attribute with value",
+      "outcome": "passed",
+      "selector": ".attr-presence-div1[align]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 11,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-presence-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, matching align attribute with empty value",
+      "outcome": "passed",
+      "selector": ".attr-presence-div2[align]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 12,
+      "document": "content.xhtml",
+      "exclude": [
+        "xhtml"
+      ],
+      "expected": [
+        "attr-presence-a1",
+        "attr-presence-span1",
+        "attr-presence-i1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, matching title attribute, case insensitivity",
+      "outcome": "unsupported",
+      "reason": "Selector Unsupported(\"HTML fixture context\")",
+      "selector": "#attr-presence [*|TiTlE]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 13,
+      "document": "content.xhtml",
+      "exclude": [
+        "html"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, not matching title attribute, case sensitivity",
+      "outcome": "passed",
+      "selector": "#attr-presence [*|TiTlE]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 14,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-presence-pre1",
+        "attr-presence-blockquote1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, matching custom data-* attribute",
+      "outcome": "passed",
+      "selector": "[data-attr-presence]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 15,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, not matching attribute with similar name",
+      "outcome": "passed",
+      "selector": ".attr-presence-div3[align], .attr-presence-div4[align]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 16,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-presence-ul1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, matching attribute with non-ASCII characters",
+      "outcome": "passed",
+      "selector": "ul[data-中文]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 17,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, not matching default option without selected attribute",
+      "outcome": "passed",
+      "selector": "#attr-presence-select1 option[selected]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 18,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-presence-select2-option4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, matching option with selected attribute",
+      "outcome": "passed",
+      "selector": "#attr-presence-select2 option[selected]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 19,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-presence-select3-option2",
+        "attr-presence-select3-option3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute presence selector, matching multiple options with selected attributes",
+      "outcome": "passed",
+      "selector": "#attr-presence-select3 option[selected]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 20,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector, matching align attribute with value",
+      "outcome": "passed",
+      "selector": "#attr-value [align=\"center\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 21,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector, matching align attribute with value, unclosed bracket",
+      "outcome": "passed",
+      "selector": "#attr-value [align=\"center\"",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 22,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector, matching align attribute with empty value",
+      "outcome": "passed",
+      "selector": "#attr-value [align=\"\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 23,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector, not matching align attribute with partial value",
+      "outcome": "passed",
+      "selector": "#attr-value [align=\"c\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 24,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector, not matching align attribute with incorrect value",
+      "outcome": "passed",
+      "selector": "#attr-value [align=\"centera\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 25,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-div3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector, matching custom data-* attribute with unicode escaped value",
+      "outcome": "passed",
+      "selector": "[data-attr-value=\"\\e9\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 26,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector, matching custom data-* attribute with escaped character",
+      "outcome": "passed",
+      "selector": "[data-attr-value_foo=\"\\e9\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 27,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-input3",
+        "attr-value-input4",
+        "attr-value-input6",
+        "attr-value-input8",
+        "attr-value-input9"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector with single-quoted value, matching multiple inputs with type attributes",
+      "outcome": "passed",
+      "selector": "#attr-value input[type='hidden'],#attr-value input[type='radio']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 28,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-input3",
+        "attr-value-input4",
+        "attr-value-input6",
+        "attr-value-input8",
+        "attr-value-input9"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector with double-quoted value, matching multiple inputs with type attributes",
+      "outcome": "passed",
+      "selector": "#attr-value input[type=\"hidden\"],#attr-value input[type='radio']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 29,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-input3",
+        "attr-value-input4",
+        "attr-value-input6",
+        "attr-value-input8",
+        "attr-value-input9"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector with unquoted value, matching multiple inputs with type attributes",
+      "outcome": "passed",
+      "selector": "#attr-value input[type=hidden],#attr-value input[type=radio]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 30,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-value-div5"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute value selector, matching attribute with value using non-ASCII characters",
+      "outcome": "passed",
+      "selector": "[data-attr-value=中文]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 31,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-whitespace-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector, matching class attribute with value",
+      "outcome": "passed",
+      "selector": "#attr-whitespace [class~=\"div1\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 32,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector, not matching class attribute with empty value",
+      "outcome": "passed",
+      "selector": "#attr-whitespace [class~=\"\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 33,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector, not matching class attribute with partial value",
+      "outcome": "passed",
+      "selector": "[data-attr-whitespace~=\"div\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 34,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-whitespace-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector, matching custom data-* attribute with unicode escaped value",
+      "outcome": "passed",
+      "selector": "[data-attr-whitespace~=\"\\0000e9\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 35,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-whitespace-div5"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector, matching custom data-* attribute with escaped character",
+      "outcome": "passed",
+      "selector": "[data-attr-whitespace_foo~=\"\\e9\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 36,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-whitespace-a1",
+        "attr-whitespace-a2",
+        "attr-whitespace-a3",
+        "attr-whitespace-a5",
+        "attr-whitespace-a7"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector with single-quoted value, matching multiple links with rel attributes",
+      "outcome": "passed",
+      "selector": "#attr-whitespace a[rel~='bookmark'],  #attr-whitespace a[rel~='nofollow']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 37,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-whitespace-a1",
+        "attr-whitespace-a2",
+        "attr-whitespace-a3",
+        "attr-whitespace-a5",
+        "attr-whitespace-a7"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector with double-quoted value, matching multiple links with rel attributes",
+      "outcome": "passed",
+      "selector": "#attr-whitespace a[rel~=\"bookmark\"],#attr-whitespace a[rel~='nofollow']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 38,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-whitespace-a1",
+        "attr-whitespace-a2",
+        "attr-whitespace-a3",
+        "attr-whitespace-a5",
+        "attr-whitespace-a7"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector with unquoted value, matching multiple links with rel attributes",
+      "outcome": "passed",
+      "selector": "#attr-whitespace a[rel~=bookmark],    #attr-whitespace a[rel~=nofollow]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 39,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector with double-quoted value, not matching value with space",
+      "outcome": "passed",
+      "selector": "#attr-whitespace a[rel~=\"book mark\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 40,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-whitespace-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute whitespace-separated list selector, matching title attribute with value using non-ASCII characters",
+      "outcome": "passed",
+      "selector": "#attr-whitespace [title~=中文]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 41,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute hyphen-separated list selector, not matching unspecified lang attribute",
+      "outcome": "passed",
+      "selector": "#attr-hyphen-div1[lang|=\"en\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 42,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-hyphen-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute hyphen-separated list selector, matching lang attribute with exact value",
+      "outcome": "passed",
+      "selector": "#attr-hyphen-div2[lang|=\"fr\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 43,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-hyphen-div3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute hyphen-separated list selector, matching lang attribute with partial value",
+      "outcome": "passed",
+      "selector": "#attr-hyphen-div3[lang|=\"en\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 44,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute hyphen-separated list selector, not matching incorrect value",
+      "outcome": "passed",
+      "selector": "#attr-hyphen-div4[lang|=\"es-AR\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 45,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-begins-a1",
+        "attr-begins-a3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute begins with selector, matching href attributes beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-begins a[href^=\"http://www\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 46,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-begins-div2",
+        "attr-begins-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute begins with selector, matching lang attributes beginning with specified substring, ",
+      "outcome": "passed",
+      "selector": "#attr-begins [lang^=\"en-\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 47,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute begins with selector, not matching class attribute with empty value",
+      "outcome": "passed",
+      "selector": "#attr-begins [class^=\"\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 48,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute begins with selector, not matching class attribute not beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-begins [class^=apple]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 49,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-begins-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute begins with selector with single-quoted value, matching class attribute beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-begins [class^=' apple']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 50,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-begins-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute begins with selector with double-quoted value, matching class attribute beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-begins [class^=\" apple\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 51,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute begins with selector with unquoted value, not matching class attribute not beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-begins [class^= apple]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 52,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-ends-a1",
+        "attr-ends-a3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute ends with selector, matching href attributes ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-ends a[href$=\".org\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 53,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-ends-div2",
+        "attr-ends-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute ends with selector, matching lang attributes ending with specified substring, ",
+      "outcome": "passed",
+      "selector": "#attr-ends [lang$=\"-CH\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 54,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute ends with selector, not matching class attribute with empty value",
+      "outcome": "passed",
+      "selector": "#attr-ends [class$=\"\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 55,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute ends with selector, not matching class attribute not ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-ends [class$=apple]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 56,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-ends-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute ends with selector with single-quoted value, matching class attribute ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-ends [class$='apple ']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 57,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-ends-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute ends with selector with double-quoted value, matching class attribute ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-ends [class$=\"apple \"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 58,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute ends with selector with unquoted value, not matching class attribute not ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-ends [class$=apple ]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 59,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-a1",
+        "attr-contains-a3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector, matching href attributes beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains a[href*=\"http://www\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 60,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-a1",
+        "attr-contains-a2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector, matching href attributes ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains a[href*=\".org\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 61,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-a1",
+        "attr-contains-a3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector, matching href attributes containing specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains a[href*=\".example.\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 62,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-div2",
+        "attr-contains-div6"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector, matching lang attributes beginning with specified substring, ",
+      "outcome": "passed",
+      "selector": "#attr-contains [lang*=\"en-\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 63,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-div3",
+        "attr-contains-div5"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector, matching lang attributes ending with specified substring, ",
+      "outcome": "passed",
+      "selector": "#attr-contains [lang*=\"-CH\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 64,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector, not matching class attribute with empty value",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*=\"\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 65,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with single-quoted value, matching class attribute beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*=' apple']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 66,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with single-quoted value, matching class attribute ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*='orange ']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 67,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with single-quoted value, matching class attribute containing specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*='ple banana ora']",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 68,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with double-quoted value, matching class attribute beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*=\" apple\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 69,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with double-quoted value, matching class attribute ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*=\"orange \"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 70,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with double-quoted value, matching class attribute containing specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*=\"ple banana ora\"]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 71,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with unquoted value, matching class attribute beginning with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*= apple]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 72,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with unquoted value, matching class attribute ending with specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*=orange ]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 73,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "attr-contains-p1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Attribute contains selector with unquoted value, matching class attribute containing specified substring",
+      "outcome": "passed",
+      "selector": "#attr-contains [class*= banana ]",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 74,
+      "document": "content.xhtml",
+      "exclude": [
+        "element",
+        "fragment",
+        "detached"
+      ],
+      "expected": [
+        "html"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":root pseudo-class selector, matching document root element",
+      "outcome": "passed",
+      "selector": ":root",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 75,
+      "document": "content.xhtml",
+      "exclude": [
+        "document"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":root pseudo-class selector, not matching document root element",
+      "outcome": "passed",
+      "selector": ":root",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 76,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-td3",
+        "pseudo-nth-td9",
+        "pseudo-nth-tr3",
+        "pseudo-nth-td15"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-child selector, matching the third child element",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-table1 :nth-child(3)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 77,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-li3",
+        "pseudo-nth-li6",
+        "pseudo-nth-li9",
+        "pseudo-nth-li12"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-child selector, matching every third child element",
+      "outcome": "passed",
+      "selector": "#pseudo-nth li:nth-child(3n)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 78,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-li4",
+        "pseudo-nth-li6",
+        "pseudo-nth-li8",
+        "pseudo-nth-li10",
+        "pseudo-nth-li12"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-child selector, matching every second child element, starting from the fourth",
+      "outcome": "passed",
+      "selector": "#pseudo-nth li:nth-child(2n+4)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 79,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-em2",
+        "pseudo-nth-span3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-child selector, matching every fourth child element, starting from the third",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 :nth-child(4n-1)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 80,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-tr1",
+        "pseudo-nth-td4",
+        "pseudo-nth-td10",
+        "pseudo-nth-td16"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-last-child selector, matching the third last child element",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-table1 :nth-last-child(3)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 81,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-li1",
+        "pseudo-nth-li4",
+        "pseudo-nth-li7",
+        "pseudo-nth-li10"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-last-child selector, matching every third child element from the end",
+      "outcome": "passed",
+      "selector": "#pseudo-nth li:nth-last-child(3n)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 82,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-li1",
+        "pseudo-nth-li3",
+        "pseudo-nth-li5",
+        "pseudo-nth-li7",
+        "pseudo-nth-li9"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-last-child selector, matching every second child element from the end, starting from the fourth last",
+      "outcome": "passed",
+      "selector": "#pseudo-nth li:nth-last-child(2n+4)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 83,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-span2",
+        "pseudo-nth-span4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-last-child selector, matching every fourth element from the end, starting from the third last",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 :nth-last-child(4n-1)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 84,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-em3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-of-type selector, matching the third em element",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 em:nth-of-type(3)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 85,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-em2",
+        "pseudo-nth-span2",
+        "pseudo-nth-span4",
+        "pseudo-nth-strong2",
+        "pseudo-nth-em4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-of-type selector, matching every second element of their type",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 :nth-of-type(2n)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 86,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-span1",
+        "pseudo-nth-span3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-of-type selector, matching every second elemetn of their type, starting from the first",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 span:nth-of-type(2n-1)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 87,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-em2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-last-of-type selector, matching the third last em element",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 em:nth-last-of-type(3)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 88,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-span1",
+        "pseudo-nth-em1",
+        "pseudo-nth-strong1",
+        "pseudo-nth-em3",
+        "pseudo-nth-span3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-last-of-type selector, matching every second last element of their type",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 :nth-last-of-type(2n)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 89,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-span2",
+        "pseudo-nth-span4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":nth-last-of-type selector, matching every second last element of their type, starting from the last",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 span:nth-last-of-type(2n-1)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 90,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-em1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":first-of-type selector, matching the first em element",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 em:first-of-type",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 91,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-span1",
+        "pseudo-nth-em1",
+        "pseudo-nth-strong1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":first-of-type selector, matching the first of every type of element",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 :first-of-type",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 92,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-td1",
+        "pseudo-nth-td7",
+        "pseudo-nth-td13"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":first-of-type selector, matching the first td element in each table row",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-table1 tr :first-of-type",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 93,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-em4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":last-of-type selector, matching the last em elemnet",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 em:last-of-type",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 94,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-span4",
+        "pseudo-nth-strong2",
+        "pseudo-nth-em4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":last-of-type selector, matching the last of every type of element",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-p1 :last-of-type",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 95,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-nth-td6",
+        "pseudo-nth-td12",
+        "pseudo-nth-td18"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":last-of-type selector, matching the last td element in each table row",
+      "outcome": "passed",
+      "selector": "#pseudo-nth-table1 tr :last-of-type",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 96,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-first-child-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":first-child pseudo-class selector, matching first child div element",
+      "outcome": "passed",
+      "selector": "#pseudo-first-child div:first-child",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 97,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":first-child pseudo-class selector, doesn't match non-first-child elements",
+      "outcome": "passed",
+      "selector": ".pseudo-first-child-div2:first-child, .pseudo-first-child-div3:first-child",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 98,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-first-child-span1",
+        "pseudo-first-child-span3",
+        "pseudo-first-child-span5"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":first-child pseudo-class selector, matching first-child of multiple elements",
+      "outcome": "passed",
+      "selector": "#pseudo-first-child span:first-child",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 99,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-last-child-div3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":last-child pseudo-class selector, matching last child div element",
+      "outcome": "passed",
+      "selector": "#pseudo-last-child div:last-child",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 100,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":last-child pseudo-class selector, doesn't match non-last-child elements",
+      "outcome": "passed",
+      "selector": ".pseudo-last-child-div1:last-child, .pseudo-last-child-div2:first-child",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 101,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-last-child-span2",
+        "pseudo-last-child-span4",
+        "pseudo-last-child-span6"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":last-child pseudo-class selector, matching first-child of multiple elements",
+      "outcome": "passed",
+      "selector": "#pseudo-last-child span:last-child",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 102,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-only-span1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":pseudo-only-child pseudo-class selector, matching all only-child elements",
+      "outcome": "passed",
+      "selector": "#pseudo-only :only-child",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 103,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":pseudo-only-child pseudo-class selector, matching only-child em elements",
+      "outcome": "passed",
+      "selector": "#pseudo-only em:only-child",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 104,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-only-span1",
+        "pseudo-only-em1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":pseudo-only-of-type pseudo-class selector, matching all elements with no siblings of the same type",
+      "outcome": "passed",
+      "selector": "#pseudo-only :only-of-type",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 105,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-only-em1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":pseudo-only-of-type pseudo-class selector, matching em elements with no siblings of the same type",
+      "outcome": "passed",
+      "selector": "#pseudo-only em:only-of-type",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 106,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-empty-p1",
+        "pseudo-empty-p2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":empty pseudo-class selector, matching empty p elements",
+      "outcome": "passed",
+      "selector": "#pseudo-empty p:empty",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 107,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-empty-p1",
+        "pseudo-empty-p2",
+        "pseudo-empty-span1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":empty pseudo-class selector, matching all empty elements",
+      "outcome": "passed",
+      "selector": "#pseudo-empty :empty",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 108,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-link-a1",
+        "pseudo-link-a2",
+        "pseudo-link-area1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":link and :visited pseudo-class selectors, matching a and area elements with href attributes",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "#pseudo-link :link, #pseudo-link :visited",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 109,
+      "document": "content.xhtml",
+      "exclude": [
+        "element",
+        "fragment",
+        "detached"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":link and :visited pseudo-class selectors, matching no elements",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "#head :link, #head :visited",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 110,
+      "document": "content.xhtml",
+      "exclude": [
+        "document"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":link and :visited pseudo-class selectors, not matching link elements with href attributes",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "#head :link, #head :visited",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 111,
+      "document": "content.xhtml",
+      "exclude": [
+        "document"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":link and :visited pseudo-class selectors, chained, mutually exclusive pseudo-classes match nothing",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":link:visited",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 112,
+      "document": "content.xhtml",
+      "exclude": [
+        "document",
+        "element"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":target pseudo-class selector, matching the element referenced by the URL fragment identifier",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":target",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 113,
+      "document": "content.xhtml",
+      "exclude": [
+        "fragment",
+        "detached"
+      ],
+      "expected": [
+        "target"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":target pseudo-class selector, matching the element referenced by the URL fragment identifier",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": ":target",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 114,
+      "document": "content.xhtml",
+      "exclude": [
+        "detached",
+        "fragment"
+      ],
+      "expected": [
+        "pseudo-lang-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":lang pseudo-class selector, matching inherited language",
+      "outcome": "passed",
+      "selector": "#pseudo-lang-div1:lang(en)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 115,
+      "document": "content.xhtml",
+      "exclude": [
+        "document",
+        "element"
+      ],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":lang pseudo-class selector, not matching element with no inherited language",
+      "outcome": "passed",
+      "selector": "#pseudo-lang-div1:lang(en)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 116,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-lang-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":lang pseudo-class selector, matching specified language with exact value",
+      "outcome": "passed",
+      "selector": "#pseudo-lang-div2:lang(fr)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 117,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-lang-div3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":lang pseudo-class selector, matching specified language with partial value",
+      "outcome": "passed",
+      "selector": "#pseudo-lang-div3:lang(en)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 118,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":lang pseudo-class selector, not matching incorrect language",
+      "outcome": "passed",
+      "selector": "#pseudo-lang-div4:lang(es-AR)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 119,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-ui-input1",
+        "pseudo-ui-input2",
+        "pseudo-ui-input3",
+        "pseudo-ui-input4",
+        "pseudo-ui-input5",
+        "pseudo-ui-input6",
+        "pseudo-ui-input7",
+        "pseudo-ui-input8",
+        "pseudo-ui-input9",
+        "pseudo-ui-textarea1",
+        "pseudo-ui-button1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":enabled pseudo-class selector, matching all enabled form controls",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "#pseudo-ui :enabled",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 120,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":enabled pseudo-class selector, not matching link elements",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "#pseudo-link :enabled",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 121,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-ui-input10",
+        "pseudo-ui-input11",
+        "pseudo-ui-input12",
+        "pseudo-ui-input13",
+        "pseudo-ui-input14",
+        "pseudo-ui-input15",
+        "pseudo-ui-input16",
+        "pseudo-ui-input17",
+        "pseudo-ui-input18",
+        "pseudo-ui-textarea2",
+        "pseudo-ui-button2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":disabled pseudo-class selector, matching all disabled form controls",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "#pseudo-ui :disabled",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 122,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":disabled pseudo-class selector, not matching link elements",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "#pseudo-link :disabled",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 123,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "pseudo-ui-input4",
+        "pseudo-ui-input6",
+        "pseudo-ui-input13",
+        "pseudo-ui-input15"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":checked pseudo-class selector, matching checked radio buttons and checkboxes",
+      "outcome": "unsupported",
+      "reason": "Selector StateUnavailable",
+      "selector": "#pseudo-ui :checked",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 124,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "not-p1",
+        "not-p2",
+        "not-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":not pseudo-class selector, matching ",
+      "outcome": "passed",
+      "selector": "#not>:not(div)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 125,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "not-em1",
+        "not-em2",
+        "not-em3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":not pseudo-class selector, matching ",
+      "outcome": "passed",
+      "selector": "#not * :not(:first-child)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 126,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":not pseudo-class selector, matching nothing",
+      "outcome": "passed",
+      "selector": ":not(*)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 127,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":not pseudo-class selector, matching nothing",
+      "outcome": "passed",
+      "selector": ":not(*|*)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 128,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "not-p1",
+        "not-p2",
+        "not-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": ":not pseudo-class selector argument surrounded by spaces, matching ",
+      "outcome": "passed",
+      "selector": "#not>:not( div )",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 129,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":first-line pseudo-element (one-colon syntax) selector, not matching any elements",
+      "outcome": "passed",
+      "selector": "#pseudo-element:first-line",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 130,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "::first-line pseudo-element (two-colon syntax) selector, not matching any elements",
+      "outcome": "passed",
+      "selector": "#pseudo-element::first-line",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 131,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":first-letter pseudo-element (one-colon syntax) selector, not matching any elements",
+      "outcome": "passed",
+      "selector": "#pseudo-element:first-letter",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 132,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "::first-letter pseudo-element (two-colon syntax) selector, not matching any elements",
+      "outcome": "passed",
+      "selector": "#pseudo-element::first-letter",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 133,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":before pseudo-element (one-colon syntax) selector, not matching any elements",
+      "outcome": "passed",
+      "selector": "#pseudo-element:before",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 134,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "::before pseudo-element (two-colon syntax) selector, not matching any elements",
+      "outcome": "passed",
+      "selector": "#pseudo-element::before",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 135,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": ":after pseudo-element (one-colon syntax) selector, not matching any elements",
+      "outcome": "passed",
+      "selector": "#pseudo-element:after",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 136,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "::after pseudo-element (two-colon syntax) selector, not matching any elements",
+      "outcome": "passed",
+      "selector": "#pseudo-element::after",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 137,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "class-p1",
+        "class-p2",
+        "class-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Class selector, matching element with specified class",
+      "outcome": "passed",
+      "selector": ".class-p",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 138,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "class-div1",
+        "class-div2",
+        "class-p4",
+        "class-div3",
+        "class-p6",
+        "class-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Class selector, chained, matching only elements with all specified classes",
+      "outcome": "passed",
+      "selector": "#class .apple.orange.banana",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 139,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "class-div1",
+        "class-div2",
+        "class-div3",
+        "class-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Class Selector, chained, with type selector",
+      "outcome": "passed",
+      "selector": "div.apple.banana.orange",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 140,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "class-span1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Class selector, matching element with class value using non-ASCII characters (1)",
+      "outcome": "passed",
+      "selector": ".台北Táiběi",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 141,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "class-span1",
+        "class-span2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Class selector, matching multiple elements with class value using non-ASCII characters",
+      "outcome": "passed",
+      "selector": ".台北",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 142,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "class-span1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Class selector, chained, matching element with multiple class values using non-ASCII characters (1)",
+      "outcome": "passed",
+      "selector": ".台北Táiběi.台北",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 143,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "class-span3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Class selector, matching element with class with escaped character",
+      "outcome": "passed",
+      "selector": ".foo\\:bar",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 144,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "class-span4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Class selector, matching element with class with escaped character",
+      "outcome": "passed",
+      "selector": ".test\\.foo\\[5\\]bar",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 145,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "id-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, matching element with specified id",
+      "outcome": "passed",
+      "selector": "#id #id-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 146,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "id-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, chained, matching element with specified id",
+      "outcome": "passed",
+      "selector": "#id-div1, #id-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 147,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "id-div1",
+        "id-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, chained, matching element with specified id",
+      "outcome": "passed",
+      "selector": "#id-div1, #id-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 148,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "id-div1",
+        "id-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID Selector, chained, with type selector",
+      "outcome": "passed",
+      "selector": "div#id-div1, div#id-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 149,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, not matching non-existent descendant",
+      "outcome": "passed",
+      "selector": "#id #none",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 150,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, not matching non-existent ancestor",
+      "outcome": "passed",
+      "selector": "#none #id-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 151,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "id-li-duplicate",
+        "id-li-duplicate",
+        "id-li-duplicate",
+        "id-li-duplicate"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, matching multiple elements with duplicate id",
+      "outcome": "passed",
+      "selector": "#id-li-duplicate",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 152,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "台北Táiběi"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, matching id value using non-ASCII characters (1)",
+      "outcome": "passed",
+      "selector": "#台北Táiběi",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 153,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "台北"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, matching id value using non-ASCII characters (2)",
+      "outcome": "passed",
+      "selector": "#台北",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 154,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "台北Táiběi",
+        "台北"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, matching id values using non-ASCII characters (1)",
+      "outcome": "passed",
+      "selector": "#台北Táiběi, #台北",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 155,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "#foo:bar"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, matching element with id with escaped character",
+      "outcome": "passed",
+      "selector": "#\\#foo\\:bar",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 156,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "test.foo[5]bar"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "ID selector, matching element with id with escaped character",
+      "outcome": "passed",
+      "selector": "#test\\.foo\\[5\\]bar",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 157,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "any-namespace-div1",
+        "any-namespace-div2",
+        "any-namespace-div3",
+        "any-namespace-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Namespace selector, matching element with any namespace",
+      "outcome": "passed",
+      "selector": "#any-namespace *|div",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 158,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "no-namespace-div3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Namespace selector, matching div elements in no namespace only",
+      "outcome": "passed",
+      "selector": "#no-namespace |div",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 159,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "no-namespace-div3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Namespace selector, matching any elements in no namespace only",
+      "outcome": "passed",
+      "selector": "#no-namespace |*",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 160,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "descendant-div1",
+        "descendant-div2",
+        "descendant-div3",
+        "descendant-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Descendant combinator, matching element that is a descendant of an element with id",
+      "outcome": "passed",
+      "selector": "#descendant div",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 161,
+      "document": "content.xhtml",
+      "exclude": [
+        "detached",
+        "fragment"
+      ],
+      "expected": [
+        "descendant-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Descendant combinator, matching element with id that is a descendant of an element",
+      "outcome": "passed",
+      "selector": "body #descendant-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 162,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "descendant-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Descendant combinator, matching element with id that is a descendant of an element",
+      "outcome": "passed",
+      "selector": "div #descendant-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 163,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "descendant-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Descendant combinator, matching element with id that is a descendant of an element with id",
+      "outcome": "passed",
+      "selector": "#descendant #descendant-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 164,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "descendant-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Descendant combinator, matching element with class that is a descendant of an element with id",
+      "outcome": "passed",
+      "selector": "#descendant .descendant-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 165,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "descendant-div3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Descendant combinator, matching element with class that is a descendant of an element with class",
+      "outcome": "passed",
+      "selector": ".descendant-div1 .descendant-div3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 166,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Descendant combinator, not matching element with id that is not a descendant of an element with id",
+      "outcome": "passed",
+      "selector": "#descendant-div1 #descendant-div4",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 167,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "descendant-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Descendant combinator, whitespace characters",
+      "outcome": "passed",
+      "selector": "#descendant\t\r\n#descendant-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 168,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div1",
+        "child-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, matching element that is a child of an element with id",
+      "outcome": "passed",
+      "selector": "#child>div",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 169,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, matching element with id that is a child of an element",
+      "outcome": "passed",
+      "selector": "div>#child-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 170,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, matching element with id that is a child of an element with id",
+      "outcome": "passed",
+      "selector": "#child>#child-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 171,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, matching element with id that is a child of an element with class",
+      "outcome": "passed",
+      "selector": "#child-div1>.child-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 172,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, matching element with class that is a child of an element with class",
+      "outcome": "passed",
+      "selector": ".child-div1>.child-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 173,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, not matching element with id that is not a child of an element with id",
+      "outcome": "passed",
+      "selector": "#child>#child-div3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 174,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, not matching element with id that is not a child of an element with class",
+      "outcome": "passed",
+      "selector": "#child-div1>.child-div3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 175,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, not matching element with class that is not a child of an element with class",
+      "outcome": "passed",
+      "selector": ".child-div1>.child-div3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 176,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, surrounded by whitespace",
+      "outcome": "passed",
+      "selector": "#child-div1\t\r\n>\t\r\n#child-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 177,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, whitespace after",
+      "outcome": "passed",
+      "selector": "#child-div1>\t\r\n#child-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 178,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, whitespace before",
+      "outcome": "passed",
+      "selector": "#child-div1\t\r\n>#child-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 179,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "child-div2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Child combinator, no whitespace",
+      "outcome": "passed",
+      "selector": "#child-div1>#child-div2",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 180,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, matching element that is an adjacent sibling of an element with id",
+      "outcome": "passed",
+      "selector": "#adjacent-div2+div",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 181,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, matching element with id that is an adjacent sibling of an element",
+      "outcome": "passed",
+      "selector": "div+#adjacent-div4",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 182,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, matching element with id that is an adjacent sibling of an element with id",
+      "outcome": "passed",
+      "selector": "#adjacent-div2+#adjacent-div4",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 183,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, matching element with class that is an adjacent sibling of an element with id",
+      "outcome": "passed",
+      "selector": "#adjacent-div2+.adjacent-div4",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 184,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, matching element with class that is an adjacent sibling of an element with class",
+      "outcome": "passed",
+      "selector": ".adjacent-div2+.adjacent-div4",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 185,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-p2"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, matching p element that is an adjacent sibling of a div element",
+      "outcome": "passed",
+      "selector": "#adjacent div+p",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 186,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, not matching element with id that is not an adjacent sibling of an element with id",
+      "outcome": "passed",
+      "selector": "#adjacent-div2+#adjacent-p2, #adjacent-div2+#adjacent-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 187,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, surrounded by whitespace",
+      "outcome": "passed",
+      "selector": "#adjacent-p2\t\r\n+\t\r\n#adjacent-p3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 188,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, whitespace after",
+      "outcome": "passed",
+      "selector": "#adjacent-p2+\t\r\n#adjacent-p3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 189,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, whitespace before",
+      "outcome": "passed",
+      "selector": "#adjacent-p2\t\r\n+#adjacent-p3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 190,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "adjacent-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Adjacent sibling combinator, no whitespace",
+      "outcome": "passed",
+      "selector": "#adjacent-p2+#adjacent-p3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 191,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-div4",
+        "sibling-div6"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, matching element that is a sibling of an element with id",
+      "outcome": "passed",
+      "selector": "#sibling-div2~div",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 192,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, matching element with id that is a sibling of an element",
+      "outcome": "passed",
+      "selector": "div~#sibling-div4",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 193,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-div4"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, matching element with id that is a sibling of an element with id",
+      "outcome": "passed",
+      "selector": "#sibling-div2~#sibling-div4",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 194,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-div4",
+        "sibling-div6"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, matching element with class that is a sibling of an element with id",
+      "outcome": "passed",
+      "selector": "#sibling-div2~.sibling-div",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 195,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-p2",
+        "sibling-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, matching p element that is a sibling of a div element",
+      "outcome": "passed",
+      "selector": "#sibling div~p",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 196,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, not matching element with id that is not a sibling after a p element",
+      "outcome": "passed",
+      "selector": "#sibling>p~div",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 197,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, not matching element with id that is not a sibling after an element with id",
+      "outcome": "passed",
+      "selector": "#sibling-div2~#sibling-div3, #sibling-div2~#sibling-div1",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 198,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, surrounded by whitespace",
+      "outcome": "passed",
+      "selector": "#sibling-p2\t\r\n~\t\r\n#sibling-p3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 199,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, whitespace after",
+      "outcome": "passed",
+      "selector": "#sibling-p2~\t\r\n#sibling-p3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 200,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, whitespace before",
+      "outcome": "passed",
+      "selector": "#sibling-p2\t\r\n~#sibling-p3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 201,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "sibling-p3"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "General sibling combinator, no whitespace",
+      "outcome": "passed",
+      "selector": "#sibling-p2~#sibling-p3",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 202,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "group-em1",
+        "group-strong1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Syntax, group of selectors separator, surrounded by whitespace",
+      "outcome": "passed",
+      "selector": "#group em\t\r \n,\t\r \n#group strong",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 203,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "group-em1",
+        "group-strong1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Syntax, group of selectors separator, whitespace after",
+      "outcome": "passed",
+      "selector": "#group em,\t\r\n#group strong",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 204,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "group-em1",
+        "group-strong1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Syntax, group of selectors separator, whitespace before",
+      "outcome": "passed",
+      "selector": "#group em\t\r\n,#group strong",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 205,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [
+        "group-em1",
+        "group-strong1"
+      ],
+      "html": false,
+      "mode": "ids",
+      "name": "Syntax, group of selectors separator, no whitespace",
+      "outcome": "passed",
+      "selector": "#group em,#group strong",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 206,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Slotted selector",
+      "outcome": "unsupported",
+      "reason": "Selector Unsupported(\"functional pseudo-elements\")",
+      "selector": "::slotted(foo)",
+      "suite": "valid_selectors"
+    },
+    {
+      "case": 207,
+      "document": "content.xhtml",
+      "exclude": [],
+      "expected": [],
+      "html": false,
+      "mode": "ids",
+      "name": "Slotted selector (no matching closing paren)",
+      "outcome": "unsupported",
+      "reason": "Selector Unsupported(\"functional pseudo-elements\")",
+      "selector": "::slotted(foo",
+      "suite": "valid_selectors"
+    }
+  ],
+  "scope": "Native selector queries against independent literal expectations/static XML trees, not XML loading, upstream Python/JS, CSSOM, style, layout or website conformance.",
+  "total": 463
+}

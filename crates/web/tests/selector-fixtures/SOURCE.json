@@ -1,0 +1,23 @@
+{
+  "repository": "https://github.com/Kozea/cssselect2",
+  "revision": "fc22accd5fdba764d95263fa8e6c97ce24f75f3e",
+  "css_syntax_repository": "https://github.com/SimonSapin/css-parsing-tests",
+  "css_syntax_revision": "203ce36bffd617db7f118c551e32794561fb273d",
+  "scope": "Literal selector assertions and XML tree data; not upstream Python execution, XML loading, JS, CSSOM or rendering. See README.md.",
+  "files": {
+    "An+B.json": "0deb798e84ecf7f08de3c89b3ecdc65caceb8f31a45b03fcf3622e6ba69dfd2b",
+    "CC0-LICENSE": "5f9019a92f4aa8917aadc8e035aa673c2c1bf08d5ca2e535a0564106599f44eb",
+    "CSSSELECT2-LICENSE": "6fd97229a1d1b0f6a8b41e109f413426dbc0874b1e03746d66cc33282601c2c2",
+    "LICENSE": "3b7fcc36a98cc1cb73085b3df796480d681b628d9f21650dc3a7ff46a4b755ab",
+    "README.md": "a04c7881c1060694bb1839784a61d5d50b3da8ca674b076c1428a0a8a32dc05a",
+    "WPT-LICENSE.md": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
+    "content.xhtml": "54329900ef6499a6d34683b72c991af4a78e83e9ae5cbe34ef0de3556eb502ca",
+    "derived.json": "ef858bb116cea6ab8e41bde3c75e4927811887c99976b5f93ce5d60807897226",
+    "generate.py": "8b0f04ccd6a0b2735bdf190d5c6c4e3cd0891187aee914b2d0422cc5adcf9295",
+    "ids.html": "4506101b3f3e686bd81ff4870ec09aff0bd603b22ccae5c9726c8e44e81963c0",
+    "shakespeare.html": "488f55ff15d01ccad359d75b77692cda9090c0dba13b23a540388d901b32c181",
+    "test_cssselect2.py": "ea42decef41a9d38a4749ea9747f22ded5d8a3481881068e1bb4a555896fbe37",
+    "w3_selectors.py": "eb454dc775cd69f560c22ecb383894db0f5d5186fceb4c4c4aed2a82bf4cd31f",
+    ".gitattributes": "891b5f14e64f96f0ddef72287fa892ee3e444098c08576a4a6b57adb57f16010"
+  }
+}

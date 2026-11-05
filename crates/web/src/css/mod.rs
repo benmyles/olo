@@ -3,6 +3,7 @@
 mod bytes;
 pub use bytes::{ByteDecoder, ByteOptions, ByteParseError, ByteSyntax, EncodingChoice, EncodingSource, encoding};
 mod parser;
+pub mod selectors;
 mod syntax;
 pub use parser::{ParseError, Statement, StatementKind, SyntaxError};
 mod tokenizer;

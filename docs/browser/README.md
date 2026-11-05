@@ -6,7 +6,7 @@ engine does not meet the objective. The installed browser remains
 available while this one is developed. Nothing here changes defaults.
 
 **Status: static HTML/DOM document and fragment construction plus generic
-CSS syntax are implemented. No browser shell, style calculation, layout or
+CSS syntax and selector compilation/matching are implemented. No browser shell, style calculation, layout or
 JavaScript execution yet; no demonstrated website compatibility.** The 99% target is an acceptance criterion,
 not a current capability. Passing 100 selected sites alone cannot establish
 compatibility with 99% of the web.
