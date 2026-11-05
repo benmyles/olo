@@ -277,6 +277,19 @@ pub mod av1 {
             matches!(self.transfer, super::hdr::TRC_PQ | super::hdr::TRC_HLG)
         }
 
+        /// Its colours go past sRGB's (BT.2020, Display P3).
+        pub fn is_wide(&self) -> bool {
+            super::hdr::wide(self.primaries)
+        }
+
+        /// RGBA as `to_rgba`, but a wide picture's in Display P3 (said by
+        /// the second: true), for a window that can draw in it rather
+        /// than clipped to sRGB.
+        pub fn to_rgba_wide(&self) -> (Vec<u8>, bool) {
+            let wide = self.is_wide();
+            (self.rgba(wide), wide)
+        }
+
         #[cfg(test)]
         pub(crate) fn synthetic(width: u32, height: u32, bpc: u32, chroma: (u32, u32), planes: [Vec<u16>; 3], matrix: u32, full_range: bool) -> Frame {
             let cw = (width as usize + chroma.0 as usize) >> chroma.0;
@@ -295,7 +308,12 @@ pub mod av1 {
             }
         }
 
+        /// RGBA in sRGB (HDR and wide pictures converted, `hdr`).
         pub fn to_rgba(&self) -> Vec<u8> {
+            self.rgba(false)
+        }
+
+        fn rgba(&self, p3: bool) -> Vec<u8> {
             let shift = (self.bpc - 8) as i32;
             let max = ((1u32 << self.bpc) - 1) as f32;
             let half = (1u32 << (self.bpc - 1)) as f32;
@@ -307,7 +325,7 @@ pub mod av1 {
                 && !matches!(self.matrix, DAV1D_MC_IDENTITY | DAV1D_MC_SMPTE_YCGCO)
                 && super::hdr::needed(self.primaries, self.transfer)
             {
-                return self.to_rgba_mapped(chroma, (y0, ys, cs, half), (kr, kb, kg));
+                return self.to_rgba_mapped(chroma, (y0, ys, cs, half), (kr, kb, kg), p3);
             }
             if let Some((sx, sy)) = self.chroma
                 && !matches!(self.matrix, DAV1D_MC_IDENTITY | DAV1D_MC_SMPTE_YCGCO)
@@ -343,11 +361,11 @@ pub mod av1 {
         /// HDR or wide-gamut video for an sRGB screen (`hdr::Mapping`):
         /// Y′CbCr to R′G′B′ by tables in 16.16 fixed point, as the plain
         /// path does but to the mapping's steps, then each sample mapped;
-        /// rows split over up to four threads for a picture of a
+        /// rows split over up to eight threads for a picture of a
         /// megapixel or more.
-        fn to_rgba_mapped(&self, (sx, sy): (u32, u32), (y0, ys, cs, half): (f32, f32, f32, f32), (kr, kb, kg): (f32, f32, f32)) -> Vec<u8> {
+        fn to_rgba_mapped(&self, (sx, sy): (u32, u32), (y0, ys, cs, half): (f32, f32, f32, f32), (kr, kb, kg): (f32, f32, f32), p3: bool) -> Vec<u8> {
             use super::hdr::{Mapping, STEPS};
-            let mapping = Mapping::new(self.primaries, self.transfer, self.peak);
+            let mapping = Mapping::new(self.primaries, self.transfer, self.peak, p3);
             let n = 1usize << self.bpc;
             let scale = (STEPS - 1) as f32 * 65536.0;
             let fix = |v: f32| (v * scale).round() as i32;

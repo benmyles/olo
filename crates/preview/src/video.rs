@@ -44,10 +44,12 @@ struct Frame {
 #[derive(Clone)]
 pub enum Picture {
     Rgba(Image),
-    /// Straight BGRA bytes, `size` pixels (what pages take).
+    /// Straight BGRA bytes, `size` pixels (what pages take); `p3`: in
+    /// Display P3 (a wide video's), else sRGB.
     Bgra {
         size: [usize; 2],
         data: Arc<Vec<u8>>,
+        p3: bool,
     },
 }
 
@@ -56,7 +58,15 @@ impl Picture {
     pub fn into_image(self) -> Image {
         match self {
             Picture::Rgba(i) => i,
-            Picture::Bgra { size, data } => Arc::new(Bitmap::from_bgra_unmultiplied(size, &data)),
+            Picture::Bgra { size, data, p3 } => Arc::new(Bitmap { p3, ..Bitmap::from_bgra_unmultiplied(size, &data) }),
+        }
+    }
+
+    /// Its numbers are Display P3's (a wide video's: BT.2020, P3).
+    pub fn p3(&self) -> bool {
+        match self {
+            Picture::Rgba(i) => i.p3,
+            Picture::Bgra { p3, .. } => *p3,
         }
     }
 }
@@ -90,14 +100,16 @@ impl Pic {
 
     fn picture(&self, bgra: bool) -> Picture {
         match self {
-            Pic::H264(p) if bgra => Picture::Bgra { size: [p.width, p.height], data: Arc::new(p.bgra()) },
+            Pic::H264(p) if bgra => Picture::Bgra { size: [p.width, p.height], data: Arc::new(p.bgra()), p3: false },
             Pic::H264(p) => Picture::Rgba(p.image()),
+            // (A wide video's in Display P3: drawn so in a window drawing
+            // in it, converted in one that isn't.)
             Pic::Planes(f) if bgra => {
-                let mut data = f.to_rgba();
+                let (mut data, p3) = f.to_rgba_wide();
                 for px in data.as_chunks_mut::<4>().0 {
                     px.swap(0, 2);
                 }
-                Picture::Bgra { size: [f.width as usize, f.height as usize], data: Arc::new(data) }
+                Picture::Bgra { size: [f.width as usize, f.height as usize], data: Arc::new(data), p3 }
             }
             Pic::Planes(f) => Picture::Rgba(av1_image(f)),
             Pic::Ready(p) => p.clone(),
@@ -444,7 +456,8 @@ fn ripen(m: &Mutex<Shared>) {
 }
 
 fn av1_image(f: &av1::Frame) -> Image {
-    Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba()))
+    let (rgba, p3) = f.to_rgba_wide();
+    Arc::new(Bitmap { p3, ..Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &rgba) })
 }
 
 /// One coded picture (H.264 in start-code form, AV1 as stored), with

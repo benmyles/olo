@@ -56,10 +56,17 @@ pub struct Mapping {
     encode: Vec<u8>,
 }
 
+/// Whether pictures with these primaries are wider than sRGB (shown in
+/// Display P3 where a window can draw in it, rather than clipped).
+pub fn wide(primaries: u32) -> bool {
+    matches!(primaries, PRI_BT2020 | PRI_P3_D65)
+}
+
 impl Mapping {
     /// For pictures with these primaries and transfer, mastered up to
-    /// `peak` cd/m² (0 when it isn't said).
-    pub fn new(primaries: u32, transfer: u32, peak: f32) -> Mapping {
+    /// `peak` cd/m² (0 when it isn't said), to sRGB, or to Display P3
+    /// (`p3`: its primaries, sRGB's curve, as Display P3 pictures are).
+    pub fn new(primaries: u32, transfer: u32, peak: f32, p3: bool) -> Mapping {
         let white = olo_color::SDR_WHITE_NITS;
         let n = (STEPS - 1) as f64;
         let light: Vec<f32> = (0..STEPS)
@@ -78,7 +85,7 @@ impl Mapping {
             PRI_P3_D65 => olo_color::Primaries::DISPLAY_P3,
             _ => olo_color::Primaries::SRGB,
         };
-        let m = from.to(&olo_color::Primaries::SRGB);
+        let m = from.to(if p3 { &olo_color::Primaries::DISPLAY_P3 } else { &olo_color::Primaries::SRGB });
         let matrix = (!m.is_identity(1e-6)).then(|| m.0.map(|row| row.map(|v| v as f32)));
         let xyz = from.to_xyz().0;
         let weights = [xyz[1][0] as f32, xyz[1][1] as f32, xyz[1][2] as f32];
@@ -143,7 +150,7 @@ mod tests {
 
     #[test]
     fn pq_paper_white_is_white_and_highlights_roll_off() {
-        let m = Mapping::new(PRI_BT2020, TRC_PQ, 1000.0);
+        let m = Mapping::new(PRI_BT2020, TRC_PQ, 1000.0, false);
         let grey = |nits: f64| m.map(pq(nits), pq(nits), pq(nits))[0];
         // BT.2408's reference white shows nearly white (the roll-off
         // starts at four fifths, room left for highlights).
@@ -165,7 +172,7 @@ mod tests {
     fn hlg_reference_white_is_white() {
         // HLG's reference white: 75% signal (BT.2408), 203 cd/m² on a
         // 1,000 cd/m² screen.
-        let m = Mapping::new(PRI_BT2020, TRC_HLG, 0.0);
+        let m = Mapping::new(PRI_BT2020, TRC_HLG, 0.0, false);
         let s = (0.75 * (STEPS - 1) as f64) as usize;
         let w = m.map(s, s, s);
         assert!(w.iter().all(|&v| v >= 240), "{w:?}");
@@ -176,7 +183,7 @@ mod tests {
 
     #[test]
     fn bt2020_green_fits_srgb_and_greys_stay_grey() {
-        let m = Mapping::new(PRI_BT2020, 1, 0.0);
+        let m = Mapping::new(PRI_BT2020, 1, 0.0, false);
         let top = STEPS - 1;
         let g = m.map(0, top, 0);
         assert!(g[1] > 200 && g[0] < 120 && g[2] < 120, "{g:?}");
@@ -184,5 +191,20 @@ mod tests {
         let grey = m.map(half, half, half);
         assert!(grey[0].abs_diff(grey[1]) <= 1 && grey[1].abs_diff(grey[2]) <= 1, "{grey:?}");
         assert!(!needed(PRI_BT709, 1) && needed(PRI_BT2020, 1) && needed(PRI_BT709, TRC_PQ));
+    }
+
+    /// To Display P3, BT.2020's green keeps more of itself than in sRGB
+    /// (P3's green is nearer it), and P3 pictures go through unchanged.
+    #[test]
+    fn to_display_p3() {
+        let top = STEPS - 1;
+        let (srgb, p3) = (Mapping::new(PRI_BT2020, 1, 0.0, false), Mapping::new(PRI_BT2020, 1, 0.0, true));
+        let (a, b) = (srgb.map(top / 4, top, top / 4), p3.map(top / 4, top, top / 4));
+        assert!(b[0] > a[0] || b[2] > a[2], "sRGB {a:?}, P3 {b:?}: in P3 it needs less clipping");
+        let same = Mapping::new(PRI_P3_D65, 1, 0.0, true);
+        let v = same.map(1000, 3000, 500);
+        let enc = |i: usize| (olo_color::Transfer::Srgb.encode(olo_color::Transfer::Srgb.decode(i as f64 / top as f64)) * 255.0).round() as u8;
+        assert!(v[0].abs_diff(enc(1000)) <= 1 && v[1].abs_diff(enc(3000)) <= 1 && v[2].abs_diff(enc(500)) <= 1, "{v:?}");
+        assert!(wide(PRI_BT2020) && wide(PRI_P3_D65) && !wide(PRI_BT709));
     }
 }

@@ -486,9 +486,10 @@ of Finished; a new one goes where its priority puts it.
     pictures converted from their profiles (`olo_images`), Viewer
     drawing in Display P3 while it shows a wide photo (GPUI's
     `Window::set_gamut`, tried headless), night light in HDR, and HDR
-    video (HDR10, HLG) shown for SDR screens (2026-11-05). Left besides
-    the panel: HDR video as HDR on an HDR display (its pictures handed
-    over in PQ), and wide SDR video in P3.
+    video (HDR10, HLG) shown for SDR screens, and wide video (HDR's
+    too) drawn in Display P3 rather than clipped to sRGB (2026-11-05).
+    Left besides the panel: HDR video as HDR on an HDR display (its
+    pictures handed over in PQ).
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole

@@ -62,6 +62,9 @@ pub enum PreviewEvent {
     /// What it shows arrived, or it failed: the window may want another
     /// size (see [`PreviewView::ideal_size`]).
     Shown,
+    /// What it shows changed gamut ([`PreviewView::gamut`]): a wide
+    /// video's first picture came (or it stopped showing one).
+    Gamut,
 }
 
 /// A preview of a file, as Quick Look and the Viewer show one.
@@ -293,6 +296,16 @@ impl PreviewView {
     /// The picture's view (zoom, scale, where it's drawn, dragging out).
     pub fn image_view(&self) -> &Entity<ImageView> {
         &self.image
+    }
+
+    /// What its picture's numbers are in: a wide photo's or video's
+    /// Display P3 (the window may draw in it, `Window::set_gamut`), else
+    /// sRGB.
+    pub fn gamut(&self, cx: &App) -> olo_ui::gpui::Gamut {
+        match &self.frame {
+            Some(f) if self.video.is_some() => f.gamut(),
+            _ => self.image.read(cx).gamut(),
+        }
     }
 
     /// Whether a picture is shown (so zoom commands apply).
@@ -831,12 +844,17 @@ impl PreviewView {
         if let Some(v) = &self.video {
             let (frame, next) = v.tick_picture();
             if let Some(pic) = frame {
+                let gamut = if pic.p3() { olo_ui::gpui::Gamut::DisplayP3 } else { olo_ui::gpui::Gamut::Srgb };
                 let img = match pic {
-                    video::Picture::Bgra { size: [w, h], data } => image::RgbaImage::from_raw(w as u32, h as u32, (*data).clone()),
+                    video::Picture::Bgra { size: [w, h], data, .. } => image::RgbaImage::from_raw(w as u32, h as u32, (*data).clone()),
                     video::Picture::Rgba(b) => image::RgbaImage::from_raw(b.size[0] as u32, b.size[1] as u32, b.to_bgra_unmultiplied()),
                 };
                 if let Some(img) = img {
-                    self.dropped.extend(self.frame.replace(Arc::new(RenderImage::new([image::Frame::new(img)]))));
+                    let was = self.frame.as_ref().map(|f| f.gamut());
+                    self.dropped.extend(self.frame.replace(Arc::new(RenderImage::new([image::Frame::new(img)]).with_gamut(gamut))));
+                    if was != Some(gamut) {
+                        cx.emit(PreviewEvent::Gamut);
+                    }
                 }
             }
             next_due = next;

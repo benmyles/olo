@@ -480,8 +480,10 @@ impl Doc {
                 let sub = cx.subscribe(&preview, |d: &mut Doc, prev, e: &PreviewEvent, cx| {
                     // A photo wider than sRGB shown whole: the window draws
                     // in Display P3 while it shows one (`Gamut`).
-                    if *e == PreviewEvent::Shown {
-                        let gamut = prev.read(cx).image_view().read(cx).gamut();
+                    // A video wider than sRGB (BT.2020, P3) too, from its
+                    // first picture.
+                    if matches!(*e, PreviewEvent::Shown | PreviewEvent::Gamut) {
+                        let gamut = prev.read(cx).gamut(cx);
                         d.set_gamut(gamut, cx);
                     }
                     if *e == PreviewEvent::Shown && !d.sized {

@@ -3049,11 +3049,15 @@ off by the brightest channel (hue kept) to reach white at the mastered
 peak (1,000 cd/m² unsaid), what's outside sRGB clipped, sRGB's curve.
 Every step per sample is a table or a few multiplies, on up to eight
 threads for a megapixel or more: a 1080p picture 4.6 ms, 4K 14.6 ms
-(SDR's plain path, one thread: 5.2 and 16.8). Viewer's facts say it
-("Colour: HDR (PQ), BT.2020, mastered to 1,000 cd/m²"). Not yet: HDR
-shown as HDR on an HDR display (the picture handed to app_server in
-PQ, `wp_color_management_v1`), and wide SDR video in Display P3 rather
-than clipped to sRGB.
+(SDR's plain path, one thread: 5.2 and 16.8). A wide video's pictures
+(BT.2020 or P3, HDR's among them) are converted into Display P3
+rather than sRGB (`Frame::to_rgba_wide`, tagged so: `Picture::p3`,
+`RenderImage::with_gamut`), and Viewer's window draws in P3 while one
+shows (`PreviewEvent::Gamut` from its first picture), as for a wide
+photo: on a P3 panel its colours aren't clipped to sRGB's. Viewer's
+facts say it ("Colour: HDR (PQ), BT.2020, mastered to 1,000 cd/m²").
+Not yet: HDR shown as HDR on an HDR display (the picture handed to
+app_server in PQ, `wp_color_management_v1`).
 
 The display hardware's own colour stages (the CRTC's degamma, CTM and
 gamma LUTs; Intel's per-plane pipelines, `COLOR_PIPELINE`) aren't used:
