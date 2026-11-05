@@ -67,7 +67,7 @@ def ours(display):
 def main():
     failures = []
     try:
-        ts("start", NAME, "2560x1600", "--session")
+        ts("start", NAME, "2560x1600", "--session", "--owner", str(os.getpid()))
         ipc({"type": "set_windowing_mode", "mode": "auto_tiling"})
         ts("run", NAME, "olo-styled-edit")
         time.sleep(1.5)

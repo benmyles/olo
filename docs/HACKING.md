@@ -115,8 +115,9 @@ like pixel alignment is.
    in: a lock taken again by the thread holding it, or two taken in
    both orders anywhere (the deadlock waiting to happen, though this run
    never interleaved them), panics at once with both stacks (run with
-   `RUST_LIB_BACKTRACE=1`), so tests, test sessions, `wm-fuzz` and
-   `wm-sweep` find it before anyone hangs; release builds get std's
+   `RUST_LIB_BACKTRACE=1`), so tests, test sessions, the fuzzers on
+   debug builds (`olo-fuzz sweep --debug`) and `wm-sweep` find it
+   before anyone hangs; release builds get std's
    locks as they are. (It found Smithay's keyboard taking its keymap's
    lock and its state's in both orders.) `tools/dev/lockcheck` looks
    without running: clippy's lints for guards held through a `match`
@@ -2700,7 +2701,27 @@ $T start mine --scale 1.5      # another scale from the start
 $T scale mine 1                # every screen to 1× (then 1.5, then 2: check all three)
 $T hz mine 120                 # every screen at 120 Hz (60 to start)
 $T stop mine
+$T start mine --owner PID      # ends (stopped, folder removed) when process PID does
+$T tidy                        # what ended sessions left in the runtime dir
 ```
+
+`stop` ends everything of a session: its process group, its bus, what
+`run` started, and anything carrying its environment (its display and
+its own config dir: olo-termd and its shells, a program started and
+forgotten; the person's session never matches). It waits until all of
+it has gone, killing what hasn't after 3 s, so a tool that stops a
+session and goes on finds nothing of it still running; then it removes
+the state its apps left for their next selves (`olo-restore-PID.json`:
+an app that saw app_server go writes it and re-executes, and killed
+first, it stays) and the display's files in the runtime directory
+(its socket and lock, the apps' sockets, layouts kept for a reload),
+holding the display's lock as app_server takes it, so a live session's
+are never touched. A tool that starts sessions passes `--owner` with
+its own pid (the fuzzers, ui-lint, bench, order-check, rescue-check):
+a watcher (`tsession _watch`, blocked on both processes' pidfds, no
+polling) stops the session and removes its folder if the tool ends
+first, killed or not, so a tool cut short leaves no app_server running
+for a day.
 
 Each headless screen draws at its mode's rate (60 or 120 Hz), on time:
 check anything that moves at 120 Hz too. Every kit app's `{"frames":true}`
@@ -2756,7 +2777,18 @@ The headless server renders on the GPU's render node and announces it
 in dmabuf feedback, so GL clients (Chrome) get hardware GL
 as on the desktop rather than Mesa's software fallback.
 
-`tools/dev/wm-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--tiles] [--trace-tiles]` is an
+The fuzzers are one program, `olo-fuzz` (crates/fuzz, built with the
+workspace: `target/release/olo-fuzz`), in Rust like the rest: each talks
+to app_server over one connection kept open (`olo_protocol::Client`),
+starts the session's programs itself, and a sweep runs many seeds at
+once as threads of one process. Each takes `--seed N` (a run is
+reproducible from its seed, printed first, as long as the session starts
+the same way), `--steps N`, `--only OPS` (just those steps),
+`--keep-going`, `--quiet` and `--trail STEPS` (every window's frame as
+it changed during those steps, with when). The programs it starts come
+from the session's own build (release, or debug for a debug session).
+
+`olo-fuzz wm NAME [--tiles] [--trace-tiles]` is an
 adversarial window-management fuzzer: on a session with two screens and
 the shell (`$T start fz 2560x1600,1920x1080 --session --shell`) it opens
 and closes Terminal, StyledEdit and Tracker windows and drives random
@@ -2788,12 +2820,13 @@ no window is settling (`WindowInfo::settling`: its program still to draw
 a size or state it was asked, a configure unanswered or answered and not
 yet committed) and nothing has changed for a quarter-second, so a slow
 client isn't taken for a wrong frame; a failure prints, under `seen`,
-every window's frame as it changed during the step, with when. A run is
-reproducible from its seed; `--only app_resize,tab_in` runs just those
-steps (the `op_` methods). Run it after changing anything in shell/.
+every window's frame as it changed during the step, with when.
+`--only app_resize,tab_in` runs just those steps (wm.rs's `OPS`). Run
+it after changing anything in shell/.
 
-`tools/dev/auto-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going] [--reloads]`
-is its auto-tiling counterpart (built on it, on the same kind of session):
+`olo-fuzz auto NAME [--reloads]`
+is its auto-tiling counterpart (on a session with the shell, `$T start
+af 3024x1890 --scale 1.75 --session --shell`):
 it turns Auto-Tiling on for the first four workspaces and, mostly, drags
 the seams between tiles the way people do (fast and slow, a few steps or
 many, past where it stops and back, held still before letting go), with
@@ -2810,25 +2843,44 @@ rounds failed every drag of it, by up to 632 px. An edge is grabbed
 below both windows' tabs (beside a tab is whatever is behind it, the
 desktop: a press there took the keyboard from every window). Each
 step's line has the time, to find it in the session's log.
-`--floats` adds floating: a tile floated or a float tiled (the window
-menu's Float Over the Tiles), and windows brought forward, a float then
-being the front one of the floats; after every step, with it or not,
-no floating window may be under a tile (`check_floats_over`). (A flag,
-so the seeds without it keep their sequences.) Run it after changing
-anything in `autotile.rs`, `tiling.rs`, `rounds.rs` or the resize
-grabs.
+It floats too: a tile floated or a float tiled (the window menu's
+Float Over the Tiles), and windows brought forward, a float then being
+the front one of the floats; after every step no floating window may be
+under a tile (`check_floats_over`). Run it after changing anything in
+`autotile.rs`, `tiling.rs`, `rounds.rs` or the resize grabs.
 
-`tools/dev/fuzz-sweep [--seeds 1-16] [--jobs N] [--steps N] [--confirm] [--keep] -- FUZZER_ARGS`
+`olo-fuzz sweep [--seeds A-B,C] [--jobs N] [--steps N] [--confirm] [--keep] [--debug] -- wm|auto|mode [ARGS…]`
 runs a fuzzer over many seeds at once, each in a session of its own
-(16 at once by default, as many as cores; a 16-seed sweep with
-`--reloads` takes about 2.5 minutes, against 35 one at a time),
-starting them half a second apart; `--confirm` runs each failure again
-alone, telling the load's (a timing check missed under 16 sessions)
-from a fault.
+that it starts (the right screens for the fuzzer) and stops, each
+fuzzer a thread, the sessions started a quarter second apart. How many
+at once is set by memory, not the processors (the fuzzers mostly wait
+for windows to settle): a session costs about 450 MB at its peak
+(24 at once took 11 GB, the processors still 80 % idle), so it takes
+500 MB a session out of what's available less the person's share (a
+quarter, 8 GB at least): about 30 on a 64 GB machine. By default a
+sweep is one wave of that many seeds, about two minutes for 120 steps
+of auto (one at a time, an hour). `--confirm` runs the failures again
+by themselves (all at once: a few sessions are next to no load),
+telling the load's (a timing check missed under many sessions) from a
+fault. `--debug` runs debug builds (every lock's order checked,
+olo_sync; slower). Each seed's output is in
+`/var/tmp/olo-fuzz/sweep-SEED.txt`, and `--keep` keeps a failure's
+session folder (its logs) as `/var/tmp/olo-fuzz/sweep-SEED/`.
 
-`tools/dev/mode-fuzz NAME [--seed N] [--steps N] [--only OPS] [--keep-going]`
-drives the windowing modes (built on wm-fuzz, on a `--session --shell`
-tsession with two displays): each display's mode changed at random among
+A sweep leaves nothing behind: each session is stopped and its folder
+in /tmp (memory) removed however its seed ends (passed, failed, the
+fuzzer panicking, Ctrl-C: the fuzzers stop after their step, a second
+Ctrl-C ends it at once); the sessions are started with tsession's
+`--owner`, so they end with the sweep even if it's killed; the programs
+it started are waited for as they quit (no zombies). One sweep runs at
+a time (`/var/tmp/olo-fuzz/sweep.lock`), and one starting stops what an
+earlier one left. Its sessions are named `fuzzN` (`fuzzN-again` for
+`--confirm`), and nothing else is touched.
+
+`olo-fuzz mode NAME`
+drives the windowing modes (on a `--session --shell` tsession with two
+displays, `$T start mz 1920x1200,1440x900 --session --shell`): each
+display's mode changed at random among
 Standard, Auto-Tiling and Focus, with windows activated as Deskbar does,
 brought forward by launching their app again (Tracker on a folder it
 shows), ⌘Tab, hidden and shown, sent to the other display, workspace
@@ -2839,7 +2891,7 @@ covered, and the window with the keyboard is the one showing; elsewhere
 nothing is covered; a window brought forward has the keyboard, shows and
 leads its group; and a Focus round trip (Standard, Focus with
 activations, Standard) puts every window back in its own frame.
-`mode-fuzz NAME --matrix [--chrome] [--only WORDS]` is its deterministic
+`olo-fuzz mode NAME --matrix [--chrome] [--only WORDS]` is its deterministic
 half: in every mode a Tracker window behind the Terminal with the
 keyboard, hidden, on the other display and on another workspace is
 brought forward each way (Deskbar's, no token; launched again, with the
@@ -2850,8 +2902,10 @@ have the keyboard, show, be in front on its display
 `--chrome` adds Olo's Chrome (not one of Olo's programs, so it comes
 forward only for a token app_server takes: the case a link opened from
 Terminal is), on a profile of its own with no network, from a copy of
-the installed Chrome in the session's home; its first window takes most
-of a minute. Run both after changing `modes.rs`, groups, activation
+the installed Chrome in the session's home, so only in a session with a
+home of its own (`--home DIR`: never the person's Chrome install); its
+first window takes most of a minute. Its Chrome is stopped and its
+folders removed however the matrix ends. Run both after changing `modes.rs`, groups, activation
 (`request_activation`) or how a launcher gets its token: put back the
 token olo-chrome passed before its fix and the matrix fails every
 Chrome case with the opener's token.

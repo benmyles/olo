@@ -273,6 +273,16 @@ of Finished; a new one goes where its priority puts it.
   windows at one tab place) and passed alone: a race to look at. Also with `--floats` (older, on HEAD too):
   seeds 5 (step 51) and 6 (step 73), a group's window behind showing
   as a tile over the window being dragged.
+  *The fuzzers are Rust now* (2026-11-04, late; HACKING's fuzzers:
+  `olo-fuzz auto`, floats always in, its own seeds: the Python ones
+  above don't replay). A sweep of 26 seeds (`olo-fuzz sweep --confirm
+  -- auto`, 120 steps; 132 s, the failures confirmed together in 107 s)
+  finds ten faults, each at the same step every run. Mid-drag, tiles
+  out of step or over each other: seeds 8 (step 112, two tiles 495 px
+  past their neighbour for 400 ms), 10 (102), 12 (75, 1.4 s of it), 14
+  (95), 19 (70), 21 (38), 23 (67) and 25 (88). A floating window under a
+  tile after tiling one: 13 (112) and 18 (66). Fix them next, at the
+  cause, then sweep again until a wave is clean (with `--reloads` too).
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery

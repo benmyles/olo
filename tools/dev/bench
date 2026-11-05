@@ -152,7 +152,9 @@ class Session:
         self.env = None
 
     def start(self, hz):
-        tsession("start", NAME, self.size, "--session", "--shell", "--home", HOME, "--dark")
+        # (Ended with this run unless --keep, killed or not.)
+        owner = [] if "--keep" in sys.argv else ["--owner", str(os.getpid())]
+        tsession("start", NAME, self.size, "--session", "--shell", "--home", HOME, "--dark", *owner)
         self.env = json.load(open(f"/tmp/olo-dev/{NAME}/env.json"))
         self.sock, self.runtime, self.display = self.env["OLO_SOCKET"], self.env["XDG_RUNTIME_DIR"], self.env["WAYLAND_DISPLAY"]
         for _ in range(100):

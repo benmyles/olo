@@ -7075,6 +7075,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-fuzz"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "olo-crash",
+ "olo-protocol",
+ "serde_json",
+]
+
+[[package]]
 name = "olo-hvif"
 version = "0.1.0"
 dependencies = [

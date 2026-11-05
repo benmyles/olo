@@ -74,7 +74,7 @@ def review():
 
 def start(screens, session=False):
     ts("stop", NAME)
-    ts("start", NAME, screens, *(["--session"] if session else []))
+    ts("start", NAME, screens, *(["--session"] if session else []), "--owner", str(os.getpid()))
     ts("run", NAME, "olo-styled-edit")
     time.sleep(2.5)
 
