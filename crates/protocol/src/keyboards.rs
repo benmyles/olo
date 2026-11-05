@@ -39,7 +39,7 @@ pub const KNOWN: &[Model] = &[Model {
     model: "A2520",
     matches: "Magic Keyboard with Touch ID and Numeric Keypad",
     ids: (0x05ac, 0x029f),
-    icon: "keyboard",
+    icon: "keyboard-aluminium",
     keypad: true,
     touch_id: Some(TouchId::SealedToAMac),
     connection: "USB-C, or Bluetooth when paired",
