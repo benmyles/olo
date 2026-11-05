@@ -4,6 +4,10 @@ Gen 9's OLED): what the panel itself says, not just the kernel.
 
   panel-hdr-check [--keep]
 
+Run `sudo -v` first (it reads the registers with `sudo -n`), in a
+terminal on another display: the panel may go dark while HDR is on, and
+it asks whether it shows a picture.
+
 In the person's own session, with their agreement (the screen goes dark
 a moment as HDR turns on and off). Reads the panel's registers over its
 DisplayPort AUX channel (`/dev/drm_dp_aux*`, through sudo):
@@ -13,7 +17,12 @@ DisplayPort AUX channel (`/dev/drm_dp_aux*`, through sudo):
                brightness in nits)
   0x344        what's on (bit 0: PQ decoding, bit 1: BT.2020 gamut,
                bit 4: brightness over AUX)
+  0x346-0x349  the content's light (MaxCLL, MaxFALL) the driver wrote
+  0x34A-0x34D  the panel's luminance range, if overridden
   0x354-0x355  the brightness in nits the driver set
+
+Each step prints all of 0x340-0x35F with its bits named, so a panel
+that goes dark in HDR shows what was switched on.
 
 Steps: the kernel started with {xe,i915}.enable_dpcd_backlight=3 (else
 Intel's driver never switches the panel: Olo Doctor offers it); HDR on
@@ -43,6 +52,34 @@ def aux_dev():
 def dpcd(dev, at, n):
     out = subprocess.run(["sudo", "-n", "dd", f"if={dev}", "bs=1", f"skip={at}", f"count={n}", "status=none"], capture_output=True)
     return out.stdout
+
+
+CTRL_BITS = ["PQ decoding", "BT.2020 gamut", "tone mapping", "segmented backlight", "brightness over AUX", "sRGB to panel gamut", "bit 6", "metadata from SDP"]
+CAP1_BITS = ["PQ decoding", "BT.2020 gamut", "tone mapping", "segmented backlight", "brightness in nits", "optimization", "SDP colorimetry", "sRGB to panel gamut"]
+
+
+def bits(v, names):
+    return ", ".join(n for i, n in enumerate(names) if v & (1 << i)) or "none"
+
+
+def dump(dev, when):
+    """Every register of Intel's HDR interface, as the panel has it now."""
+    r = dpcd(dev, 0x340, 0x20)
+    if len(r) < 0x20:
+        print(f"  {when}: couldn't read the panel's registers (sudo -n: run `sudo -v` first)")
+        return None
+    le = lambda at: int.from_bytes(r[at - 0x340:at - 0x340 + 2], "little")
+    print(f"  {when}: 0x340.. = {r[:16].hex(' ')}")
+    print(f"           0x350.. = {r[16:].hex(' ')}")
+    print(f"           0x344 on: {bits(r[4], CTRL_BITS)}; content light {le(0x346)}/{le(0x348)} cd/m² (MaxCLL/MaxFALL); luminance override {le(0x34A)}..{le(0x34C)}; brightness {le(0x354)} nits")
+    return r
+
+
+def asked(question):
+    """The person's answer (y/n), when there's someone to ask."""
+    if not sys.stdin.isatty():
+        return None
+    return input(f"  {question} [y/n] ").strip().lower().startswith("y")
 
 
 def ipc(req):
@@ -79,7 +116,10 @@ def main():
     if not dev:
         sys.exit("no eDP AUX device")
     caps = dpcd(dev, 0x340, 4)
-    print(f"  Intel HDR interface: version {caps[0]}, caps {caps[1]:#04x}, {caps[2]:#04x}")
+    if len(caps) < 4:
+        sys.exit("couldn't read the panel's registers: run `sudo -v` first (this uses sudo -n)")
+    print(f"  Intel HDR interface: version {caps[0]}, caps {caps[1]:#04x} ({bits(caps[1], CAP1_BITS)}), {caps[2]:#04x}")
+    dump(dev, "SDR")
     check(caps[0] != 0 and caps[1] & 0x01, "the panel decodes PQ (0x341 bit 0)")
     outputs = (ipc({"type": "outputs"}) or {}).get("outputs", [])
     edp = next((o for o in outputs if o["name"].startswith("eDP")), None)
@@ -91,8 +131,11 @@ def main():
     try:
         ipc({"type": "configure_output", "name": edp["name"], "config": {"hdr": True}})
         time.sleep(3)
+        dump(dev, "HDR on")
+        seen = asked("HDR is on now: does the built-in display show a picture?")
+        if seen is not None:
+            check(seen, "the panel shows a picture in HDR")
         ctrl = dpcd(dev, 0x344, 1)[0]
-        print(f"  HDR on: 0x344 = {ctrl:#04x}")
         check(ctrl & 0x01 and ctrl & 0x02, "the panel decodes PQ in BT.2020 (0x344 bits 0, 1)")
         nits = lambda: int.from_bytes(dpcd(dev, 0x354, 2), "little")
         n0 = nits()
@@ -107,8 +150,8 @@ def main():
         if not keep:
             ipc({"type": "configure_output", "name": edp["name"], "config": {"hdr": False}})
             time.sleep(3)
+            dump(dev, "HDR off")
             ctrl = dpcd(dev, 0x344, 1)[0]
-            print(f"  HDR off: 0x344 = {ctrl:#04x}, nits {int.from_bytes(dpcd(dev, 0x354, 2), 'little')}")
             check(not ctrl & 0x01, "PQ decoding off again")
             set_backlight(d, before)
     if bad:
