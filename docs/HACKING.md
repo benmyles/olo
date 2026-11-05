@@ -5978,6 +5978,12 @@ Screens' Export Video uses too).
   or a key cap fades (1.6 s). The recorder turns them on for a
   recording that asks (`--show-clicks`, `--show-keys`, or the settings:
   Record… ▸ Show Clicks, Show Shortcuts) and off after.
+- **A countdown** (`--countdown N`; ⌘⇧6 and Screenshot's Record… count
+  down `ScreenRecordingSettings::countdown`, 3 s; agents' recordings
+  none): N, N-1, … 1 on a square key cap in the middle of the screen
+  under the pointer, a second each (`Request::Countdown`, said by the
+  recorder as each second begins; a stop ends it), while the encoder
+  opens; the recording begins after both.
 - **The encoder opened first**: NVENC takes 2.5 s to open (its CUDA
   context), and while it did, the frames that came only replaced each
   other: every GPU recording's first seconds were one picture. The

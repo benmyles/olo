@@ -607,6 +607,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 crate::showing::set(clicks, keys);
                 Reply::Ok
             }
+            Request::Countdown { n } => {
+                let at = self.pointer.current_location();
+                if let Some(o) = self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned() {
+                    crate::showing::countdown(&o, n);
+                }
+                self.backend_data.wake(None);
+                Reply::Ok
+            }
             Request::Rescue { on } => {
                 if on {
                     self.enter_rescue();

@@ -13,7 +13,7 @@
 //! olo-screenshot --record [--window ID] [--display NAME] [--region [X,Y,W,H]]
 //!                [--seconds N] [--fps N] [--no-pointer]
 //!                [--encoder auto|cpu|nvidia] [--sound computer|microphone|both|none]
-//!                [--as-gif] [--show-clicks] [--show-keys] [--to PATH]
+//!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--to PATH]
 //! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
 //! olo-screenshot --stop          the recording on this display, finished
 //! olo-screenshot --pause         nothing recorded till --resume
@@ -31,6 +31,11 @@
 //! makes the recording a GIF once it's done (no sound), the MP4 gone;
 //! `--gif` makes any of Olo's recordings one (`olo_video::gif`: 10 frames
 //! a second, at most 960 wide, one palette, each frame what changed).
+//!
+//! `--countdown N` shows N, N-1, … 1 in the middle of the screen a second
+//! each before the recording begins (app_server's `Request::Countdown`),
+//! while the encoder opens; ⌘⇧6 and Screenshot's Record… count down the
+//! settings' `countdown` (3), agents' recordings none.
 //!
 //! `--show-clicks` and `--show-keys` (or the settings', Record…'s ticks)
 //! have app_server show clicks (a ring) and shortcuts (a key cap) while
@@ -290,6 +295,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let as_gif = args.iter().any(|a| a == "--as-gif") || settings.as_ref().is_some_and(|s| s.gif);
     let show_clicks = args.iter().any(|a| a == "--show-clicks") || settings.as_ref().is_some_and(|s| s.show_clicks);
     let show_keys = args.iter().any(|a| a == "--show-keys") || settings.as_ref().is_some_and(|s| s.show_keys);
+    let countdown: u32 = option(args, "--countdown").map_or(Ok(0), str::parse).map_err(|_| "--countdown takes seconds")?;
     let sound = match option(args, "--sound").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.sound.clone())) {
         Some(s) => crate::sound::Which::parse(&s).ok_or("--sound is computer, microphone, both or none")?,
         None => crate::sound::Which::Computer,
@@ -344,7 +350,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     if showing {
         set_showing(show_clicks, show_keys);
     }
-    let result = record_into(&mut capture, &path, fps, seconds, choice, crop, sound, &g, woken.as_raw_fd());
+    let result = record_into(&mut capture, &path, fps, seconds, choice, crop, sound, countdown.min(10), &g, woken.as_raw_fd());
     if showing {
         set_showing(false, false);
     }
@@ -374,6 +380,7 @@ fn record_into(
     choice: olo_video::Choice,
     crop: Option<[u32; 4]>,
     which: crate::sound::Which,
+    countdown: u32,
     going: &Going,
     woken: i32,
 ) -> Result<Made, String> {
@@ -397,6 +404,22 @@ fn record_into(
         let (slot, ended, end, part, sound_in) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone());
         std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &end, &part, fps, choice, size, &ready_tx, &sound_in)).map_err(|e| e.to_string())?
     };
+    // The countdown meanwhile, a number a second (a stop ends it).
+    let say = |n: u32| {
+        if let Ok(mut c) = olo_protocol::Client::connect() {
+            let _ = c.request(&olo_protocol::Request::Countdown { n });
+        }
+    };
+    for n in (1..=countdown).rev() {
+        say(n);
+        wait(-1, woken, Some(Duration::from_secs(1)));
+        if STOP.load(Ordering::SeqCst) {
+            break;
+        }
+    }
+    if countdown > 0 {
+        say(0);
+    }
     if let Ok(Err(e)) = ready.recv() {
         let _ = worker.join();
         return Err(e);
@@ -660,7 +683,13 @@ pub fn toggle(args: &[String]) -> i32 {
     if going().is_some() {
         return stop();
     }
-    match record(args) {
+    // A person's start: counted down, as the settings say (unless given).
+    let mut args = args.to_vec();
+    if option(&args, "--countdown").is_none() {
+        let n = olo_ui::settings::current().map_or(3, |s| s.screen_recording.countdown);
+        args.extend(["--countdown".to_owned(), n.to_string()]);
+    }
+    match record(&args) {
         Ok(Some(made)) => {
             tell(&made);
             println!("{}", serde_json::to_string_pretty(&made).unwrap_or_default());

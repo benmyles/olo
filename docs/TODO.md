@@ -1521,11 +1521,12 @@ of Finished; a new one goes where its priority puts it.
   Save as GIF, `--as-gif`, `--gif VIDEO`. *Clicks and shortcuts shown*
   (2026-11-05): Record… ▸ Show Clicks, Show Shortcuts (app_server
   draws them; typing never shows); and GPU recordings no longer lose
-  their first 2.5 s (the encoder opened before the clock starts).
+  their first 2.5 s (the encoder opened before the clock starts). *A
+  countdown* (2026-11-05): 3 s on screen before a person's recording.
   *Left*: CleanShot X's
   polish (pointer drawn larger and smoothed, zoom
-  following the action, a background and frame, a webcam bubble), a
-  countdown (Screenshot's Delay), the trimming editor, and the GPU
+  following the action, a background and frame, a webcam bubble), the
+  trimming editor, and the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
   4K: 111 ms a frame).
   - **Encoding on the best GPU, chosen in its settings** (Ben,

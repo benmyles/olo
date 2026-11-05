@@ -55,6 +55,18 @@ struct State {
 
 static STATE: Mutex<State> = Mutex::new(State { rings: Vec::new(), chord: None });
 
+/// A recording's countdown: the display, the number, and its picture
+/// (made once, for the display's scale).
+type Count = (String, u32, Option<(f64, MemoryRenderBuffer, (i32, i32))>);
+
+static COUNTDOWN: Mutex<Option<Count>> = Mutex::new(None);
+
+/// A recording's countdown at `n` on `output` (0: done, taken down). The
+/// recorder says each number as its second begins.
+pub fn countdown(output: &Output, n: u32) {
+    *COUNTDOWN.lock().unwrap() = (n > 0).then(|| (output.name(), n, None));
+}
+
 /// Turn showing clicks and keys on or off.
 pub fn set(clicks: bool, keys: bool) {
     CLICKS.store(clicks, Ordering::Relaxed);
@@ -116,15 +128,32 @@ where
     R: Renderer + ImportMem,
     R::TextureId: Send + Clone + 'static,
 {
+    let mut out = Vec::new();
+    // A recording's countdown: a big number in the middle of the screen.
+    if let Some((o, n, made)) = COUNTDOWN.lock().unwrap().as_mut().filter(|(o, ..)| *o == output.name()) {
+        let _ = o;
+        let scale = output.current_scale().fractional_scale();
+        if made.as_ref().is_none_or(|(sc, ..)| *sc != scale) {
+            let p = theme::palette();
+            let pm = number(*n, scale, p.panel_text, p.panel_background, p.frame_focused[0]);
+            let size: Size<i32, Buffer> = (pm.width() as i32, pm.height() as i32).into();
+            let buffer = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, size, 1, Transform::Normal, None);
+            *made = Some((scale, buffer, (size.w, size.h)));
+        }
+        if let Some((_, buffer, (w, h))) = made {
+            let phys = screen.to_f64().to_physical(scale);
+            let at = (((phys.w - f64::from(*w)) / 2.0).round(), ((phys.h - f64::from(*h)) / 2.0).round());
+            out.extend(crate::render::picture(renderer, at.into(), buffer, (*w, *h), None, Kind::Unspecified));
+        }
+    }
     if !clicks() && !keys() {
-        return Vec::new();
+        return out;
     }
     let mut s = STATE.lock().unwrap();
     let now = Instant::now();
     let name = output.name();
     let scale = output.current_scale().fractional_scale();
     let p = theme::palette();
-    let mut out = Vec::new();
     for (o, at, since) in &s.rings {
         if *o != name {
             continue;
@@ -185,15 +214,28 @@ fn ring(t: f32, scale: f64, ink: [u8; 4], edge: [u8; 4]) -> (Pixmap, i32) {
     (pm, side)
 }
 
+/// A countdown's number: a key cap, square, its figure large.
+fn number(n: u32, scale: f64, ink: [u8; 4], face: [u8; 4], frame: [u8; 4]) -> Pixmap {
+    keycap_sized(&n.to_string(), scale, 96.0, Some(1.0), ink, face, frame)
+}
+
 /// `label` on a key-cap panel at `scale`: big, bold, in the panel's
 /// colours with its frame.
 fn keycap(label: &str, scale: f64, ink: [u8; 4], face: [u8; 4], frame: [u8; 4]) -> Pixmap {
+    keycap_sized(label, scale, 28.0, None, ink, face, frame)
+}
+
+/// `label` on a key cap, its text `points` tall; `square`: as wide as
+/// tall at least.
+fn keycap_sized(label: &str, scale: f64, points: f32, square: Option<f32>, ink: [u8; 4], face: [u8; 4], frame: [u8; 4]) -> Pixmap {
     let s = scale as f32;
-    let size = 28.0 * s;
+    let size = points * s;
     let tw = text::measure(label, size, true).ceil();
-    let (pad_x, pad_y) = (20.0 * s, 12.0 * s);
-    let w = (tw + 2.0 * pad_x).ceil() as u32;
+    let (pad_x, pad_y) = (20.0 * s * points / 28.0, 12.0 * s * points / 28.0);
     let h = (size * 1.25 + 2.0 * pad_y).ceil() as u32;
+    let w = ((tw + 2.0 * pad_x).ceil() as u32).max(if square.is_some() { h } else { 0 });
+    // (The figure in the middle of a square cap.)
+    let pad_x = (w as f32 - tw) / 2.0;
     let mut pm = Pixmap::new(w, h).expect("keycap pixmap");
     let id = tiny_skia::Transform::identity();
     let mut paint = Paint::default();

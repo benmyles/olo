@@ -284,6 +284,11 @@ pub enum Request {
         clicks: bool,
         keys: bool,
     },
+    /// A recording's countdown: `n` shown large in the middle of the
+    /// screen under the pointer, till the next (0: taken down).
+    Countdown {
+        n: u32,
+    },
     SetAutoApprove {
         minutes: Option<u32>,
         #[serde(default)]
@@ -1478,11 +1483,14 @@ pub struct ScreenRecordingSettings {
     pub show_clicks: bool,
     /// Shortcuts shown while recording (a chord on a key cap).
     pub show_keys: bool,
+    /// Seconds counted down on screen before a recording a person starts
+    /// (⌘⇧6, Screenshot's Record…) begins; 0: none.
+    pub countdown: u32,
 }
 
 impl Default for ScreenRecordingSettings {
     fn default() -> Self {
-        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into(), gif: false, show_clicks: false, show_keys: false }
+        ScreenRecordingSettings { encoder: "auto".into(), sound: "computer".into(), gif: false, show_clicks: false, show_keys: false, countdown: 3 }
     }
 }
 
