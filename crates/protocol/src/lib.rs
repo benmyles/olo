@@ -297,6 +297,14 @@ pub enum Request {
         #[serde(default)]
         zoom: f64,
     },
+    /// A caption in captures (recordings, screen sharing; never on the
+    /// screen): `text` low in the middle, for `seconds` (None: till the
+    /// next); None or empty: the one up goes.
+    Caption {
+        text: Option<String>,
+        #[serde(default)]
+        seconds: Option<f64>,
+    },
     /// A display's captures (recordings, screen sharing) zoomed to `rect`
     /// (points of the display: x, y, w, h), gliding there and held; None:
     /// back out. The display the pointer is on unless named.

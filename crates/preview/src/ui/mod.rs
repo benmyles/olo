@@ -340,6 +340,27 @@ impl PreviewView {
         self.video.is_some()
     }
 
+    /// The video's chapters (seconds, title), if it has any.
+    pub fn chapters(&self) -> Vec<(f64, String)> {
+        match &self.body {
+            Some(Body::Media(md)) => md.chapters.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Where the video is (seconds), if it plays.
+    pub fn position(&self) -> Option<f64> {
+        self.video.as_ref().map(Transport::position)
+    }
+
+    /// The video shown from `secs`.
+    pub fn seek_to(&mut self, secs: f64, cx: &mut Context<Self>) {
+        if let Some(v) = &self.video {
+            Transport::seek(v, secs.max(0.0));
+            cx.notify();
+        }
+    }
+
     /// The stretch kept while trimming (seconds), if trimming.
     pub fn trimming(&self) -> Option<(f64, f64)> {
         self.trim
@@ -833,7 +854,19 @@ struct TransportAt {
 /// Play/pause, elapsed time, a seek bar and the time left, centred on
 /// `y` between `x` and `right`.
 #[allow(clippy::too_many_arguments)]
-fn paint_transport(window: &mut Window, cx: &mut App, x: Pixels, right: Pixels, y: Pixels, t: &dyn Transport, duration: Option<f64>, pressed: bool, trim: Option<(f64, f64)>) -> TransportAt {
+#[allow(clippy::too_many_arguments)]
+fn paint_transport(
+    window: &mut Window,
+    cx: &mut App,
+    x: Pixels,
+    right: Pixels,
+    y: Pixels,
+    t: &dyn Transport,
+    duration: Option<f64>,
+    pressed: bool,
+    trim: Option<(f64, f64)>,
+    chapters: &[(f64, String)],
+) -> TransportAt {
     let p = theme::palette(cx);
     let dim = style::disabled_text(&p);
     if let Some(e) = t.error() {
@@ -874,6 +907,13 @@ fn paint_transport(window: &mut Window, cx: &mut App, x: Pixels, right: Pixels, 
     window.paint_quad(gpui::fill(bar, style::c(p.document_background)));
     let frac = (pos / dur).clamp(0.0, 1.0) as f32;
     window.paint_quad(gpui::fill(Bounds::new(bar.origin, size(bar.size.width * frac, bar.size.height)), style::c(p.keyboard_navigation)));
+    // Chapters: a tick where each starts, a little past the bar's edges
+    // (agents have them in the Go menu, and the one playing in the
+    // position's value).
+    for (at, _) in chapters {
+        let x = bar.left() + bar.size.width * (*at / dur).clamp(0.0, 1.0) as f32;
+        window.paint_quad(gpui::fill(style::snap_centred(window, point(x, bar.center().y), 1.0, 12.0), style::c(p.control_text)));
+    }
     // Trimming: what's cut dimmed, a handle at each end of what's kept.
     if let Some((from, to)) = trim {
         let at = |s: f64| bar.left() + bar.size.width * (s / dur).clamp(0.0, 1.0) as f32;
@@ -897,7 +937,18 @@ fn paint_transport(window: &mut Window, cx: &mut App, x: Pixels, right: Pixels, 
         agent::record(
             window,
             cx,
-            agent::Node { role: "Slider", name: Some("Position".into()), value: Some(media::format_duration(pos).into()), bounds: bar, enabled: true, clickable: true, ..Default::default() },
+            agent::Node {
+                role: "Slider",
+                name: Some("Position".into()),
+                value: Some(match chapters.iter().rev().find(|(at, _)| *at <= pos + 0.05) {
+                    Some((_, title)) => format!("{} — {title}", media::format_duration(pos)).into(),
+                    None => media::format_duration(pos).into(),
+                }),
+                bounds: bar,
+                enabled: true,
+                clickable: true,
+                ..Default::default()
+            },
         );
     }
     TransportAt { button: br, bar }
@@ -1083,7 +1134,7 @@ impl PreviewView {
             let mut y = area.bottom();
             if let Some(t) = &self.video {
                 y += px(TRANSPORT / 2.0 + 2.0);
-                placed = paint_transport(window, cx, r.left() + px(m::WINDOW_INSET), r.right() - px(m::WINDOW_INSET), y, t, md.duration, false, self.trim);
+                placed = paint_transport(window, cx, r.left() + px(m::WINDOW_INSET), r.right() - px(m::WINDOW_INSET), y, t, md.duration, false, self.trim, &md.chapters);
                 y += px(TRANSPORT / 2.0 - 2.0);
             }
             y += px(m::SPACING + m::LABEL_ROW / 2.0);
@@ -1139,7 +1190,7 @@ impl PreviewView {
         }
         if let Some(player) = &self.player {
             let ty = y - px(m::LABEL_ROW / 2.0) + px(m::SPACING * 2.0 + 11.0);
-            placed = paint_transport(window, cx, x, right, ty, player, md.duration, false, None);
+            placed = paint_transport(window, cx, x, right, ty, player, md.duration, false, None, &md.chapters);
         }
         placed
     }

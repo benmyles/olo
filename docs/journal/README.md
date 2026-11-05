@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Captions and chapters in recordings
+
+*08:01* — An agent narrating a demo puts captions in the video (olo-screen caption-video: drawn into the recording only, never on the screen) and marks its steps (mark-video): the marks become the video's chapters, which the Viewer shows as ticks on its timeline and lists in Go, playing from the one chosen.
+
+![Captions and chapters in recordings](2026-11-05/080131-captions-and-chapters-in-recordings.png)
+
 ### Recordings in HEVC, and a third smaller in H.264
 
 *07:20* — Preferences ▸ GPUs ▸ Format: H.264 (plays everywhere) or HEVC (about half the size), on NVIDIA's encoder; olo-screenshot --codec takes AV1 too. Each codec now keeps a constant, measured quality instead of a bitrate: the same screen typed into for 5 s was 262 KB in H.264 and is 171 now, 96 in HEVC, the text as sharp. Trimming, GIFs and the Viewer take all three.

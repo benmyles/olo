@@ -346,6 +346,9 @@ pub struct Mp4 {
     /// Where playback starts in the first picture (ticks), by an edit
     /// list: a trimmed video's (`trim`).
     start: u32,
+    /// Chapters (`chapters`): where each starts (milliseconds) and its
+    /// title.
+    chapters: Vec<(u64, String)>,
 }
 
 impl Mp4 {
@@ -441,6 +444,7 @@ impl Mp4 {
             mdat_size_at,
             audio: None,
             start: 0,
+            chapters: Vec::new(),
         })
     }
 
@@ -552,6 +556,13 @@ impl Mp4 {
     /// Played from `ticks` into the video (an edit list), what's before
     /// kept only to decode from (a trimmed recording starts at its key
     /// frame before).
+    /// Chapters: each mark's start (milliseconds into the video) and
+    /// title, written as Nero's `chpl` (in `moov`'s `udta`), which
+    /// FFmpeg, mpv and VLC read; at most 255, titles cut to 255 bytes.
+    pub fn chapters(&mut self, marks: Vec<(u64, String)>) {
+        self.chapters = marks;
+    }
+
     pub fn start_at(&mut self, ticks: u32) {
         self.start = ticks;
     }
@@ -619,7 +630,25 @@ impl Mp4 {
             (Some(a), Some(length)) => sound_track(a, length, &matrix),
             _ => Vec::new(),
         };
-        let moov = bx(b"moov", &[mvhd, trak, sound_trak].concat());
+        let udta = if self.chapters.is_empty() {
+            Vec::new()
+        } else {
+            let mut body = vec![0u8; 4];
+            let marks = &self.chapters[..self.chapters.len().min(255)];
+            body.push(marks.len() as u8);
+            for (ms, title) in marks {
+                // (Hundreds of nanoseconds; the title cut at a character.)
+                body.extend_from_slice(&(ms * 10_000).to_be_bytes());
+                let mut end = title.len().min(255);
+                while !title.is_char_boundary(end) {
+                    end -= 1;
+                }
+                body.push(end as u8);
+                body.extend_from_slice(&title.as_bytes()[..end]);
+            }
+            bx(b"udta", &full(b"chpl", 0x0100_0000, &body))
+        };
+        let moov = bx(b"moov", &[mvhd, trak, sound_trak, udta].concat());
         self.file.write_all(&moov)?;
         // `mdat`'s size: its header (16) and every sample.
         let mdat_size = self.at - (self.mdat_size_at - 8);

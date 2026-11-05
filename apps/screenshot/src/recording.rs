@@ -18,6 +18,8 @@
 //!                [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--camera [ID]]
 //!                [--to PATH]
 //! olo-screenshot --zoom-to X,Y,W,H|out [--display NAME]
+//! olo-screenshot --caption TEXT [--seconds N]   ("": taken down)
+//! olo-screenshot --mark TITLE    this moment marked: a chapter
 //! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
 //! olo-screenshot --trim VIDEO.mp4 --start S --end E [--to PATH]
 //! olo-screenshot --stop          the recording on this display, finished
@@ -59,6 +61,17 @@
 //! countdown and ended after; `camera` in what's printed names it,
 //! `camera_note` says why there's none. ID: a camera's node ("video0"),
 //! else the first colour camera.
+//!
+//! `--mark TITLE` marks this moment of the recording going on this
+//! display (SIGRTMIN+1; the title left in the runtime directory beside
+//! what's going), timed as the video is (pauses left out): a chapter of
+//! the video (`chpl`) and in what it prints (`marks`).
+//!
+//! `--caption TEXT` puts a caption in what's recorded (never on the
+//! screen: app_server draws it into captures only), low in the middle on
+//! a dark panel, wrapped to three lines, fading in and out, for
+//! `--seconds N` or till the next (an empty TEXT takes it down): an
+//! agent's narration of its demo.
 //!
 //! `--zoom-follow` (or the settings', Record… ▸ Zoom on Clicks) has a
 //! display's recording zoom in twice around each click, follow the
@@ -146,6 +159,57 @@ extern "C" fn on_resume(_: libc::c_int) {
     wake();
 }
 
+/// Marks asked for (SIGRTMIN+1: `--mark`), their titles waiting in
+/// `marks_path`.
+static MARK: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn on_mark(_: libc::c_int) {
+    MARK.store(true, Ordering::SeqCst);
+    wake();
+}
+
+/// The signal `--mark` sends.
+fn mark_signal() -> libc::c_int {
+    libc::SIGRTMIN() + 1
+}
+
+/// Where `--mark` leaves titles for the recorder on this display.
+fn marks_path() -> PathBuf {
+    going_path().with_extension("marks")
+}
+
+/// The titles left since the last look, taken (the file moved aside
+/// first, so a mark made meanwhile starts a new one).
+fn take_marks() -> Vec<String> {
+    let taking = marks_path().with_extension("marks.taking");
+    if std::fs::rename(marks_path(), &taking).is_err() {
+        return Vec::new();
+    }
+    let titles = std::fs::read_to_string(&taking).unwrap_or_default().lines().map(str::to_owned).collect();
+    let _ = std::fs::remove_file(&taking);
+    titles
+}
+
+/// `--mark TITLE`: this moment of the recording on this display marked,
+/// a chapter of the video (`chpl`) and in what it prints (`marks`).
+pub fn mark(args: &[String]) -> i32 {
+    let Some(g) = going() else {
+        eprintln!("olo-screenshot: nothing is being recorded on this display");
+        return 1;
+    };
+    let title = option(args, "--mark").unwrap_or("").replace(['\n', '\r'], " ").trim().to_owned();
+    let line = format!("{title}\n");
+    let written = std::fs::OpenOptions::new().create(true).append(true).open(marks_path()).and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+    if let Err(e) = written {
+        eprintln!("olo-screenshot: {e}");
+        return 1;
+    }
+    // SAFETY: a signal to the recorder's process.
+    unsafe { libc::kill(g.pid as i32, mark_signal()) };
+    println!("{}", serde_json::json!({ "path": g.path, "mark": title }));
+    0
+}
+
 use olo_protocol::recording::{Going, going};
 
 fn going_path() -> PathBuf {
@@ -205,6 +269,17 @@ pub struct Made {
     /// Why there's none, when one was asked for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub camera_note: Option<String>,
+    /// Its marks (`--mark`): when (seconds into it) and their titles,
+    /// its chapters.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<Mark>,
+}
+
+/// A moment of a recording marked.
+#[derive(Debug, Clone, Serialize)]
+pub struct Mark {
+    pub at: f64,
+    pub title: String,
 }
 
 /// A GIF made of a recording.
@@ -453,6 +528,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         libc::signal(libc::SIGTERM, on_stop as *const () as libc::sighandler_t);
         libc::signal(libc::SIGUSR1, on_pause as *const () as libc::sighandler_t);
         libc::signal(libc::SIGUSR2, on_resume as *const () as libc::sighandler_t);
+        libc::signal(mark_signal(), on_mark as *const () as libc::sighandler_t);
     }
     let what = match &source {
         Source::Window { id, .. } => format!("window {id}"),
@@ -538,6 +614,9 @@ fn record_into(
     });
     // (The sound's description, once it's started, for the file.)
     let sound_in: Arc<Mutex<Option<SoundIn>>> = Arc::default();
+    // Marks so far (`--mark`): milliseconds into the video, and titles.
+    let marks: Arc<Mutex<Vec<(u64, String)>>> = Arc::default();
+    let _ = std::fs::remove_file(marks_path());
     let slot: Arc<(Mutex<Option<Waiting>>, std::sync::Condvar)> = Arc::default();
     let ended = Arc::new(AtomicBool::new(false));
     // Where the video ends (milliseconds of it), for its last frame.
@@ -545,10 +624,10 @@ fn record_into(
     let part = path.with_extension("mp4.part");
     let (ready_tx, ready) = std::sync::mpsc::channel::<Result<(), String>>();
     let worker = {
-        let (slot, ended, end, part, sound_in) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone());
+        let (slot, ended, end, part, sound_in, marks) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone(), marks.clone());
         std::thread::Builder::new()
             .name("recording encoder".into())
-            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), &ready_tx, &sound_in))
+            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), &ready_tx, &sound_in, &marks))
             .map_err(|e| e.to_string())?
     };
     // The countdown meanwhile, a number a second (a stop ends it).
@@ -599,6 +678,11 @@ fn record_into(
     let mut whole: Vec<u8> = Vec::new();
     let result: Result<(), String> = (|| {
         loop {
+            // Marks asked for, at this moment of the video.
+            if MARK.swap(false, Ordering::SeqCst) {
+                let at = recorded(paused_for, paused_at).as_millis() as u64;
+                marks.lock().unwrap_or_else(|e| e.into_inner()).extend(take_marks().into_iter().map(|t| (at, t)));
+            }
             if STOP.load(Ordering::SeqCst) || seconds.is_some_and(|s| recorded(paused_for, paused_at).as_secs_f64() >= s) {
                 return Ok(());
             }
@@ -676,6 +760,8 @@ fn record_into(
         }
     })();
     let total = recorded(paused_for, paused_at);
+    // (A mark asked for as it stopped: at its end.)
+    marks.lock().unwrap_or_else(|e| e.into_inner()).extend(take_marks().into_iter().map(|t| (total.as_millis() as u64, t)));
     // The sound's last, encoded and handed over before the file is.
     let sounded = sound.as_ref().map(|_| which.name().to_owned());
     if let Some(s) = sound {
@@ -703,6 +789,7 @@ fn record_into(
         gif: None,
         camera: None,
         camera_note: None,
+        marks: marks.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(ms, title)| Mark { at: *ms as f64 / 1000.0, title: title.clone() }).collect(),
     })
 }
 
@@ -737,7 +824,8 @@ fn encode(
     look: Option<&crate::backdrop::Look>,
     ready: &std::sync::mpsc::Sender<Result<(), String>>,
     sound: &Mutex<Option<SoundIn>>,
-) -> Result<(usize, (u32, u32), &'static str, olo_video::Codec, Option<String>), String> {
+    marks: &Mutex<Vec<(u64, String)>>,
+) -> Result<Encoded, String> {
     // The sound's access units so far, into the file beside the pictures
     // (its description given the file the first time).
     let mut described = false;
@@ -865,6 +953,7 @@ fn encode(
         }
     }
     add_sound(&mut mp4)?;
+    mp4.chapters(marks.lock().unwrap_or_else(|e| e.into_inner()).clone());
     let made = mp4.size();
     mp4.finish().map_err(|e| e.to_string())?;
     Ok((frames, made, enc.name(), enc.codec(), stopped))
@@ -912,6 +1001,10 @@ impl Drop for CameraBubble {
         let _ = self.0.wait();
     }
 }
+
+/// What the encoder's worker made: frames, the video's size, which encoder
+/// and codec, and why it stopped early if it did.
+type Encoded = (usize, (u32, u32), &'static str, olo_video::Codec, Option<String>);
 
 /// The sound's description, and its access units as they come.
 type SoundIn = (olo_video::aac::Track, Arc<Mutex<Vec<Vec<u8>>>>);
@@ -1025,6 +1118,35 @@ pub fn pause(on: bool) -> i32 {
     unsafe { libc::kill(g.pid as i32, if on { libc::SIGUSR1 } else { libc::SIGUSR2 }) };
     println!("{}", serde_json::json!({ "path": g.path, "paused": on }));
     0
+}
+
+/// `--caption TEXT [--seconds N]`: a caption in what's recorded (and
+/// shared), never on the screen: TEXT low in the middle for N seconds,
+/// else till the next; an empty TEXT takes it down (app_server's
+/// `Request::Caption`).
+pub fn caption(args: &[String]) -> i32 {
+    let text = option(args, "--caption").map(str::to_owned);
+    let seconds = match option(args, "--seconds").map(str::parse::<f64>).transpose() {
+        Ok(s) => s,
+        Err(_) => {
+            eprintln!("olo-screenshot: --seconds takes a number");
+            return 2;
+        }
+    };
+    match olo_protocol::Client::connect().map_err(|e| e.to_string()).and_then(|mut c| c.request(&olo_protocol::Request::Caption { text: text.clone(), seconds }).map_err(|e| e.to_string())) {
+        Ok(olo_protocol::Reply::Error { message }) => {
+            eprintln!("olo-screenshot: {message}");
+            1
+        }
+        Ok(_) => {
+            println!("{}", serde_json::json!({ "caption": text.filter(|t| !t.is_empty()), "seconds": seconds }));
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: {e}");
+            1
+        }
+    }
 }
 
 /// `--zoom-to X,Y,W,H|out [--display NAME]`: the recording on this

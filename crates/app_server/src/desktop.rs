@@ -1659,7 +1659,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             || crate::showing::active()
             // (The recording's pointer and zoom glide only in captures:
             // drawn on only while one waits for a frame.)
-            || ((crate::showing::gliding() || crate::zoom::moving()) && self.captures.pending())
+            || ((crate::showing::gliding() || crate::zoom::moving() || crate::showing::caption_fading()) && self.captures.pending())
             || self.space.elements().any(|w| (0.0..1.0).contains(&w.meta().glow_strength()) && w.meta().glow.get().is_some())
     }
 

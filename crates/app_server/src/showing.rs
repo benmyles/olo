@@ -67,6 +67,144 @@ pub fn countdown(output: &Output, n: u32) {
     *COUNTDOWN.lock().unwrap() = (n > 0).then(|| (output.name(), n, None));
 }
 
+/// A recording's caption (`Request::Caption`, an agent's narration):
+/// drawn into captures only, never on the screen, low in the middle,
+/// fading in and out.
+struct Caption {
+    text: String,
+    since: Instant,
+    /// When it goes (fading out till then); None: when it's replaced.
+    until: Option<Instant>,
+    /// Its picture, made once for a scale and width.
+    made: Option<CaptionPicture>,
+}
+
+/// A caption's picture: the scale and width it was made for, it, and its
+/// size in pixels.
+type CaptionPicture = ((u64, i32), MemoryRenderBuffer, (i32, i32));
+
+static CAPTION: Mutex<Option<Caption>> = Mutex::new(None);
+
+/// How long a caption takes to fade in or out.
+const FADE: Duration = Duration::from_millis(180);
+/// A caption's text size (points).
+const CAPTION_SIZE: f32 = 22.0;
+
+/// Caption `text` up in captures from now, for `seconds` (None: till
+/// replaced); None or empty: the one up fades out. When the display should
+/// look again (the end of the fade or the caption's end), if ever.
+pub fn caption(text: Option<String>, seconds: Option<f64>) -> Option<Duration> {
+    let mut c = CAPTION.lock().unwrap();
+    let now = Instant::now();
+    match text.filter(|t| !t.trim().is_empty()) {
+        Some(text) => {
+            let until = seconds.filter(|s| *s > 0.0).map(|s| now + Duration::from_secs_f64(s.min(3600.0)));
+            *c = Some(Caption { text, since: now, until, made: None });
+            Some(until.map_or(FADE, |u| u - now + Duration::from_millis(10)))
+        }
+        None => {
+            let shown = c.as_mut()?;
+            shown.until = Some(now + FADE);
+            Some(FADE + Duration::from_millis(10))
+        }
+    }
+}
+
+/// A caption is fading in or out: captures draw on till it's done.
+pub fn caption_fading() -> bool {
+    let c = CAPTION.lock().unwrap();
+    let now = Instant::now();
+    c.as_ref().is_some_and(|c| now.duration_since(c.since) < FADE || c.until.is_some_and(|u| u > now && u - now < FADE))
+}
+
+/// The caption up now, as elements over a capture `size` device pixels
+/// at `scale`: centred, low, at most four fifths of its width.
+pub fn caption_elements<R>(renderer: &mut R, size: Size<i32, smithay::utils::Physical>, scale: f64) -> Vec<Exact<MemoryRenderBufferRenderElement<R>>>
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    let mut c = CAPTION.lock().unwrap();
+    let now = Instant::now();
+    if c.as_ref().is_some_and(|c| c.until.is_some_and(|u| now >= u)) {
+        *c = None;
+    }
+    let Some(cap) = c.as_mut() else { return Vec::new() };
+    let width = (size.w as f32 * 0.8) as i32;
+    let key = (scale.to_bits(), width);
+    if cap.made.as_ref().is_none_or(|(k, ..)| *k != key) {
+        let pm = caption_panel(&cap.text, scale, width as f32);
+        let px: Size<i32, Buffer> = (pm.width() as i32, pm.height() as i32).into();
+        let buffer = MemoryRenderBuffer::from_slice(pm.data(), Fourcc::Abgr8888, px, 1, Transform::Normal, None);
+        cap.made = Some((key, buffer, (px.w, px.h)));
+    }
+    let Some((_, buffer, (w, h))) = &cap.made else { return Vec::new() };
+    let fade_in = now.duration_since(cap.since).as_secs_f32() / FADE.as_secs_f32();
+    let fade_out = cap.until.map_or(1.0, |u| u.saturating_duration_since(now).as_secs_f32() / FADE.as_secs_f32());
+    let alpha = fade_in.min(fade_out).clamp(0.0, 1.0);
+    let x = ((size.w - w) / 2) as f64;
+    let y = (f64::from(size.h) * 0.93 - f64::from(*h)).round();
+    crate::render::picture(renderer, (x, y).into(), buffer, (*w, *h), Some(alpha), Kind::Unspecified).into_iter().collect()
+}
+
+/// `text` on a dark panel, white, wrapped to `max_w` pixels (at most three
+/// lines, the last cut short with an ellipsis).
+fn caption_panel(text: &str, scale: f64, max_w: f32) -> Pixmap {
+    let s = scale as f32;
+    let size = CAPTION_SIZE * s;
+    let (pad_x, pad_y, gap) = (16.0 * s, 10.0 * s, 4.0 * s);
+    let inner = (max_w - 2.0 * pad_x).max(size * 4.0);
+    // Words onto lines as they fit.
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        match lines.last_mut() {
+            Some(l) if text::measure(&format!("{l} {word}"), size, false) <= inner => {
+                l.push(' ');
+                l.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    if lines.len() > 3 {
+        lines.truncate(3);
+        lines[2].push('…');
+    }
+    for l in &mut lines {
+        while text::measure(l, size, false) > inner && l.chars().count() > 1 {
+            l.pop();
+            l.pop();
+            l.push('…');
+        }
+    }
+    let line_h = (size * 1.3).ceil();
+    let tw = lines.iter().map(|l| text::measure(l, size, false)).fold(0.0, f32::max);
+    let (w, h) = ((tw + 2.0 * pad_x).ceil() as u32, (lines.len() as f32 * line_h + (lines.len().max(1) - 1) as f32 * gap + 2.0 * pad_y).ceil() as u32);
+    let mut pm = Pixmap::new(w.max(1), h.max(1)).expect("caption pixmap");
+    let r = 10.0 * s;
+    let (x1, y1) = (w as f32, h as f32);
+    let mut pb = PathBuilder::new();
+    pb.move_to(r, 0.0);
+    pb.line_to(x1 - r, 0.0);
+    pb.quad_to(x1, 0.0, x1, r);
+    pb.line_to(x1, y1 - r);
+    pb.quad_to(x1, y1, x1 - r, y1);
+    pb.line_to(r, y1);
+    pb.quad_to(0.0, y1, 0.0, y1 - r);
+    pb.line_to(0.0, r);
+    pb.quad_to(0.0, 0.0, r, 0.0);
+    pb.close();
+    if let Some(path) = pb.finish() {
+        let mut paint = Paint { anti_alias: true, ..Default::default() };
+        paint.set_color_rgba8(0, 0, 0, 190);
+        pm.fill_path(&path, &paint, FillRule::Winding, tiny_skia::Transform::identity(), None);
+    }
+    for (i, l) in lines.iter().enumerate() {
+        let lw = text::measure(l, size, false);
+        text::draw(&mut pm, l, ((w as f32 - lw) / 2.0).round(), pad_y + i as f32 * (line_h + gap), size, false, [255, 255, 255, 255]);
+    }
+    pm
+}
+
 /// Turn showing clicks and keys on or off.
 pub fn set(clicks: bool, keys: bool) {
     CLICKS.store(clicks, Ordering::Relaxed);

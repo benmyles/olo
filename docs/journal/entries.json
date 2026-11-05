@@ -3256,5 +3256,11 @@
   "title": "Recordings in HEVC, and a third smaller in H.264",
   "caption": "Preferences \u25b8 GPUs \u25b8 Format: H.264 (plays everywhere) or HEVC (about half the size), on NVIDIA's encoder; olo-screenshot --codec takes AV1 too. Each codec now keeps a constant, measured quality instead of a bitrate: the same screen typed into for 5 s was 262 KB in H.264 and is 171 now, 96 in HEVC, the text as sharp. Trimming, GIFs and the Viewer take all three.",
   "image": "2026-11-05/072017-recordings-in-hevc-and-a-third-smaller-in-h-264.png"
+ },
+ {
+  "time": "2026-11-05T08:01:31",
+  "title": "Captions and chapters in recordings",
+  "caption": "An agent narrating a demo puts captions in the video (olo-screen caption-video: drawn into the recording only, never on the screen) and marks its steps (mark-video): the marks become the video's chapters, which the Viewer shows as ticks on its timeline and lists in Go, playing from the one chosen.",
+  "image": "2026-11-05/080131-captions-and-chapters-in-recordings.png"
  }
 ]

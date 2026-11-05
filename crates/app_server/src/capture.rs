@@ -87,6 +87,9 @@ where
                 let drawn = crate::render::captured_pointer(renderer, area, scale, at, status);
                 elements.splice(0..0, drawn.into_iter().map(|e| crate::render::FrameElements::Normal(crate::render::OutputRenderElements::Custom(e))));
             }
+            // A recording's caption, low on the window's picture.
+            let caption = crate::showing::caption_elements(renderer, size, scale);
+            elements.splice(0..0, caption.into_iter().map(|e| crate::render::FrameElements::Normal(crate::render::OutputRenderElements::Custom(crate::render::CustomRenderElements::Overlay(e)))));
             Some(Picture { elements, clear: Color32F::TRANSPARENT, size, scale })
         }
     }

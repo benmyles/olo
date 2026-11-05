@@ -830,6 +830,12 @@ fn main() -> std::process::ExitCode {
     if args.iter().any(|a| a == "--zoom-to") {
         std::process::exit(recording::zoom_to(&args));
     }
+    if args.iter().any(|a| a == "--mark") {
+        std::process::exit(recording::mark(&args));
+    }
+    if args.iter().any(|a| a == "--caption") && !args.iter().any(|a| a == "--record") {
+        std::process::exit(recording::caption(&args));
+    }
     if args.iter().any(|a| a == "--camera-bubble") {
         std::process::exit(bubble::run(&args));
     }

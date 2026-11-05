@@ -923,6 +923,25 @@ impl Doc {
             .item("Next File", "next-file")
             .key("]")
             .enabled(pos.is_some_and(|i| i + 1 < self.siblings.len()));
+        // A video's chapters (an Olo recording's marks).
+        if let Content::Other(prev) = &self.content {
+            let prev = prev.read(cx);
+            let chapters = prev.chapters();
+            if !chapters.is_empty() {
+                let now = prev.position().unwrap_or(0.0);
+                go = go
+                    .separator()
+                    .item("Previous Chapter", "prev-chapter")
+                    .enabled(chapters.iter().any(|(at, _)| *at < now - 1.0))
+                    .item("Next Chapter", "next-chapter")
+                    .enabled(chapters.iter().any(|(at, _)| *at > now + 0.05))
+                    .separator();
+                for (k, (at, title)) in chapters.iter().enumerate() {
+                    let name = if title.is_empty() { format!("Chapter {}", k + 1) } else { title.clone() };
+                    go = go.item(format!("{name}  ({})", olo_preview::media::format_duration(*at)), format!("chapter-{k}"));
+                }
+            }
+        }
         if let Some(v) = pdf {
             let n = v.geoms.len();
             go = go
@@ -1008,6 +1027,26 @@ impl Doc {
         }
         if matches!(command, "trim" | "trim-cancel" | "trim-save") {
             return self.trim_command(command, cx);
+        }
+        // A chapter of the video: where it starts, the one after the
+        // position, or before it (within a second of a chapter's start:
+        // the one before that, as players do).
+        if (command.starts_with("chapter-") || command == "next-chapter" || command == "prev-chapter")
+            && let Content::Other(prev) = &self.content
+        {
+            let prev = prev.clone();
+            prev.update(cx, |p, cx| {
+                let (chapters, now) = (p.chapters(), p.position().unwrap_or(0.0));
+                let to = match command {
+                    "next-chapter" => chapters.iter().map(|c| c.0).find(|&at| at > now + 0.05),
+                    "prev-chapter" => chapters.iter().map(|c| c.0).rev().find(|&at| at < now - 1.0),
+                    _ => command.strip_prefix("chapter-").and_then(|k| k.parse::<usize>().ok()).and_then(|k| chapters.get(k)).map(|c| c.0),
+                };
+                if let Some(at) = to {
+                    p.seek_to(at, cx);
+                }
+            });
+            return;
         }
         if matches!(command, "rotate-left" | "rotate-right" | "flip-h" | "flip-v" | "crop" | "crop-cancel" | "resize" | "revert") || (self.edit.is_some() && matches!(command, "undo" | "redo")) {
             return self.picture_command(command, window, cx);

@@ -831,15 +831,29 @@ where
     if let Some((at, status)) = pointer {
         overlays.splice(0..0, pointer_elements(renderer, from, space, at, status));
     }
+    // A recording's caption (captures only, over all, unzoomed).
+    let caption = |renderer: &mut R| -> Vec<FrameElements<R, WindowRenderElement<R>>> {
+        if !zoomable {
+            return Vec::new();
+        }
+        let size = crate::capture::size(output).unwrap_or_default();
+        crate::showing::caption_elements(renderer, size, output.current_scale().fractional_scale())
+            .into_iter()
+            .map(|e| FrameElements::Normal(OutputRenderElements::Custom(CustomRenderElements::Overlay(e))))
+            .collect()
+    };
     let Some((k, corner)) = zoom else {
         let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked);
-        return (frame(elements, fit), clear_color);
+        let mut framed = frame(elements, fit);
+        framed.splice(0..0, caption(renderer));
+        return (framed, clear_color);
     };
     let ((elements, clear_color), chord) = crate::showing::apart(renderer, from, geo.size, |renderer| output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked));
     let scale = from.current_scale().fractional_scale();
     let offset = Point::<f64, Logical>::from((-corner.x * k, -corner.y * k)).to_physical(scale).to_i32_round();
     let mut framed = frame(elements, Some(Fit { factor: k, offset }));
     framed.splice(0..0, chord.into_iter().map(|e| FrameElements::Normal(OutputRenderElements::Custom(CustomRenderElements::Overlay(e)))));
+    framed.splice(0..0, caption(renderer));
     (framed, clear_color)
 }
 

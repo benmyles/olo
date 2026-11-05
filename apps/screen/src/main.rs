@@ -46,6 +46,10 @@ usage: olo-screen                         open Agent Screens (watch, take contro
                           [--camera ID] [--encoder auto|cpu|nvidia] [--codec h264|hevc|av1] [--to PATH]
                                              a video of the screen (or one window, or part), into
                                              ~/Videos unless told; prints its path (JSON) at once
+       olo-screen mark-video NAME TITLE   this moment of the video marked (a chapter)
+       olo-screen caption-video NAME TEXT [--seconds N] | --clear
+                                          a caption in the video (never on the screen), low in
+                                          the middle, for N seconds or till the next
        olo-screen zoom-video NAME X,Y,W,H|out
                                           the video zoomed to that part of the screen (points),
                                           gliding there and held; out: back to the whole
@@ -315,18 +319,31 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
         }),
         // (The recorder's --stop, --pause and --resume, on the screen's
         // display.)
-        "stop-video" | "pause-video" | "resume-video" | "zoom-video" => screen().and_then(|s| {
+        "stop-video" | "pause-video" | "resume-video" | "zoom-video" | "caption-video" | "mark-video" => screen().and_then(|s| {
             let program = olo_xdg::find_program("olo-screenshot").ok_or("olo-screenshot isn't installed")?;
             let mut cmd = std::process::Command::new(program);
             let flag = match command {
                 "pause-video" => "--pause",
                 "resume-video" => "--resume",
                 "zoom-video" => "--zoom-to",
+                "caption-video" => "--caption",
+                "mark-video" => "--mark",
                 _ => "--stop",
             };
             cmd.arg(flag).env_remove("DISPLAY");
             if command == "zoom-video" {
                 cmd.arg(positionals(rest).get(1).ok_or("zoom-video NAME X,Y,W,H|out")?);
+            }
+            if command == "mark-video" {
+                cmd.arg(positionals(rest).get(1).cloned().unwrap_or_default());
+            }
+            if command == "caption-video" {
+                // (--clear: the caption taken down.)
+                let text = if has(rest, "--clear") { String::new() } else { positionals(rest).get(1).cloned().ok_or("caption-video NAME TEXT [--seconds N] | --clear")? };
+                cmd.arg(text);
+                if let Some(v) = option(rest, "--seconds") {
+                    cmd.args(["--seconds", v]);
+                }
             }
             for (k, v) in s.env() {
                 cmd.env(k, v);

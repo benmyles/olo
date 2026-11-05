@@ -6101,6 +6101,26 @@ Screens' Export Video uses too).
   window 30 frames a second at 374 µs each; the process 7.2% of a core,
   5.2% of it the stand-in drawing its pattern (a real camera's MJPEG
   decoding instead).
+- **Captions** (`olo-screenshot --caption TEXT [--seconds N]`,
+  `olo-screen caption-video`; `Request::Caption`, app_server
+  `showing::caption_elements`): an agent's narration, drawn by app_server
+  into captures only (a screen's, unzoomed over a zoom, and a window's,
+  low on the window's picture), never on the screen: white on a dark
+  panel 7% from the bottom, at most four fifths of the picture wide,
+  wrapped to three lines (the last cut with an ellipsis), fading in and
+  out in 180 ms, for N seconds or till the next (an empty TEXT takes it
+  down). Made once for its scale and width; while it fades the displays
+  draw on only if a capture waits for a frame, and a timer wakes them
+  when it ends.
+- **Marks** (`olo-screenshot --mark TITLE`, `olo-screen mark-video`):
+  the moment marked, timed as the video is (pauses left out: the title
+  left beside the going file, SIGRTMIN+1, the recorder taking them at
+  its next look), written as chapters (Nero's `chpl` in `moov`'s `udta`:
+  FFmpeg, mpv and VLC read it; `Mp4::chapters`) and listed in what it
+  prints (`marks`, seconds and titles). The Viewer shows a video's
+  chapters as ticks on its timeline and in Go (Previous and Next
+  Chapter, and each by name: it plays from there); agents read the one
+  playing in the Position slider's value.
 - **Zoom** (app_server `zoom.rs`; `SetShowing`'s `zoom`, `Request::ZoomTo`):
   `--zoom-follow` (Record… ▸ Zoom on Clicks; a whole display's recording
   only, not a region's or a window's) zooms the recording in twice

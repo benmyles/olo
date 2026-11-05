@@ -1541,6 +1541,9 @@ of Finished; a new one goes where its priority puts it.
   `--pointer-size`, `--smooth-pointer`; a window's recording has the
   pointer. *Zoom* (2026-11-05): Record… ▸ Zoom on Clicks,
   `--zoom-follow`; `--zoom-to` and `olo-screen zoom-video` for agents.
+  *Marks and captions* (2026-11-05): `--mark`/`mark-video` (chapters,
+  shown in the Viewer's timeline and Go menu), `--caption`/
+  `caption-video` (in captures only).
   *The camera bubble* (2026-11-05): Record… ▸ Show Camera, `--camera`,
   `olo-camera` (V4L2 in process), checked with the stand-in camera.
   *Left*: the camera bubble on a real camera (Ben's first try: Show

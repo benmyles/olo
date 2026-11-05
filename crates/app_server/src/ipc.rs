@@ -626,6 +626,18 @@ impl<B: Backend + 'static> AnvilState<B> {
                     None => Reply::Error { message: "no such display".into() },
                 }
             }
+            Request::Caption { text, seconds } => {
+                // The displays look again as it fades and when it ends.
+                if let Some(after) = crate::showing::caption(text, seconds) {
+                    use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+                    let _ = self.handle.insert_source(Timer::from_duration(after), |_, _, state| {
+                        state.backend_data.wake(None);
+                        TimeoutAction::Drop
+                    });
+                }
+                self.backend_data.wake(None);
+                Reply::Ok
+            }
             Request::Countdown { n } => {
                 let at = self.pointer.current_location();
                 if let Some(o) = self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned() {

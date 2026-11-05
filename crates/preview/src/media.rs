@@ -30,6 +30,9 @@ pub struct Media {
     pub playable: bool,
     pub video: bool,
     pub note: String,
+    /// Its chapters (an MP4's `chpl`: Olo's recordings' marks): where
+    /// each starts (seconds) and its title.
+    pub chapters: Vec<(f64, String)>,
 }
 
 pub fn format_duration(secs: f64) -> String {
@@ -39,7 +42,7 @@ pub fn format_duration(secs: f64) -> String {
 
 pub fn audio(path: &Path) -> Result<Update, String> {
     let name = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
-    let mut m = Media { picture: None, title: name, subtitle: String::new(), rows: Vec::new(), duration: None, playable: true, video: false, note: "Audio".into() };
+    let mut m = Media { picture: None, title: name, subtitle: String::new(), rows: Vec::new(), duration: None, playable: true, video: false, note: "Audio".into(), chapters: Vec::new() };
     if let Ok(f) = lofty::read_from_path(path) {
         let p = f.properties();
         let d = p.duration().as_secs_f64();
@@ -96,7 +99,7 @@ pub fn audio(path: &Path) -> Result<Update, String> {
 
 pub fn video(path: &Path, cancel: &Arc<AtomicBool>) -> Result<Update, String> {
     let name = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
-    let mut m = Media { picture: None, title: name, subtitle: String::new(), rows: Vec::new(), duration: None, playable: false, video: true, note: "Video".into() };
+    let mut m = Media { picture: None, title: name, subtitle: String::new(), rows: Vec::new(), duration: None, playable: false, video: true, note: "Video".into(), chapters: Vec::new() };
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let res = if matches!(ext.as_str(), "mkv" | "webm") { mkv(path, &mut m, cancel) } else { mp4(path, &mut m, cancel) };
     if let Err(e) = res {
@@ -111,6 +114,9 @@ pub fn video(path: &Path, cancel: &Arc<AtomicBool>) -> Result<Update, String> {
 fn mp4(path: &Path, m: &mut Media, cancel: &Arc<AtomicBool>) -> Result<(), String> {
     let f = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let size = f.metadata().map_err(|e| e.to_string())?.len();
+    if let Ok(mut r) = std::fs::File::open(path) {
+        m.chapters = mp4_chapters(&mut r, size);
+    }
     let mut r = mp4::Mp4Reader::read_header(BufReader::new(f), size).map_err(|e| e.to_string())?;
     let mut video = None;
     let mut audio = None;
@@ -567,6 +573,24 @@ pub(crate) fn mp4_av1<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64) -> 
         }
     }
     None
+}
+
+/// An MPEG-4 file's chapters, from Nero's `chpl` in `moov`'s `udta`
+/// (version 1: four reserved bytes, a count, then each start in 100 ns
+/// units and a title of up to 255 bytes).
+pub(crate) fn mp4_chapters<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64) -> Vec<(f64, String)> {
+    let Some(moov) = moov(r, len) else { return Vec::new() };
+    let Some(chpl) = within(&moov, &[b"udta", b"chpl"]) else { return Vec::new() };
+    let mut out = Vec::new();
+    let (Some(&count), mut at) = (chpl.get(8), 9usize) else { return out };
+    for _ in 0..count {
+        let Some(start) = chpl.get(at..at + 8).and_then(|b| b.try_into().ok()).map(u64::from_be_bytes) else { break };
+        let Some(&n) = chpl.get(at + 8) else { break };
+        let Some(title) = chpl.get(at + 9..at + 9 + n as usize) else { break };
+        out.push((start as f64 / 1e7, String::from_utf8_lossy(title).into_owned()));
+        at += 9 + n as usize;
+    }
+    out
 }
 
 /// An MPEG-4 file's `moov` box (`r`, `len` bytes long), read whole: it

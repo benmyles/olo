@@ -44,6 +44,8 @@ is `running`. Delete only screens you made, and only when asked.
 olo-screen start demo --size 1920x1080 --scale 2   # a 4K screen (3840 × 2160 pixels)
 olo-screen record-video demo --show-clicks --show-keys --smooth-pointer   # prints {"path": …, "pid": …} once it's recording
 # … do what the video shows, at a person's pace …
+olo-screen mark-video demo "Choosing a typeface"   # a chapter starts here
+olo-screen caption-video demo "Fonts live in the Font menu" --seconds 3   # in the video only
 olo-screen zoom-video demo 40,60,400,250           # the video zooms to that part (points), held…
 olo-screen zoom-video demo out                     # …and back to the whole screen
 olo-screen pause-video demo                        # set up the next part off camera…
@@ -73,7 +75,11 @@ jumps (each `move`) glide in the video, as a hand moves it; with
 quarter of a second: `move`, wait that long, then `click`. `--zoom-follow` zooms the
 video in around each click and out three seconds after the last click or
 key; for a detail you want seen, `zoom-video` to its frame (from
-`windows` or the tree), let it glide (about 0.7 s), show it, then `out`. For a polished demo:
+`windows` or the tree), let it glide (about 0.7 s), show it, then `out`. Mark each
+step with `mark-video` (the video gets chapters, and the JSON `stop-video`
+prints lists them), and say what's happening with `caption-video`
+(drawn into the video only, low in the middle, never on the screen):
+a short line each, up a little before the step and down after. For a polished demo:
 rehearse it first (without recording), then record it in one go; move
 the pointer deliberately (`move` before `click`), pause a moment after
 each step so it can be seen, and pause the recording (not the demo)
