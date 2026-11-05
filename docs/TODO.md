@@ -53,12 +53,16 @@ of Finished; a new one goes where its priority puts it.
   the new right edge: 18 px over 10, for a frame). A follower now keeps
   its last few asks and places a frame by the one it was drawn for.
   Seeds 1–5 and 7 pass 80 steps, 8 and 9 with `--reloads` too.
-  *Next*: seed 6 fails at step 55, before these changes as well: 67 ms
-  into a drag of 8's right edge, one look of 166 has 1 and 8 out of
-  step (5 to 32 px). And seed 9 with reloads now and then: at step 38
-  (3 and 10 overlapping 220 px for most of a 2.7 s drag) or, without
-  these changes, step 46 (settled, then moved); it passed 80 steps in
-  two runs after.
+  *Seed 6's step 55 fixed* as well: the same for the window dragged
+  (it wasn't a follower, so a frame of its last round's size, laid out
+  again, was anchored on the new target's edge, 13 px off); it follows
+  from where the drag put it as the drag ends, and stops following as
+  a drag of it begins. Seeds 1–7 and 10–12 pass 120 steps, 8 with
+  `--reloads` too. *Next*, both there before these changes: seed 13
+  with reloads at step 19 (a drag of 4's right edge, 1 and 2 over 1 by
+  124 px in 6–9 looks of 347, around 860 ms), and seed 9 with reloads
+  now and then at step 46 (settled, then moved: 4, 5 and 6 to the
+  full width a moment after a drag).
 
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in

@@ -899,6 +899,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if self.tile_drag.as_ref().is_some_and(|d| d.window == *window) {
             return;
         }
+        // Dragged, it goes where the drag puts it: not still after a
+        // target from before (a drag let go a moment ago makes the window
+        // dragged a follower, `tile_drag_end`), which would pull each frame
+        // it draws back there, against the drag.
+        self.unfollow(window);
         let mut links = Vec::new();
         let start = self.space.element_geometry(window).unwrap_or_default();
         if Self::tiled(window).is_some()
@@ -1071,7 +1076,23 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
                 (f.start, f.target, f.asked) = (start, target, asked);
             }
-            None => self.tile_followers.push(Follower { window: window.clone(), start, target, asked, before: Vec::new() }),
+            None => {
+                // Its ask before this one: where it is, at the size last
+                // asked of it (the window dragged, whose last round may be
+                // on its way as the drag is let go and it is laid out
+                // again: a frame of that comes where the drag put it).
+                let WindowSurface::Wayland(t) = window.0.underlying_surface();
+                let pending = t.with_pending_state(|s| s.size);
+                let before = match (self.space.element_geometry(window), pending) {
+                    (Some(geo), Some(size)) => {
+                        // (Outside the surface's lock: `outer_size` takes it too.)
+                        let frame = window.outer_size(size);
+                        if frame != target.size { vec![(geo, Rectangle::new(geo.loc, frame))] } else { Vec::new() }
+                    }
+                    _ => Vec::new(),
+                };
+                self.tile_followers.push(Follower { window: window.clone(), start, target, asked, before });
+            }
         }
         let content = window.inner_size(target.size);
         // (Following a drag, it's being resized by hand as much as the
@@ -1151,6 +1172,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if t.links.is_empty() {
             return;
         }
+        // The dragged window's frame in the round on its way, before the
+        // last one changes what's applied.
+        let on_its_way = drag_frames(&t, t.applied).pop().map(|(_, r)| r);
         // Where it was let go, the last round (after the one on its way):
         // its size (`end_resize` left it to send) and its neighbours'.
         let mut windows = vec![t.window.clone()];
@@ -1177,6 +1201,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // The frames the drag asked for (they may not have drawn them yet).
             for (w, r) in drag_frames(&t, t.applied) {
                 Self::set_part(&w, Some(fraction_of(area, r, gap)));
+            }
+            // The dragged window follows now too, from where the drag put
+            // it: laid out again below, a frame it draws for a round on
+            // its way still goes there (`Follower::before`), whichever
+            // edge was dragged.
+            if let Some(last) = drag_frames(&t, t.applied).pop().map(|(_, r)| r)
+                && !self.tile_followers.iter().any(|f| f.window == window)
+            {
+                let before = on_its_way.filter(|r| *r != last).map(|r| vec![(t.start, r)]).unwrap_or_default();
+                self.tile_followers.push(Follower { window: window.clone(), start: t.start, target: last, asked: Instant::now(), before });
             }
             // Auto-tiled: the splits move just there, and what that lays out
             // otherwise than the drag left it (a least size holding an edge
