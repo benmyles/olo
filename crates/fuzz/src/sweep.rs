@@ -1,32 +1,33 @@
 //! `olo-fuzz sweep`: a fuzzer over many seeds at once, each in a session
 //! of its own (started and stopped with `tools/dev/tsession`), each
 //! fuzzer a thread of this process, as many at once as memory allows
-//! (`--jobs`). Seeds start a quarter second apart
-//! (sixteen sessions starting in one instant left windows not yet drawn
-//! at the first look). `--confirm` runs the failures again, by
-//! themselves (all at once: a few sessions are next to no load): one that
-//! passes then was the load's, one that fails again is a fault.
-//! Each seed's output is in /var/tmp/olo-fuzz/sweep-SEED.txt.
+//! (`--jobs`); and `olo-fuzz wm|auto|mode`, one seed the same way, its
+//! output as it goes. All inside the sandbox (`sandbox`), each session
+//! with a home of its own there (a few folders and files for Tracker to
+//! show). Seeds start a quarter second apart (sixteen sessions starting
+//! in one instant left windows not yet drawn at the first look).
+//! `--confirm` runs the failures again, by themselves (all at once: a few
+//! sessions are next to no load): one that passes then was the load's,
+//! one that fails again is a fault. Each seed's output is in
+//! /var/tmp/olo-fuzz/sweep-SEED.txt.
 //!
-//! It leaves nothing running and nothing in /tmp (memory): each session
-//! is stopped and its folder removed however its seed ends (passed,
-//! failed, panicked, interrupted), and ends with this process even if
-//! it's killed (tsession's `--owner`); the programs it started are
-//! waited for. `--keep` keeps a failure's logs, in
-//! /var/tmp/olo-fuzz/TAG-SEED/. One sweep at a time (a lock), and one
-//! starting stops what a sweep before it left.
+//! Each session is stopped and its folders removed however its seed ends
+//! (passed, failed, panicked, interrupted); the programs it started are
+//! waited for; and the sandbox's end takes whatever is left, killed or
+//! not. `--keep` keeps a failure's logs in /var/tmp/olo-fuzz/TAG-SEED/.
 
 use std::{
-    os::{fd::AsRawFd as _, unix::process::CommandExt as _},
-    path::Path,
+    os::unix::process::CommandExt as _,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Mutex, mpsc},
     time::{Duration, Instant},
 };
 
-use crate::session::{BASE, root};
-
-const OUT: &str = "/var/tmp/olo-fuzz";
+use crate::{
+    sandbox::OUT,
+    session::{BASE, root},
+};
 
 fn seeds_of(spec: &str) -> Vec<u64> {
     let mut out = Vec::new();
@@ -44,15 +45,12 @@ fn seeds_of(spec: &str) -> Vec<u64> {
 static PROFILE: std::sync::OnceLock<&str> = std::sync::OnceLock::new();
 
 fn tsession(args: &[&str]) -> std::io::Result<std::process::Output> {
-    // (Never the person's display: the session's own, or nothing. In a
-    // process group of its own: Ctrl-C is this process's to handle, not
-    // to cut a session's start or stop in half.)
+    // (In a process group of its own: Ctrl-C is this process's to handle,
+    // not to cut a session's start or stop in half.)
     Command::new("/usr/bin/python3")
         .arg(root().join("tools/dev/tsession"))
         .args(args)
         .env("TSESSION_PROFILE", PROFILE.get().copied().unwrap_or("release"))
-        .env_remove("WAYLAND_DISPLAY")
-        .env_remove("OLO_SOCKET")
         .stdin(Stdio::null())
         .process_group(0)
         .output()
@@ -63,19 +61,30 @@ fn session_name(seed: u64, tag: &str) -> String {
     if tag == "sweep" { format!("fuzz{seed}") } else { format!("fuzz{seed}-{tag}") }
 }
 
-fn is_ours(name: &str) -> bool {
-    name.strip_prefix("fuzz").is_some_and(|rest| {
-        let digits = rest.split('-').next().unwrap_or("");
-        !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) && matches!(&rest[digits.len()..], "" | "-again")
-    })
+/// A session's own home, in the sandbox's.
+fn home_of(name: &str) -> PathBuf {
+    PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join("homes").join(name)
+}
+
+/// A home with something in it: the usual folders, a few small files.
+fn furnish(home: &Path) -> std::io::Result<()> {
+    for d in ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos", "Documents/Projects"] {
+        std::fs::create_dir_all(home.join(d))?;
+    }
+    for (file, text) in
+        [("Documents/notes.txt", "Things to do.\n"), ("Documents/plan.md", "# Plan\n\nOne, two, three.\n"), ("Documents/Projects/readme.txt", "A project.\n"), ("Downloads/list.csv", "a,b\n1,2\n")]
+    {
+        std::fs::write(home.join(file), text)?;
+    }
+    Ok(())
 }
 
 /// A seed's session, stopped however its seed ends (a panic unwinding
-/// too): what it started waited for, its logs kept in /var/tmp if asked,
-/// its folder in /tmp removed.
+/// too): what it started waited for, its logs kept if asked, its folders
+/// removed.
 struct Running {
     name: String,
-    keep_as: Option<std::path::PathBuf>,
+    keep_as: Option<PathBuf>,
 }
 
 impl Drop for Running {
@@ -88,6 +97,7 @@ impl Drop for Running {
             let _ = copy_files(&dir, to);
         }
         let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(home_of(&self.name));
     }
 }
 
@@ -106,6 +116,45 @@ fn copy_files(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// The session fuzzer `kind` wants, started as `name`, with a home of its
+/// own; stopped when what's returned goes.
+fn start(kind: &str, name: &str) -> Result<Running, String> {
+    let (size, scale) = match kind {
+        "wm" => ("2560x1600,1920x1080", "1"),
+        "mode" => ("1920x1200,1440x900", "1"),
+        _ => ("3024x1890", "1.75"),
+    };
+    let home = home_of(name);
+    let _ = std::fs::remove_dir_all(&home);
+    furnish(&home).map_err(|e| format!("{}: {e}", home.display()))?;
+    let running = Running { name: name.to_owned(), keep_as: None };
+    let home = home.display().to_string();
+    match tsession(&["start", name, size, "--scale", scale, "--session", "--shell", "--home", &home]) {
+        Ok(o) if o.status.success() => Ok(running),
+        Ok(o) => Err(format!("the session didn't start: {}", String::from_utf8_lossy(&o.stderr).trim())),
+        Err(e) => Err(format!("tsession: {e}")),
+    }
+}
+
+/// `olo-fuzz wm|auto|mode`: one seed, its output as it goes.
+pub fn single(kind: &str, args: &[String]) -> i32 {
+    let _ = PROFILE.set(if args.iter().any(|a| a == "--debug") { "debug" } else { "release" });
+    let mut running = match start(kind, "fuzz") {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("olo-fuzz: {e}");
+            return 2;
+        }
+    };
+    let code = crate::run(kind, "fuzz", args, Box::new(std::io::stdout()));
+    if code != 0 && args.iter().any(|a| a == "--keep") {
+        let to = Path::new(OUT).join(format!("{kind}-run"));
+        println!("its session's logs: {}", to.display());
+        running.keep_as = Some(to);
+    }
+    code
+}
+
 /// One seed in a session of its own: whether it passed, and its result
 /// line.
 fn one(kind: &str, seed: u64, steps: u32, extra: &[String], keep: bool, tag: &str) -> (bool, String) {
@@ -113,19 +162,10 @@ fn one(kind: &str, seed: u64, steps: u32, extra: &[String], keep: bool, tag: &st
         return (false, "interrupted before it started".into());
     }
     let name = session_name(seed, tag);
-    let _ = tsession(&["stop", &name]);
-    let (size, scale) = match kind {
-        "wm" => ("2560x1600,1920x1080", "1"),
-        "mode" => ("1920x1200,1440x900", "1"),
-        _ => ("3024x1890", "1.75"),
+    let mut running = match start(kind, &name) {
+        Ok(r) => r,
+        Err(e) => return (false, e),
     };
-    let me = std::process::id().to_string();
-    let mut running = Running { name: name.clone(), keep_as: None };
-    match tsession(&["start", &name, size, "--scale", scale, "--session", "--shell", "--owner", &me]) {
-        Ok(o) if o.status.success() => {}
-        Ok(o) => return (false, format!("the session didn't start: {}", String::from_utf8_lossy(&o.stderr).trim())),
-        Err(e) => return (false, format!("tsession: {e}")),
-    }
     let path = Path::new(OUT).join(format!("{tag}-{seed}.txt"));
     let t0 = Instant::now();
     let mut args: Vec<String> = vec!["--seed".into(), seed.to_string(), "--steps".into(), steps.to_string(), "--quiet".into()];
@@ -146,27 +186,6 @@ fn one(kind: &str, seed: u64, steps: u32, extra: &[String], keep: bool, tag: &st
     drop(running);
     let short: String = line.chars().take(300).collect();
     (passed, format!("{short} ({:.0} s)", t0.elapsed().as_secs_f64()))
-}
-
-/// The sweep's lock (/var/tmp/olo-fuzz/sweep.lock), held while it runs;
-/// None if another sweep holds it.
-fn lock() -> Option<std::fs::File> {
-    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(Path::new(OUT).join("sweep.lock")).ok()?;
-    // SAFETY: flock on a file of ours, released when it closes.
-    (unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0).then_some(file)
-}
-
-/// What a sweep before this one left (killed before it stopped them, its
-/// watchers too): its sessions stopped, their folders removed.
-fn clear_left() {
-    let Ok(dirs) = std::fs::read_dir(BASE) else { return };
-    for d in dirs.flatten() {
-        let name = d.file_name().to_string_lossy().into_owned();
-        if is_ours(&name) {
-            let _ = tsession(&["stop", &name]);
-            let _ = std::fs::remove_dir_all(d.path());
-        }
-    }
 }
 
 /// MemAvailable, in MB.
@@ -203,11 +222,6 @@ pub fn main(args: &[String]) -> i32 {
     let keep = ours.iter().any(|a| a == "--keep");
     let _ = PROFILE.set(if ours.iter().any(|a| a == "--debug") { "debug" } else { "release" });
     let _ = std::fs::create_dir_all(OUT);
-    let Some(_lock) = lock() else {
-        eprintln!("olo-fuzz sweep: another sweep is running (it holds {OUT}/sweep.lock)");
-        return 2;
-    };
-    clear_left();
     println!(
         "olo-fuzz sweep: {kind} {}, seeds {}–{} ({}), {steps} steps, {jobs} at once, {} builds",
         extra.join(" "),
@@ -290,14 +304,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clears_its_own_sessions_and_no_others() {
+    fn names_its_sessions() {
         assert_eq!(session_name(7, "sweep"), "fuzz7");
         assert_eq!(session_name(7, "again"), "fuzz7-again");
-        for name in ["fuzz7", "fuzz12-again", &session_name(3, "again")] {
-            assert!(is_ours(name), "{name}");
-        }
-        for name in ["fuzz", "fuzzy", "fuzz7-other", "fuzz-again", "sweep7", "fz", "chrome"] {
-            assert!(!is_ours(name), "{name}");
-        }
+        assert_eq!(seeds_of("1-3,7"), [1, 2, 3, 7]);
     }
 }

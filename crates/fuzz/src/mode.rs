@@ -19,8 +19,8 @@
 //! way (as Deskbar does; by launching Tracker on its folder again; and
 //! with a token in its environment that isn't for it, a link's opener's).
 //! `--chrome` does it with Olo's Chrome's window too, on a profile of its
-//! own with no network, in a session with a home of its own (`tsession
-//! start … --home DIR`: the matrix copies Chrome there).
+//! own with no network, copied into the session's own home from the
+//! installed version the sandbox lends it.
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -478,7 +478,7 @@ fn case(f: &mut Fuzz, what: &str, mode: WindowingMode, place: &str, way: &str, w
 /// own home would have the matrix touch their Chrome's install.
 fn set_up_chrome(f: &Fuzz, root: &Path) -> Result<Vec<String>, String> {
     let real = std::env::var("HOME").map_err(|_| "no HOME")?;
-    let home = f.session.env.get("HOME").filter(|h| Path::new(h) != Path::new(&real)).ok_or("the session is on your own home: start it with --home DIR")?;
+    let home = f.session.env.get("HOME").filter(|h| Path::new(h) != Path::new(&real)).ok_or("the session has no home of its own")?;
     let dest = Path::new(home).join(".local/share/olo/chrome");
     if !dest.join("current/google-chrome").exists() {
         let src = std::fs::canonicalize(Path::new(&real).join(".local/share/olo/chrome/current")).map_err(|_| "no Chrome installed")?;

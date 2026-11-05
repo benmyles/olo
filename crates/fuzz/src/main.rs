@@ -1,29 +1,30 @@
-//! olo-fuzz: Olo's window-management fuzzers, against headless sessions
-//! (`tools/dev/tsession`), and a sweep running many seeds at once. See
-//! docs/HACKING.md, "The fuzzers".
+//! olo-fuzz: Olo's window-management fuzzers, each on a headless session
+//! of its own (`tools/dev/tsession`), and a sweep running many seeds at
+//! once, all in a sandbox (`sandbox`: nothing of the machine's files but
+//! what runs, read-only). See docs/HACKING.md, "The fuzzers".
 //!
 //! ```text
-//! olo-fuzz wm SESSION   [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--tiles] [--trace-tiles] [--trail STEPS]
-//! olo-fuzz auto SESSION [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--reloads]
-//! olo-fuzz mode SESSION [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet]
-//! olo-fuzz mode SESSION --matrix [--chrome] [--only WORDS]
+//! olo-fuzz wm   [--seed N] [--steps N] [--only OPS] [--keep-going] [--keep] [--debug] [--tiles] [--trace-tiles] [--trail STEPS]
+//! olo-fuzz auto [--seed N] [--steps N] [--only OPS] [--keep-going] [--keep] [--debug] [--reloads]
+//! olo-fuzz mode [--seed N] [--steps N] [--only OPS] [--keep-going] [--keep] [--debug]
+//! olo-fuzz mode --matrix [--chrome] [--only WORDS]
 //! olo-fuzz sweep [--seeds A-B,C] [--jobs N] [--steps N] [--confirm] [--keep] [--debug] -- wm|auto|mode [ARGS…]
+//! olo-fuzz sandbox-probe
 //! ```
 //!
-//! `wm` needs a session with two or more screens and the shell
-//! (`tsession start fz 2560x1600,1920x1080 --session --shell`); `auto`
-//! one with the shell (`tsession start af 3024x1890 --scale 1.75
-//! --session --shell`); `mode` one with the shell, two displays finding
-//! more (`tsession start mz 1920x1200,1440x900 --session --shell`). A run is reproducible from its seed (printed
-//! first) as long as the session starts the same way. `sweep` starts a
-//! session for each seed itself, runs them at once (as many as memory
-//! allows), and with `--confirm` runs each failure again alone; it stops
-//! every session it started, also when interrupted or killed.
+//! Each starts the session its fuzzer wants (two screens for `wm` and
+//! `mode`, one at 1.75× for `auto`, the shell for all), runs, and stops
+//! it. A run is reproducible from its seed (printed first). `sweep` runs
+//! many seeds at once (as many as memory allows), and with `--confirm`
+//! runs the failures again by themselves. `--keep` keeps a failure's
+//! logs in /var/tmp/olo-fuzz. `sandbox-probe` says what the sandbox lets
+//! a program see and do.
 
 mod auto;
 mod fuzz;
 mod mode;
 mod rng;
+mod sandbox;
 mod session;
 mod sweep;
 mod wm;
@@ -113,17 +114,34 @@ pub fn run(kind: &str, session: &str, args: &[String], out: Box<dyn std::io::Wri
     }
 }
 
+const USAGE: &str = "usage: olo-fuzz wm|auto|mode [--seed N] [--steps N] [--only OPS] [--keep-going] [--keep] [--debug] [--reloads] [--tiles] [--trace-tiles] [--trail STEPS]
+       olo-fuzz mode --matrix [--chrome] [--only WORDS]
+       olo-fuzz sweep [--seeds A-B,C] [--jobs N] [--steps N] [--confirm] [--keep] [--debug] -- wm|auto|mode [ARGS…]
+       olo-fuzz sandbox-probe";
+
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // Every run in a sandbox: this process makes it (before any thread)
+    // and waits; the work is done by olo-fuzz again, inside.
+    if !sandbox::inside() {
+        if !matches!(args.first().map(String::as_str), Some("wm" | "auto" | "mode" | "sweep" | "sandbox-probe")) {
+            eprintln!("{USAGE}");
+            std::process::exit(2);
+        }
+        if matches!(args.first().map(String::as_str), Some("wm" | "auto" | "mode")) && args.get(1).is_some_and(|a| !a.starts_with('-')) {
+            eprintln!("olo-fuzz: it starts a session of its own, in its sandbox: no SESSION ({:?})\n{USAGE}", args[1]);
+            std::process::exit(2);
+        }
+        std::process::exit(sandbox::run(&args));
+    }
     olo_crash::install();
     catch_signals();
-    let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
-        Some("wm" | "auto" | "mode") if args.len() >= 2 && !args[1].starts_with('-') => run(&args[0], &args[1], &args[2..], Box::new(std::io::stdout())),
+        Some(kind @ ("wm" | "auto" | "mode")) => sweep::single(kind, &args[1..]),
         Some("sweep") => sweep::main(&args[1..]),
+        Some("sandbox-probe") => sandbox::probe(),
         _ => {
-            eprintln!(
-                "usage: olo-fuzz wm|auto|mode SESSION [--seed N] [--steps N] [--only OPS] [--keep-going] [--quiet] [--reloads] [--tiles] [--trace-tiles] [--trail STEPS]\n       olo-fuzz mode SESSION --matrix [--chrome] [--only WORDS]\n       olo-fuzz sweep [--seeds A-B,C] [--jobs N] [--steps N] [--confirm] [--keep] [--debug] -- wm|auto|mode [ARGS…]"
-            );
+            eprintln!("{USAGE}");
             2
         }
     };
