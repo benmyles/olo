@@ -80,7 +80,7 @@ impl<'a> Builder<'a> {
 
     #[inline]
     pub(super) fn dispatch_foreign(&mut self, token: &mut Option<Token<'a>>) -> Result<bool> {
-        let Some(&current) = self.stack.last() else { return Ok(false) };
+        let Some(current) = self.adjusted_current() else { return Ok(false) };
         let namespace = self.document.namespace(current)?.unwrap();
         if namespace == Namespace::Html || token.is_none() {
             return Ok(false);

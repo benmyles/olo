@@ -355,7 +355,7 @@ impl Document {
         }
     }
 
-    fn handle(&self, at: NonZeroU32) -> NodeId {
+    pub(crate) fn handle(&self, at: NonZeroU32) -> NodeId {
         NodeId { document: self.id, slot: index(at) as u32, generation: self.nodes[index(at)].generation }
     }
     fn resolve(&self, id: NodeId) -> Result<NonZeroU32> {

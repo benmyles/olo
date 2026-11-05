@@ -130,6 +130,17 @@ fn malformed_markup_does_not_panic_or_reprocess_forever() {
         if let Err(e) = parse(Arc::from(input.as_str()), ParseOptions::default(), None) {
             assert!(matches!(e, ParseError::Unsupported(_)), "{e}: {input:?}");
         }
+        let (name, namespace) = [
+            ("div", olo_web::dom::Namespace::Html),
+            ("table", olo_web::dom::Namespace::Html),
+            ("template", olo_web::dom::Namespace::Html),
+            ("path", olo_web::dom::Namespace::Svg),
+            ("foreignObject", olo_web::dom::Namespace::Svg),
+            ("mtext", olo_web::dom::Namespace::MathMl),
+        ][seed as usize % 6];
+        if let Err(e) = olo_web::html::parse_fragment(Arc::from(input.as_str()), &olo_web::html::FragmentContext::new(name, namespace), ParseOptions::default(), None) {
+            assert!(matches!(e, ParseError::Unsupported(_)), "{e}: {name} {input:?}");
+        }
     }
 }
 
@@ -210,4 +221,103 @@ fn unclosed_templates_unwind_beyond_the_old_reprocessing_limit() {
         node = doc.template_contents(node).unwrap().unwrap();
     }
     assert_eq!(doc.value(doc.first_child(node).unwrap().unwrap()).unwrap(), Some("text"));
+}
+
+#[test]
+fn fragment_context_inherits_form_ancestry_quirks_and_namespaced_integration_attributes() {
+    use olo_web::{
+        dom::{Document, Limits, Namespace, NodeType},
+        html::{FragmentContext, ParseOptions, QuirksMode, parse_fragment},
+    };
+    use std::sync::Arc;
+    let mut source = Document::new(Arc::from(""), Limits::default()).unwrap();
+    let form = source.create_element("form", Namespace::Html).unwrap();
+    let context = source.create_element("div", Namespace::Html).unwrap();
+    source.append_child(form, context).unwrap();
+    let revision = source.revision();
+    let metadata = FragmentContext::from_element(&source, context, QuirksMode::Quirks, None).unwrap();
+    let parsed = parse_fragment(Arc::from("<form id=ignored><input></form><form id=allowed></form><p>x<table>"), &metadata, ParseOptions::default(), None).unwrap();
+    assert_eq!(parsed.quirks, QuirksMode::Quirks);
+    let children: Vec<_> = parsed.document.children(parsed.fragment).unwrap().collect();
+    assert_eq!(children.iter().map(|&n| parsed.document.name(n).unwrap()).collect::<Vec<_>>(), vec![Some("input"), Some("form"), Some("p")]);
+    assert_eq!(parsed.document.attribute(children[1], "id").unwrap(), Some("allowed"));
+    assert_eq!(source.revision(), revision);
+    assert_eq!(source.first_child(context).unwrap(), None);
+    let p = children[2];
+    assert!(parsed.document.children(p).unwrap().any(|n| parsed.document.name(n).unwrap() == Some("table")));
+    let context = source.create_element("annotation-xml", Namespace::MathMl).unwrap();
+    source.set_attribute(context, "encoding", "TeXt/HtMl").unwrap();
+    let metadata = FragmentContext::from_element(&source, context, QuirksMode::NoQuirks, None).unwrap();
+    let parsed = parse_fragment(Arc::from("<foo></foo><svg><![CDATA[a<b]]></svg>"), &metadata, ParseOptions::default(), None).unwrap();
+    let children: Vec<_> = parsed.document.children(parsed.fragment).unwrap().collect();
+    assert_eq!(parsed.document.namespace(children[0]).unwrap(), Some(Namespace::Html));
+    assert_eq!(parsed.document.namespace(children[1]).unwrap(), Some(Namespace::Svg));
+    let text = parsed.document.first_child(children[1]).unwrap().unwrap();
+    assert_eq!(parsed.document.value(text).unwrap(), Some("a<b"));
+    assert_eq!(parsed.document.node_type(parsed.fragment).unwrap(), NodeType::Fragment);
+    assert_eq!(parsed.document.children(parsed.document.root()).unwrap().count(), 0);
+}
+
+#[test]
+fn fragment_raw_contexts_keep_literal_end_tags_and_context_select_ignores_nested_select_and_input() {
+    use olo_web::{
+        dom::Namespace,
+        html::{FragmentContext, ParseOptions, parse_fragment},
+    };
+    use std::sync::Arc;
+    for (context, text, expected) in [("textarea", "</textarea><b>&amp;", "</textarea><b>&"), ("script", "</script><b>&amp;", "</script><b>&amp;"), ("style", "</style><b>&amp;", "</style><b>&amp;")] {
+        let parsed = parse_fragment(Arc::from(text), &FragmentContext::new(context, Namespace::Html), ParseOptions::default(), None).unwrap();
+        let child = parsed.document.first_child(parsed.fragment).unwrap().unwrap();
+        assert_eq!(parsed.document.value(child).unwrap(), Some(expected));
+        assert!(parsed.document.next_sibling(child).unwrap().is_none());
+    }
+    let parsed = parse_fragment(Arc::from("<select><input><option>value</option>"), &FragmentContext::new("select", Namespace::Html), ParseOptions::default(), None).unwrap();
+    let child = parsed.document.first_child(parsed.fragment).unwrap().unwrap();
+    assert_eq!(parsed.document.name(child).unwrap(), Some("option"));
+    assert!(parsed.document.next_sibling(child).unwrap().is_none());
+}
+
+#[test]
+fn fragment_context_and_parsing_obey_cancellation_and_limits_without_mutating_the_source() {
+    use olo_web::{
+        dom::{self, Document, Limits, Namespace},
+        html::{self, FragmentContext, ParseError, ParseOptions, QuirksMode, parse_fragment},
+    };
+    use std::sync::{Arc, atomic::AtomicBool};
+    let mut source = Document::new(Arc::from(""), Limits::default()).unwrap();
+    let element = source.create_element("annotation-xml", Namespace::MathMl).unwrap();
+    source.set_attribute(element, "encoding", "text/html").unwrap();
+    source.set_attribute(element, "data-secret", "private-context-value").unwrap();
+    let revision = source.revision();
+    let cancelled = AtomicBool::new(true);
+    assert!(matches!(FragmentContext::from_element(&source, element, QuirksMode::NoQuirks, Some(&cancelled)), Err(dom::Error::Cancelled)));
+    let context = FragmentContext::from_element(&source, element, QuirksMode::NoQuirks, None).unwrap();
+    assert!(!format!("{context:?}").contains("private-context-value"));
+    assert!(matches!(parse_fragment(Arc::from("hello"), &context, ParseOptions::default(), Some(&cancelled)), Err(ParseError::Tokenizer(html::Error::Cancelled))));
+    assert!(matches!(
+        parse_fragment(Arc::from("hello"), &context, ParseOptions { tokenizer_limits: html::Limits { input_bytes: 3, ..Default::default() }, ..Default::default() }, None),
+        Err(ParseError::Tokenizer(html::Error::InputLimit))
+    ));
+    assert!(matches!(
+        parse_fragment(Arc::from("hello"), &context, ParseOptions { document_limits: Limits { attributes: 0, ..Default::default() }, ..Default::default() }, None),
+        Err(ParseError::Document(dom::Error::AttributeLimit))
+    ));
+    assert!(matches!(parse_fragment(Arc::from("hello"), &context, ParseOptions { stack_limit: 0, ..Default::default() }, None), Err(ParseError::StackLimit)));
+    assert_eq!(source.revision(), revision);
+    assert_eq!(source.first_child(element).unwrap(), None);
+}
+
+#[test]
+fn inert_fragment_parsing_keeps_declarative_shadow_markup_as_ordinary_template_content() {
+    use olo_web::{
+        dom::Namespace,
+        html::{FragmentContext, ParseOptions, parse_fragment},
+    };
+    use std::sync::Arc;
+    let parsed = parse_fragment(Arc::from("<template shadowrootmode=open><p>content</p></template>"), &FragmentContext::new("div", Namespace::Html), ParseOptions::default(), None).unwrap();
+    let template = parsed.document.first_child(parsed.fragment).unwrap().unwrap();
+    assert_eq!(parsed.document.attribute(template, "shadowrootmode").unwrap(), Some("open"));
+    assert!(parsed.document.first_child(template).unwrap().is_none());
+    let content = parsed.document.template_contents(template).unwrap().unwrap();
+    assert_eq!(parsed.document.name(parsed.document.first_child(content).unwrap().unwrap()).unwrap(), Some("p"));
 }

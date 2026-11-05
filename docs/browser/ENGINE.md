@@ -24,8 +24,8 @@ HTML/MathML integration points, self-closing foreign elements, CDATA and
 foreign spelling/attribute adjustments. Template document parsing redirects
 insertions into owned content roots,
 tracks nested insertion modes, and unwinds unclosed templates at EOF.
-Context fragments, declarative shadow roots and template content patching
-still return explicit unsupported results; they cannot be compatibility passes.
+Declarative shadow roots in documents and template content patching still
+return explicit unsupported results; they cannot be compatibility passes.
 
 `dom::Document` is storage, not the complete web-facing DOM API. Nodes
 have scoped generational handles and flat 40-byte slots. Text/attribute
@@ -39,8 +39,8 @@ origin/frame boundaries and secret masking around these primitives.
 ## Independent tree coverage
 
 Unmodified WPT fixtures and their license are in `crates/web/tests/wpt-tree`;
-NOTICE.md pins the source revision. Current coverage is **3,486/3,904
-static tree cases**, with **418 unsupported**, not passed. Both scripting
+NOTICE.md pins the source revision. Current coverage is **3,898/3,904
+static tree cases**, with **six unsupported requiring JavaScript execution**, not passed. Both scripting
 flags run where the fixture calls for them. Parse-error diagnostics are
 not checked. A native evaluator always exits nonzero until every static
 tree case matches:
@@ -66,7 +66,7 @@ Neither set of counts establishes website rendering, JS or DOM API support.
 ## Reproducible release measurements
 
 Examples `tokenize_bench`, `dom_bench`, `append_bench`, `parse_bench`,
-`table_bench`, `foreign_bench` and `template_bench`
+`table_bench`, `foreign_bench`, `template_bench` and `fragment_bench`
 emit JSON; run with `cargo run --release -p olo-web --example NAME`.
 Pin to the same CPU and alternate baseline/default runs. Raw samples,
 commands, machine and scope are recorded under `measurements/` and in
@@ -108,3 +108,31 @@ cycle/depth checks include the host relationship. Owned content roots
 cannot be destroyed independently of their host. Both allocations are
 preflighted against node/revision quotas. Inert owner-document/realm
 semantics and web-facing template APIs remain unfinished.
+
+
+## Standalone fragments
+
+`parse_fragment(Arc<str>, &FragmentContext, ParseOptions, cancellation)`
+returns `ParsedFragment { document, fragment, quirks }` in an independent
+arena. `FragmentContext::new(name, namespace)` describes an unattached,
+attribute-free element; `with_quirks` selects its document mode.
+`FragmentContext::from_element(document, element, quirks, cancellation)`
+borrows an immutable metadata snapshot, including expanded attribute
+identity and form ancestry. It is cancellable; debug output omits values.
+Build the snapshot and parse on workers. The source document stays untouched.
+
+Document and fragment parsing share the token loop. Fragments use the
+adjusted current node for foreign dispatch/CDATA and the context for mode
+reset, with form/quirks inheritance and select/frameset/HTML fragment rules.
+The initial RCDATA context has no appropriate end tag. Initial raw/script
+contexts use the HTML Standard's permitted plaintext equivalent while
+error diagnostics are not collected. Literal closing-tag text cannot end
+that initial context. Declarative shadow roots default to disabled in
+this inert API, so their markup remains an ordinary template; there is no
+allow-shadow-root option yet. Script execution stays inert.
+
+The returned fragment has a null parent and the arena's document root is
+empty. Temporary context/root nodes are reclaimed; retained source spans
+belong to the returned arena. Cross-document import/adoption, live mutation
+hooks, Web IDL innerHTML/setHTML APIs, script execution and real owner-
+document/realm semantics remain separate unfinished integration.

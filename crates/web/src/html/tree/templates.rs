@@ -4,7 +4,7 @@ use super::{Builder, Insertion, ParseError, Result, Tag, Token, Tokenizer};
 
 impl<'a> Builder<'a> {
     pub(super) fn start_template(&mut self, tag: &mut Tag<'a>) -> Result<()> {
-        if tag.attributes.iter().any(|a| a.name == "shadowrootmode" && (a.value.eq_ignore_ascii_case("open") || a.value.eq_ignore_ascii_case("closed"))) {
+        if self.fragment_context.is_none() && tag.attributes.iter().any(|a| a.name == "shadowrootmode" && (a.value.eq_ignore_ascii_case("open") || a.value.eq_ignore_ascii_case("closed"))) {
             return Err(ParseError::Unsupported("declarative shadow roots"));
         }
         if tag.attributes.iter().any(|a| a.name == "for") {

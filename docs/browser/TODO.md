@@ -22,15 +22,18 @@ item means implemented and verified; a partial implementation stays open.
   appends and source-range merging are implemented and measured.
 - [x] Connect tokenizer to original static document/head/body/list/form/raw-text/
   formatting/frameset tree construction; independent WPT tree runner and
-  per-case regression baseline. 3,486/3,904 tree cases match; this is partial.
+  per-case regression baseline. 3,898/3,904 tree cases match; this is partial.
 - [x] Static table insertion modes, foster parenting, bounded/source-backed
   pending table text; release scaling and common-path comparisons.
 - [x] Static SVG/MathML document dispatch, integration points, CDATA,
   spelling adjustments and compact XLink/XML/XMLNS attribute identity.
 - [x] Static template document modes and compact owned content fragments;
   cloning, reclamation, cycle/depth checks and EOF unwinding.
-- [ ] Complete context fragment parsing; 418 unsupported static tree cases
-  remain (including six requiring script execution).
+- [x] Standalone inert context fragments with table/foreign/template/raw
+  contexts, immutable metadata snapshots, form/quirks inheritance and
+  cancellation. 3,898/3,904 tree variants match; six need script execution.
+- [ ] Cross-document import/adoption, live fragment insertion hooks and
+  Web IDL innerHTML/setHTML APIs.
 - [ ] Declarative shadow roots, template content patching, inert owner-document/
   realm semantics and web-facing template APIs.
 - [ ] Add network/encoding/cache/cookies with security and memory bounds.
@@ -53,8 +56,9 @@ item means implemented and verified; a partial implementation stays open.
   layout and visual differentials.
 - [ ] Capture pinned Chrome baselines and execute every corpus journey;
   all scales/themes and scale changes; no missing/blocked case counted passed.
-- [ ] Profile ownership preflight costs and the measured template-milestone
-  fostered-row regression (raw release comparisons in JOURNAL.md).
+- [ ] Profile ownership preflight costs, the template-milestone fostered-row
+  regression and fragment-milestone foreign dispatch costs (raw release
+  comparisons in JOURNAL.md); performance acceptance is still open.
 - [ ] Release performance comparisons, memory/idle/latency/scroll/GPU;
   numbers and raw evidence in journal and commit messages.
 - [ ] Full workspace release build; layout lint; headless reviews and visual
@@ -62,6 +66,7 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: context fragments; complete tokenizer diagnostics/
-input handling and arbitrary namespaces/Web IDL mutation semantics.
+Next: CSS syntax/style foundation and byte/stream input handling; complete
+tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
+and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.

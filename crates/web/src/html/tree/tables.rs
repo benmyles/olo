@@ -62,19 +62,21 @@ impl<'a> Builder<'a> {
     }
 
     pub(super) fn reset_insertion_mode(&mut self) {
-        for &node in self.stack.iter().rev() {
+        for (at, &entry) in self.stack.iter().enumerate().rev() {
+            let last = at == 0;
+            let node = if last { self.fragment_element().unwrap_or(entry) } else { entry };
             if self.document.namespace(node).unwrap() != Some(super::Namespace::Html) {
                 continue;
             }
             self.mode = match self.name(node) {
-                "td" | "th" => Insertion::Cell,
+                "td" | "th" if !last => Insertion::Cell,
                 "tr" => Insertion::Row,
                 "tbody" | "tfoot" | "thead" => Insertion::TableBody,
                 "caption" => Insertion::Caption,
                 "colgroup" => Insertion::ColumnGroup,
                 "table" => Insertion::Table,
                 "template" => *self.template_modes.last().expect("template on stack has a mode"),
-                "head" => Insertion::Head,
+                "head" if !last => Insertion::Head,
                 "body" => Insertion::Body,
                 "frameset" => Insertion::Frameset,
                 "html" => {
@@ -84,6 +86,7 @@ impl<'a> Builder<'a> {
                         Insertion::BeforeHead
                     }
                 }
+                _ if last => Insertion::Body,
                 _ => continue,
             };
             return;

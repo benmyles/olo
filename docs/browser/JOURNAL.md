@@ -538,3 +538,106 @@ Malformed generation now includes templates; dedicated checks exercise
 owned content/light-DOM clones, cycles, quota atomicity, depth and failed
 clone cleanup. No visible UI changes or person's-session actions.
 Next: context fragments. The complete browser goal remains active.
+
+
+Template milestone committed locally as `e7f1e33e`. Its push failed because
+`gh auth status` reports an invalid CLI token. The connected GitHub app
+authenticates but returns 404 for `benmyles/olo` and the known prior commit.
+Requested restored repository access; local engine work continues, and
+commits will be pushed once access is available.
+
+Repository access was restored by the user, and `e7f1e33e` was successfully
+pushed to `origin/browser`; local and tracked remote heads match.
+
+
+## 2026-11-05 — context fragments with independent, cancellable arenas
+
+Added `parse_fragment` and immutable `FragmentContext` metadata, either
+an unattached name/namespace or a cancellable snapshot of a source element.
+Snapshots carry namespaced attributes, quirks mode and form ancestry;
+debug output omits attribute values. Parsing does not mutate that source
+document. The result has its own scoped arena, detached fragment root and
+quirks mode; temporary context/root/form nodes are reclaimed. Context
+slots are local 32-bit links while public IDs keep document/generation
+checks. This avoids a 24-byte optional public handle in builder state.
+
+Document/fragment construction share the same token loop. Added adjusted
+current-node dispatch and CDATA, fragment-aware mode reset, head/cell/
+frameset handling and select-context rules. Initial RCDATA has no
+appropriate end tag; raw/script contexts use HTML's permitted plaintext
+equivalent while diagnostics are not collected. Literal end-tag markup
+there remains text. Inert fragment parsing defaults declarative shadow
+roots to disabled, so their markup remains ordinary template contents.
+Document declarative roots, allow-shadow fragment APIs, content patching,
+live insertion hooks, cross-document import/adoption, Web IDL and proper
+owner-document/realm integration remain open.
+
+The first complete corpus run found one fragment case failing under each
+scripting flag: input in a select context. Added the standard's ignore rule
+for input and nested select starts. **All 412 fragment variants now match**:
+**3,898/3,904 total tree variants**, with **six JavaScript execution cases
+unsupported**. Every file/flag still runs, and the baseline protects all
+matches. Native `tree_eval` still exits **1**, verified against the final
+release binary. Parse-error diagnostics are unchecked; this is not a
+website, JS or rendering compatibility result. Summary:
+`measurements/2026-11-05-fragment-coverage.json`.
+
+Release comparisons against `e7f1e33e`, Core Ultra 7 356H, CPU 0, rustc
+1.99.1; three alternating pairs, 20 iterations for common workloads,
+ten for the remaining suites. Final median parse/drop:
+
+| Existing static workload | Before fragments | Final fragments |
+|---|---:|---:|
+| Article, 65,544 nodes | 6.111 ms | 5.954 ms |
+| 100,000 fragmented text tokens | 3.600 ms | 3.631 ms |
+| One 4,096-attribute tag | 0.596 ms | 0.603 ms |
+| Four formatting tags with 4,096 attributes each | 2.057 ms | 2.099 ms |
+| 40,000 two-cell table rows | 13.648 ms | 13.557 ms |
+| 40,000 fostered rows | 13.848 ms | 13.713 ms |
+| 40,000 SVG icon groups | 31.115 ms | 32.990 ms |
+| 40,000 MathML/HTML groups | 47.846 ms | 50.283 ms |
+| 40,000 mixed template contents | 22.276 ms | 22.487 ms |
+| 40,000 implicit template rows | 22.223 ms | 22.210 ms |
+| 40,000 fostered template contents | 35.028 ms | 34.567 ms |
+
+Median first article parse **7.530/7.352 ms**. SVG/MathML samples are
+**6.0%/5.1% slower**; keep that for profiling, with no overall speedup or
+performance-target claim. CPU clocks/load were uncontrolled. Earlier
+common sets ranged from 1.5% to 6.4% slower article parsing before the
+compact-context change; results vary, and all observations/source hashes
+are retained. Peak RSS across builds: common **8,340–8,540 KiB**, table
+**19,284–19,500**, foreign **45,156–45,232**, template **29,644–29,772**.
+Raw measurements: `measurements/2026-11-05-fragment-common.json`.
+
+New `fragment_bench`, three runs of ten iterations, median parse/drop:
+
+| Fragment context/workload | 10,000 repetitions | 20,000 | 40,000 |
+|---|---:|---:|---:|
+| HTML sections/links | 5.390 ms | 10.454 ms | 20.737 ms |
+| Table rows | 3.359 ms | 6.661 ms | 13.407 ms |
+| SVG/HTML integration | 6.683 ms | 12.861 ms | 25.637 ms |
+| MathML | 7.203 ms | 14.331 ms | 28.696 ms |
+| Template rows | 4.375 ms | 9.094 ms | 17.712 ms |
+| Decoded/literal RCDATA | 1.086 ms | 2.172 ms | 4.344 ms |
+
+At 40,000 repetitions, live nodes are **240,002/200,003/200,002/
+280,002/200,002/3**; the first five retain zero owned text and reuse source
+spans. RCDATA retains **250,000/500,000/1,000,000** decoded text bytes
+at the three sizes, in addition to its shared input. Node slots remain
+40 bytes. First complete 40,000-unit parses: HTML **23.287 ms**, table
+**13.344**, SVG **26.166**, MathML **33.658**, template **17.770**,
+RCDATA **4.352**; worker-only APIs. Peak benchmark RSS **28,148–28,344
+KiB**. Reproduce `cargo build --release -p olo-web --example fragment_bench`,
+then `taskset -c 0 /usr/bin/time -v target/release/examples/fragment_bench 10`.
+Raw samples: `measurements/2026-11-05-fragments.json`. These measure no
+live-document adoption, Web IDL, scripts, network, layout, UI or Chrome.
+
+Validation: release engine tests (17 DOM, four tokenizer, 12 tree), the
+combined scalar-scan/reference-parser feature suite, clippy and workspace
+release build. The 10,000 malformed-document samples also run as fragments
+in HTML/table/template/SVG/MathML contexts. Additional checks cover form/
+quirks inheritance, context encoding/integration, raw end-tag text,
+select behavior, inert shadow markup, cancellation, quota errors, secret-
+free debug output and source immutability. No visible UI/session changes.
+Next: CSS syntax/style foundation and byte/stream input work. The full
+native browser, JS, website evaluations and compatibility goal remain active.

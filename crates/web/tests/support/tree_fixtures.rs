@@ -2,7 +2,7 @@
 //! expected tree from the implementation under test.
 use olo_web::{
     dom::{Document, Namespace, NodeId, NodeType},
-    html::{ParseError, ParseOptions, parse},
+    html::{FragmentContext, ParseError, ParseOptions, parse, parse_fragment},
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -147,19 +147,33 @@ pub fn dump(document: &Document, root: NodeId) -> String {
 
 pub fn run(c: &Case, scripting: bool) -> Value {
     let mut result = json!({"file":c.file,"case":c.number,"scripting":scripting});
-    if c.fragment.is_some() {
-        result["outcome"] = json!("unsupported");
-        result["reason"] = json!("fragment parsing");
-        return result;
-    }
     if c.file.starts_with("scripted_") && scripting {
         result["outcome"] = json!("unsupported");
         result["reason"] = json!("JavaScript execution");
         return result;
     }
-    match std::panic::catch_unwind(|| parse(Arc::from(c.input.as_str()), ParseOptions { scripting, ..ParseOptions::default() }, None)) {
-        Ok(Ok(parsed)) => {
-            let actual = dump(&parsed.document, parsed.document.root());
+    match std::panic::catch_unwind(|| -> std::result::Result<String, ParseError> {
+        let options = ParseOptions { scripting, ..ParseOptions::default() };
+        let input = Arc::from(c.input.as_str());
+        if let Some(context) = &c.fragment {
+            let (namespace, name) = context.split_once(' ').map_or((Namespace::Html, context.as_str()), |(ns, name)| {
+                (
+                    match ns {
+                        "svg" => Namespace::Svg,
+                        "math" => Namespace::MathMl,
+                        _ => panic!("unknown fixture namespace"),
+                    },
+                    name,
+                )
+            });
+            let parsed = parse_fragment(input, &FragmentContext::new(name, namespace), options, None)?;
+            Ok(dump(&parsed.document, parsed.fragment))
+        } else {
+            let parsed = parse(input, options, None)?;
+            Ok(dump(&parsed.document, parsed.document.root()))
+        }
+    }) {
+        Ok(Ok(actual)) => {
             if actual == c.expected {
                 result["outcome"] = json!("passed");
             } else {

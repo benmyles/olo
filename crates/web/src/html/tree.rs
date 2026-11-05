@@ -14,6 +14,8 @@ use std::{
     },
 };
 mod foreign;
+mod fragments;
+pub use fragments::{FragmentContext, ParsedFragment, parse_fragment};
 mod tables;
 mod templates;
 
@@ -86,25 +88,30 @@ pub fn parse(source: Arc<str>, options: ParseOptions, cancelled: Option<&AtomicB
         tokenizer = tokenizer.with_cancellation(cancelled);
     }
     let mut builder = Builder::new(source.clone(), &source, options, cancelled)?;
+    parse_tokens(&mut builder, &mut tokenizer)?;
+    Ok(ParsedDocument { document: builder.document, quirks: builder.quirks })
+}
+
+fn parse_tokens<'a>(builder: &mut Builder<'a>, tokenizer: &mut Tokenizer<'a>) -> Result<()> {
     loop {
-        if cancelled.is_some_and(|c| c.load(Ordering::Relaxed)) {
+        if builder.cancelled.is_some_and(|c| c.load(Ordering::Relaxed)) {
             return Err(ParseError::Tokenizer(super::Error::Cancelled));
         }
         let token = tokenizer.next_token()?;
         let eof = token.is_none();
         let previous = if builder.foreign_seen { builder.stack.last().copied() } else { None };
-        builder.process(token, &mut tokenizer)?;
+        builder.process(token, tokenizer)?;
         // Namespace-dependent tokenizer state follows stack changes. Text
         // and ignored tokens do not repeat a DOM lookup after an earlier SVG.
         if builder.foreign_seen && builder.stack.last().copied() != previous {
-            tokenizer.set_allow_cdata(builder.stack.last().is_some_and(|&n| builder.document.namespace(n).unwrap() != Some(Namespace::Html)));
+            tokenizer.set_allow_cdata(builder.adjusted_current().is_some_and(|n| builder.document.namespace(n).unwrap() != Some(Namespace::Html)));
         }
         if eof {
             break;
         }
     }
     builder.initialize_selected_content()?;
-    Ok(ParsedDocument { document: builder.document, quirks: builder.quirks })
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,6 +159,9 @@ struct Builder<'a> {
     formatting: Vec<Option<Formatting<'a>>>,
     selected_content: Vec<NodeId>,
     template_modes: Vec<Insertion>,
+    // The builder owns/roots this temporary node until fragment finish.
+    // Keep its local arena slot rather than a 24-byte optional public ID.
+    fragment_context: Option<std::num::NonZeroU32>,
     head: Option<NodeId>,
     form: Option<NodeId>,
     mode: Insertion,
@@ -280,6 +290,7 @@ impl<'a> Builder<'a> {
             formatting: Vec::new(),
             selected_content: Vec::new(),
             template_modes: Vec::new(),
+            fragment_context: None,
             head: None,
             form: None,
             mode: Insertion::Initial,
@@ -295,6 +306,12 @@ impl<'a> Builder<'a> {
     }
     fn current(&self) -> NodeId {
         *self.stack.last().expect("HTML root inserted")
+    }
+    fn fragment_element(&self) -> Option<NodeId> {
+        self.fragment_context.map(|slot| self.document.handle(slot))
+    }
+    fn adjusted_current(&self) -> Option<NodeId> {
+        if self.stack.len() == 1 && self.fragment_context.is_some() { self.fragment_element() } else { self.stack.last().copied() }
     }
     fn name(&self, node: NodeId) -> &str {
         self.document.name(node).expect("builder owns node").unwrap_or("")
@@ -759,7 +776,9 @@ impl<'a> Builder<'a> {
                         false
                     }
                     Some(Token::EndTag(tag)) if tag.name == "html" => {
-                        self.mode = Insertion::AfterAfterBody;
+                        if self.fragment_context.is_none() {
+                            self.mode = Insertion::AfterAfterBody;
+                        }
                         false
                     }
                     None => false,
@@ -961,6 +980,9 @@ impl<'a> Builder<'a> {
                     if name == "image" {
                         tag.name = Cow::Borrowed("img");
                     }
+                    if tag.name == "input" && self.fragment_element().is_some_and(|n| self.is(n, "select")) {
+                        return Ok(false);
+                    }
                     if tag.name == "input"
                         && let Some(at) = self.scope(&["select"], Scope::Normal)
                     {
@@ -999,6 +1021,9 @@ impl<'a> Builder<'a> {
                     let raw = tag.name.to_string();
                     self.start_text(tag, tokenizer, Mode::RawText(raw))?;
                 } else if name == "select" {
+                    if self.fragment_element().is_some_and(|n| self.is(n, "select")) {
+                        return Ok(false);
+                    }
                     if let Some(at) = self.scope(&["select"], Scope::Normal) {
                         self.stack.truncate(at);
                     } else {
@@ -1201,7 +1226,7 @@ impl<'a> Builder<'a> {
             Some(Token::EndTag(tag)) if tag.name == "frameset" && self.mode == Insertion::Frameset => {
                 if self.stack.len() > 1 {
                     self.stack.pop();
-                    if !self.is(self.current(), "frameset") {
+                    if self.fragment_context.is_none() && !self.is(self.current(), "frameset") {
                         self.mode = Insertion::AfterFrameset;
                     }
                 }
