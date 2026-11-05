@@ -401,6 +401,18 @@ socket.
 
 Build: `cargo build -p olo-<app>` (plus `cargo build --bin olo-app-server` once, for headless testing; as root set `CARGO_HOME=/home/ben/.cargo` to share the registry) (repo is owned by `ben`; when running as
 root use `sudo -u ben bash -lc 'cd … && cargo build …'` in the main checkout).
+How long a release build takes after a change (ThinkPad, 16 threads,
+2026-11-05, the whole workspace): the kit (olo-ui) 92 s, app_server 47
+s, a leaf app 2.8 s. A kit change is bound by CPU, not by any one step:
+olo-ui 21 s, then some 35 apps compiled and linked at once, about 1,000
+CPU-seconds in all (olo-portal alone, with the machine to itself, is 15
+s, half of it local ThinLTO). Tried and not kept: `incremental = true`
+(103 s, 46 s, 3.4 s) and one codegen unit a crate (159 s, 190 s, 6.1 s);
+the linker is already rust-lld (Rust's default on x86_64 Linux since
+1.90; 0.4 s for olo-portal), kache already caches. So while working on
+one app, build just it (`cargo build --release -p olo-<app>`: a kit
+change then costs olo-ui and that app, about 35 s), and the workspace
+once at the end, for the session's upgrade.
 Builds go through [kache](https://github.com/kunobi-ninja/kache), a
 compiler cache (`cargo install kache --locked`, then
 `kache init --no-shell --no-service`, which sets `build.rustc-wrapper` in

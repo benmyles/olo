@@ -7,41 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Viewer crashed when brought back from Deskbar after a video**
-  (Ben, 2026-11-04): "i was watching a video in viewer, then left it
-  open while i did some other stuff, then when i tried to click it in
-  the deskbar to come back it crashed". A video played in Viewer, the
-  window left open (in the background, perhaps hidden or minimized, the
-  video ended or paused) while other things were done, then its Deskbar
-  entry clicked: Viewer crashed instead of coming forward. Find the
-  crash (its panic or core in the journal, Logs), reproduce it headless
-  (a video played, the window left behind other windows and minimized,
-  time passing, then activated as Deskbar does), fix it at the cause,
-  and keep a test that does that. *Looked at* (2026-11-04, minutes
-  after): Viewer (window 22, opened 15:29) was gone, and it left
-  nothing: no panic in the journal, no core (`coredumpctl`), no kernel
-  line (segfault, OOM). So either it exited on purpose (on Deskbar's
-  launch, say, handed to the running copy) or it died in a way nothing
-  records: the next item is what would have told us. Why nothing: an
-  app started by Tracker, Deskbar or another app (`olo_xdg::open::
-  spawn_app`) has its stderr sent to /dev/null, so a panic's message
-  is lost, and a panic exits 101 without a core. Not reproduced
-  headless: a 1:51 H.264 video played, minimized, left past its end,
-  then its Deskbar entry clicked: it came back at its end, no panic,
-  memory steady (162 MB) while hidden. Try next with what the crash
-  report says, else: behind other windows rather than minimized, on
-  another workspace, across a lock or the display sleeping.
-  *Likely found* (2026-11-05): the Viewer crashed headless with two
-  videos open (a panic in GPUI's atlas: `flush_initializations` indexing
-  an empty slot). A video makes a texture's picture a frame and lets the
-  last go; the app's windows share one atlas (a menu, as Deskbar's is
-  clicked, is a window too), so a texture made and freed before the
-  next frame left its initialization and upload queued, and the frame
-  panicked on the empty slot (or wrote a stale picture into the texture
-  that took it). Fixed in GPUI (`BladeAtlas::remove`), with a test on
-  the GPU that fails without it. Crash reports now name such a panic
-  (crates/crash), so if Ben's happens again it says where.
-
 - **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
   screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
   incorrectly showing up as a keyboard"): "Yubico YubiKey OTP+FIDO+CCID"
@@ -1642,25 +1607,6 @@ of Finished; a new one goes where its priority puts it.
     what it can encode in Preferences; the frames as dmabufs (CUDA's
     external memory) rather than copied.
 
-- **Faster Rust builds: the low-hanging fruit** (Ben, 2026-11-05): "see
-  if there's any low hanging fruit to speed up the rust compilation.
-  maybe lto = "fat" → "thin" and incremental = true if they're not
-  already set?" As it is: `[profile.release]` sets only `debug =
-  "line-tables-only"` (no `lto`, so Cargo's default, thin-local; no
-  `incremental`, off for release; 16 codegen units), dev builds dependencies
-  at opt-level 3, and there's no linker setting (the system's `ld`). A
-  release build of the workspace after a small change takes 1–3 min here
-  (2m 55s after a change to olo-session and Terminal, 7–55 s for one
-  crate). Measure each candidate on the same change (a kit file, an
-  app_server file, a leaf app), clean and incremental, and keep what
-  helps without making the result slower (runtime measured, as Olo's
-  rule asks): `incremental = true` for release; a faster linker (mold
-  or wild; linking app_server and the GPUI apps is a large part of an
-  incremental build); `split-debuginfo = "unpacked"`; codegen-units;
-  the dependency tree (duplicate versions, heavy proc-macros, features
-  nobody uses); `cargo build --timings` to see where the time goes.
-  Numbers in HACKING.
-
 - **Ethernet beside Wi-Fi: Deskbar, and Preferences ▸ Network in full**
   (Ben, 2026-11-05, for later): "in addition to the wifi icon that is
   shown in the deskbar tray, when ethernet is connected it should also
@@ -1712,6 +1658,18 @@ of Finished; a new one goes where its priority puts it.
   `git push` from Terminal work with a key from Passwords, tested
   headless with a fixture vault and an `sshd` of the test's own on a
   local port (or a Rust SSH server in-process).
+
+- **Arrow keys skip 10 s in a video, in Viewer and Quick Look** (Ben,
+  2026-11-05, for later): "when watching a video in viewer or quick look,
+  the left and right arrows should skip back and forward 10s in the video
+  (right now they go to the next file in the tracker)". Viewer's keys
+  (`apps/viewer/src/main.rs`, ~1189 and ~1224) and Quick Look's step to
+  the folder's next or previous file on ←/→; with a video showing they
+  seek it by 10 s instead (clamped at its start and end; held, they keep
+  seeking), ↑/↓ (or ⌘←/⌘→, say) still going to the next file, shown in
+  the window's menu and its keys' help, and told to agents (the player's
+  position in its widget tree). Tried headless with a video: ← and →
+  move its time by 10 s, the file stays.
 
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a
@@ -1802,6 +1760,70 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Faster Rust builds: the low-hanging fruit**~~ (done 2026-11-05,
+  HACKING's Layout: there isn't any. Measured on the same edits:
+  incremental release 103/46/3.4 s and one codegen unit 159/190/6.1 s
+  against today's 92/47/2.8 s (kit, app_server, a leaf app); LTO was
+  never fat; the linker is rust-lld already; kache caches. A kit change
+  is ~1,000 CPU-seconds over 35 apps. Build the one app worked on
+  (`-p`), the workspace at the end) (Ben, 2026-11-05): "see
+  if there's any low hanging fruit to speed up the rust compilation.
+  maybe lto = "fat" → "thin" and incremental = true if they're not
+  already set?" As it is: `[profile.release]` sets only `debug =
+  "line-tables-only"` (no `lto`, so Cargo's default, thin-local; no
+  `incremental`, off for release; 16 codegen units), dev builds dependencies
+  at opt-level 3, and there's no linker setting (the system's `ld`). A
+  release build of the workspace after a small change takes 1–3 min here
+  (2m 55s after a change to olo-session and Terminal, 7–55 s for one
+  crate). Measure each candidate on the same change (a kit file, an
+  app_server file, a leaf app), clean and incremental, and keep what
+  helps without making the result slower (runtime measured, as Olo's
+  rule asks): `incremental = true` for release; a faster linker (mold
+  or wild; linking app_server and the GPUI apps is a large part of an
+  incremental build); `split-debuginfo = "unpacked"`; codegen-units;
+  the dependency tree (duplicate versions, heavy proc-macros, features
+  nobody uses); `cargo build --timings` to see where the time goes.
+  Numbers in HACKING.
+
+- ~~**Viewer crashed when brought back from Deskbar after a video**~~
+  (done 2026-11-05 as far as can be without it happening again: the
+  crash reproduced headless was GPUI's atlas, fixed with a GPU test that
+  fails without it; a panic in an app started from Deskbar now leaves a
+  crash report naming it, so if Ben sees it again it says where)
+  (Ben, 2026-11-04): "i was watching a video in viewer, then left it
+  open while i did some other stuff, then when i tried to click it in
+  the deskbar to come back it crashed". A video played in Viewer, the
+  window left open (in the background, perhaps hidden or minimized, the
+  video ended or paused) while other things were done, then its Deskbar
+  entry clicked: Viewer crashed instead of coming forward. Find the
+  crash (its panic or core in the journal, Logs), reproduce it headless
+  (a video played, the window left behind other windows and minimized,
+  time passing, then activated as Deskbar does), fix it at the cause,
+  and keep a test that does that. *Looked at* (2026-11-04, minutes
+  after): Viewer (window 22, opened 15:29) was gone, and it left
+  nothing: no panic in the journal, no core (`coredumpctl`), no kernel
+  line (segfault, OOM). So either it exited on purpose (on Deskbar's
+  launch, say, handed to the running copy) or it died in a way nothing
+  records: the next item is what would have told us. Why nothing: an
+  app started by Tracker, Deskbar or another app (`olo_xdg::open::
+  spawn_app`) has its stderr sent to /dev/null, so a panic's message
+  is lost, and a panic exits 101 without a core. Not reproduced
+  headless: a 1:51 H.264 video played, minimized, left past its end,
+  then its Deskbar entry clicked: it came back at its end, no panic,
+  memory steady (162 MB) while hidden. Try next with what the crash
+  report says, else: behind other windows rather than minimized, on
+  another workspace, across a lock or the display sleeping.
+  *Likely found* (2026-11-05): the Viewer crashed headless with two
+  videos open (a panic in GPUI's atlas: `flush_initializations` indexing
+  an empty slot). A video makes a texture's picture a frame and lets the
+  last go; the app's windows share one atlas (a menu, as Deskbar's is
+  clicked, is a window too), so a texture made and freed before the
+  next frame left its initialization and upload queued, and the frame
+  panicked on the empty slot (or wrote a stale picture into the texture
+  that took it). Fixed in GPUI (`BladeAtlas::remove`), with a test on
+  the GPU that fails without it. Crash reports now name such a panic
+  (crates/crash), so if Ben's happens again it says where.
 
 - ~~**Terminal tells coding agents to keep scratch in /var/tmp**~~ (done
   2026-11-05, HACKING's agent context: `SCRATCH`, said at the start with
