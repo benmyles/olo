@@ -695,6 +695,23 @@ of Finished; a new one goes where its priority puts it.
     sealed for a Secure Enclave: find out first what it says unpaired,
     whether a template can be matched on our side at all, and say so
     before building on it.
+    *Found* (2026-11-04): it can't be done. Read from the keyboard (a
+    probe asking only descriptors, run once): interface 2's HID report
+    descriptor is a vendor page (0xff00, usage 0x4b) with three input
+    reports only, 0x20 (107 bytes), 0x21 (649) and 0x22 (62), no output
+    or feature reports, and nothing sent unasked. Apple's Platform
+    Security guide says how it's used: the keyboard's public key
+    accelerator and the Mac's Secure Enclave pair by exchanging public
+    keys rooted in Apple's certificate authority, with hardware-held
+    attestation keys and ephemeral ECDH; Touch ID data between them is
+    then AES-GCM with a 256-bit key; the sensor's own channel to that
+    block is keyed in the factory; the keyboard stores no templates and
+    matches nothing. So without a Secure Enclave Apple attests (no Linux
+    machine has one, the ThinkPad nor an Apple silicon Mac running
+    Linux), nothing can pair with it or read a fingerprint from it. What
+    stays: the keyboard itself in Preferences ▸ Keyboard (its picture,
+    function row, Fn/Globe, keypad), and Touch ID left out, said so
+    there. (Apple: support.apple.com/guide/security/secf60513daa)
 
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable
