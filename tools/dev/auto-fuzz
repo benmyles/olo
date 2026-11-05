@@ -206,13 +206,21 @@ class AutoFuzz(wm.Fuzz):
         meet)."""
         tiles = self.tiles(wins)
         out = []
+
+        def body_top(i):
+            # Below its tab: the row it's in is the window's only where the
+            # tab is (beside it is whatever is behind: the desktop).
+            y = fr(wins[i])[1]
+            t = wm.tab_rect(wins[i])
+            return max(y, t[1] + t[3]) if t else y
+
         for a in tiles:
             ax, ay, aw, ah = fr(wins[a])
             for b in tiles:
                 if a == b:
                     continue
                 bx, by, bw, bh = fr(wins[b])
-                along_y = (max(ay, by), min(ay + ah, by + bh))
+                along_y = (max(body_top(a), body_top(b)), min(ay + ah, by + bh))
                 along_x = (max(ax, bx), min(ax + aw, bx + bw))
                 if 0 <= bx - (ax + aw) <= 16 and along_y[1] - along_y[0] > 40:
                     out.append((a, "right", along_y))

@@ -78,6 +78,22 @@ of Finished; a new one goes where its priority puts it.
   tiles growing into it as the fuzzer watches for stillness; to see in
   the rounds' log, and either the room let go before the fuzzer looks
   or the fuzzer told that it's coming.
+  *Fixed* (2026-11-04, evening; HACKING's auto-tiling restart): a window
+  coming back claims its kept tile at its first commit, at the tile's
+  size now (seed 13's step 19); a closed or away window's place, which
+  took no room, comes back taking none (it held 19% of the display for
+  20 s after every upgrade: seed 9's step 46, 14's step 42); a group's
+  front given a tile once when several of its windows join it at once
+  (a tree had `[7 / 7]`: 15's step 52); a window behind a tiled one in
+  its group isn't moved by the restart check (13's step 54); and the
+  fuzzer grabs an edge below the tabs (beside a tab is the desktop: 11's
+  step 24). Seeds 1–16 then passed 120 steps with `--reloads` (7 and
+  11 run again alone, 11 once the fuzzer grabbed below the tabs).
+  *Next*: with the edges below the tabs every
+  seed's drags land a little differently, and two new faults turned up
+  in a sweep stopped early: seed 2 at step 67 ("reloading: settled,
+  then moved") and seed 3 at step 103 (bringing a tab to the front of
+  its group, then the tiles moved); then the sweep again to 16.
 
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in

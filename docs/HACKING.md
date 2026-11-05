@@ -2806,8 +2806,10 @@ each drag it samples the tiles every few milliseconds on a thread of
 its own (`MidDrag`): no tile may be over another, and tiles side by side
 as it began, the tile gap apart (as app_server links them), must stay
 that gap apart in every look (`check_mid_drag`). The build before drag
-rounds failed every drag of it, by up to 632 px. Each step's line has
-the time, to find it in the session's log. Run it after changing
+rounds failed every drag of it, by up to 632 px. An edge is grabbed
+below both windows' tabs (beside a tab is whatever is behind it, the
+desktop: a press there took the keyboard from every window). Each
+step's line has the time, to find it in the session's log. Run it after changing
 anything in `autotile.rs`, `tiling.rs`, `rounds.rs` or the resize
 grabs.
 
@@ -4518,7 +4520,24 @@ upgrade, as the tree was last laid out with them all, `laid`). The next
 app_server starts with those trees, every tile's room held for 20 s
 (`Who::Returning`), and a window put back from a place takes the tile
 that names it (`auto_returned`, by `WindowMeta::slot`), on any
-workspace, in whatever order the apps come back. Without saved trees
+workspace, in whatever order the apps come back. A place that took no
+room (an away window's, a closed one's) is saved as such
+(`SavedNode::Away`, `Like::holds`) and comes back taking none: held,
+it was a hole where the tiles had met, for 20 s after every upgrade,
+then closed with the tiles jumping into it. A window coming back to a
+display showing its tree claims its tile at its first commit
+(`auto_claim_returning`: the leaf naming its slot, or it, or one like
+it), so its first configure asks its tile's size as it is now and it is
+shown there (`restore_placement` keeps it there, its saved frame and
+tile unused): put back at its saved frame first, it was a frame over
+its neighbour after the tiles had moved since the restart (a drag,
+others coming back). When several of a group's windows, each with a
+tile, go into the group at once (groups coming back together), the
+group keeps the first of their tiles and the others close (each given
+to the group's front, it was laid out in two tiles). The check of
+windows back after a restart (`check_restored`) leaves alone a window
+behind a tiled one in its group, as it does a tile (moved, it came to
+its group's front, out of the tile). Without saved trees
 (from an app_server before them) they are made again from the windows'
 saved parts (`auto_adopt`, `WindowMeta::restored_part`). An edge drag's
 splits are set where the windows' least sizes let them be

@@ -277,7 +277,7 @@ impl<B: Backend + 'static> AnvilState<B> {
 
     /// The display `p` was saved on, if it is here: by its monitor (it may
     /// be on another connector now), else by its connector.
-    fn saved_display(&self, p: &Placement) -> Option<smithay::output::Output> {
+    pub(crate) fn saved_display(&self, p: &Placement) -> Option<smithay::output::Output> {
         let (name, _) = p.screen.as_ref()?;
         let by_key = p.screen_key.as_ref().filter(|k| *k != name).and_then(|k| self.space.outputs().find(|o| crate::desktop::display_key(o) == *k));
         by_key.or_else(|| self.space.outputs().find(|o| o.name() == *name)).cloned()
@@ -287,7 +287,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// wherever that display is now (the displays may be arranged
     /// otherwise for now: found one by one after a restart, each shifting
     /// the rest; or set up in another order). Else where it was saved.
-    fn saved_location(&self, p: &Placement) -> Point<i32, smithay::utils::Logical> {
+    pub(crate) fn saved_location(&self, p: &Placement) -> Point<i32, smithay::utils::Logical> {
         let on = |o: smithay::output::Output| {
             let (_, [x, y, _, _]) = p.screen.as_ref()?;
             let g = self.space.output_geometry(&o)?;
@@ -516,7 +516,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             return false;
         }
-        let at = self.saved_location(&p);
+        // Back in the tile kept for it (`auto_claim_returning`): where
+        // that is now, at its size, not where it was saved.
+        let in_tile = self.in_auto_tile(&window);
+        let at = self.space.element_location(&window).filter(|_| in_tile).unwrap_or_else(|| self.saved_location(&p));
         self.space.map_element(window.clone(), at, p.focused);
         info!(window = window.id(), app_id = window.app_id(), slot = p.slot, key = ?p.key, tab_order = p.tab_order, x = at.x, y = at.y, display = ?p.screen_key.as_ref().or(p.screen.as_ref().map(|s| &s.0)), "put back where it was");
         self.restored.push((window.clone(), p.clone()));
@@ -527,7 +530,9 @@ impl<B: Backend + 'static> AnvilState<B> {
             Self::restore_float_override(&window, p.floating);
         }
         meta.restored_part.set(p.tile.map(|t| p.part.unwrap_or(t.fraction())));
-        Self::set_tile_state(&window, p.tile, p.part);
+        if !in_tile {
+            Self::set_tile_state(&window, p.tile, p.part);
+        }
         window.decoration().rolled = p.rolled;
         window.decoration().tab_offset = p.tab_offset;
         // A window of an app started again is another window that only
@@ -553,7 +558,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         let size = |s: &(String, [i32; 4])| (s.1[2], s.1[3]);
         let same_size = p.screen.as_ref().map(size) == self.screen_of(&window).as_ref().map(size);
         let its_display = self.saved_display(&p).is_some_and(|o| self.display_of(&window).as_ref() == Some(&o));
-        if !self.own_size(&window) || !same_size || !its_display {
+        if !in_tile && (!self.own_size(&window) || !same_size || !its_display) {
             self.refit(&window);
         }
         meta.restored_focus.set(p.focused.then(std::time::Instant::now));
@@ -808,8 +813,9 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// compared with what was saved (display, workspace, place, minimized),
     /// and any that ended up elsewhere (put there by something after it was
     /// put back: a display's fitting, a group's placing) put back as saved
-    /// again, and said in the log. Auto-tiled windows are their tiles' (the
-    /// tiling trees came back as they were), so only said; one moved on
+    /// again, and said in the log. Auto-tiled windows (and those behind
+    /// them in their groups) are their tiles' (the tiling trees came back
+    /// as they were, and have moved since), so only said; one moved on
     /// purpose since (by hand, a shortcut, an agent) is left as it is.
     pub fn check_restored(&mut self) {
         let restored = std::mem::take(&mut self.restored);
@@ -830,7 +836,9 @@ impl<B: Backend + 'static> AnvilState<B> {
                 same += 1;
                 continue;
             }
-            let tiled = self.auto_tiled(&window);
+            // A tile, or behind one in its group (moved, it would come
+            // to the front of it, where its tile isn't).
+            let tiled = self.auto_tiled(&window) || self.groups.mates(&window).iter().any(|m| self.auto_tiled(m));
             warn!(
                 window = window.id(), app_id = window.app_id(), title = %window.title(),
                 was = ?(p.x, p.y, p.workspace, p.minimized, &wanted_display),

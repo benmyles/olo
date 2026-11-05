@@ -283,10 +283,21 @@ pub struct SavedTree {
 pub enum SavedNode {
     /// A tile: the saved places of its window (or group).
     Slots(Vec<u64>),
+    /// A place kept for a window (or group) that took no room: one away
+    /// (minimized, its group's tab behind), or one closed that may come
+    /// back (its app re-executing). Brought back, it takes none either,
+    /// till its window does: room held for it would be a hole where the
+    /// tiles had met before the restart, closed a moment later.
+    Away(Vec<u64>),
     /// A closed window's place, with nothing saved to name it by.
     Like {
         app_id: String,
         title: String,
+        /// Whether it held room (one only just closed, or not back yet
+        /// from an earlier restart, does). (From an app_server before
+        /// this was saved: it did.)
+        #[serde(default = "yes")]
+        holds: bool,
     },
     /// Room nobody has: kept (`holds`), or going to what is beside it.
     Room {
@@ -300,17 +311,23 @@ pub enum SavedNode {
     },
 }
 
+fn yes() -> bool {
+    true
+}
+
 impl SavedNode {
     /// `node` to keep: `slots` names each window's saved places, `like`
     /// a closed window's (None: its room is kept for one like it).
     pub fn of(node: &Node, slots: &dyn Fn(u64) -> Vec<u64>, like: &dyn Fn(&str, &str) -> Option<u64>) -> SavedNode {
+        let kept = |s: Vec<u64>, holds: bool| if holds { SavedNode::Slots(s) } else { SavedNode::Away(s) };
         match node {
-            Node::Window(id) | Node::Kept(Kept { who: Who::Window(id), .. }) => SavedNode::Slots(slots(*id)),
-            Node::Kept(Kept { who: Who::Like { app_id, title }, .. }) => match like(app_id, title) {
-                Some(slot) => SavedNode::Slots(vec![slot]),
-                None => SavedNode::Like { app_id: app_id.clone(), title: title.clone() },
+            Node::Window(id) => SavedNode::Slots(slots(*id)),
+            Node::Kept(Kept { who: Who::Window(id), holds, .. }) => kept(slots(*id), *holds),
+            Node::Kept(Kept { who: Who::Like { app_id, title }, holds, .. }) => match like(app_id, title) {
+                Some(slot) => kept(vec![slot], *holds),
+                None => SavedNode::Like { app_id: app_id.clone(), title: title.clone(), holds: *holds },
             },
-            Node::Kept(Kept { who: Who::Returning(s), .. }) => SavedNode::Slots(s.clone()),
+            Node::Kept(Kept { who: Who::Returning(s), holds, .. }) => kept(s.clone(), *holds),
             Node::Kept(Kept { who: Who::Nobody, holds, .. }) => SavedNode::Room { holds: *holds },
             Node::Split { cut, ratio, a, b } => {
                 SavedNode::Split { columns: *cut == Cut::Columns, ratio: *ratio, a: Box::new(SavedNode::of(a, slots, like)), b: Box::new(SavedNode::of(b, slots, like)) }
@@ -318,13 +335,14 @@ impl SavedNode {
         }
     }
 
-    /// The tree to start with: every tile room held, until `until`, for
-    /// the windows coming back.
+    /// The tree to start with: every tile's room held, until `until`,
+    /// for the windows coming back (those that took none, kept without).
     pub fn node(&self, until: Instant) -> Node {
         match self {
-            SavedNode::Slots(s) if s.is_empty() => Node::gap(),
+            SavedNode::Slots(s) | SavedNode::Away(s) if s.is_empty() => Node::gap(),
             SavedNode::Slots(s) => Node::Kept(Kept { who: Who::Returning(s.clone()), holds: true, until: Some(until) }),
-            SavedNode::Like { app_id, title } => Node::Kept(Kept { who: Who::Like { app_id: app_id.clone(), title: title.clone() }, holds: true, until: Some(until) }),
+            SavedNode::Away(s) => Node::Kept(Kept { who: Who::Returning(s.clone()), holds: false, until: Some(until) }),
+            SavedNode::Like { app_id, title, holds } => Node::Kept(Kept { who: Who::Like { app_id: app_id.clone(), title: title.clone() }, holds: *holds, until: Some(until) }),
             SavedNode::Room { holds } => Node::Kept(Kept { who: Who::Nobody, holds: *holds, until: None }),
             SavedNode::Split { columns, ratio, a, b } => Node::split(if *columns { Cut::Columns } else { Cut::Rows }, ratio.clamp(0.0, 1.0), a.node(until), b.node(until)),
         }
@@ -1298,6 +1316,12 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
             });
             let in_tree: Vec<u64> = t.windows();
+            // Heirs given a tile here already (several of a group's
+            // windows, each in a tile of its own, gone into it at once, as
+            // their groups come back after a restart): the first keeps it,
+            // the rest close (each given to the heir, it was laid out in
+            // two tiles, its group's windows each sized for one).
+            let mut heirs: Vec<u64> = Vec::new();
             for id in gone {
                 let known = self.auto.known.get(&id).cloned();
                 let alive = self.window_by_id(id);
@@ -1305,6 +1329,14 @@ impl<B: Backend + 'static> AnvilState<B> {
                 // was in (closed, minimized).
                 let group = alive.as_ref().and_then(|w| self.groups.place(w)).map(|(n, _)| n).or(known.as_ref().and_then(|k| k.group));
                 let heir = group.and_then(|g| units.iter().find(|u| self.groups.place(u).map(|(n, _)| n) == Some(g)).map(|u| u.id()));
+                if let Some(h) = heir
+                    && heirs.contains(&h)
+                {
+                    let rest = std::mem::replace(t, Node::gap());
+                    *t = rest.without(&|n| *n == Node::Window(id)).unwrap_or_else(Node::gap);
+                    continue;
+                }
+                heirs.extend(heir);
                 // The front came from a tile of its own here (it opened
                 // beside this one, or was put in the group by its tab):
                 // the group stays here, and that tile closes.
@@ -1588,8 +1620,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn auto_claim(&mut self, surface: &WlSurface) {
         let Some(w) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface)).cloned() else { return };
         let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        if t.is_initial_configure_sent() || w.meta().placed.get() || w.meta().returning.borrow().is_some() || self.floats(&w) {
+        if t.is_initial_configure_sent() || w.meta().placed.get() || self.floats(&w) {
             return;
+        }
+        if w.meta().returning.borrow().is_some() {
+            return self.auto_claim_returning(&w);
         }
         let Some(output) = self.window_output(&w) else { return };
         if !self.auto_on(&output, self.showing(&output)) || self.joins_a_group(&w) {
@@ -1610,6 +1645,46 @@ impl<B: Backend + 'static> AnvilState<B> {
         info!(window = w.id(), app_id = w.app_id(), "a new window into its tile");
         // At once, so its first configure has its tile's size.
         self.auto_output(&output);
+    }
+
+    /// A window coming back from a restart (claimed at its first commit,
+    /// `claim_placement`) whose tile was kept for it on a display showing
+    /// it: into that tile now, at the tile's size as it is now. Its saved
+    /// frame is only where the tile was: the tiles may have moved since
+    /// (a drag, others coming back), and shown there it was over its
+    /// neighbour, out past the tiling area, till the next layout moved it.
+    fn auto_claim_returning(&mut self, w: &WindowElement) {
+        let Some(p) = w.meta().returning.borrow().clone() else { return };
+        if p.tile.is_none() || p.floating.is_some() || p.minimized || p.slot == 0 {
+            return;
+        }
+        let Some(output) = self.saved_display(&p) else { return };
+        let ws = self.showing(&output);
+        if p.workspace != ws || !self.auto_on(&output, ws) {
+            return;
+        }
+        let (id, slot) = (w.id(), p.slot);
+        let mine = |n: &Node| match n {
+            Node::Kept(Kept { who: Who::Returning(s), .. }) => s.contains(&slot),
+            Node::Kept(Kept { who: Who::Window(i), .. }) => *i == id,
+            Node::Kept(Kept { who: Who::Like { app_id, title }, .. }) => *app_id == p.app_id && *title == p.title,
+            _ => false,
+        };
+        let Some(tree) = self.auto.trees.get_mut(&(ws, output.name())) else { return };
+        if !tree.replace(&mine, Node::Window(id)) {
+            return;
+        }
+        // On its display, so it is one of its tiles.
+        let at = self.saved_location(&p);
+        self.space.relocate_element(w, at);
+        info!(window = id, app_id = w.app_id(), slot, "back into the tile kept for it");
+        // At once, so its first configure has its tile's size.
+        self.auto_output(&output);
+    }
+
+    /// In an auto-tiling tree on a display showing it: laid out by it.
+    pub(crate) fn in_auto_tile(&self, w: &WindowElement) -> bool {
+        self.tree_of(w).is_some()
     }
 
     /// `w` (not shown yet) will join a group of its app's on screen, on
@@ -2020,7 +2095,8 @@ mod tests {
     use super::*;
 
     /// A tree kept across a restart comes back the same shape and ratios,
-    /// each tile held for the windows its saved places name; splits as
+    /// each tile held for the windows its saved places name (and a place
+    /// that took no room, a closed or away window's, taking none); splits as
     /// laid out (a least size holding an edge off where it was dropped);
     /// ratios taken over from the tree as it was with all its windows.
     #[test]
@@ -2033,7 +2109,23 @@ mod tests {
         let until = Instant::now();
         let node = back.node(until);
         assert_eq!(node.to_string(), "[·#10 | [·#20 / ·#99]60]30");
-        node.each_leaf(&mut |n| assert!(matches!(n, Node::Kept(Kept { holds: true, until: Some(_), .. }))));
+        node.each_leaf(&mut |n| match n {
+            Node::Kept(Kept { who: Who::Returning(s), holds, until: Some(_) }) => assert_eq!(*holds, s != &[99], "{s:?}"),
+            n => panic!("{n:?}"),
+        });
+        // Laid out, the closed window's place takes no room, as before.
+        let parts = layout(&node, &|_| (0.0, 0.0), Inset::default());
+        assert_eq!(parts.len(), 2);
+        assert!(parts.iter().any(|(_, p)| (p.3 - 1.0).abs() < 1e-6 && p.0 > 0.29));
+        // One with nothing saved to name it by keeps whether it held room;
+        // from an app_server before that was saved, it did.
+        let closed = |holds| Node::Kept(Kept { who: Who::Like { app_id: "b".into(), title: "t".into() }, holds, until: None });
+        for holds in [false, true] {
+            let saved = SavedNode::of(&closed(holds), &|_| vec![], &|_, _| None);
+            assert!(matches!(saved.node(until), Node::Kept(Kept { holds: h, .. }) if h == holds));
+        }
+        let old: SavedNode = serde_json::from_str(r#"{"Like":{"app_id":"b","title":"t"}}"#).unwrap();
+        assert!(matches!(old.node(until), Node::Kept(Kept { holds: true, .. })));
         // A least size of half the room holds the edge at a half.
         let laid = as_laid_out(&Node::split(Cut::Columns, 0.3, w(1), w(2)), &|id| if id == 1 { (0.5, 0.0) } else { (0.0, 0.0) }, Inset::default());
         assert!(matches!(laid, Node::Split { ratio, .. } if (ratio - 0.5).abs() < 1e-6));
