@@ -976,6 +976,12 @@ pub struct WindowInfo {
     /// ([`Request::SetFloating`]), over what app_server would judge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub float: Option<bool>,
+    /// It floats whatever is asked: a dialog that names its window, an
+    /// app's alert (over all its windows), picture in picture. It belongs
+    /// over those, so it's never a tile ([`Request::SetFloating`] leaves
+    /// it as it is).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub floats_always: bool,
     /// The display it is on (its connector), or was on while hidden or
     /// on another workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]

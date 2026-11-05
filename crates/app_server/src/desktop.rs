@@ -573,6 +573,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     },
                     floating: self.floats(&w),
                     float: Self::float_override(&w),
+                    floats_always: Self::floats_always(&w),
                     output: self.display_of(&w).map(|o| o.name()),
                     tab: place.map(|(_, t)| t),
                     behind: self.behind_in_group(&w),

@@ -1024,21 +1024,34 @@ impl<B: Backend + 'static> AnvilState<B> {
         w.user_data().get::<Float>().and_then(|f| f.0.get())
     }
 
+    /// Floats whatever is asked: picture in picture, a window that names
+    /// its parent (a dialog, Quick Look), an app's alert. Each belongs
+    /// over another window (or all its app's: `keep_children_above`), and
+    /// a tile can't be over the floats: tiled by hand, an alert stayed
+    /// over its app's floating windows as their child, a tile over floats.
+    pub fn floats_always(w: &WindowElement) -> bool {
+        if w.meta().pip.get() {
+            return true;
+        }
+        let WindowSurface::Wayland(t) = w.0.underlying_surface();
+        t.parent().is_some() || super::groups::is_parentless_alert(w)
+    }
+
     /// Whether `w` floats over auto-tiled windows rather than being in a
     /// tile: floated by hand, or a dialog, an alert or other fixed-size
     /// window, one whose largest size is less than its display's tiles,
     /// one tagged `floating`, or a kind that floats (`floating_kind`).
     /// Tiled by hand, it doesn't.
     pub fn floats(&self, w: &WindowElement) -> bool {
-        if w.meta().pip.get() {
+        let WindowSurface::Wayland(t) = w.0.underlying_surface();
+        if w.meta().pip.get() || t.parent().is_some() {
             return true;
         }
         if let Some(f) = Self::float_override(w) {
-            return f;
-        }
-        let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        if t.parent().is_some() {
-            return true;
+            // (An alert tiled by hand before that was refused, from a
+            // restart's saved state: it floats. Asked only of those, not
+            // every window every turn.)
+            return f || super::groups::is_parentless_alert(w);
         }
         // (All it needs of the surface's state at one go: this is asked of
         // every window on every turn of the loop.)
@@ -1860,6 +1873,10 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// one tile or floats as its front window does, and whichever is in
     /// front (after a restart, another may be) must say the same.
     pub fn set_floating(&mut self, w: &WindowElement, floating: Option<bool>) {
+        if Self::floats_always(w) {
+            info!(window = w.id(), ?floating, "floating: it floats always (a dialog, an alert): left as it is");
+            return;
+        }
         let was = self.floats(w);
         for m in self.groups.mates(w).iter().chain(std::iter::once(w)) {
             Self::restore_float_override(m, floating);

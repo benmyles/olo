@@ -4599,7 +4599,15 @@ other floating one"). Anyone can float or tile a window by hand: the
 window menu's Float Over the Tiles (only where auto-tiling is on),
 ⌃⌥⌘F (`float-window`), or `{"type":"set_floating","id":ID,"floating":true}`
 (`null` leaves it to app_server again); `WindowInfo` says `tiled`,
-`floating` and `float` (the hand's choice). The choice is its group's:
+`floating` and `float` (the hand's choice). Some windows float whatever
+is asked (`floats_always`, in `WindowInfo` too): a dialog that names its
+window, an app's alert (over all its windows), picture in picture. Each
+belongs over another window, and a tile can't be over the floats: an
+alert tiled by hand stayed over its app's floating windows as their
+child (`keep_children_above`), a tile over floats, which the next pass
+put under them again, and so on (the auto fuzzer found it). For those
+`set_floating` does nothing, and the window menu shows Float Over the
+Tiles checked and dimmed. The choice is its group's:
 a group is one tile, or floats, as its front window does, so every
 window in it is given it (`set_floating`), and whichever comes back in
 front after a restart says the same (a floating group came back tiled).

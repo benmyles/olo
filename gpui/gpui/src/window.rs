@@ -2015,8 +2015,13 @@ impl Window {
     ///
     /// If called from within a view, it will notify that view on the next frame. Otherwise, it will refresh the entire window.
     pub fn request_animation_frame(&self) {
-        let entity = self.current_view();
-        self.on_next_frame(move |_, cx| cx.notify(entity));
+        // (Outside drawing, an event handler's, there is no current view:
+        // `current_view` would panic. The whole window, as said above;
+        // Tracker's band selection crashed on it.)
+        match self.rendered_entity_stack.last().copied() {
+            Some(entity) => self.on_next_frame(move |_, cx| cx.notify(entity)),
+            None => self.on_next_frame(|window, _| window.refresh()),
+        }
     }
 
     /// Spawn the future returned by the given closure on the application thread pool.
@@ -6673,5 +6678,33 @@ mod memo_tests {
         assert_eq!(painted.get(), 3);
         let quads = cx.update(|window, _| window.rendered_frame.scene.quads.len());
         assert_eq!(quads, 4, "the three rows and the bar over them");
+    }
+
+    /// How many times it was drawn.
+    struct Counted {
+        renders: Rc<Cell<usize>>,
+    }
+
+    impl Render for Counted {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            self.renders.set(self.renders.get() + 1);
+            div().size_full()
+        }
+    }
+
+    /// An animation frame asked for outside drawing (in an event handler,
+    /// as Tracker's band selection did) draws the window again, rather
+    /// than panicking for want of a view being drawn.
+    #[crate::test]
+    fn an_animation_frame_asked_outside_drawing(cx: &mut TestAppContext) {
+        let renders = Rc::new(Cell::new(0));
+        let (_view, cx) = cx.add_window_view(|_, _| Counted {
+            renders: renders.clone(),
+        });
+        let before = renders.get();
+        cx.update(|window, _| window.request_animation_frame());
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear());
+        assert!(renders.get() > before, "drawn again");
     }
 }

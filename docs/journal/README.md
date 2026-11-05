@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-04
 
+### Window menu: a dialog floats always
+
+*23:57* — An alert or a dialog that names its window floats over it whatever is asked: in auto-tiling its window menu shows Float Over the Tiles checked and dimmed, and app_server leaves it floating when asked to tile it (an alert tiled by hand had stayed over its app's floating windows as their child: a tile over floats, found by the auto fuzzer).
+
+![Window menu: a dialog floats always](2026-11-04/235741-window-menu-a-dialog-floats-always.png)
+
 ### Preferences > GPUs: the power mode sets them all
 
 *20:59* — The power mode is the computer's one setting for speed against battery: Power Saver puts every GPU on Cooler and Quieter, Balanced on Balanced, Performance on Fastest, as it sets the processors, wherever it's chosen (a root service, olo-gpu-follow, installed by the first Apply). Its box says so and the mode now; Apply and Revert end the tuning's section, and Screen Recordings starts a section down (the layout review's new after-commit check found it 15 pt under Apply). Dark, 2x.

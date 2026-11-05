@@ -306,6 +306,21 @@ of Finished; a new one goes where its priority puts it.
   (95), 19 (70), 21 (38), 23 (67) and 25 (88). A floating window under a
   tile after tiling one: 13 (112) and 18 (66). Fix them next, at the
   cause, then sweep again until a wave is clean (with `--reloads` too).
+  *13 and 18 fixed* (2026-11-05): the window tiled was a Tracker alert
+  (a seam drag had landed in a Tracker window and dragged a folder onto
+  another: the alert said the move failed), and an alert stays over its
+  app's windows as their child, so as a tile it went back over the
+  floats each time they were put over it. Dialogs and alerts now float
+  whatever is asked (`floats_always`). Seed 18 then crashed Tracker at
+  step 81 (a band selection in its columns asked GPUI for an animation
+  frame from a mouse move, outside drawing: a panic), fixed in Tracker
+  and in GPUI. And the fuzzers now run in a sandbox (that drag could
+  have moved the person's files). *Left*, from a wave of 50 in the
+  sandbox (150 s, the failures confirmed together in 122 s), all
+  mid-drag, tiles out of step or over each other: seeds 8 (step 112),
+  10 (102), 12 (75), 14 (95), 19 (70), 21 (38), 23 (67), 25 (88), 28
+  (101, 2.8 s of it), 44 (118), 47 (101, 236 px), 48 (94) and 50 (92).
+  Nine more failed only under the load of 50 at once.
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery

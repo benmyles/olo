@@ -62,6 +62,9 @@ pub struct Facts {
     /// tiles there.
     pub auto: bool,
     pub floating: bool,
+    /// It floats whatever is asked (a dialog, an alert): Float Over the
+    /// Tiles shows it, dimmed.
+    pub floats_always: bool,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: KeyboardProfile,
     /// The file or folder it shows, if its program says
@@ -116,14 +119,14 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
             _ => None,
         };
-        let (rolled, grouped, floating) = (w.rolled, w.group.is_some(), w.floating);
+        let (rolled, grouped, floating, floats_always) = (w.rolled, w.group.is_some(), w.floating, w.floats_always);
         let pid = w.pid.map(|p| p as u32);
         let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_ui::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
         let find = |command: &str| own.iter().find(|e| e.command == command && e.path.len() == 1).map(|e| (e.label.clone(), e.keys.clone(), e.enabled));
         let entry = if olo_xdg::apps::our_app(&w.app_id).is_some() { None } else { olo_xdg::desktop_entry::find(&w.app_id) };
         let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
         let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, keys, path, app });
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, floats_always, keys, path, app });
     });
 }
 
@@ -216,7 +219,7 @@ pub fn build(f: &Facts) -> Menu {
     m = shortcut(m, "center", "Center");
     if f.auto {
         // Auto-tiled: out of the tiles (or back in).
-        m = shortcut(m, "float-window", "Float Over the Tiles").checked(f.floating);
+        m = shortcut(m, "float-window", "Float Over the Tiles").checked(f.floating).enabled(!f.floats_always);
     }
     m = m.separator().submenu(tile).submenu(spaces);
     if f.displays > 1 {
@@ -402,6 +405,7 @@ mod tests {
             grouped: true,
             auto: false,
             floating: false,
+            floats_always: false,
             keys: changed,
             path: None,
             display: Some(1),
@@ -440,6 +444,15 @@ mod tests {
         let mut auto = Vec::new();
         commands(&build(&Facts { auto: true, ..facts.clone() }), &mut auto);
         assert!(auto.contains(&"shortcut:float-window".to_owned()));
+        // A dialog or an alert floats whatever is asked: shown, dimmed.
+        let float_item = |f: &Facts| {
+            build(f).items.iter().find_map(|i| match i {
+                menu::MenuItem::Action(a) if a.command == "shortcut:float-window" => Some((a.checked, a.enabled)),
+                _ => None,
+            })
+        };
+        assert_eq!(float_item(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }), Some((true, false)));
+        assert_eq!(float_item(&Facts { auto: true, floating: false, ..facts.clone() }), Some((false, true)));
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.
         let menu = build(&facts);

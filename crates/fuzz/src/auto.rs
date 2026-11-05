@@ -472,9 +472,16 @@ fn op_float(f: &mut Fuzz, wins: &Wins, _: &[u64]) -> Step {
     } else {
         return Ok(());
     };
-    f.log(&format!("{} {w} ({})", if on { "float" } else { "tile" }, wins[&w].app_id));
+    let always = wins[&w].floats_always;
+    f.log(&format!("{} {w} ({}{})", if on { "float" } else { "tile" }, wins[&w].app_id, if always { ", which floats always" } else { "" }));
     f.req(Request::SetFloating { id: w, floating: Some(on) })?;
-    after(f, &format!("{} {w}", if on { "floating" } else { "tiling" }), 3.0).map(|_| ())
+    let what = format!("{} {w}", if on { "floating" } else { "tiling" });
+    let now = after(f, &what, 3.0)?;
+    // A dialog or an alert stays floating, over the window it's for.
+    if always && now.get(&w).is_some_and(|x| !x.floating || x.part.is_some()) {
+        f.fail(&format!("{what}: it floats always (a dialog, an alert), and became a tile\n  {}", state(&now)))?;
+    }
+    Ok(())
 }
 
 /// Bring a floating window forward (it's the front one then), or a tile
