@@ -3304,5 +3304,17 @@
   "title": "Deskbar: Ethernet beside Wi-Fi, with each link's details",
   "caption": "An Ethernet port shows in the tray while a wired link is connected. With both connected, the link not carrying the traffic (NetworkManager's default route) is drawn faint. A right-click on either shows what it's joined to, whether it's in use, its signal and rate or speed, addresses, router, DNS servers, interface, hardware address and traffic, then Network Preferences\u2026. Here Wi-Fi stands by while Ethernet carries the traffic (nm-fake, a stand-in NetworkManager).",
   "image": "2026-11-05/150134-deskbar-ethernet-beside-wi-fi-with-each-link-s-d.png"
+ },
+ {
+  "time": "2026-11-05T15:24:57",
+  "title": "Preferences \u25b8 Network: Service Order, with Deskbar following",
+  "caption": "Network has tabs for Ethernet, Service Order, DNS, Hosts and Shaping now. Here Wi-Fi was put first. NetworkManager's per-kind route metrics, written as root by olo-net-admin, moved the default route without disconnecting anything, and Deskbar's tray drew Ethernet faint and Wi-Fi strong as it happened (nm-fake standing in for NetworkManager).",
+  "image": "2026-11-05/152457-preferences-network-service-order-with-deskbar-f.png"
+ },
+ {
+  "time": "2026-11-05T15:25:52",
+  "title": "Preferences \u25b8 Network \u25b8 Shaping, as a link conditioner",
+  "caption": "A link made slower, later and lossier than it is, each way, to try a program on a poor network: bandwidth, delay, jitter and loss, from a network to start from (Edge, 3G, LTE, DSL, Busy Wi-Fi, Very Bad Network, Offline). The kernel's netem does it, spoken to over rtnetlink by olo-net-admin as root (an ifb device carries what's received). Here 3G was chosen and is ready to turn on.",
+  "image": "2026-11-05/152552-preferences-network-shaping-as-a-link-conditione.png"
  }
 ]

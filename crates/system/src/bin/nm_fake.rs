@@ -155,6 +155,7 @@ impl Saved {
             "ignore_auto_dns": flag_of(&self.settings, "ipv4", "ignore-auto-dns", false),
             "addresses": addresses_of(&self.settings).into_iter().map(|(a, p)| format!("{a}/{p}")).collect::<Vec<_>>(),
             "gateway": self.text("ipv4", "gateway"),
+            "searches": self.settings.get("ipv4").and_then(|x| x.get("dns-search")).and_then(|v| Vec::<String>::try_from(v.clone()).ok()).unwrap_or_default(),
         })
     }
 }
@@ -182,6 +183,9 @@ struct Dev {
     /// The access point joined (Wi-Fi).
     ap: Option<usize>,
     lease: Lease,
+    /// The route metric its kind had by default when it was connected
+    /// or reapplied (NetworkManager's configuration, as last read).
+    default_metric: i64,
 }
 
 #[derive(Debug)]
@@ -198,6 +202,15 @@ struct Model {
     aps: Vec<Ap>,
     wireless: bool,
     dump: Option<PathBuf>,
+    /// Each kind's route metric by default, from Olo's conf.d file as
+    /// last read (at start and `Reload`; under `OLO_NET_ROOT`).
+    defaults: Vec<(u32, i64)>,
+}
+
+/// The route metrics Olo's conf.d file gives each kind of link.
+fn conf_defaults() -> Vec<(u32, i64)> {
+    use olo_system::netconf::{NetConf, Service};
+    NetConf::read().metrics().into_iter().map(|(s, m)| (if s == Service::Ethernet { TYPE_ETHERNET } else { TYPE_WIFI }, m as i64)).collect()
 }
 
 type Shared = Arc<Mutex<Model>>;
@@ -247,14 +260,18 @@ impl Model {
         self.devices[i].state == ACTIVATED
     }
 
-    /// The route metric a link's routes get.
+    /// The route metric a link's routes get: its connection's, else its
+    /// kind's when it was applied.
     fn metric(&self, i: usize) -> i64 {
         let d = &self.devices[i];
         match metric_of(&d.applied) {
             m if m >= 0 => m,
-            _ if d.kind == TYPE_ETHERNET => 100,
-            _ => 600,
+            _ => d.default_metric,
         }
+    }
+
+    fn default_for(&self, kind: u32) -> i64 {
+        self.defaults.iter().find(|(k, _)| *k == kind).map(|(_, m)| *m).unwrap_or(if kind == TYPE_ETHERNET { 100 } else { 600 })
     }
 
     /// Its addresses, router and DNS servers.
@@ -289,8 +306,9 @@ impl Model {
         if self.devices[i].kind == TYPE_WIFI && ap.is_none() {
             return Err(fail("the network isn't in range"));
         }
+        let default_metric = self.default_for(self.devices[i].kind);
         let d = &mut self.devices[i];
-        (d.active, d.applied, d.ap, d.state, d.reason) = (Some(n), settings, ap, ACTIVATED, 0);
+        (d.active, d.applied, d.ap, d.state, d.reason, d.default_metric) = (Some(n), settings, ap, ACTIVATED, 0, default_metric);
         Ok(())
     }
 
@@ -476,7 +494,11 @@ impl Nm {
         if self.model.lock().unwrap().primary().is_some() { 70 } else { 20 }
     }
 
-    fn reload(&self, _flags: u32) {}
+    /// Its configuration read again: what links get by default when next
+    /// connected or reapplied.
+    fn reload(&self, _flags: u32) {
+        self.model.lock().unwrap().defaults = conf_defaults();
+    }
 
     async fn activate_connection(
         &self,
@@ -615,6 +637,14 @@ impl DeviceObj {
         root()
     }
 
+    /// The saved connections it could use.
+    #[zbus(property)]
+    fn available_connections(&self) -> Vec<OwnedObjectPath> {
+        let m = self.model.lock().unwrap();
+        let kind = m.devices[self.i].kind;
+        m.saved.iter().filter(|s| s.kind() == kind).map(|s| opath(conn_path(s.n))).collect()
+    }
+
     async fn disconnect(&self, #[zbus(connection)] conn: &zbus::Connection) -> zbus::fdo::Result<()> {
         let before = {
             let mut m = self.model.lock().unwrap();
@@ -637,7 +667,9 @@ impl DeviceObj {
             let Some(n) = m.devices[self.i].active else { return Err(fail("not active")) };
             let settings = if connection.is_empty() { m.saved(n).map(|s| s.settings.clone()).unwrap_or_default() } else { connection };
             let before = m.seen();
+            let default_metric = m.default_for(m.devices[self.i].kind);
             m.devices[self.i].applied = settings;
+            m.devices[self.i].default_metric = default_metric;
             before
         };
         announce(conn, &self.model, before).await;
@@ -1037,7 +1069,7 @@ fn wired_settings(n: usize) -> Settings {
 fn main() {
     olo_crash::install();
     let mut address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap_or_default();
-    let mut model = Model { saved: Vec::new(), next: 0, devices: Vec::new(), aps: Vec::new(), wireless: true, dump: None };
+    let mut model = Model { saved: Vec::new(), next: 0, devices: Vec::new(), aps: Vec::new(), wireless: true, dump: None, defaults: conf_defaults() };
     let (mut wired, mut wifi, mut adapter, mut tell, mut in_range) = (false, None::<String>, false, None::<String>, Vec::new());
     let mut args = std::env::args().skip(1);
     let usage = || -> ! {
@@ -1105,6 +1137,7 @@ fn main() {
             applied: Settings::new(),
             ap: None,
             lease: Lease { address: "192.168.1.20".into(), gateway: "192.168.1.1".into(), dns: vec!["192.168.1.1".into()] },
+            default_metric: 100,
         });
         let i = model.devices.len() - 1;
         model.activate(n, i).expect("the wired connection");
@@ -1120,6 +1153,7 @@ fn main() {
             applied: Settings::new(),
             ap: None,
             lease: Lease { address: "10.0.0.42".into(), gateway: "10.0.0.1".into(), dns: vec!["10.0.0.1".into()] },
+            default_metric: 600,
         });
         if let Some(ssid) = &wifi {
             if !model.aps.iter().any(|a| a.ssid == *ssid) {

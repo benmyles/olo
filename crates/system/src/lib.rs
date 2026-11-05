@@ -21,8 +21,10 @@ pub mod github;
 pub mod gpu_tuning;
 pub mod gpus;
 pub mod hid_monitor;
+pub mod hosts;
 pub mod keyring_prompt;
 pub mod media;
+pub mod netconf;
 pub mod network;
 pub mod packages;
 pub mod polkit;
@@ -33,6 +35,7 @@ pub mod priority;
 pub mod recording;
 pub mod rfkill;
 pub mod secrets;
+pub mod shaping;
 pub mod systemd;
 pub mod time;
 

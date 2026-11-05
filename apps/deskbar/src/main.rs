@@ -1465,12 +1465,12 @@ fn supervisor_menu(sup: &status::Supervisor) -> Menu {
     m.separator().item("Show in Activity Monitor", "run:olo-activity --section supervisor").item("Performance Settings…", "pref:performance")
 }
 
-/// A link's tray icon: a click opens Network's preferences, a right
-/// click the link's menu, read as it opens.
+/// A link's tray icon: a click opens Network's preferences on the link's
+/// tab, a right click the link's menu, read as it opens.
 fn link_hit(h: olo_ui::gpui::Stateful<olo_ui::gpui::Div>, r: Bounds<Pixels>, kind: olo_system::network::Kind, model: &Entity<Deskbar>, view: &Entity<BarView>) -> AnyElement {
     let (m, v) = (model.clone(), view.clone());
     h.on_any_button(move |e, window, cx| match button(e) {
-        MouseButton::Left => m.update(cx, |d, cx| d.run_command("pref:network", cx)),
+        MouseButton::Left => m.update(cx, |d, cx| d.run_command(if kind == olo_system::network::Kind::Wifi { "pref:network --tab Wi-Fi" } else { "pref:network --tab Ethernet" }, cx)),
         MouseButton::Right => {
             let mm = m.clone();
             let key = if kind == olo_system::network::Kind::Wifi { "tray:wifi" } else { "tray:ethernet" };
@@ -1539,7 +1539,8 @@ fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) ->
             m = row(m, format!("Received: {}, Sent: {}", format_size(received), format_size(sent)));
         }
     }
-    m.separator().item("Network Preferences…", "pref:network")
+    // (On the link's own tab.)
+    m.separator().item("Network Preferences…", if kind == Kind::Wifi { "pref:network --tab Wi-Fi" } else { "pref:network --tab Ethernet" })
 }
 
 /// The bell's menu.
@@ -2246,7 +2247,7 @@ impl Deskbar {
             let speed = w.speed.map(|s| format!(", {}", olo_system::network::speed_text(s))).unwrap_or_default();
             let tip_text = format!("Ethernet{speed}{}. Right-click for details.", if by { ", standing by: Wi-Fi is in use" } else { "" });
             let (r, h) = tray_item(&mut d, "ethernet", tip_text, Box::new(move |window, cx, r| window.with_element_opacity(faint(by), |window| status::draw_ethernet(window, r, &theme::palette(cx)))));
-            d.hits.push(link_hit(h, r, Kind::Ethernet, &model, &view));
+            d.hits.push(link_hit(h, r, Kind::Ethernet, &model, view));
         }
         if let Some(w) = st.wifi.clone() {
             let by = standing_by(Kind::Wifi);
@@ -2256,7 +2257,7 @@ impl Deskbar {
             };
             let signal = w.ssid.as_ref().map(|_| w.signal);
             let (r, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |window, cx, r| window.with_element_opacity(faint(by), |window| status::draw_wifi(window, r, &theme::palette(cx), signal))));
-            d.hits.push(link_hit(h, r, Kind::Wifi, &model, &view));
+            d.hits.push(link_hit(h, r, Kind::Wifi, &model, view));
         }
         if let Some(vol) = st.volume {
             let tip_text = if vol.muted {

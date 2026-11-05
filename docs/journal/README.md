@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Preferences ▸ Network ▸ Shaping, as a link conditioner
+
+*15:25* — A link made slower, later and lossier than it is, each way, to try a program on a poor network: bandwidth, delay, jitter and loss, from a network to start from (Edge, 3G, LTE, DSL, Busy Wi-Fi, Very Bad Network, Offline). The kernel's netem does it, spoken to over rtnetlink by olo-net-admin as root (an ifb device carries what's received). Here 3G was chosen and is ready to turn on.
+
+![Preferences ▸ Network ▸ Shaping, as a link conditioner](2026-11-05/152552-preferences-network-shaping-as-a-link-conditione.png)
+
+### Preferences ▸ Network: Service Order, with Deskbar following
+
+*15:24* — Network has tabs for Ethernet, Service Order, DNS, Hosts and Shaping now. Here Wi-Fi was put first. NetworkManager's per-kind route metrics, written as root by olo-net-admin, moved the default route without disconnecting anything, and Deskbar's tray drew Ethernet faint and Wi-Fi strong as it happened (nm-fake standing in for NetworkManager).
+
+![Preferences ▸ Network: Service Order, with Deskbar following](2026-11-05/152457-preferences-network-service-order-with-deskbar-f.png)
+
 ### Deskbar: Ethernet beside Wi-Fi, with each link's details
 
 *15:01* — An Ethernet port shows in the tray while a wired link is connected. With both connected, the link not carrying the traffic (NetworkManager's default route) is drawn faint. A right-click on either shows what it's joined to, whether it's in use, its signal and rate or speed, addresses, router, DNS servers, interface, hardware address and traffic, then Network Preferences…. Here Wi-Fi stands by while Ethernet carries the traffic (nm-fake, a stand-in NetworkManager).

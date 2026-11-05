@@ -1659,8 +1659,18 @@ of Finished; a new one goes where its priority puts it.
   NetworkManager's signals (`network::watch_links`; a strength or rate
   change taken from the signal, under a wakeup a second idle). `nm-fake`
   is a whole stand-in now (links, routes, profiles, Reapply, `--tell`).
-  Left: Preferences ▸ Network's tabs (Ethernet, Service Order, DNS,
-  Hosts, Shaping).
+  *Preferences done* 2026-11-05: Network has Wi-Fi, Ethernet (connect,
+  DHCP or its own address, router and DNS, applied without
+  disconnecting), Service Order (as a Mac's; each kind's route metric in
+  NetworkManager's conf.d, so later networks fall in line), DNS (servers
+  and search domains for every link, public resolvers to start from),
+  Hosts (/etc/hosts, entries on and off, comments kept), Shaping (as a
+  Mac's Network Link Conditioner: netem over rtnetlink, each way, with
+  presets) and Details; root through `olo-net-admin`, asked for once
+  while the panel is open. Tested against `nm-fake` end to end (the
+  route moving, Deskbar's icons following) and shaping as root in a
+  namespace of its own. Left: VPNs listed and switched, a hotspot, IPv6
+  and MTU on a wired link.
 
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a

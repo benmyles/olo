@@ -199,6 +199,22 @@ impl Prefs {
         for p in &panels {
             self.open(p, cx);
         }
+        // A tab alone: the panel opens on it (Deskbar's Ethernet menu:
+        // `network --tab Ethernet`).
+        if let (None, Some(tab), Some(Panel::Network)) = (&show, &tab, panels.last().and_then(|p| Panel::from_arg(p))) {
+            let (me, tab) = (cx.entity(), tab.clone());
+            cx.defer(move |cx| {
+                let view = me.read(cx).windows.iter().find(|w| w.panel == Some(Panel::Network)).and_then(|w| w.view.clone());
+                if let Some(view) = view {
+                    view.update(cx, |v, cx| {
+                        if let panel::State::Network(st) = &mut v.state {
+                            network::show_tab(st, &tab);
+                        }
+                        cx.notify();
+                    });
+                }
+            });
+        }
         if let (Some(name), Some(panel)) = (show, panels.last().and_then(|p| Panel::from_arg(p))) {
             // (Once the panel's window, opened after this update, has
             // drawn: what's lit is found in what it drew.)

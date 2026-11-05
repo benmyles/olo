@@ -1,8 +1,18 @@
-//! Network: Wi-Fi networks in range (join, leave, forget) and each
-//! interface's addresses. Talks to NetworkManager natively
-//! (`olo_system::network`) on a worker thread that reads its state every
-//! two seconds, scans now and then, and makes the changes, so the window
-//! never waits on it.
+//! Network: Wi-Fi networks in range (join, leave, forget), wired links
+//! (connect, DHCP or their own addresses), the services' order, DNS of
+//! one's own, /etc/hosts, traffic shaping, and each interface's
+//! addresses. Talks to NetworkManager natively (`olo_system::network`)
+//! on a worker thread that reads its state every two seconds, scans now
+//! and then, and makes the changes, so the window never waits on it;
+//! what needs root goes through `olo-net-admin` (`admin.rs`), started
+//! through polkit once.
+
+mod admin;
+mod dns;
+mod ethernet;
+mod hosts_tab;
+mod order;
+mod shaping_tab;
 
 use olo_sync::Mutex;
 use std::{
@@ -14,7 +24,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_system::network::{self as nm, Device, Enterprise, Kind, Network, Status};
+use olo_system::{
+    hosts::{Host, HostsFile},
+    netconf::NetConf,
+    network::{self as nm, Device, Enterprise, Kind, Network, Status},
+    shaping::{self, Shaping},
+};
 use olo_ui::{
     WindowOptions,
     file_panel::{self, FilePanel, PanelResult},
@@ -31,14 +46,80 @@ enum Request {
     JoinEnterprise(String, Network, Box<nm::Enterprise>),
     Disconnect(String),
     Forget(String),
+    /// A wired link connected (its saved connection, or a new one).
+    Connect(String),
+    /// A connection's IPv4 settings, and its link given them.
+    Ipv4 {
+        device: String,
+        profile: String,
+        ipv4: nm::Ipv4,
+    },
+    /// The services' order and DNS of one's own (root).
+    Conf(NetConf),
+    /// /etc/hosts as `text`, if it's still `was` (root).
+    Hosts {
+        text: String,
+        was: String,
+    },
+    /// A link shaped, or not (root).
+    Shape {
+        interface: String,
+        shaping: Shaping,
+    },
+    /// The panel closed: the root helper let go.
+    EndAdmin,
+}
+
+/// What the tabs past Wi-Fi show, read at the start, after each change
+/// and as the links change (not polled).
+#[derive(Clone, Default, PartialEq)]
+pub(crate) struct Extra {
+    /// Olo's conf.d file: the order and DNS of one's own.
+    pub conf: NetConf,
+    /// /etc/hosts: its entries and its text as read (Err: unreadable).
+    pub hosts: Option<Result<(Vec<Host>, String), String>>,
+    /// Each link's shaping (its interface).
+    pub shaping: Vec<(String, Shaping)>,
+    /// Each wired link's connection (its path, its saved connection) and
+    /// that one's IPv4 settings.
+    pub ipv4: Vec<(String, Option<String>, nm::Ipv4)>,
+}
+
+fn read_extra(status: Option<&Status>) -> Extra {
+    let devices: Vec<&Device> = status.map(|s| s.devices.iter().collect()).unwrap_or_default();
+    Extra {
+        conf: NetConf::read(),
+        hosts: Some(HostsFile::read().map(|(f, text)| (f.hosts(), text)).map_err(|e| e.to_string())),
+        shaping: devices.iter().map(|d| (d.interface.clone(), shaping::read(&d.interface).unwrap_or_default())).collect(),
+        ipv4: devices
+            .iter()
+            .filter(|d| d.kind == Kind::Ethernet)
+            .map(|d| {
+                let profile = nm::profile_of(&d.path).ok().flatten();
+                let ipv4 = profile.as_deref().and_then(|p| nm::profile_ipv4(p).ok()).unwrap_or_default();
+                (d.path.clone(), profile, ipv4)
+            })
+            .collect(),
+    }
+}
+
+/// What the links are, as far as what [`Extra`] reads follows them.
+fn links_key(status: &Option<Result<Status, String>>) -> Vec<(String, u32, Option<String>)> {
+    match status {
+        Some(Ok(s)) => s.devices.iter().map(|d| (d.path.clone(), d.state, d.connection.clone())).collect(),
+        _ => Vec::new(),
+    }
 }
 
 #[derive(Default)]
 struct Shared {
     /// None until first read; Err when NetworkManager isn't there.
     status: Option<Result<Status, String>>,
+    extra: Extra,
     busy: bool,
     error: Option<String>,
+    /// What the last change did, when there's something to say.
+    done: Option<String>,
 }
 
 struct Link {
@@ -68,6 +149,8 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                     return fake_worker(&sh, &wake, &rx);
                 }
                 let mut scanned: Option<Instant> = None;
+                let mut admin = admin::Admin::default();
+                let mut links: Option<Vec<(String, u32, Option<String>)>> = None;
                 loop {
                     let status = nm::status().map_err(|e| e.to_string());
                     if let Ok(s) = &status
@@ -80,9 +163,14 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                         scanned = Some(Instant::now());
                     }
                     let status = Some(status);
+                    // What the other tabs show, as the links change.
+                    let key = links_key(&status);
+                    let extra = (links.as_ref() != Some(&key)).then(|| read_extra(status.as_ref().and_then(|s| s.as_ref().ok())));
+                    links = Some(key);
                     let changed = {
                         let mut s = sh.lock().unwrap();
-                        std::mem::replace(&mut s.status, status.clone()) != status
+                        let extra_changed = extra.is_some_and(|e| std::mem::replace(&mut s.extra, e) != s.extra);
+                        (std::mem::replace(&mut s.status, status.clone()) != status) | extra_changed
                     };
                     if changed {
                         wake();
@@ -92,9 +180,53 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                         Err(RecvTimeoutError::Timeout) => continue,
                         Err(RecvTimeoutError::Disconnected) => break,
                     };
-                    sh.lock().unwrap().busy = true;
+                    if matches!(req, Request::EndAdmin) {
+                        admin.end();
+                        continue;
+                    }
+                    {
+                        let mut s = sh.lock().unwrap();
+                        s.busy = true;
+                        s.done = None;
+                    }
                     wake();
+                    let mut done = None;
+                    // The root helper's own words, when it said no.
+                    let mut said: Option<String> = None;
+                    // (The same error as the other requests', large or not.)
+                    #[allow(clippy::result_large_err)]
+                    let mut ask = |request: serde_json::Value| {
+                        admin.ask(&request).map_err(|e| {
+                            said = Some(e.clone());
+                            (olo_system::Error::Failure(e), "")
+                        })
+                    };
                     let r = match req {
+                        Request::EndAdmin => Ok(()),
+                        Request::Connect(dev) => nm::connect(&dev).map_err(|e| (e, "The link couldn't be connected.")),
+                        Request::Ipv4 { device, profile, ipv4 } => {
+                            // As this account, as NetworkManager lets it; else
+                            // as root.
+                            let own = nm::update_profile(&profile, |s| nm::set_ipv4_in(s, &ipv4)).and_then(|_| nm::reapply(&device));
+                            match own {
+                                Err(olo_system::Error::MethodError(name, ..)) if name.as_str().ends_with("PermissionDenied") => {
+                                    ask(serde_json::json!({ "profile": { "profile": profile, "ipv4": ipv4, "device": device } }))
+                                }
+                                r => r.map_err(|e| (e, "The connection couldn't be changed.")),
+                            }
+                        }
+                        Request::Conf(c) => {
+                            done = Some("Applied.".to_owned());
+                            ask(serde_json::json!({ "conf": c }))
+                        }
+                        Request::Hosts { text, was } => {
+                            done = Some("Saved to /etc/hosts.".to_owned());
+                            ask(serde_json::json!({ "hosts": { "text": text, "was": was } }))
+                        }
+                        Request::Shape { interface, shaping } => {
+                            done = Some(if shaping.is_on() { format!("Shaping {interface}.") } else { format!("{interface} isn't shaped.") });
+                            ask(serde_json::json!({ "shape": { "interface": interface, "shaping": shaping } }))
+                        }
                         Request::Wireless(on) => nm::set_wireless_enabled(on).map_err(|e| (e, "Wi-Fi couldn't be turned on or off.")),
                         Request::Join(dev, net, mut pw) => {
                             let r = nm::join(&dev, &net, pw.as_deref()).map_err(|e| (e, "The network couldn't be joined."));
@@ -115,12 +247,21 @@ fn link(proxy: olo_ui::Proxy) -> &'static Link {
                         Request::Disconnect(dev) => nm::disconnect(&dev).map_err(|e| (e, "The network couldn't be left.")),
                         Request::Forget(ssid) => nm::forget(&ssid).map_err(|e| (e, "The network couldn't be forgotten.")),
                     };
+                    let ok = r.is_ok();
+                    let error = r.err().map(|(e, what)| {
+                        tracing::warn!("NetworkManager: {e}");
+                        said.take().unwrap_or_else(|| what.to_owned())
+                    });
+                    // What the change changed, read at once.
+                    let status = nm::status().map_err(|e| e.to_string());
+                    let extra = read_extra(status.as_ref().ok());
                     let mut s = sh.lock().unwrap();
                     s.busy = false;
-                    s.error = r.err().map(|(e, what)| {
-                        tracing::warn!("NetworkManager: {e}");
-                        what.to_owned()
-                    });
+                    s.error = error;
+                    s.done = done.filter(|_| ok);
+                    s.extra = extra;
+                    s.status = Some(status);
+                    links = Some(links_key(&s.status));
                     drop(s);
                     wake();
                 }
@@ -188,6 +329,7 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, wake: &dyn Fn(), rx: &std::sync::mpsc::R
                 status.wireless_enabled = on;
                 None
             }
+            _ => None,
         };
         if let Some(ssid) = joined {
             for n in &mut status.networks {
@@ -209,6 +351,46 @@ pub struct State {
     password: Entity<TextField>,
     device: usize,
     link: &'static Link,
+    eth: ethernet::Edit,
+    order: order::Edit,
+    dns: dns::Edit,
+    hosts: hosts_tab::Edit,
+    shape: shaping_tab::Edit,
+}
+
+impl Drop for State {
+    /// The panel closed: the root helper, if it was started, let go.
+    fn drop(&mut self) {
+        let _ = self.link.tx.send(Request::EndAdmin);
+    }
+}
+
+/// The tabs, as `--tab` names them too.
+const TABS: [&str; 7] = ["Wi-Fi", "Ethernet", "Service Order", "DNS", "Hosts", "Shaping", "Details"];
+
+/// A text field that redraws the panel as it's typed in.
+fn field(cx: &mut Context<PanelView>, hint: &str) -> Entity<TextField> {
+    let hint = hint.to_owned();
+    let f = olo_ui::widgets::text_field(cx, |f| f.hint(hint));
+    cx.subscribe(&f, |_, _, e: &TextFieldEvent, cx| {
+        if matches!(e, TextFieldEvent::Changed) {
+            cx.notify();
+        }
+    })
+    .detach();
+    f
+}
+
+/// Label and value rows, the labels in their column as the kit's fields
+/// and menus have theirs (on the left, the values at the divider).
+fn rows(ui: &mut Ui, divider: f32, rows: &[(&str, String)]) {
+    let lines: Vec<_> = rows.iter().map(|(label, value)| labelled(divider, label, StringView::new(value.clone()))).collect();
+    ui.add(div().flex().flex_col().children(lines));
+}
+
+/// `label` in the label column, `then` from the divider on.
+fn labelled(divider: f32, label: &str, then: impl IntoElement) -> olo_ui::gpui::Div {
+    div().flex().flex_row().items_center().child(div().w(px(divider)).flex_shrink_0().child(StringView::new(label.to_owned()))).child(div().flex_1().min_w(px(0.0)).child(then))
 }
 
 impl State {
@@ -226,7 +408,19 @@ impl State {
             _ => {}
         })
         .detach();
-        State { tab: 0, list: ListModel::new(cx, false), selected: None, password, device: 0, link: link(olo_ui::proxy(cx)) }
+        State {
+            tab: 0,
+            list: ListModel::new(cx, false),
+            selected: None,
+            password,
+            device: 0,
+            link: link(olo_ui::proxy(cx)),
+            eth: ethernet::Edit::new(cx),
+            order: order::Edit::new(cx),
+            dns: dns::Edit::new(cx),
+            hosts: hosts_tab::Edit::new(cx),
+            shape: shaping_tab::Edit::new(cx),
+        }
     }
 
     fn clear_password(&mut self, cx: &mut App) {
@@ -268,10 +462,18 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
     }
 }
 
+/// Open at the tab named `name` (`olo-preferences network --tab
+/// Ethernet`, Deskbar's Ethernet menu).
+pub fn show_tab(st: &mut State, name: &str) {
+    if let Some(i) = TABS.iter().position(|t| t.eq_ignore_ascii_case(name)) {
+        st.tab = i;
+    }
+}
+
 pub fn ui(ui: &mut Ui, st: &mut State) {
-    let (status, busy, error) = {
+    let (status, extra, busy, error, done) = {
         let sh = st.link.shared.lock().unwrap();
-        (sh.status.clone(), sh.busy, sh.error.clone())
+        (sh.status.clone(), sh.extra.clone(), sh.busy, sh.error.clone(), sh.done.clone())
     };
     let status = match status {
         None => return ui.add(EmptyState::new("Looking for network devices…").icon("network-prefs")),
@@ -281,21 +483,32 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let items = ui.collect(|ui| {
         match st.tab {
             0 => wifi(ui, st, &status, busy),
+            1 => ethernet::ui(ui, st, &status, &extra, busy),
+            2 => order::ui(ui, st, &status, &extra, busy),
+            3 => dns::ui(ui, st, &status, &extra, busy),
+            4 => hosts_tab::ui(ui, st, &extra, busy),
+            5 => shaping_tab::ui(ui, st, &status, &extra, busy),
             _ => details(ui, st, &status),
         }
         if busy {
             ui.note("Working…");
         } else if let Some(e) = &error {
             ui.label(e.clone());
+        } else if let Some(d) = &done {
+            ui.note(d.clone());
         }
     });
     let pick = ui.on_view(|v, i: usize, _, cx| {
         if let Some(st) = state_of(v) {
             st.tab = i;
+            // (What the last change said was about the tab it was on.)
+            let mut sh = st.link.shared.lock().unwrap();
+            sh.done = None;
+            sh.error = None;
         }
         cx.notify();
     });
-    let tabs: Vec<SharedString> = ["Wi-Fi", "Details"].into_iter().map(SharedString::from).collect();
+    let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
     ui.add(
         div()
             .flex_1()
@@ -660,7 +873,7 @@ fn inner_name(nm_name: &str) -> &'static str {
 }
 
 /// The tick beside the network in use.
-fn check(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
+pub(super) fn check(window: &mut Window, r: Bounds<Pixels>, color: Hsla) {
     let c0 = r.center();
     let at = |x: f32, y: f32| point(c0.x + px(x), c0.y + px(y));
     let mut path = PathBuilder::stroke(px(2.0));
@@ -713,7 +926,7 @@ fn details(ui: &mut Ui, st: &mut State, status: &Status) {
     ui.add(separator());
     let d: &Device = &status.devices[st.device];
     let none = "—".to_owned();
-    let rows = [
+    let rows_of = [
         ("Status:", d.state_text().to_owned()),
         ("Connection:", d.connection.clone().unwrap_or_else(|| none.clone())),
         ("IP address:", if d.addresses.is_empty() { none.clone() } else { d.addresses.join(", ") }),
@@ -722,9 +935,5 @@ fn details(ui: &mut Ui, st: &mut State, status: &Status) {
         ("Hardware address:", if d.hw_address.is_empty() { none.clone() } else { d.hw_address.clone() }),
         ("Speed:", d.speed.map_or(none.clone(), nm::speed_text)),
     ];
-    let lines = rows.into_iter().map(|(label, value)| {
-        // The label right-aligned in its column, as form rows have it.
-        div().flex().flex_row().child(div().w(px(DIVIDER)).flex_shrink_0().flex().justify_end().pr(px(m::LABEL_GAP)).child(StringView::new(label))).child(StringView::new(value))
-    });
-    ui.add(div().flex().flex_col().children(lines.collect::<Vec<_>>()));
+    rows(ui, DIVIDER, &rows_of);
 }

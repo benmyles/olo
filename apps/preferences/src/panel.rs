@@ -219,7 +219,8 @@ impl Panel {
             Panel::Gpus => (900, 448),
             Panel::Integrations => (460, 600),
             Panel::Keyboard => (520, 736),
-            Panel::Network => (460, 318),
+            // Seven tabs; Hosts' four columns; Shaping's two ways side by side.
+            Panel::Network => (640, 420),
             Panel::Notifications => (440, 700),
             // Its Watchdog tab's thresholds two by two, each a pair of sliders.
             Panel::Performance => (900, 560),

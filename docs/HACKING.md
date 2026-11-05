@@ -3710,11 +3710,74 @@ opened, its own `panel::State` and text fields).
   ways that follows the sliders. app_server refits arranged windows as
   they change, so the sliders move them live. Deskbar's Window
   Arrangement menu ends with Windows Preferences….
-* Network (`network.rs`) reads NetworkManager through
+* Network (`network/`) reads NetworkManager through
   `olo_system::network` on a worker thread (devices, addresses,
   networks in range merged by SSID, saved connections; a scan every 30 s)
   and joins (saved connection, or a new WPA-PSK one), disconnects and
-  forgets. A new enterprise (802.1X) network's Join… opens a sheet
+  forgets. Its tabs (`TABS`; `olo-preferences network --tab Ethernet`
+  opens at one, as Deskbar's link icons do):
+  - **Ethernet** (`ethernet.rs`): each wired link (an Adapter menu with
+    several), No cable / Connected with “…”, 1 Gb/s, Connect or
+    Disconnect (`nm::connect`: its saved connection, else a new one), and
+    its connection's IPv4: Using DHCP (the address and router DHCP gave
+    shown, dim) or Manually (address/prefix, router), and DNS servers of
+    its own; Apply writes the connection (`nm::update_profile`,
+    `set_ipv4_in`: `Update2`, secrets kept) and `Reapply`s the link, so
+    it changes without disconnecting. NetworkManager lets wheel users on
+    the console change system connections themselves; for anyone else it
+    goes through the root helper.
+  - **Service Order** (`order.rs`), as a Mac's Set Service Order: Ethernet
+    and Wi-Fi in the order traffic prefers them, the one in use checked,
+    Move Up / Move Down, Use the Usual Order, Apply.
+  - **DNS** (`dns.rs`): servers and search domains for every link, a menu
+    of public resolvers (Cloudflare, Google, Quad9, with their IPv6
+    addresses) to start from, and what each link asks now.
+  - **Hosts** (`hosts_tab.rs`): /etc/hosts's entries (address, names,
+    comment, on or off), the machine's own (localhost) dim and not
+    editable; Add, Remove, the fields edit the entry chosen, Save writes
+    them all.
+  - **Shaping** (`shaping_tab.rs`), as a Mac's Network Link Conditioner:
+    a link, what it receives and what it sends each with bandwidth,
+    delay, jitter and loss, a menu of networks to start from (Edge, 3G,
+    LTE, DSL, Busy Wi-Fi, Very Bad Network, Offline), Turn On / Apply and
+    Turn Off, and how it's shaped now (read back from the kernel).
+  - **Details**: each interface's addresses, router, DNS, hardware
+    address and speed.
+
+  What needs root goes through **`olo-net-admin`** (crates/system,
+  `admin.rs` in the panel): started through pkexec (Olo's polkit agent
+  asks for the password) the first time a change needs it, then kept
+  and fed requests as JSON lines on stdin while the panel is open (the
+  password asked once), let go as the panel closes. It writes the
+  services' order and DNS of one's own into NetworkManager's own
+  configuration, `/etc/NetworkManager/conf.d/90-olo.conf`
+  (`olo_system::netconf`: each kind of link's route metric by default,
+  `[connection-olo-wifi]` `match-device=type:wifi`, so a network joined
+  later by anything falls in line; NetworkManager's global DNS,
+  `[global-dns]` and `[global-dns-domain-*]`, which takes the place of
+  each network's; search domains given without servers go onto each
+  connection instead, since global DNS without servers would leave every
+  link with none, and the file remembers them to take them off again),
+  then `Reload`s NetworkManager and `Reapply`s every link connected; it
+  writes /etc/hosts in place (`olo_system::hosts`: the file keeps its
+  inode, owner, mode and SELinux label; comments and untouched entries
+  stay as written; an entry turned off is `#off …`; refused if the file
+  changed since it was read, and every line checked); and it shapes a
+  link (`olo_system::shaping`, rtnetlink spoken directly: a `netem`
+  queue at the link's root for what it sends, and for what it receives
+  an `ifb` device of Olo's, `olo-ifbN`, fed by a `matchall` filter with a
+  `mirred` redirect on the link's ingress, with its own `netem`;
+  clearing takes away only Olo's). Everything it's sent is checked
+  before it acts (`NetConf::check`, `HostsFile::check`, `Shape::check`).
+  Tests: `OLO_NET_ADMIN=direct` runs it as this user, `OLO_NET_ROOT=DIR`
+  puts /etc under DIR, and `OLO_NM_BUS` points at `nm-fake` (which reads
+  the conf file at `Reload` and applies its metrics at `Reapply`, as
+  NetworkManager does): `tsession run NAME OLO_NM_BUS=… OLO_NET_ROOT=…
+  OLO_NET_ADMIN=direct olo-preferences network --tab Ethernet`. Shaping
+  was tried as root in a network namespace of its own (`sudo unshare -n`,
+  `cargo run --example shape`: `lo` sent 100 ms later pinged 200 ms,
+  received 50 ms later 100 ms, both 300 ms, 50% loss received lost 72%
+  of pings, both ways crossing it; cleared, as before). A new enterprise (802.1X) network's Join… opens a sheet
   (`EnterpriseForm`, main's `Win::Enterprise`): PEAP / TTLS with an inner
   method, username and password, or TLS with a certificate and key
   (`Win::Cert` file panels, `CERT_TYPES`); anonymous identity; the CA
