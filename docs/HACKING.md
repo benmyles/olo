@@ -2526,7 +2526,7 @@ longer exists: a login before, a test session or Agent Screen stopped
 without them; `upgrade::leftovers`, none younger than 30 s, none with
 no display in their environment) are asked to end at the first look
 and killed at the second if they didn't (`sweep_leftovers`, by pid and
-start time). Nor is stopped a program of ours that
+start time; only by the person's session). Nor is stopped a program of ours that
 another program started (`upgrade::started_by_another`: its parent is
 neither ours, the session's service manager nor init): a coding agent's
 `olo-terminal --mcp`, a browser's messaging host, a command run from a
@@ -2868,6 +2868,28 @@ OLO_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
 For the race: touch an app's program, send the app SIGURG, then send
 the session SIGHUP 30–120 ms later, and check the window kept its
 place.
+
+**Agent Screens follow the person's upgrade.** A screen is a headless
+olo-session of the installed programs; it installs nothing (that's the
+person's session, into the same directory), so its own watcher never
+sees anything newer. Instead it notices what was replaced under it
+(`follow_install`, on its 2 s tick: its app_server's `/proc/PID/exe`
+"(deleted)" under the install directory, its own binary or the proxy's
+changed) and, once that has held `FOLLOW_SETTLE` (4 s, the install
+done), does what its own upgrade would: app_server reloaded in place
+(apps re-execute as they reconnect, nudged after), itself re-executed,
+the proxy renewed, what's left old asked after. Before (2026-11-06) a
+screen ran its old version until stopped: its Live view still blacked
+Passwords out after the upgrade that ended that. A screen whose session
+is from before this can't follow, so the person's session reloads it
+(SIGHUP) at its 20 s look (`Watcher::old_screens`). Only the person's
+session sweeps leftovers; one run from the build tree (tests) never
+follows a build. To try it: copy olo-session, olo-app-server and
+olo-wlproxy into `/var/tmp/X/bin`, start `/var/tmp/X/bin/olo-session
+--headless 800x600 --no-shell` with `OLO_UPGRADE_FROM` set (and the
+person's `WAYLAND_DISPLAY`, `OLO_SOCKET` and `OLO_SESSION*` unset), then
+replace one of them (copy to a temporary name, `mv` over): the log says
+"following" and the new pid runs the new file.
 
 **Finding flicker** (headless): screenshots take about 50 ms, too slow
 for a flash a frame long. `tsession ipc NAME

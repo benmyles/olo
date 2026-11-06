@@ -1719,8 +1719,16 @@ people.
   windows tagged private, the locked screen); the kit's
   `WindowOptions::private` gone with it. Checked with `olo-portal
   capture-test`: a screen capture and a window share of Passwords both
-  show it. A screen running before the upgrade keeps its app_server till
-  it's started again.
+  show it. *Then* (Ben, after upgrading: "i still see the agent screens
+  windows blacked out"): a screen is a headless olo-session of the
+  installed programs and installs nothing, so it kept running its old,
+  deleted app_server (the screens started at 10:04, the fix installed
+  at 10:50). *Fixed*: a screen follows the person's upgrade by itself
+  (`follow_install`: what was replaced under it, reloaded in place once
+  the install is done), and the person's session reloads a screen whose
+  session is from before that (`old_screens`, SIGHUP, 20 s after its
+  upgrade). Tried with a scratch install: replacing app_server, the
+  proxy and olo-session each was followed in place.
 
 - ~~**Viewer: a video zoomed to fill, and full screen**~~ (Ben, 2026-11-06):
   "watching a video in viewer needs to support zooming, like an option
