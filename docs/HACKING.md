@@ -6964,6 +6964,62 @@ session's own bus (`XDG_DESKTOP_PORTAL_DIR` pointing at a folder with
 so the document portal it insists on needs a stand-in that answers
 `GetMountPoint`).
 
+### Remote control (apps/portal remote.rs, app_server remote.rs)
+
+A program may control the computer through the RemoteDesktop portal,
+once the person says yes: Chrome Remote Desktop, a KVM such as
+Deskflow, a video call's remote control, an agent. olo-portal serves
+`org.freedesktop.impl.portal.RemoteDesktop` (version 2, keyboard,
+pointer and touch screen) beside ScreenCast, on the same sessions
+(`portal::Shared`): CreateSession, SelectDevices (what it wants to
+control; all, unless it says), ScreenCast's SelectSources if it also
+wants to see screens, and Start, which asks the person: the picker,
+titled "Share and Control Your Screen", saying what it will control,
+its button Allow; or, for control alone, the permission dialog ("Allow
+Deskflow to control this computer?"). Never remembered, never answered
+by a restore token or an earlier choice: asked every time.
+
+Its input comes one of two ways, as the portal says:
+
+- **The Notify calls** (one event each) become app_server's synthetic
+  input over its IPC, as an agent's does (`SyntheticEvent::MoveBy`, kept
+  on the screens; `MoveOn`, a point in a window's content; `Keysym`, the
+  layout's key for it with Shift if that's how it's typed, else typed on
+  a keymap of its own; `Touch` with a window). An absolute position on a
+  stream goes where that stream's screen is on the desktop, or into its
+  window's content; on an agent's screen, nowhere. Each checks the
+  session was started and granted that device.
+- **ConnectToEIS**: a libei connection. app_server listens on a socket
+  of its own (`olo_protocol::eis_socket`, `olo-<display>-eis`, mode 0600)
+  that nothing announces: no `LIBEI_SOCKET` for every program to find,
+  as the Smithay example it came from had. olo-portal asks for a grant
+  (`Request::RemoteControl { session, devices }`, refused to anyone but
+  olo-portal), connects, and hands the program that socket. app_server
+  takes a connection only from the process that holds a grant (its
+  `SO_PEERCRED` pid; a grant lapses after 10 s), and gives its seat the
+  granted devices only: a keyboard on the session's layout, with a text
+  device; a pointer and an absolute pointer whose regions are the
+  displays (`mapping_id` the connector, as the screen shares' streams
+  name theirs), updated as the displays change; a touch screen. Its
+  events become synthetic input too, on every backend. After
+  ConnectToEIS the session's Notify calls are refused.
+
+While a session controls the computer, Deskbar's sharing item shows it
+("Deskflow is controlling your keyboard and pointer", or "Zoom sees
+Studio Display and controls your pointer"), with Stop Remote Control.
+The session ending (the program closing it, Stop, its stream lost)
+tells app_server (`Request::RemoteControlEnd`), which closes the libei
+connection ("The remote control session ended.") and lets go of keys
+left down.
+
+To try it: `cargo run -p olo-portal --example remote_test -- unix:path=BUS
+[HOLD]` against `olo-portal --bus unix:path=BUS` in a test session (a
+`dbus-daemon --session --address=unix:path=BUS` of its own): it asks
+for the keyboard and pointer (answer the dialog in the session), types
+"hi" and moves the pointer 100 points right with the Notify calls, then
+types "x" and moves it 50 down over libei, and holds the connection
+until it's closed (Stop) or HOLD seconds pass.
+
 ## Viewer (apps/viewer)
 
 The Viewer opens any file Quick Look previews (`olo-viewer FILE…`; one

@@ -647,6 +647,7 @@ impl<B: Backend> AnvilState<B> {
             self.keep_brightness(&o, level);
         }
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        self.remote_displays_changed();
         Ok(())
     }
 
@@ -722,6 +723,7 @@ impl<B: Backend> AnvilState<B> {
         }
         if changed {
             self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+            self.remote_displays_changed();
         }
     }
 
@@ -868,6 +870,7 @@ impl<B: Backend> AnvilState<B> {
         self.power.unsaved = true;
         self.show_indicator(crate::osd::Indicator::Brightness(level));
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        self.remote_displays_changed();
     }
 
     fn step_keyboard(&mut self, delta: f32) {

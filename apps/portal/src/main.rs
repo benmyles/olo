@@ -42,6 +42,7 @@ mod picker;
 mod pictures;
 mod portal;
 mod print;
+mod remote;
 mod shortcuts;
 mod shot;
 mod stream;

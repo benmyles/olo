@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Remote control in Deskbar, with Stop Remote Control
+
+*23:16* — While a program controls the computer, Deskbar's sharing item says so (An app is controlling your keyboard and pointer) and Stop Remote Control ends the session: app_server closes its libei connection and lets go of keys left down.
+
+![Remote control in Deskbar, with Stop Remote Control](2026-11-05/231637-remote-control-in-deskbar-with-stop-remote-contr.png)
+
+### Remote control: the picker asks to share and control
+
+*23:16* — The RemoteDesktop portal: a program that wants to see a screen and control the keyboard and pointer (Chrome Remote Desktop, Deskflow, a call's remote control) gets the screen picker, titled Share and Control Your Screen, saying what it will control, its button Allow. For control alone, the permission dialog asks. Never remembered: asked every time.
+
+![Remote control: the picker asks to share and control](2026-11-05/231637-remote-control-the-picker-asks-to-share-and-cont.png)
+
 ### Quick Look scrolls without the pointer moving first
 
 *22:52* — Space in Tracker opened Quick Look under a still pointer, and a touchpad scroll went nowhere until the pointer moved: Smithay only looks at what's under the pointer when it moves. app_server now enters what is under the pointer before a scroll or a click, and as a window comes on screen, forward or away; GPUI takes the place it's entered at as a move, so the cursor and hover are right at once. Here Quick Look, scrolled by the touchpad straight after Space.

@@ -808,6 +808,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // and the tiles there stop beside it), not only when something
         // else about the displays happens to change.
         self.ipc.broadcast(olo_protocol::Event::OutputsChanged { outputs: self.output_infos() });
+        self.remote_displays_changed();
     }
 
     /// Once the windows that came back after a restart have settled: each

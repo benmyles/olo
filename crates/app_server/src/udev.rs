@@ -1380,9 +1380,6 @@ pub fn run_udev() {
         })
         .unwrap();
 
-    #[cfg(feature = "libei")]
-    crate::libei::listen_eis(&event_loop.handle());
-
     /*
      * And run our loop
      */

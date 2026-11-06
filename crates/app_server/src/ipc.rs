@@ -675,6 +675,22 @@ impl<B: Backend + 'static> AnvilState<B> {
                 None => return None,
             },
             Request::AutoApproveSecret => self.auto_approve_secret(&conn),
+            Request::RemoteControl { session, devices } => match conn.peer_pid().filter(|_| conn.peer_is_ours("olo-portal")) {
+                Some(pid) => {
+                    self.remote_grant(pid, session, devices);
+                    Reply::Ok
+                }
+                None => {
+                    warn!(by = %conn.peer(), "asked to let a program control the computer: refused");
+                    Reply::Error { message: "Only Olo's portal can let a program control the computer.".into() }
+                }
+            },
+            Request::RemoteControlEnd { session } => {
+                if conn.peer_is_ours("olo-portal") {
+                    self.remote_end(&session);
+                }
+                Reply::Ok
+            }
             Request::SetBrightness { level } => {
                 self.set_brightness(level);
                 Reply::Ok

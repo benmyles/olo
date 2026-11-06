@@ -9,6 +9,8 @@
 //! restore token or a repeat request answers it), starts a stream of each
 //! screen chosen (`stream.rs`) and hands back their PipeWire nodes. The
 //! portal itself gives the app a PipeWire connection that sees only those.
+//! RemoteDesktop (`remote.rs`) shares the sessions: one may share screens
+//! and control the computer.
 
 use olo_sync::Mutex;
 use std::{
@@ -67,10 +69,10 @@ pub enum ToUi {
     Lost(String),
 }
 
-/// An app's share.
+/// An app's share (and, for RemoteDesktop, its control).
 #[derive(Default)]
-struct Session {
-    app: String,
+pub(crate) struct Session {
+    pub(crate) app: String,
     /// What it may share (`MONITOR`, `WINDOW`, both).
     types: u32,
     /// What people call the app and the screens shared, and since when
@@ -86,16 +88,45 @@ struct Session {
     restore: Option<String>,
     /// Its streams (each stops as it drops: when the session closes).
     shares: Vec<stream::Share>,
+    /// A RemoteDesktop session (`remote.rs`): the devices it asked for
+    /// (SelectDevices), those the person let it control (Start), and
+    /// whether it took a libei connection (then the Notify calls are
+    /// refused, as the portal says).
+    pub(crate) remote: bool,
+    pub(crate) devices: u32,
+    pub(crate) controls: u32,
+    pub(crate) eis: bool,
+    /// Its streams' PipeWire nodes and what each shows: where absolute
+    /// input on a stream goes.
+    pub(crate) nodes: Vec<(u32, Shown)>,
 }
 
-type Sessions = Arc<Mutex<HashMap<OwnedObjectPath, Session>>>;
+/// What a stream shows, for input given in its coordinates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Shown {
+    /// A screen, at this place on the desktop (logical).
+    Screen(i32, i32),
+    /// A window (app_server's id): its content.
+    Window(u64),
+    /// Something not on this desktop (an agent's screen).
+    Elsewhere,
+}
+
+pub(crate) type Sessions = Arc<Mutex<HashMap<OwnedObjectPath, Session>>>;
 
 /// Tell Deskbar what is shared now.
-fn publish(sessions: &HashMap<OwnedObjectPath, Session>) {
+pub(crate) fn publish(sessions: &HashMap<OwnedObjectPath, Session>) {
     let mut shares: Vec<olo_protocol::sharing::Share> = sessions
         .iter()
-        .filter(|(_, s)| !s.shares.is_empty())
-        .map(|(path, s)| olo_protocol::sharing::Share { session: path.to_string(), app: s.app_name.clone(), screens: s.labels.clone(), since: s.since, windows: s.windows.clone() })
+        .filter(|(_, s)| !s.shares.is_empty() || s.controls != 0)
+        .map(|(path, s)| olo_protocol::sharing::Share {
+            session: path.to_string(),
+            app: s.app_name.clone(),
+            screens: s.labels.clone(),
+            since: s.since,
+            windows: s.windows.clone(),
+            control: crate::remote::devices_named(s.controls),
+        })
         .collect();
     shares.sort_by_key(|s| s.since);
     // app_server rings the windows shared, while they are.
@@ -129,17 +160,189 @@ fn tell_shared_windows(windows: Vec<u64>) {
     });
 }
 
-pub struct ScreenCast {
-    sessions: Sessions,
-    to_ui: Arc<dyn Fn(ToUi) + Send + Sync>,
+/// What ScreenCast and RemoteDesktop share: the sessions (a remote
+/// desktop session may share screens too), the UI, the last choice.
+#[derive(Clone)]
+pub(crate) struct Shared {
+    pub(crate) sessions: Sessions,
+    pub(crate) to_ui: Arc<dyn Fn(ToUi) + Send + Sync>,
     /// The last choice, by app, and when.
     last: Arc<Mutex<Option<(String, Instant, Vec<String>)>>>,
 }
 
-type Results = HashMap<String, OwnedValue>;
+pub struct ScreenCast {
+    shared: Shared,
+}
 
-fn value(v: impl Into<Value<'static>>) -> OwnedValue {
+pub(crate) type Results = HashMap<String, OwnedValue>;
+
+pub(crate) fn value(v: impl Into<Value<'static>>) -> OwnedValue {
     OwnedValue::try_from(v.into()).expect("no file descriptors")
+}
+
+impl Shared {
+    /// CreateSession (either portal's): the session's object, and it
+    /// kept.
+    pub(crate) async fn create(&self, session_handle: OwnedObjectPath, app_id: String, remote: bool, server: &zbus::ObjectServer) -> (u32, Results) {
+        let object = SessionObject { path: session_handle.clone(), sessions: self.sessions.clone(), to_ui: self.to_ui.clone() };
+        if server.at(session_handle.as_ref(), object).await.is_err() {
+            return (FAILED, Results::new());
+        }
+        self.sessions.lock().unwrap().insert(session_handle.clone(), Session { app: app_id, remote, ..Default::default() });
+        (OK, HashMap::from([("session_id".to_owned(), value(session_handle.as_str().to_owned()))]))
+    }
+
+    /// Start (either portal's): asks the person (the picker, saying it
+    /// will control `control` too; for control alone, the permission
+    /// dialog) and starts a stream of each screen chosen. The results
+    /// (`streams`, …) or the response.
+    pub(crate) async fn start(&self, handle: OwnedObjectPath, session_handle: OwnedObjectPath, parent_window: String, control: u32, server: &zbus::ObjectServer) -> Result<Results, u32> {
+        let (app, restore, cursor, persist, types) = {
+            let sessions = self.sessions.lock().unwrap();
+            let Some(s) = sessions.get(&session_handle) else { return Err(FAILED) };
+            (s.app.clone(), s.restore.clone(), s.cursor, s.persist, s.types)
+        };
+        if types == 0 && control != 0 {
+            return self.start_control(handle, session_handle, parent_window, &app, control, server).await;
+        }
+        let types = if types == 0 { MONITOR } else { types };
+        let all = crate::shareables();
+        let kind = |window: bool| if window { WINDOW } else { MONITOR };
+        let known = |k: &String| all.iter().any(|s| &s.key == k && (types & kind(s.window)) != 0);
+        // Without asking: a screen this app chose before (still there), or
+        // the one it chose moments ago in another session. (Never to
+        // control: that is asked every time.)
+        let repeat = self.last.lock().unwrap().as_ref().filter(|(a, at, _)| *a == app && at.elapsed() < REPEAT).map(|(_, _, c)| c.clone());
+        let unasked = if control != 0 { None } else { restore.filter(known).map(|o| vec![o]).or(repeat) };
+        let chosen = match unasked {
+            Some(c) => Some(c),
+            None => {
+                let (tx, rx) = async_channel::bounded(1);
+                let request = RequestObject { handle: handle.to_string(), to_ui: self.to_ui.clone() };
+                let _ = server.at(handle.as_ref(), request).await;
+                (self.to_ui)(ToUi::Pick(picker::Ask { request: handle.to_string(), app: crate::app_name(&app), parent: parent_window, types, control, reply: tx }));
+                let answer = rx.recv().await.ok().flatten();
+                let _ = server.remove::<RequestObject, _>(handle.as_ref()).await;
+                answer
+            }
+        };
+        let Some(chosen) = chosen.filter(|c| !c.is_empty()) else { return Err(CANCELLED) };
+        // What each is (gone since it was chosen: the share fails).
+        let Some(picked) = chosen.iter().map(|k| all.iter().find(|s| &s.key == k)).collect::<Option<Vec<_>>>() else { return Err(FAILED) };
+        if control == 0 {
+            *self.last.lock().unwrap() = Some((app, Instant::now(), chosen.clone()));
+        }
+        // The streams, each on its own thread (PipeWire's start can take a
+        // moment: off the bus's executor).
+        let draw_cursor = cursor & EMBEDDED != 0;
+        let sources: Vec<olo_capture::Source> = picked.iter().map(|s| s.source.clone()).collect();
+        let (to_ui, path) = (self.to_ui.clone(), session_handle.to_string());
+        let started = blocking::unblock(move || {
+            sources
+                .into_iter()
+                .map(|source| {
+                    let (to_ui, path) = (to_ui.clone(), path.clone());
+                    stream::run(source, draw_cursor, move || to_ui(ToUi::Lost(path)))
+                })
+                .collect::<Result<Vec<_>, String>>()
+        })
+        .await;
+        let shares = match started {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("portal: can't share: {e}");
+                return Err(FAILED);
+            }
+        };
+        let streams: Vec<(u32, HashMap<String, OwnedValue>)> = shares
+            .iter()
+            .zip(&picked)
+            .map(|(share, what)| {
+                let mut props = HashMap::from([
+                    ("source_type".to_owned(), value(if what.window { WINDOW } else { MONITOR })),
+                    ("size".to_owned(), value(what.logical)),
+                    ("id".to_owned(), value(what.key.clone())),
+                    // (As app_server's libei regions name the screens.)
+                    ("mapping_id".to_owned(), value(what.key.clone())),
+                ]);
+                // (A screen's place on the desktop; a window has none to give.)
+                if !what.window {
+                    props.insert("position".to_owned(), value(what.position));
+                }
+                (share.node, props)
+            })
+            .collect();
+        let mut results = HashMap::from([("streams".to_owned(), value(streams))]);
+        if persist != 0
+            && control == 0
+            && let [output] = chosen.as_slice()
+        {
+            results.insert("persist_mode".into(), value(persist.min(2)));
+            results.insert("restore_data".into(), restore_data(output));
+        }
+        let mut sessions = self.sessions.lock().unwrap();
+        match sessions.get_mut(&session_handle) {
+            Some(s) => {
+                s.nodes = shares.iter().zip(&picked).map(|(share, p)| (share.node, shown(p))).collect();
+                s.shares = shares;
+                s.app_name = crate::app_name(&s.app);
+                s.labels = picked.iter().map(|p| p.label.clone()).collect();
+                s.windows = picked.iter().filter(|p| p.window).filter_map(|p| p.key.strip_prefix("window:")?.parse().ok()).collect();
+                s.since = now();
+                s.controls = control;
+            }
+            // Closed while the picker was up: the shares stop as they drop.
+            None => return Err(CANCELLED),
+        }
+        publish(&sessions);
+        Ok(results)
+    }
+
+    /// Start for control alone (no screen asked for): the permission
+    /// dialog says what it would control.
+    async fn start_control(&self, handle: OwnedObjectPath, session_handle: OwnedObjectPath, parent_window: String, app: &str, control: u32, server: &zbus::ObjectServer) -> Result<Results, u32> {
+        let name = crate::app_name(app);
+        let who = if name.is_empty() { "an app".to_owned() } else { name.clone() };
+        let (tx, rx) = async_channel::bounded(1);
+        let request = RequestObject { handle: handle.to_string(), to_ui: self.to_ui.clone() };
+        let _ = server.at(handle.as_ref(), request).await;
+        (self.to_ui)(ToUi::Access(crate::access::Ask {
+            request: handle.to_string(),
+            parent: parent_window,
+            title: format!("Allow {who} to control this computer?"),
+            subtitle: format!("It can use your {} as you do: type, click and move the pointer, until you stop it.", crate::remote::devices_said(control)),
+            body: "Deskbar shows it while it does, with Stop.".into(),
+            deny: "Don’t Allow".into(),
+            grant: "Allow".into(),
+            icon: String::new(),
+            choices: Vec::new(),
+            reply: tx,
+        }));
+        let answer = rx.recv().await.ok().flatten();
+        let _ = server.remove::<RequestObject, _>(handle.as_ref()).await;
+        if answer.is_none() {
+            return Err(CANCELLED);
+        }
+        let mut sessions = self.sessions.lock().unwrap();
+        let Some(s) = sessions.get_mut(&session_handle) else { return Err(CANCELLED) };
+        s.app_name = name;
+        s.since = now();
+        s.controls = control;
+        publish(&sessions);
+        Ok(Results::new())
+    }
+}
+
+fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// What a shareable shows, for input in its stream's coordinates.
+fn shown(s: &crate::Shareable) -> Shown {
+    if s.window {
+        return s.key.strip_prefix("window:").and_then(|id| id.parse().ok()).map_or(Shown::Elsewhere, Shown::Window);
+    }
+    if s.key.starts_with("agent:") { Shown::Elsewhere } else { Shown::Screen(s.position.0, s.position.1) }
 }
 
 #[zbus::interface(name = "org.freedesktop.impl.portal.ScreenCast")]
@@ -152,16 +355,11 @@ impl ScreenCast {
         _options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &zbus::ObjectServer,
     ) -> (u32, Results) {
-        let object = SessionObject { path: session_handle.clone(), sessions: self.sessions.clone(), to_ui: self.to_ui.clone() };
-        if server.at(session_handle.as_ref(), object).await.is_err() {
-            return (FAILED, Results::new());
-        }
-        self.sessions.lock().unwrap().insert(session_handle.clone(), Session { app: app_id, ..Default::default() });
-        (OK, HashMap::from([("session_id".to_owned(), value(session_handle.as_str().to_owned()))]))
+        self.shared.create(session_handle, app_id, false, server).await
     }
 
     async fn select_sources(&self, _handle: OwnedObjectPath, session_handle: OwnedObjectPath, _app_id: String, options: HashMap<String, OwnedValue>) -> (u32, Results) {
-        let mut sessions = self.sessions.lock().unwrap();
+        let mut sessions = self.shared.sessions.lock().unwrap();
         let Some(s) = sessions.get_mut(&session_handle) else { return (FAILED, Results::new()) };
         let get_u32 = |k: &str| options.get(k).and_then(|v| u32::try_from(v).ok());
         s.cursor = get_u32("cursor_mode").unwrap_or(HIDDEN);
@@ -184,92 +382,10 @@ impl ScreenCast {
         _options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &zbus::ObjectServer,
     ) -> (u32, Results) {
-        let (app, restore, cursor, persist, types) = {
-            let sessions = self.sessions.lock().unwrap();
-            let Some(s) = sessions.get(&session_handle) else { return (FAILED, Results::new()) };
-            (s.app.clone(), s.restore.clone(), s.cursor, s.persist, if s.types == 0 { MONITOR } else { s.types })
-        };
-        let all = crate::shareables();
-        let kind = |window: bool| if window { WINDOW } else { MONITOR };
-        let known = |k: &String| all.iter().any(|s| &s.key == k && (types & kind(s.window)) != 0);
-        // Without asking: a screen this app chose before (still there), or
-        // the one it chose moments ago in another session.
-        let repeat = self.last.lock().unwrap().as_ref().filter(|(a, at, _)| *a == app && at.elapsed() < REPEAT).map(|(_, _, c)| c.clone());
-        let chosen = match restore.filter(known).map(|o| vec![o]).or(repeat) {
-            Some(c) => Some(c),
-            None => {
-                let (tx, rx) = async_channel::bounded(1);
-                let request = RequestObject { handle: handle.to_string(), to_ui: self.to_ui.clone() };
-                let _ = server.at(handle.as_ref(), request).await;
-                (self.to_ui)(ToUi::Pick(picker::Ask { request: handle.to_string(), app: crate::app_name(&app), parent: parent_window, types, reply: tx }));
-                let answer = rx.recv().await.ok().flatten();
-                let _ = server.remove::<RequestObject, _>(handle.as_ref()).await;
-                answer
-            }
-        };
-        let Some(chosen) = chosen.filter(|c| !c.is_empty()) else { return (CANCELLED, Results::new()) };
-        // What each is (gone since it was chosen: the share fails).
-        let Some(picked) = chosen.iter().map(|k| all.iter().find(|s| &s.key == k)).collect::<Option<Vec<_>>>() else { return (FAILED, Results::new()) };
-        *self.last.lock().unwrap() = Some((app, Instant::now(), chosen.clone()));
-        // The streams, each on its own thread (PipeWire's start can take a
-        // moment: off the bus's executor).
-        let draw_cursor = cursor & EMBEDDED != 0;
-        let sources: Vec<olo_capture::Source> = picked.iter().map(|s| s.source.clone()).collect();
-        let (to_ui, path) = (self.to_ui.clone(), session_handle.to_string());
-        let started = blocking::unblock(move || {
-            sources
-                .into_iter()
-                .map(|source| {
-                    let (to_ui, path) = (to_ui.clone(), path.clone());
-                    stream::run(source, draw_cursor, move || to_ui(ToUi::Lost(path)))
-                })
-                .collect::<Result<Vec<_>, String>>()
-        })
-        .await;
-        let shares = match started {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!("portal: can't share: {e}");
-                return (FAILED, Results::new());
-            }
-        };
-        let streams: Vec<(u32, HashMap<String, OwnedValue>)> = shares
-            .iter()
-            .zip(&picked)
-            .map(|(share, what)| {
-                let mut props = HashMap::from([
-                    ("source_type".to_owned(), value(if what.window { WINDOW } else { MONITOR })),
-                    ("size".to_owned(), value(what.logical)),
-                    ("id".to_owned(), value(what.key.clone())),
-                ]);
-                // (A screen's place on the desktop; a window has none to give.)
-                if !what.window {
-                    props.insert("position".to_owned(), value(what.position));
-                }
-                (share.node, props)
-            })
-            .collect();
-        let mut results = HashMap::from([("streams".to_owned(), value(streams))]);
-        if persist != 0
-            && let [output] = chosen.as_slice()
-        {
-            results.insert("persist_mode".into(), value(persist.min(2)));
-            results.insert("restore_data".into(), restore_data(output));
+        match self.shared.start(handle, session_handle, parent_window, 0, server).await {
+            Ok(results) => (OK, results),
+            Err(response) => (response, Results::new()),
         }
-        let mut sessions = self.sessions.lock().unwrap();
-        match sessions.get_mut(&session_handle) {
-            Some(s) => {
-                s.shares = shares;
-                s.app_name = crate::app_name(&s.app);
-                s.labels = picked.iter().map(|p| p.label.clone()).collect();
-                s.windows = picked.iter().filter(|p| p.window).filter_map(|p| p.key.strip_prefix("window:")?.parse().ok()).collect();
-                s.since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-            }
-            // Closed while the picker was up: the shares stop as they drop.
-            None => return (CANCELLED, Results::new()),
-        }
-        publish(&sessions);
-        (OK, results)
     }
 
     #[zbus(property, name = "AvailableSourceTypes")]
@@ -325,7 +441,9 @@ impl SessionObject {
     async fn close(&self, #[zbus(object_server)] server: &zbus::ObjectServer) {
         {
             let mut sessions = self.sessions.lock().unwrap();
-            sessions.remove(&self.path);
+            if let Some(gone) = sessions.remove(&self.path) {
+                crate::remote::ended(self.path.as_str(), &gone);
+            }
             publish(&sessions);
         }
         (self.to_ui)(ToUi::Ended);
@@ -362,18 +480,21 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
         Some(a) => zbus::blocking::connection::Builder::address(a)?,
         None => zbus::blocking::connection::Builder::session()?,
     };
-    let cast = ScreenCast { sessions: Arc::default(), to_ui: Arc::new(to_ui), last: Arc::default() };
+    let shared = Shared { sessions: Arc::default(), to_ui: Arc::new(to_ui), last: Arc::default() };
     // Nothing is shared yet (a file a crashed portal left goes).
     publish(&HashMap::new());
-    let access = crate::access::Access { to_ui: cast.to_ui.clone() };
-    let account = crate::account::Account { to_ui: cast.to_ui.clone() };
-    let files = crate::files::FileChooser { to_ui: cast.to_ui.clone() };
-    let chooser = crate::chooser::AppChooser { to_ui: cast.to_ui.clone() };
-    let wallpaper = crate::wallpaper::Wallpaper { to_ui: cast.to_ui.clone() };
-    let shortcuts = crate::shortcuts::GlobalShortcuts::new(cast.to_ui.clone());
-    let print = crate::print::Print { to_ui: cast.to_ui.clone(), tokens: Arc::default(), next: Default::default() };
+    let to_ui = shared.to_ui.clone();
+    let access = crate::access::Access { to_ui: to_ui.clone() };
+    let account = crate::account::Account { to_ui: to_ui.clone() };
+    let files = crate::files::FileChooser { to_ui: to_ui.clone() };
+    let chooser = crate::chooser::AppChooser { to_ui: to_ui.clone() };
+    let wallpaper = crate::wallpaper::Wallpaper { to_ui: to_ui.clone() };
+    let shortcuts = crate::shortcuts::GlobalShortcuts::new(to_ui.clone());
+    let print = crate::print::Print { to_ui: to_ui.clone(), tokens: Arc::default(), next: Default::default() };
+    let remote = crate::remote::RemoteDesktop::new(shared.clone());
     let conn = builder
-        .serve_at(PATH, cast)?
+        .serve_at(PATH, ScreenCast { shared })?
+        .serve_at(PATH, remote)?
         .serve_at(PATH, crate::inhibit::Inhibit)?
         .serve_at(PATH, crate::shot::Screenshot)?
         .serve_at(PATH, access)?
@@ -404,9 +525,11 @@ pub fn end(conn: &zbus::blocking::Connection, session: &str) {
     let Ok(path) = ObjectPath::try_from(session) else { return };
     let server = conn.object_server();
     if let Ok(cast) = server.interface::<_, ScreenCast>(PATH) {
-        let sessions = cast.get().sessions.clone();
+        let sessions = cast.get().shared.sessions.clone();
         let mut sessions = sessions.lock().unwrap();
-        sessions.remove(&OwnedObjectPath::from(path.clone()));
+        if let Some(gone) = sessions.remove(&OwnedObjectPath::from(path.clone())) {
+            crate::remote::ended(session, &gone);
+        }
         publish(&sessions);
     }
     if let Ok(iface) = server.interface::<_, SessionObject>(&path) {

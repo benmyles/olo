@@ -7534,6 +7534,7 @@ dependencies = [
  "olo-xdg",
  "pipewire",
  "png 0.18.1",
+ "reis",
  "serde",
  "serde_json",
  "tracing",

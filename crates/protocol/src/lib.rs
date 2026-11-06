@@ -440,6 +440,21 @@ pub enum Request {
     Synthetic {
         events: Vec<SyntheticEvent>,
     },
+    /// A program may control the computer (olo-portal only: its
+    /// RemoteDesktop portal, once the person has said yes): the next
+    /// libei connection olo-portal makes to app_server's EIS socket
+    /// ([`eis_socket`]) is `session`'s, with only the devices given
+    /// ([`remote::KEYBOARD`] | [`remote::POINTER`] | [`remote::TOUCHSCREEN`]).
+    /// A grant not taken within 10 s lapses.
+    RemoteControl {
+        session: String,
+        devices: u32,
+    },
+    /// `session` ended (the program closed it, or the person stopped it):
+    /// its libei connections close, and its grant lapses.
+    RemoteControlEnd {
+        session: String,
+    },
     /// Put `text` into the focused field as an input method would (the
     /// emoji picker; any text, not only what a keyboard types). It waits,
     /// a second at most, while the asking program has the keyboard; a
@@ -528,7 +543,8 @@ pub enum SyntheticEvent {
     /// A finger on a touch screen, at global logical coordinates: down,
     /// moved or lifted (`slot` tells fingers apart). As a real touch is:
     /// touch for an app that takes it, else the pointer with the left
-    /// button held.
+    /// button held. With `window`, `x`, `y` are in that window's content
+    /// (as a screen share of the window counts them).
     Touch {
         #[serde(default)]
         slot: u32,
@@ -537,7 +553,33 @@ pub enum SyntheticEvent {
         x: f64,
         #[serde(default)]
         y: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window: Option<WindowId>,
     },
+    /// Move the pointer by logical pixels (as a mouse moves it, kept on
+    /// the screens).
+    MoveBy { dx: f64, dy: f64 },
+    /// Move the pointer to a point in a window's content, logical (as a
+    /// screen share of the window counts them); nothing if it isn't shown.
+    MoveOn { window: WindowId, x: f64, y: f64 },
+    /// Press or let go of the key that types `keysym` (an XKB keysym) on
+    /// the keyboard's layout, with Shift (or AltGr) as that takes; one
+    /// the layout has no key for is typed as it's pressed.
+    Keysym { keysym: u32, pressed: bool },
+}
+
+/// Remote control ([`Request::RemoteControl`]): the devices, as the
+/// RemoteDesktop portal counts them.
+pub mod remote {
+    pub const KEYBOARD: u32 = 1;
+    pub const POINTER: u32 = 2;
+    pub const TOUCHSCREEN: u32 = 4;
+}
+
+/// app_server's socket for libei connections (remote control, through
+/// olo-portal only) on display `display`, in `runtime` (XDG_RUNTIME_DIR).
+pub fn eis_socket(runtime: &std::path::Path, display: &str) -> std::path::PathBuf {
+    runtime.join(format!("olo-{display}-eis"))
 }
 
 /// What a finger on a touch screen did ([`SyntheticEvent::Touch`]).

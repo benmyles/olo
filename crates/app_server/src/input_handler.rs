@@ -1483,6 +1483,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         });
     }
 
+    /// Where the pointer moving from `from` to `to` ends: `to`, or, off
+    /// every display, the nearest point of the display it was on (as
+    /// libinput's motion is kept on the screens).
+    pub fn kept_on_screens(&self, from: Point<f64, Logical>, to: Point<f64, Logical>) -> Point<f64, Logical> {
+        let on = |p: Point<f64, Logical>| self.space.outputs().filter_map(|o| self.space.output_geometry(o)).find(|g| g.to_f64().contains(p));
+        if on(to).is_some() {
+            return to;
+        }
+        let Some(g) = on(from).or_else(|| self.space.outputs().next().and_then(|o| self.space.output_geometry(o))) else { return from };
+        let g = g.to_f64();
+        Point::from((to.x.clamp(g.loc.x, g.loc.x + g.size.w - 1.0), to.y.clamp(g.loc.y, g.loc.y + g.size.h - 1.0)))
+    }
+
     /// Move the pointer to `pos` (its display went away).
     pub fn warp_pointer(&mut self, pos: Point<f64, Logical>) {
         let under = self.surface_under(pos);
@@ -1524,11 +1537,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         use olo_protocol::SyntheticEvent as S;
         // As real input wakes the displays (`process_input_event`).
         let before = self.pointer.current_location();
-        let pointing = matches!(event, S::Move { .. } | S::Scroll { .. } | S::Touch { .. });
+        let pointing = matches!(event, S::Move { .. } | S::MoveBy { .. } | S::MoveOn { .. } | S::Scroll { .. } | S::Touch { .. });
         // (Counted as real input is, for Activity Monitor ▸ Inputs.)
         let counted = match &event {
             S::Button { pressed: true, .. } | S::Touch { phase: olo_protocol::TouchPhase::Down, .. } => Some(crate::input_counts::Input::Click),
-            S::Key { pressed: true, .. } => Some(crate::input_counts::Input::Key),
+            S::Key { pressed: true, .. } | S::Keysym { pressed: true, .. } => Some(crate::input_counts::Input::Key),
             S::Scroll { .. } | S::Wheel { .. } => Some(crate::input_counts::Input::Scroll),
             _ => None,
         };
@@ -1550,6 +1563,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let time = InputTime::now();
         let pointer = self.pointer.clone();
         match event {
+            S::MoveBy { dx, dy } => {
+                let from = pointer.current_location();
+                let to = self.kept_on_screens(from, from + Point::from((dx, dy)));
+                self.synthetic_input_inner(S::Move { x: to.x, y: to.y });
+            }
+            S::MoveOn { window, x, y } => {
+                if let Some(at) = crate::render::content_origin(&self.space, window) {
+                    self.synthetic_input_inner(S::Move { x: at.x as f64 + x, y: at.y as f64 + y });
+                }
+            }
+            S::Keysym { keysym, pressed } => {
+                let _ = (serial, time, pointer);
+                self.keysym_input(keysym, pressed);
+            }
             S::Move { x, y } => {
                 let pos: Point<f64, Logical> = (x, y).into();
                 let under = self.surface_under(pos);
@@ -1593,11 +1620,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
-            S::Touch { slot, phase, x, y } => {
-                // As a finger on a touch screen (agents, tests).
+            S::Touch { slot, phase, x, y, window } => {
+                // As a finger on a touch screen (agents, tests, remote
+                // control).
                 let _ = pointer;
                 let slot = input::TouchSlot::from(Some(slot));
-                let at: Point<f64, Logical> = (x, y).into();
+                let origin = match window {
+                    Some(w) => match crate::render::content_origin(&self.space, w) {
+                        Some(o) => o.to_f64(),
+                        None => return,
+                    },
+                    None => Point::default(),
+                };
+                let at: Point<f64, Logical> = origin + Point::from((x, y));
                 match phase {
                     olo_protocol::TouchPhase::Down => {
                         self.touch_down(slot, at, time);

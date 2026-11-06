@@ -1202,10 +1202,14 @@ of Finished; a new one goes where its priority puts it.
     screen blacked out of shares and recordings; a shared window ringed
     on screen while it is. Agent screens run their own portal (HACKING
     "A screen's own bus"), and the person's picker offers each agent
-    screen as a source (HACKING "Agent screens as sources"). **Left**:
-    the cursor sent as metadata (the third cursor mode; hidden and drawn
-    in are done) and RemoteDesktop over libei (the design's open
-    question). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
+    screen as a source (HACKING "Agent screens as sources").
+    RemoteDesktop done (2026-11-05, HACKING "Remote control"): the
+    portal's Notify calls and ConnectToEIS, asked every time, app_server
+    taking libei connections only from olo-portal after a grant, Deskbar
+    showing it with Stop Remote Control; tested headless with
+    `remote_test` (no real Chrome Remote Desktop or Deskflow tried yet).
+    **Left**: the cursor sent as metadata (the third cursor mode; hidden
+    and drawn in are done). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
     started by Olo is told it's on GNOME, so it offers Wayland sharing;
     untried, Zoom isn't installed here).
   - **The Olo touches**: the picker, a kit dialog with Screens and

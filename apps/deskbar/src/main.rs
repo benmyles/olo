@@ -1359,7 +1359,9 @@ fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
         if i > 0 {
             m = m.separator();
         }
-        m = m.item(format!("Sharing {}", olo_protocol::SharingState::describe(s)), "").enabled(false).item("Stop Sharing", format!("share:{}", s.session));
+        // (A program controlling the computer: the RemoteDesktop portal.)
+        let stop = if s.control.is_empty() { "Stop Sharing" } else { "Stop Remote Control" };
+        m = m.item(olo_protocol::SharingState::said(s), "").enabled(false).item(stop, format!("share:{}", s.session));
     }
     if shares.len() > 1 {
         m = m.separator().item("Stop All", "share:all");
@@ -2143,7 +2145,8 @@ impl Deskbar {
         // A screen being shared: what, with whom, and Stop.
         if !st.sharing.is_empty() {
             let tip_text = match st.sharing.as_slice() {
-                [one] => format!("Sharing {}. Click to stop.", olo_protocol::SharingState::describe(one)),
+                [one] => format!("{}. Click to stop.", olo_protocol::SharingState::said(one)),
+                many if many.iter().any(|s| !s.control.is_empty()) => format!("{} shares, control among them. Click to stop them.", many.len()),
                 many => format!("{} screen shares. Click to stop them.", many.len()),
             };
             let (r, h) = tray_item(&mut d, "sharing", tip_text, Box::new(|window, cx, r| status::draw_sharing(window, r, &theme::palette(cx))));

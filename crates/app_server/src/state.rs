@@ -157,6 +157,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub held_stop: Option<(WlSurface, std::time::Instant)>,
     /// A `repoint` waits for the end of this turn of the loop.
     pub repoint_queued: bool,
+    /// Programs controlling the computer over libei (`remote.rs`).
+    pub remote: crate::remote::Remote,
     /// When the pacer last sent a move.
     pub last_paced_move: Option<std::time::Instant>,
 
@@ -1151,6 +1153,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,
             repoint_queued: false,
+            remote: Default::default(),
             last_paced_move: None,
             compositor_state,
             data_device_state,
@@ -1358,6 +1361,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             state.watch_login();
         }
         crate::text::warm_up();
+        state.remote_listen();
         state.restore_handover();
         state
     }
