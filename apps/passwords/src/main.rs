@@ -50,7 +50,7 @@ use crate::{
     edit::{EditForm, Editor},
     generator::{Generator, GeneratorView},
     lock::{Lock, LockMsg},
-    store::{FromStore, Job, Reply, Searchable, Store, SyncState},
+    store::{FieldText, FromStore, Job, Reply, Searchable, Store, SyncState},
 };
 
 const APP_ID: &str = "olo.passwords";
@@ -268,7 +268,9 @@ pub struct Passwords {
     facets: RefCell<Option<Rc<Vec<Facet>>>>,
     /// The list as last worked out: for which items (`rev`), source and
     /// search.
-    listed: RefCell<Option<(u64, Source, String, Rc<Vec<ItemOverview>>)>>,
+    /// The list worked out last (see `visible`), and where in each item
+    /// the search found what it did (`found_in`).
+    listed: RefCell<Option<(u64, Source, String, Rc<Vec<ItemOverview>>, Rc<Vec<Option<String>>>)>>,
     /// Counts changes to the items (and what's known of them).
     rev: std::cell::Cell<u64>,
     missing: HashMap<String, String>,
@@ -283,6 +285,8 @@ pub struct Passwords {
     pub form: Option<EditForm>,
     /// The editor just opened: its title takes the keyboard.
     pub focus_title: bool,
+    /// The editor's field to focus when next drawn (one just added).
+    pub focus_field: Option<usize>,
     lock: Lock,
     pub lock_field: Entity<TextField>,
     main: Option<WindowHandle<Frame>>,
@@ -343,6 +347,12 @@ fn slug(s: &str) -> String {
     s.split_whitespace().map(str::to_lowercase).collect::<Vec<_>>().join("-")
 }
 
+/// Whether `n` names `name` (a section's title, a field's label): as
+/// typed, or as its filter value (`credit-card`).
+pub fn names(n: &Needle, name: &str) -> bool {
+    !name.is_empty() && (n.starts(&slug(name)) || n.in_text(name))
+}
+
 fn host(url: &str) -> Option<String> {
     let parsed = url::Url::parse(url).or_else(|_| url::Url::parse(&format!("https://{url}"))).ok()?;
     Some(parsed.host_str()?.trim_start_matches("www.").to_string())
@@ -375,12 +385,22 @@ impl Passwords {
     /// The list for the current source and search: best matches first
     /// while searching, else by title. (Worked out once for each.)
     pub fn visible(&self) -> Rc<Vec<ItemOverview>> {
-        if let Some((rev, source, search, list)) = &*self.listed.borrow()
+        self.listing().0
+    }
+
+    /// For each item `visible` lists, where the search found what it
+    /// looks for when that's inside it (`found_in`).
+    pub fn found(&self) -> Rc<Vec<Option<String>>> {
+        self.listing().1
+    }
+
+    fn listing(&self) -> (Rc<Vec<ItemOverview>>, Rc<Vec<Option<String>>>) {
+        if let Some((rev, source, search, list, found)) = &*self.listed.borrow()
             && *rev == self.rev.get()
             && *source == self.source
             && *search == self.search
         {
-            return list.clone();
+            return (list.clone(), found.clone());
         }
         let facets = self.facets_rc();
         let q = Query::parse(&self.search, &search::keys(&facets));
@@ -409,9 +429,42 @@ impl Passwords {
             })
             .collect();
         list.sort_by_cached_key(|(score, i)| (std::cmp::Reverse(*score), i.title.to_lowercase(), i.id.clone()));
+        let found: Rc<Vec<Option<String>>> = Rc::new(list.iter().map(|(_, i)| self.found_in(i, &q)).collect());
         let list: Rc<Vec<ItemOverview>> = Rc::new(list.into_iter().map(|(_, i)| i.clone()).collect());
-        *self.listed.borrow_mut() = Some((self.rev.get(), self.source.clone(), self.search.clone(), list.clone()));
-        list
+        *self.listed.borrow_mut() = Some((self.rev.get(), self.source.clone(), self.search.clone(), list.clone(), found.clone()));
+        (list, found)
+    }
+
+    /// Where in item `i` query `q` found what it looks for, when that's
+    /// in its sections and fields rather than its title, username,
+    /// websites or tags: the field with most of it, as "Section › label:
+    /// value" (a secret's without its value).
+    fn found_in(&self, i: &ItemOverview, q: &Query) -> Option<String> {
+        let s = self.index.get(&i.id)?;
+        let user = self.username_of(i);
+        let outside = |n: &Needle| n.in_text(&i.title) || n.in_text(user) || i.websites.iter().any(|w| n.in_text(&w.url)) || i.tags.iter().any(|t| n.in_text(t));
+        let words: Vec<&Needle> = q.words().filter(|n| !outside(n)).collect();
+        let (sections, labels) = (q.values("section"), q.values("field"));
+        if words.is_empty() && sections.is_empty() && labels.is_empty() {
+            return None;
+        }
+        let asked = |f: &FieldText| (sections.is_empty() || sections.iter().any(|n| names(n, &f.section))) && (labels.is_empty() || labels.iter().any(|n| names(n, &f.label)));
+        let has = |f: &FieldText| words.iter().filter(|n| n.in_text(&f.section) || n.in_text(&f.label) || n.in_text(&f.value)).count();
+        // The first of those with most of the words.
+        let (n, f) = s.fields.iter().filter(|f| asked(f)).map(|f| (has(f), f)).fold(None, |best: Option<(usize, &FieldText)>, (n, f)| match best {
+            Some((m, _)) if m >= n => best,
+            _ => Some((n, f)),
+        })?;
+        if n == 0 && !words.is_empty() {
+            return None;
+        }
+        let mut out = if f.section.is_empty() { f.label.clone() } else { format!("{} › {}", f.section, f.label) };
+        // Its line that has a word (a long value's), else its first.
+        let line = f.value.lines().find(|l| words.iter().any(|n| n.in_text(l))).or_else(|| f.value.lines().next()).unwrap_or_default().trim();
+        if !line.is_empty() {
+            out = if out.is_empty() { line.to_owned() } else { format!("{out}: {line}") };
+        }
+        (!out.is_empty()).then_some(out)
     }
 
     /// An item's username: from the index, else its details.
@@ -434,6 +487,8 @@ impl Passwords {
             Some("tag") => i.tags.iter().any(|t| n.starts(t)),
             Some("site") => sites(),
             Some("user") => n.in_text(self.username_of(i)),
+            Some("section") => s.is_some_and(|s| s.fields.iter().any(|f| names(n, &f.section))),
+            Some("field") => s.is_some_and(|s| s.fields.iter().any(|f| names(n, &f.label))),
             Some("has") => {
                 let Some(s) = s else { return false };
                 let flags =
@@ -487,7 +542,28 @@ impl Passwords {
             .value("files", "Attachments", count(&|s| s.files))
             .value("reused", "Reused Password", count(&|s| s.reused))
             .value("weak", "Weak Password", count(&|s| s.weak));
-        let facets = Rc::new(vec![tag, has, ty, vault, Facet::new("site", "Website").typed_only(), Facet::new("user", "Username").typed_only()]);
+        // Sections and fields by their names, with how many items have each.
+        let (mut sections, mut labels): (std::collections::BTreeMap<String, (String, usize)>, std::collections::BTreeMap<String, (String, usize)>) = Default::default();
+        for s in active.iter().filter_map(|i| self.index.get(&i.id)) {
+            let mut seen: std::collections::HashSet<(bool, String)> = Default::default();
+            for f in &s.fields {
+                for (field, name, map) in [(false, &f.section, &mut sections), (true, &f.label, &mut labels)] {
+                    let key = slug(name);
+                    if !key.is_empty() && seen.insert((field, key.clone())) {
+                        map.entry(key).or_insert_with(|| (name.clone(), 0)).1 += 1;
+                    }
+                }
+            }
+        }
+        let mut section = Facet::new("section", "Section").multiple().typed_only();
+        for (key, (name, n)) in sections {
+            section = section.value(key, name, Some(n));
+        }
+        let mut field = Facet::new("field", "Field").multiple().typed_only();
+        for (key, (name, n)) in labels {
+            field = field.value(key, name, Some(n));
+        }
+        let facets = Rc::new(vec![tag, has, ty, vault, Facet::new("site", "Website").typed_only(), Facet::new("user", "Username").typed_only(), section, field]);
         *self.facets.borrow_mut() = Some(facets.clone());
         facets
     }
@@ -1402,9 +1478,13 @@ impl Passwords {
         }
     }
 
-    pub fn add_edit_field(&mut self, kind: ItemFieldType, cx: &mut Context<Self>) {
+    /// A field of `kind` added to `section` (a titled one; `None`: the
+    /// first group), and focused: its label if it has none yet, else its
+    /// value.
+    pub fn add_edit_field(&mut self, kind: ItemFieldType, section: Option<&str>, cx: &mut Context<Self>) {
         if let Some(e) = self.editor.as_mut() {
-            e.add_field(kind);
+            let at = e.add_field(kind, section);
+            self.focus_field = Some(at);
             self.rebuild_form(cx);
         }
     }
@@ -2457,6 +2537,7 @@ fn main() {
                 editor: None,
                 form: None,
                 focus_title: false,
+                focus_field: None,
                 lock_field: lock_field.clone(),
                 main: None,
                 parts: None,

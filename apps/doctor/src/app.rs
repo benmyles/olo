@@ -115,6 +115,8 @@ enum Msg {
     /// How a fix run as this user is going (a download's share).
     Progress(String, String),
     Helper(Option<FromHelper>),
+    /// What a fix left to do as this user is done (`checks::after_fix`).
+    Followed,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -137,6 +139,8 @@ struct Doctor {
     scanning: bool,
     /// Another look is due once this one is in (a fix finished meanwhile).
     rescan: bool,
+    /// Fixes whose after-step (as this user) is still running.
+    following: usize,
     /// By finding id.
     outcomes: BTreeMap<String, Outcome>,
     /// What was fixed and has since gone from the report, by title.
@@ -193,7 +197,7 @@ impl Doctor {
     }
 
     fn busy(&self) -> bool {
-        self.outcomes.values().any(|o| *o == Outcome::Fixing)
+        self.following > 0 || self.outcomes.values().any(|o| *o == Outcome::Fixing)
     }
 
     /// Fix the findings `ids` (those with a fix): as this user at once,
@@ -265,8 +269,21 @@ impl Doctor {
             Some(e) => Outcome::Failed(e),
             None => Outcome::Fixed,
         };
-        self.outcomes.insert(id, outcome);
-        if !self.busy() {
+        let fixed = outcome == Outcome::Fixed;
+        self.outcomes.insert(id.clone(), outcome);
+        if let Some(then) = crate::checks::after_fix(&id).filter(|_| fixed && kind() == Kind::Doctor) {
+            // What the fix leaves to do as the person (off this thread:
+            // it asks rtkit), then the look.
+            self.following += 1;
+            let proxy = self.proxy.clone();
+            std::thread::Builder::new()
+                .name("doctor-after-fix".into())
+                .spawn(move || {
+                    then();
+                    proxy.send(Msg::Followed);
+                })
+                .expect("spawn");
+        } else if !self.busy() {
             self.scan(cx);
         }
         cx.notify();
@@ -316,6 +333,12 @@ impl Doctor {
         let Ok(msg) = message.downcast::<Msg>() else { return };
         match *msg {
             Msg::Scanned(r) => self.scanned(r, cx),
+            Msg::Followed => {
+                self.following = self.following.saturating_sub(1);
+                if !self.busy() {
+                    self.scan(cx);
+                }
+            }
             Msg::Ran(id, results) => {
                 self.progress.remove(&id);
                 self.finished(id, results, cx)
@@ -546,6 +569,7 @@ pub fn run(which: Kind) {
             report: None,
             scanning: false,
             rescan: false,
+            following: 0,
             outcomes: BTreeMap::new(),
             fixed: saved.fixed,
             helper: None,

@@ -913,27 +913,15 @@ fn airpods_listening(roots: &Roots, procs: &[Proc], r: &mut Report) {
 /// wait behind other work, a click in their call. The fix lets rtkit give
 /// more, and restarts it (the supervisor asks again).
 fn voice_realtime(roots: &Roots, procs: &[Proc], r: &mut Report) {
-    let audio = |name: &str| olo_protocol::performance::tier(name) == Some(olo_protocol::performance::AUDIO_NICE);
-    let mut found = false;
-    let mut not = Vec::new();
-    for p in procs.iter().filter(|p| p.uid == roots.uid && audio(&p.name)) {
-        let tasks = roots.fs.join(format!("proc/{}/task", p.pid));
-        for t in std::fs::read_dir(&tasks).into_iter().flatten().flatten() {
-            let comm = read(&t.path().join("comm")).unwrap_or_default();
-            if !comm.trim().starts_with(olo_protocol::performance::AUDIO_THREAD) {
-                continue;
-            }
-            found = true;
-            // The scheduling policy: field 41 of stat (0 normal, 1 FIFO, 2 RR).
-            let stat = read(&t.path().join("stat")).unwrap_or_default();
-            let policy = stat.rfind(')').and_then(|i| stat[i + 1..].split_whitespace().nth(38)).and_then(|f| f.parse::<u32>().ok());
-            if !matches!(policy, Some(1 | 2)) && !not.contains(&p.name) {
-                not.push(p.name.clone());
-            }
-        }
-    }
-    if !found {
+    let threads = audio_threads(roots, procs);
+    if threads.is_empty() {
         return;
+    }
+    let mut not: Vec<String> = Vec::new();
+    for t in threads.iter().filter(|t| !t.realtime) {
+        if !not.contains(&t.program) {
+            not.push(t.program.clone());
+        }
     }
     if not.is_empty() {
         r.fine.push(Fine { title: "Voice processing's sound is realtime".into(), detail: "rtkit made the voice services' sound threads realtime.".into() });
@@ -964,11 +952,63 @@ ExecStart=/{d} --processes-per-user-max=64 --threads-per-user-max=256
         severity: Severity::Advice,
         title: "Voice processing's sound isn't realtime".into(),
         detail: format!(
-            "{} asked rtkit for realtime and didn't get it: rtkit gives it to only so many processes a user (15 by default), and this desktop's programs have used them up. Under load, a frame of a voice can then wait behind other work, a click in a call. The fix lets rtkit give it to 64 processes and 256 threads, and restarts it.",
+            "{} asked rtkit for realtime and didn't get it: rtkit gives it to only so many processes a user (15 by default), and this desktop's programs have used them up. Under load, a frame of a voice can then wait behind other work, a click in a call. The fix lets rtkit give it to 64 processes and 256 threads, restarts it, and asks it again for their sound.",
             not.join(" and ")
         ),
         fix,
     });
+}
+
+/// One of the voice services' sound threads (PipeWire's "data-loop", in
+/// a program of the audio tier), the user's.
+struct AudioThread {
+    pid: i32,
+    program: String,
+    tid: u32,
+    realtime: bool,
+}
+
+fn audio_threads(roots: &Roots, procs: &[Proc]) -> Vec<AudioThread> {
+    let audio = |name: &str| olo_protocol::performance::tier(name) == Some(olo_protocol::performance::AUDIO_NICE);
+    let mut out = Vec::new();
+    for p in procs.iter().filter(|p| p.uid == roots.uid && audio(&p.name)) {
+        let tasks = roots.fs.join(format!("proc/{}/task", p.pid));
+        for t in std::fs::read_dir(&tasks).into_iter().flatten().flatten() {
+            let Some(tid) = t.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+            let comm = read(&t.path().join("comm")).unwrap_or_default();
+            if !comm.trim().starts_with(olo_protocol::performance::AUDIO_THREAD) {
+                continue;
+            }
+            // The scheduling policy: field 41 of stat (0 normal, 1 FIFO, 2 RR).
+            let stat = read(&t.path().join("stat")).unwrap_or_default();
+            let policy = stat.rfind(')').and_then(|i| stat[i + 1..].split_whitespace().nth(38)).and_then(|f| f.parse::<u32>().ok());
+            out.push(AudioThread { pid: p.pid, program: p.name.clone(), tid, realtime: matches!(policy, Some(1 | 2)) });
+        }
+    }
+    out
+}
+
+/// What a fix of finding `id` leaves to do as the person, once its steps
+/// (as root) have run; before the look that checks it. The voice
+/// services' sound: rtkit, restarted with room, asked now for their
+/// threads (it gives only to their own user, so not by the helper), not
+/// at the supervisor's next try a minute on: else that look still found
+/// them not realtime, and the finding came back after "Fixed." (Ben,
+/// 2026-11-06: "i press fix it, it says it's fixed, but then it just
+/// comes back").
+pub fn after_fix(id: &str) -> Option<fn()> {
+    (id == "voice-realtime").then_some(ask_realtime_again as fn())
+}
+
+fn ask_realtime_again() {
+    let roots = Roots::real();
+    let procs = processes(&roots.fs);
+    for t in audio_threads(&roots, &procs).into_iter().filter(|t| !t.realtime) {
+        match olo_system::priority::realtime(t.pid as u32, t.tid, olo_protocol::performance::AUDIO_RT_PRIORITY) {
+            Ok(()) => tracing::info!("made {}'s sound (thread {}) realtime", t.program, t.tid),
+            Err(e) => tracing::warn!("{}'s sound (thread {}) still not realtime: {e}", t.program, t.tid),
+        }
+    }
 }
 
 /// app_server's and every window's thread ask to be taken as busy while

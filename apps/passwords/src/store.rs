@@ -223,8 +223,11 @@ fn refresh(v: &Vault, reply: &impl Fn(Reply)) {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Searchable {
     pub username: String,
-    /// Its other fields (their names and values) and its notes.
+    /// Its sections' titles, its other fields' labels and values (a
+    /// secret's label only) and its notes.
     pub text: String,
+    /// Those fields one by one, to say where a search found something.
+    pub fields: Vec<FieldText>,
     pub otp: bool,
     pub password: bool,
     pub files: bool,
@@ -234,6 +237,17 @@ pub struct Searchable {
     pub weak: bool,
     /// Its passkey's public parts.
     pub passkey: Option<PasskeyInfo>,
+}
+
+/// One of an item's fields as search sees it: its section's title (none
+/// for the built-in ones and untitled sections), its label, and its
+/// value unless that's secret.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FieldText {
+    pub id: String,
+    pub section: String,
+    pub label: String,
+    pub value: String,
 }
 
 /// What may be said of a passkey while Passwords is unlocked (its key
@@ -267,8 +281,23 @@ fn index(v: &Vault) -> HashMap<String, Searchable> {
         .map(|e| {
             let item = &e.item;
             let mut text = String::new();
-            for f in item.fields.iter().filter(|f| f.id != "username" && !secret(f.field_type)) {
-                text.push_str(&f.title);
+            for section in item.sections.iter().filter(|s| !s.title.is_empty() && item.fields.iter().any(|f| f.section_id.as_ref() == Some(&s.id))) {
+                text.push_str(&section.title);
+                text.push('\n');
+            }
+            let fields: Vec<FieldText> = item
+                .fields
+                .iter()
+                .filter(|f| f.id != "username")
+                .map(|f| FieldText {
+                    id: f.id.clone(),
+                    section: f.section_id.as_ref().and_then(|id| item.sections.iter().find(|s| &s.id == id)).map(|s| s.title.clone()).unwrap_or_default(),
+                    label: f.title.clone(),
+                    value: if secret(f.field_type) { String::new() } else { f.value.clone() },
+                })
+                .collect();
+            for f in &fields {
+                text.push_str(&f.label);
                 text.push('\n');
                 text.push_str(&f.value);
                 text.push('\n');
@@ -278,6 +307,7 @@ fn index(v: &Vault) -> HashMap<String, Searchable> {
             let s = Searchable {
                 username: item.username().unwrap_or_default().to_owned(),
                 text,
+                fields,
                 otp: item.fields.iter().any(|f| f.field_type == ItemFieldType::Totp && !f.value.is_empty()),
                 password: pw.is_some(),
                 files: !item.files.is_empty() || item.document.is_some(),
@@ -852,6 +882,31 @@ mod tests {
         let Response::Logins { logins } = &response else { panic!("not logins") };
         let titles: Vec<&str> = logins.iter().map(|l| l.title.as_str()).collect();
         assert_eq!(titles, ["C accounts", "B root", "A mail"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Search sees each field with its section's title, a secret's
+    /// label but never its value, and sections by their titles.
+    #[test]
+    fn search_sees_sections_and_fields() {
+        let dir = std::env::temp_dir().join(format!("olo-store-index-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
+        let mut p = ItemCreateParams::new(ItemCategory::Server, v.data.vaults[0].id.clone(), "Box");
+        p.sections = vec![onepassword::ItemSection { id: "admin".into(), title: "Admin Console".into() }, onepassword::ItemSection { id: "empty".into(), title: "Unused".into() }];
+        p.fields = vec![
+            ItemField::new("username", "username", ItemFieldType::Text, "deploy"),
+            ItemField::new("url", "admin console URL", ItemFieldType::Text, "console.example.net").in_section("admin"),
+            ItemField::new("pw", "console password", ItemFieldType::Concealed, "Quarry-Fable-88").in_section("admin"),
+        ];
+        let id = v.create(&p).unwrap().id;
+        let index = super::index(&v);
+        let s = &index[&id];
+        let fields: Vec<(&str, &str, &str)> = s.fields.iter().map(|f| (f.section.as_str(), f.label.as_str(), f.value.as_str())).collect();
+        assert_eq!(fields, [("Admin Console", "admin console URL", "console.example.net"), ("Admin Console", "console password", "")]);
+        assert!(s.text.contains("Admin Console") && s.text.contains("console password"));
+        assert!(!s.text.contains("Quarry") && !s.text.contains("Unused"), "{}", s.text);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

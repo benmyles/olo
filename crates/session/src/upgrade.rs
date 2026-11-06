@@ -152,6 +152,36 @@ impl Watcher {
         done
     }
 
+    /// Whether the program at `exe` (as /proc shows it) is one of ours
+    /// from the install directory, since replaced there.
+    pub fn replaced_here(&self, exe: &Path) -> bool {
+        replaced(exe, &self.to)
+    }
+
+    /// Screens' sessions (headless olo-sessions) still running an
+    /// olo-session replaced here: those from before screens followed an
+    /// upgrade by themselves (`Session::follow_install`), by pid.
+    pub fn old_screens(&self) -> Vec<i32> {
+        let uid = unsafe { libc::getuid() };
+        let Ok(dir) = std::fs::read_dir("/proc") else { return Vec::new() };
+        let mut out = Vec::new();
+        for e in dir.flatten() {
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<i32>().ok()) else { continue };
+            if std::fs::metadata(e.path()).map(|m| std::os::unix::fs::MetadataExt::uid(&m)).ok() != Some(uid) {
+                continue;
+            }
+            let Ok(exe) = std::fs::read_link(e.path().join("exe")) else { continue };
+            if !exe.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("olo-session")) || !self.replaced_here(&exe) {
+                continue;
+            }
+            let Ok(args) = std::fs::read(e.path().join("cmdline")) else { continue };
+            if args.split(|&b| b == 0).any(|a| a == b"--headless") {
+                out.push(pid);
+            }
+        }
+        out
+    }
+
     /// Tell our programs still running from files just replaced in the
     /// install directory (the kit re-executes them in place, with their
     /// windows). Leaves out `skip` (us and app_server).
@@ -514,6 +544,18 @@ fn install(src: &Path, dir: &Path, name: &str) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
+    /// Starts `c`, a program just copied: another test forking while the
+    /// copy was open for writing keeps it busy (ETXTBSY) for a moment.
+    fn spawn_just_copied(c: &mut std::process::Command) -> std::process::Child {
+        for _ in 0..50 {
+            match c.spawn() {
+                Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) => std::thread::sleep(std::time::Duration::from_millis(20)),
+                r => return r.unwrap(),
+            }
+        }
+        panic!("{c:?} stayed busy");
+    }
+
     #[test]
     fn a_program_whose_display_has_gone_is_left_over() {
         // One of ours (by name) three times: its display gone, there, none.
@@ -528,7 +570,7 @@ mod tests {
             if let Some(d) = display {
                 c.env("WAYLAND_DISPLAY", d);
             }
-            c.spawn().unwrap()
+            spawn_just_copied(&mut c)
         };
         let mut gone = run(Some("wayland-gone"));
         let mut here = run(Some("wayland-here"));
@@ -545,6 +587,33 @@ mod tests {
         assert!(found.contains(&(gone.id() as i32)), "{found:?}");
         assert!(!found.contains(&(here.id() as i32)) && !found.contains(&(none.id() as i32)), "{found:?}");
         assert!(!young.contains(&(gone.id() as i32)));
+    }
+
+    #[test]
+    fn a_screen_on_a_replaced_session_is_old() {
+        // Sessions (bash under its name, to have a process to look at):
+        // a screen's and a real one's, then the installed program replaced.
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-old-screens-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let session = dir.join("olo-session");
+        std::fs::copy("/usr/bin/bash", &session).unwrap();
+        let run = |backend: &str| spawn_just_copied(std::process::Command::new(&session).args(["-c", "sleep 5; :", backend]));
+        let (mut screen, mut real) = (run("--headless"), run("--tty-udev"));
+        let w = Watcher { from: dir.join("build"), to: dir.clone(), state: dir.join("state.json"), pending: Vec::new(), last: None, wanted: false };
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Not replaced yet: nothing old.
+        assert!(!w.old_screens().contains(&(screen.id() as i32)));
+        std::fs::copy("/usr/bin/bash", dir.join(".new")).unwrap();
+        std::fs::rename(dir.join(".new"), &session).unwrap();
+        let old = w.old_screens();
+        for c in [&mut screen, &mut real] {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(old.contains(&(screen.id() as i32)), "{old:?}");
+        assert!(!old.contains(&(real.id() as i32)), "{old:?}");
     }
 
     #[test]
@@ -586,10 +655,19 @@ mod tests {
         let said: Available = serde_json::from_str(&std::fs::read_to_string(&state).unwrap()).unwrap();
         assert!(said.waiting);
         assert!(!w.check());
-        // The build done: once.
+        // The build done: once. (Another test forking just then holds the
+        // lock with it until its child starts: a moment.)
         drop(lock);
-        w.last = None;
-        assert!(w.check());
+        let mut done = false;
+        for _ in 0..50 {
+            w.last = None;
+            if w.check() {
+                done = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(done);
         w.last = None;
         assert!(!w.check());
         let _ = std::fs::remove_dir_all(&base);

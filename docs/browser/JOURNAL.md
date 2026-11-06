@@ -3879,3 +3879,21 @@ existing image smoke/fixture controls. No new visible UI difference/new global
 journal image; all 604 existing journal entries are preserved. Only owned test
 sessions were used; no personal install/reload or secrets access. Website
 acceptance remains **0/100, 0/3000**, goal active.
+
+### 2026-11-06 — Follow main's session upgrade changes
+
+Main advanced during validation; merged again through **b3064ab8**, including
+Agent Screens following upgrades, Passwords field editing/search and Doctor's
+rtkit follow-up. Clean merge, workspace release build **11.40s**, **nine session
+upgrade tests** pass. Temporary test paths used disk scratch. No personal
+upgrade, install, keyring access or Doctor fix was performed.
+
+Browser and app_server release binaries have **identical SHA256 hashes** before
+and after this sync, so the earlier rendering and cost evidence remains scoped
+to those same binaries. The changed session lifecycle received a fresh owned
+Agent Screen navigation/history/focus test: **15 mode/scale reviews and native
+session re-exec pass**, including forward/back and CSS-pixel scroll restoration.
+No extra image/performance reruns without changed inputs or code. Evidence:
+`2026-11-06-image-session-followup.json`. All earlier known compatibility,
+pixel and performance failures remain open. Website acceptance **0/100,
+0/3000**; goal active. Test windows/screens and owned scratch are cleaned up.

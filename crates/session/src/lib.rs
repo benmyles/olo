@@ -87,6 +87,10 @@ const CRASH_WINDOW: Duration = Duration::from_secs(60);
 /// asked to re-execute.
 const NUDGE_AFTER_RELOAD: Duration = Duration::from_secs(6);
 
+/// How long a screen waits, once the installed programs it runs have been
+/// replaced, for the install to finish before following it.
+const FOLLOW_SETTLE: Duration = Duration::from_secs(4);
+
 /// app_server crashing this often in a minute starts again in Olo Rescue
 /// (safe display, keyboard and pointer settings: a setting may be what
 /// it can't start with), where the person can see, and fix it.
@@ -266,6 +270,9 @@ struct Session {
     nudge_at: Option<Instant>,
     /// Our own binary when we started, to notice upgrades.
     binary: Option<(u64, SystemTime)>,
+    /// A screen's: since when the install directory has had newer
+    /// programs than it runs (`follow_install`).
+    replaced_since: Option<Instant>,
     stopping: bool,
     /// On the machine's own screens (not nested or headless).
     real: bool,
@@ -351,6 +358,7 @@ impl Session {
             leftovers: Vec::new(),
             nudge_at: None,
             binary: own_binary(),
+            replaced_since: None,
             stopping: false,
             real: false,
             upgrades: None,
@@ -444,6 +452,7 @@ impl Session {
             leftovers: Vec::new(),
             nudge_at: r.nudge_in_ms.map(|ms| Instant::now() + Duration::from_millis(ms)),
             binary: own_binary(),
+            replaced_since: None,
             stopping: false,
             real,
             upgrades: None,
@@ -666,6 +675,7 @@ impl Session {
             self.reap();
             if !self.stopping {
                 self.watchdog.check(self.server.pid);
+                self.follow_install();
                 self.check_stale();
                 if self.nudge_at.is_some_and(|t| Instant::now() >= t) {
                     self.nudge_at = None;
@@ -726,6 +736,46 @@ impl Session {
         self.renew_proxy_if_upgraded();
     }
 
+    /// A screen (a headless session of the installed programs) installs
+    /// nothing: the person's session upgrades, into the same directory,
+    /// and the screen follows. Once app_server or we have been replaced
+    /// there, or the proxy (and the directory has been quiet a moment, the
+    /// install done), it goes as our own upgrade would: app_server reloaded in place (its
+    /// apps re-execute as they reconnect), us and the proxy renewed, what's
+    /// left on the old version asked after. Before, a screen ran the old
+    /// version until it was stopped (Ben, 2026-11-06: an agent screen's
+    /// Live view still blacked Passwords out after the upgrade that
+    /// stopped that). A real session upgrades itself, and one run from
+    /// the build tree (tests, development) never follows a build.
+    fn follow_install(&mut self) {
+        let Some(w) = self.upgrades.as_ref().filter(|_| !self.real) else { return };
+        let server = self.server.pid > 0 && std::fs::read_link(format!("/proc/{}/exe", self.server.pid)).is_ok_and(|exe| w.replaced_here(&exe));
+        let me = own_binary().is_some() && own_binary() != self.binary;
+        let proxy = self.proxy.as_ref().is_some_and(|p| p.2.pid > 0) && proxy_binary().is_some() && proxy_binary() != self.proxy_binary;
+        if !server && !me && !proxy {
+            self.replaced_since = None;
+            return;
+        }
+        let since = *self.replaced_since.get_or_insert_with(Instant::now);
+        if since.elapsed() < FOLLOW_SETTLE {
+            return;
+        }
+        self.replaced_since = None;
+        log("the installed programs were upgraded (by the person's session); following");
+        self.stale_check = Some((Instant::now(), 0));
+        self.restart_stopped();
+        if server {
+            self.nudge_at = Some(Instant::now() + NUDGE_AFTER_RELOAD);
+            self.reload();
+        } else if me {
+            if let Some(w) = &self.upgrades {
+                w.nudge(&[std::process::id() as i32, self.server.pid]);
+            }
+            self.exec_self(false, false);
+        }
+        self.renew_proxy_if_upgraded();
+    }
+
     /// Programs of ours left from sessions that have gone (their display
     /// no longer exists: `upgrade::leftovers`), looked for after each
     /// upgrade: asked to end (SIGTERM) at the first look, killed at the
@@ -771,7 +821,24 @@ impl Session {
         let mut skip: Vec<i32> = vec![std::process::id() as i32, self.server.pid];
         skip.extend(self.proxy.as_ref().map(|p| p.2.pid));
         skip.extend(self.retired.iter().copied());
-        self.sweep_leftovers(stage, &skip);
+        // (The person's session sweeps them; a screen following its
+        // upgrade would only do it again.)
+        if self.real {
+            self.sweep_leftovers(stage, &skip);
+        }
+        // Screens follow an upgrade by themselves; one whose session is
+        // from before they did is reloaded (SIGHUP: it re-executes as the
+        // new version and restarts its app_server in place).
+        if self.real
+            && stage == 0
+            && let Some(w) = &self.upgrades
+        {
+            for pid in w.old_screens() {
+                log(format!("a screen's session (pid {pid}) is still the old version 20 s after the upgrade; reloading it"));
+                // SAFETY: SIGHUP to our own program (a screen's olo-session).
+                unsafe { libc::kill(pid, libc::SIGHUP) };
+            }
+        }
         let Some(w) = &self.upgrades else { return };
         let stale = w.stale(&skip, &self.display);
         if stale.is_empty() {

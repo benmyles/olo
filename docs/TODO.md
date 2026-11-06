@@ -17,16 +17,6 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-- **Passwords: Add Field in each section, and search inside items**
-  (Ben, 2026-11-06): "in passwords each section needs its own add field
-  button, right now there's only one at the very bottom of all
-  sections. also, i need to be able to search/filter sections and their
-  items not just the top level vault item entries". Editing an item,
-  each section has its own Add Field (the new field goes in that
-  section); and search finds sections and fields (their labels, and
-  values that aren't secret) as well as items, showing where in an item
-  it matched.
-
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
@@ -36,6 +26,34 @@ Nothing: what's left is waiting for Ben or blocked.
   lists logins for a sign-in form.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Olo Doctor's "Voice processing's sound isn't realtime" comes back
+  after Fix** (Ben, 2026-11-06): "i press fix it, it says it's fixed,
+  but then it just comes back". *Found*: the fix did take (rtkit's
+  journal: refusing every request for days at its default 15 processes,
+  then restarted at 10:59:07 with 64 and 256, and olo-voice's sound
+  thread made realtime at 10:59:17, the supervisor's next once-a-minute
+  try); but Doctor looked again the moment the fix finished, still found
+  the thread refused, and showed the finding again. *Fixed*: a fix can
+  leave a step to do as the person before that look (`after_fix`); this
+  one asks rtkit for the voice services' sound threads itself (rtkit
+  gives only to a thread's own user, so not the root helper). Ben's
+  thread is realtime now, so his next look shows it fine.
+
+- **Passwords: Add Field in each section, and search inside items**
+  (Ben, 2026-11-06): "in passwords each section needs its own add field
+  button, right now there's only one at the very bottom of all
+  sections. also, i need to be able to search/filter sections and their
+  items not just the top level vault item entries". Done: editing an
+  item, each section ends with its own Add Field… (the field goes at the
+  end of that section and is focused; an empty titled section shows so
+  it can be filled). Search finds sections and fields (titles, labels,
+  and values that aren't secret): the list's second line says where
+  ("Admin Console › region: eu-west"), the item pane marks it, and
+  `section:` / `field:` filters (suggested with counts) narrow the list
+  and the item pane to just those sections and fields. Tried headless
+  with the fake 1Password's server item (now with 1Password's Admin
+  Console and Hosting Provider sections) at 1×, 1.5× and 2×.
 
 - **Credit cards' expiry dates synced wrong from 1Password** (Ben,
   2026-11-06): "credit card expiry dates aren't being properly synced
@@ -1714,8 +1732,16 @@ people.
   windows tagged private, the locked screen); the kit's
   `WindowOptions::private` gone with it. Checked with `olo-portal
   capture-test`: a screen capture and a window share of Passwords both
-  show it. A screen running before the upgrade keeps its app_server till
-  it's started again.
+  show it. *Then* (Ben, after upgrading: "i still see the agent screens
+  windows blacked out"): a screen is a headless olo-session of the
+  installed programs and installs nothing, so it kept running its old,
+  deleted app_server (the screens started at 10:04, the fix installed
+  at 10:50). *Fixed*: a screen follows the person's upgrade by itself
+  (`follow_install`: what was replaced under it, reloaded in place once
+  the install is done), and the person's session reloads a screen whose
+  session is from before that (`old_screens`, SIGHUP, 20 s after its
+  upgrade). Tried with a scratch install: replacing app_server, the
+  proxy and olo-session each was followed in place.
 
 - ~~**Viewer: a video zoomed to fill, and full screen**~~ (Ben, 2026-11-06):
   "watching a video in viewer needs to support zooming, like an option

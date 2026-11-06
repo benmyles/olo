@@ -2544,7 +2544,7 @@ longer exists: a login before, a test session or Agent Screen stopped
 without them; `upgrade::leftovers`, none younger than 30 s, none with
 no display in their environment) are asked to end at the first look
 and killed at the second if they didn't (`sweep_leftovers`, by pid and
-start time). Nor is stopped a program of ours that
+start time; only by the person's session). Nor is stopped a program of ours that
 another program started (`upgrade::started_by_another`: its parent is
 neither ours, the session's service manager nor init): a coding agent's
 `olo-terminal --mcp`, a browser's messaging host, a command run from a
@@ -2886,6 +2886,28 @@ OLO_UPGRADE_FROM=<tree> tsession start NAME --session --shell` and
 For the race: touch an app's program, send the app SIGURG, then send
 the session SIGHUP 30–120 ms later, and check the window kept its
 place.
+
+**Agent Screens follow the person's upgrade.** A screen is a headless
+olo-session of the installed programs; it installs nothing (that's the
+person's session, into the same directory), so its own watcher never
+sees anything newer. Instead it notices what was replaced under it
+(`follow_install`, on its 2 s tick: its app_server's `/proc/PID/exe`
+"(deleted)" under the install directory, its own binary or the proxy's
+changed) and, once that has held `FOLLOW_SETTLE` (4 s, the install
+done), does what its own upgrade would: app_server reloaded in place
+(apps re-execute as they reconnect, nudged after), itself re-executed,
+the proxy renewed, what's left old asked after. Before (2026-11-06) a
+screen ran its old version until stopped: its Live view still blacked
+Passwords out after the upgrade that ended that. A screen whose session
+is from before this can't follow, so the person's session reloads it
+(SIGHUP) at its 20 s look (`Watcher::old_screens`). Only the person's
+session sweeps leftovers; one run from the build tree (tests) never
+follows a build. To try it: copy olo-session, olo-app-server and
+olo-wlproxy into `/var/tmp/X/bin`, start `/var/tmp/X/bin/olo-session
+--headless 800x600 --no-shell` with `OLO_UPGRADE_FROM` set (and the
+person's `WAYLAND_DISPLAY`, `OLO_SOCKET` and `OLO_SESSION*` unset), then
+replace one of them (copy to a temporary name, `mv` over): the log says
+"following" and the new pid runs the new file.
 
 **Finding flicker** (headless): screenshots take about 50 ms, too slow
 for a flash a frame long. `tsession ipc NAME
@@ -7770,7 +7792,11 @@ scan made for the sudo user). What it looks for:
   thread that rtkit refused (its processes-per-user limit reached).
   Fixed by an rtkit drop-in (`/etc/systemd/system/rtkit-daemon.service.d/olo.conf`:
   64 processes, 256 threads a user), systemd reloaded, rtkit restarted;
-  the supervisor asks again within a minute.
+  then Doctor itself, as the person (rtkit gives only to a thread's own
+  user), asks it again for those threads before it looks
+  (`checks::after_fix`, a fix's after-step, off the UI thread). Left to
+  the supervisor's retry a minute on, the look just after the fix still
+  found them refused and the finding came back after "Fixed.".
 - **Frames kept off the fast cores**: `kernel.sched_util_clamp_min`
   below 1024 caps the `uclamp.min` app_server's and the windows' threads
   ask for (rule 9): set to 1024, now and at boot (/etc/sysctl.d/
@@ -10981,18 +11007,35 @@ place.
 
 **Searching**: the toolbar's `SearchField` and a `FilterBar` over the
 list (Tag, Has) share one query (`olo_ui::search`). Words find an item
-by its title, username, websites, tags, kind, and the text of its fields
-that aren't secret and its notes; with words, the best come first
-(title 4, username and site 3, tags 2, the rest 1), else by title; what
-was found is marked in each row, whose second line is the username (else
-the site). Filters: `type:` (login, secure-note…), `vault:`, `tag:`,
-`site:`, `user:`, and `has:` otp, password, website, files, reused (its
-password is another item's too), weak (under 12 characters, or of one
-kind). The vault worker sends a `Searchable` for every item with the
-list (`store::index`, again after each change): the username, the
-non-secret fields' names and values and the notes, and flags; never a
-password, code, card number or key, and of a password only whether it
-is weak or reused. So searching finds usernames of items never opened.
+by its title, username, websites, tags, kind, its sections' titles, its
+fields' labels (a secret's too), the values of those that aren't secret,
+and its notes; with words, the best come first (title 4, username and
+site 3, tags 2, the rest 1), else by title; what was found is marked in
+each row, whose second line is the username (else the site), or, when
+the search found it inside the item, where: "Admin Console › region:
+eu-west" (the field with most of the words; `found_in`, worked out with
+the list, once per change). The item pane marks it too (section titles,
+labels, and values that aren't secret). Filters: `type:` (login,
+secure-note…), `vault:`, `tag:`, `site:`, `user:`, `has:` otp, password,
+website, files, reused (its password is another item's too), weak (under
+12 characters, or of one kind), and `section:` and `field:` (by title or
+label, suggested with how many items have each), which narrow the item
+pane as well to just those sections and fields (`-section:` and `-field:`
+leave them out), saying so under its header. The vault worker sends a
+`Searchable` for every item with the list (`store::index`, again after
+each change): the username, each field as `FieldText` (its section's
+title, its label, its value unless secret), that and the notes as text,
+and flags; never a password, code, card number or key, and of a
+password only whether it is weak or reused. So searching finds usernames
+of items never opened.
+
+**Editing**: the editor shows the fields as the item pane does: the
+built-in ones and untitled sections' first, then each titled section
+under its heading (one with no fields yet too); each group ends with its
+own Add Field…, whose field goes at the end of that section (the first
+group's in the untitled section custom fields go in, made when first
+needed; `Editor::groups`, `add_field`) and is focused: its label if it
+has none yet, else its value. A passkey's section has none.
 
 `crates/onepassword` (package `olo-onepassword`) is a Rust 1Password SDK
 modelled on the Go one: the same `Client` (`Secrets`, `Items`, `Vaults`,

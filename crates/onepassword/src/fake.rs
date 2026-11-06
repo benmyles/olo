@@ -479,7 +479,15 @@ pub fn sample(account: &str) -> FakeAccount {
         ItemField::new("url", "URL", ItemFieldType::Text, "build.example.net"),
         ItemField::new("username", "username", ItemFieldType::Text, "deploy"),
         ItemField::new("password", "password", ItemFieldType::Concealed, "Oxbow-Lantern-42"),
+        ItemField::new("admin_console_url", "admin console URL", ItemFieldType::Text, "console.example.net").in_section("admin_console"),
+        ItemField::new("admin_console_username", "admin console username", ItemFieldType::Text, "root").in_section("admin_console"),
+        ItemField::new("admin_console_password", "console password", ItemFieldType::Concealed, "Quarry-Fable-88").in_section("admin_console"),
+        ItemField::new("name", "name", ItemFieldType::Text, "Larchwood Hosting").in_section("hosting_provider_details"),
+        ItemField::new("support_contact_phone", "support phone", ItemFieldType::Phone, "+1 555 0199").in_section("hosting_provider_details"),
     ];
+    // As 1Password's Server template has them.
+    server.sections =
+        vec![crate::ItemSection { id: "admin_console".into(), title: "Admin Console".into() }, crate::ItemSection { id: "hosting_provider_details".into(), title: "Hosting Provider".into() }];
     let mut identity = ItemCreateParams::new(ItemCategory::Identity, "", "Jane Doe");
     identity.fields = vec![
         ItemField::new("firstname", "first name", ItemFieldType::Text, "Jane"),
