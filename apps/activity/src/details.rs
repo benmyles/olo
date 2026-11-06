@@ -351,7 +351,15 @@ mod tests {
         assert!(d.environment.is_some());
         assert!(d.limits.iter().any(|l| l.resource.as_deref() == Some("nofile")));
         assert!(d.affinity.as_ref().is_some_and(|a| !a.is_empty()));
-        assert_eq!(d.policy, "Normal");
+        // (Whatever it runs as: cargo, kept long busy, may be lowered to
+        // Batch by Olo's supervisor, and its tests with it.)
+        // SAFETY: sched_getscheduler on ourselves.
+        let ours = match unsafe { libc::sched_getscheduler(0) } {
+            libc::SCHED_BATCH => "Batch",
+            libc::SCHED_IDLE => "Idle",
+            _ => "Normal",
+        };
+        assert_eq!(d.policy, ours);
         assert!(read_details(i32::MAX).is_err());
     }
 

@@ -186,15 +186,20 @@ mod tests {
     fn acts_on_a_child() {
         let mut child = std::process::Command::new("/bin/sleep").arg("30").spawn().unwrap();
         let pid = child.id() as i32;
-        Action::Nice { pid, nice: 5 }.run().unwrap();
+        // Lowered from where it starts (ours: cargo, kept long busy, may run
+        // niced by Olo's supervisor, and its tests with it).
+        // SAFETY: getpriority of ourselves.
+        let base = unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) };
+        let low = (base + 5).min(19);
+        Action::Nice { pid, nice: low }.run().unwrap();
         let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
         let close = stat.rfind(')').unwrap();
-        assert_eq!(stat[close + 1..].split_whitespace().nth(16), Some("5"));
+        assert_eq!(stat[close + 1..].split_whitespace().nth(16), Some(low.to_string().as_str()));
         Action::Affinity { pid, cores: vec![0] }.run().unwrap();
         assert_eq!(crate::details::affinity(pid), Some(vec![0]));
         Action::Limit { pid, resource: "nofile".into(), soft: Some(64), hard: Some(128) }.run().unwrap();
         // A lower priority can't be raised back without full access.
-        let back = Action::Nice { pid, nice: -5 }.run();
+        let back = Action::Nice { pid, nice: base - 5 }.run();
         assert!(back.is_err_and(|r| r.needs_access));
         Action::Signal { pid, signal: libc::SIGKILL }.run().unwrap();
         child.wait().unwrap();
