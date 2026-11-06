@@ -1379,25 +1379,6 @@ of Finished; a new one goes where its priority puts it.
   pre-scaled icon for the device size, on whole device pixels, never
   resampled; checked by the layout review at every scale.
 
-- **The voice model's weights in f16 or int8, if voices stay as clear**
-  (from the SIMD work, 2026-11-04): a live frame is 553–588 µs against
-  388 back to back because its 8 MB of f32 weights fall out of the
-  caches between frames; half or a quarter of that would stay. Try
-  tract's f16 weights (F16C on x86, NEON's fp16) and int8, and keep one
-  only if the voice trials (crates/voice tests, the AirPods chain) say
-  quality holds. Measure on the ThinkPad and the MacBook.
-  *Tried* (2026-11-04, x86 with AVX2): tract 0.23.9's
-  `FloatPrecisionTranslator` (f32 → f16, the whole model) on the
-  encoder and both decoders breaks DeepFilterNet: a clean voice comes
-  out at −1.5 dB SDR (f32: 34.1), noise isn't taken out (7.5 → −2.0 dB
-  SDR; f32: 17.7), and its 22 µs a frame is the network doing nothing.
-  It turns the activations to f16 too (the GRUs' sums lose too much),
-  where only the weights should be. What's left to try: weights alone
-  in f16 (tract-linalg has f16-in-f32-out matrix kernels on x86,
-  `f16f32` with F16C, and on NEON), which means packing the constant
-  matrices as f16 in tract's own optimizer rather than translating the
-  model; then int8 the same way, judged by the same trials.
-
 - **Other programs' file handling through Olo, fixed** (Ben,
   2026-11-04): "the gtk/qt integration doesn't seem to be working
   properly e.g. even in olo chrome i can't click on the folder for a
@@ -1660,6 +1641,33 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**The voice model's weights in f16 or int8, if voices stay as clear**~~
+  (done 2026-11-05, HACKING's "Voice processing": the weights alone in
+  f16, packed by tract's own optimizer for its f16-weights,
+  f32-activations kernels (each matmul's constant weights swapped for an
+  f16 copy); on x86 with F16C a frame back to back 391 → 296 µs, paced as
+  live 773 → 536 µs, every voice trial's SDR the same to a tenth of a
+  dB. int8 not needed for the caches' sake now. *Left*: the MacBook's
+  numbers (NEON's fp16 kernels; it falls back to f32 where they don't
+  optimize))
+  (from the SIMD work, 2026-11-04): a live frame is 553–588 µs against
+  388 back to back because its 8 MB of f32 weights fall out of the
+  caches between frames; half or a quarter of that would stay. Try
+  tract's f16 weights (F16C on x86, NEON's fp16) and int8, and keep one
+  only if the voice trials (crates/voice tests, the AirPods chain) say
+  quality holds. Measure on the ThinkPad and the MacBook.
+  *Tried* (2026-11-04, x86 with AVX2): tract 0.23.9's
+  `FloatPrecisionTranslator` (f32 → f16, the whole model) on the
+  encoder and both decoders breaks DeepFilterNet: a clean voice comes
+  out at −1.5 dB SDR (f32: 34.1), noise isn't taken out (7.5 → −2.0 dB
+  SDR; f32: 17.7), and its 22 µs a frame is the network doing nothing.
+  It turns the activations to f16 too (the GRUs' sums lose too much),
+  where only the weights should be. What's left to try: weights alone
+  in f16 (tract-linalg has f16-in-f32-out matrix kernels on x86,
+  `f16f32` with F16C, and on NEON), which means packing the constant
+  matrices as f16 in tract's own optimizer rather than translating the
+  model; then int8 the same way, judged by the same trials.
 
 - ~~**Notifications, robust and everywhere**~~ (finished 2026-11-05:
   every part below done, nothing more asked; on agent screens each

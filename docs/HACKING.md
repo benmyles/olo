@@ -7666,7 +7666,16 @@ normalization) choose the chain; build a `Voice` off the real-time thread
 2. **Noise suppression**: DeepFilterNet3 with two frames of look-ahead.
    Thresholds: noise-only frames go down to the limit, both decoders always
    run otherwise (the library's defaults chop clean speech). About 250 µs
-   a frame.
+   a frame. Its weight matrices are f16 (`deep_filter::tract::
+   half_weights`: each matmul's constant f32 weights swapped for an f16
+   copy before optimizing, so tract packs them as f16 and runs its
+   f16-weights, f32-activations kernels; the sums and activations stay
+   f32): half the bytes to fall out of the caches between frames. On x86
+   with F16C a frame back to back went from 391 to 296 µs and one every
+   10 ms, as live, from 773 to 536 µs, the voice trials' SDR the same to
+   a tenth of a dB (translating the whole model to f16, activations too,
+   had wrecked it). Where it doesn't optimize (a processor with no such
+   kernels) it's f32; `OLO_VOICE_F32=1` asks for f32 to compare.
 3. **Level normalization**: AGC2 (adaptive digital gain from a neural
    voice detector, then a limiter), allowed to turn loud talkers down as
    well as quiet ones up: speech lands within half a dB of -24 dBFS rms
