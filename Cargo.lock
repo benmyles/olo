@@ -8113,6 +8113,7 @@ dependencies = [
  "olo-vaapi",
  "openh264",
  "png 0.18.1",
+ "symphonia",
 ]
 
 [[package]]

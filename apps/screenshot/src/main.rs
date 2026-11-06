@@ -815,6 +815,9 @@ fn main() -> std::process::ExitCode {
     if args.iter().any(|a| a == "--gif") {
         std::process::exit(recording::gif(&args));
     }
+    if args.iter().any(|a| a == "--export") {
+        std::process::exit(recording::export(&args));
+    }
     if args.iter().any(|a| a == "--trim") {
         std::process::exit(recording::trim(&args));
     }

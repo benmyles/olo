@@ -189,7 +189,7 @@ pub(crate) fn video_entries(path: &Path) -> Option<Vec<(u32, Vec<u8>)>> {
 }
 
 /// An MP4's `moov` box, read on its own (seeking past the pictures).
-fn moov(path: &Path) -> Option<Vec<u8>> {
+pub(crate) fn moov(path: &Path) -> Option<Vec<u8>> {
     use std::io::{Read as _, Seek as _, SeekFrom};
     let mut f = File::open(path).ok()?;
     let len = f.metadata().ok()?.len();
@@ -221,7 +221,7 @@ fn moov(path: &Path) -> Option<Vec<u8>> {
 
 /// Each track's edit list's media start (`elst`'s first media time), by
 /// handler: 1 for video, 2 for sound. Read from the file's boxes.
-fn edit_starts(path: &Path) -> Option<std::collections::HashMap<u8, u32>> {
+pub(crate) fn edit_starts(path: &Path) -> Option<std::collections::HashMap<u8, u32>> {
     let moov = moov(path)?;
     let moov = moov.as_slice();
     let mut out = std::collections::HashMap::new();

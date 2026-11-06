@@ -6740,6 +6740,32 @@ Screens' Export Video uses too).
   region's part of it) before the recording's clock starts, and the
   recorder waits for it (`ready`); the sound's description reaches the
   file once the sound has started.
+- **Exporting with edits** (`olo_video::export`; `olo-screenshot
+  --export VIDEO [--to PATH] [--keep A-B,…] [--cut A-B,…] [--crop
+  X,Y,W,H] [--mute] [--format mp4|gif] [--width N] [--fps N] [--quality
+  high|medium|low] [--encoder …] [--codec …] [--progress]`): a recording
+  made again with what's kept (a trim is one stretch, each cut splits
+  one), each picture cropped (its pixels) and made smaller (area
+  averages, the crop's shape kept, never larger, even), at most so many
+  pictures a second, as finely as asked (`Quality`: the recording's own,
+  or about 60% and 35% of its bits: NVENC's quality level up 4 and 8,
+  OpenH264's bitrate, VA-API's AV1 quantizer up 30 and 60), its sound
+  kept or left out, its marks kept where their moments are (`marks_of`
+  reads `chpl`). The pictures come in order from `read::Video` (the
+  reader `gif.rs` had, now shared: `each_picture` gives each with when
+  it shows from and till); each is shown for as long as it was in
+  what's kept (`kept_time` collapses what's cut, so a picture across a
+  cut joins up with itself, one wholly cut is left out), its times put
+  on the frame rate's grid when there is one. The sound (AAC) is
+  decoded by symphonia (its priming dropped as its edit list says), the
+  stretches kept taken to the sample, and coded again by libfdk-aac (a
+  test cuts half of each of a 440 Hz and an 880 Hz second: a second
+  comes out, 440 then 880). A GIF is made of the edited video
+  (`gif::from_mp4`). On the caller's worker, `progress` told 0 to 1,
+  `cancel` checked between any two pictures (SIGINT or SIGTERM for the
+  command), written as `PATH.part` and put in place when whole. A 3 s
+  1280 × 800 recording cut, cropped and made 320 wide: 2.6 s, most of it
+  NVENC waking.
 - **Trimming** (`olo_video::trim`; the Viewer's Edit ▸ Trim…, ⌘T;
   `olo-screenshot --trim VIDEO --start S --end E [--to PATH]`): nothing
   encoded again. The pictures are copied from the key frame at or

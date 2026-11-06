@@ -345,6 +345,92 @@ pub fn trim(args: &[String]) -> i32 {
     }
 }
 
+/// `A-B` (seconds) stretches, comma separated ("0-12.5,20-31").
+fn stretches(v: &str) -> Option<Vec<(f64, f64)>> {
+    v.split(',').filter(|p| !p.trim().is_empty()).map(|p| p.split_once('-').and_then(|(a, b)| Some((a.trim().parse().ok()?, b.trim().parse().ok()?)))).collect()
+}
+
+/// What's kept of a `seconds`-long video: `keep`'s stretches (all of it
+/// if none), less `cut`'s.
+fn kept_less(keep: Vec<(f64, f64)>, cut: &[(f64, f64)], seconds: f64) -> Vec<(f64, f64)> {
+    let mut out = if keep.is_empty() { vec![(0.0, seconds)] } else { keep };
+    for &(ca, cb) in cut {
+        out = out.into_iter().flat_map(|(a, b)| [(a, b.min(ca)), (a.max(cb), b)]).filter(|(a, b)| b > a).collect();
+    }
+    out
+}
+
+/// `--export VIDEO [--to PATH] [--keep A-B,…] [--cut A-B,…] [--crop
+/// X,Y,W,H] [--mute] [--format mp4|gif] [--width N] [--fps N] [--quality
+/// high|medium|low] [--encoder …] [--codec …] [--progress]`: a recording
+/// edited and made again (`olo_video::export`, the Viewer's editor's
+/// Export…): what's kept (stretches in seconds; `--cut` takes stretches
+/// out), each picture cropped (its pixels) and made `--width` wide, at
+/// most `--fps` pictures a second, as finely as `--quality`, its sound
+/// left out with `--mute`. `--progress` prints `{"progress": 0.42}` lines
+/// as it goes; SIGINT or SIGTERM stops it (nothing left). Prints what it
+/// made.
+pub fn export(args: &[String]) -> i32 {
+    let run = || -> Result<serde_json::Value, String> {
+        let src = PathBuf::from(option(args, "--export").ok_or("--export takes the video to export")?);
+        let format = option(args, "--format").map_or(Ok(olo_video::export::Format::Mp4), |f| olo_video::export::Format::parse(f).ok_or("--format is mp4 or gif"))?;
+        let number = |flag: &str| option(args, flag).map(str::parse::<u32>).transpose().map_err(|_| format!("{flag} takes a number"));
+        let seconds = olo_video::read::Video::open(&src)?.seconds();
+        let keep = option(args, "--keep").map(|v| stretches(v).ok_or("--keep takes A-B stretches in seconds")).transpose()?.unwrap_or_default();
+        let cut = option(args, "--cut").map(|v| stretches(v).ok_or("--cut takes A-B stretches in seconds")).transpose()?.unwrap_or_default();
+        let crop = option(args, "--crop").map(|v| {
+            let n: Vec<u32> = v.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+            <[u32; 4]>::try_from(n).map_err(|_| "--crop takes X,Y,W,H (the video's pixels)")
+        });
+        let edit = olo_video::export::Edit { keep: kept_less(keep, &cut, seconds), crop: crop.transpose()?, mute: args.iter().any(|a| a == "--mute"), marks: None };
+        let opts = olo_video::export::Options {
+            format,
+            width: number("--width")?.unwrap_or(0),
+            fps: number("--fps")?.unwrap_or(0),
+            quality: option(args, "--quality").map_or(Ok(olo_video::Quality::High), |q| olo_video::Quality::parse(q).ok_or("--quality is high, medium or low"))?,
+            encoder: option(args, "--encoder").map_or(Ok(olo_video::Choice::Auto), |e| olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu, nvidia or vaapi"))?,
+            codec: option(args, "--codec").map_or(Ok(olo_video::Codec::H264), |c| olo_video::Codec::parse(c).ok_or("--codec is h264, hevc or av1"))?,
+        };
+        let dst = option(args, "--to").map_or_else(
+            || {
+                let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                src.with_file_name(format!("{stem} (edited).{}", format.extension()))
+            },
+            PathBuf::from,
+        );
+        // SAFETY: handlers that only set a flag and write to a pipe.
+        unsafe {
+            libc::signal(libc::SIGINT, on_stop as *const () as libc::sighandler_t);
+            libc::signal(libc::SIGTERM, on_stop as *const () as libc::sighandler_t);
+        }
+        let tell = args.iter().any(|a| a == "--progress");
+        let last = std::cell::Cell::new(-1i32);
+        let progress = |p: f32| {
+            // (A line each percent.)
+            let pc = (p * 100.0) as i32;
+            if tell && pc != last.get() {
+                last.set(pc);
+                println!("{}", serde_json::json!({ "progress": (f64::from(p) * 100.0).round() / 100.0 }));
+            }
+        };
+        let made = olo_video::export::export(&src, &dst, &edit, &opts, &STOP, &progress)?;
+        Ok(serde_json::json!({
+            "path": dst, "seconds": made.seconds, "frames": made.frames, "width": made.width, "height": made.height,
+            "bytes": made.bytes, "sound": made.sound, "encoder": made.encoder, "kept": edit.keep,
+        }))
+    };
+    match run() {
+        Ok(v) => {
+            println!("{v}");
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: the export failed: {e}");
+            1
+        }
+    }
+}
+
 /// `--gif VIDEO`: a recording made a GIF; what was made printed.
 pub fn gif(args: &[String]) -> i32 {
     let Some(src) = option(args, "--gif").map(PathBuf::from) else {
@@ -1519,6 +1605,14 @@ mod tests {
 
     fn strings(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn cuts_come_out_of_what_is_kept() {
+        assert_eq!(stretches("0-12.5, 20-31"), Some(vec![(0.0, 12.5), (20.0, 31.0)]));
+        assert_eq!(stretches("x"), None);
+        assert_eq!(kept_less(vec![], &[(2.0, 3.0), (5.0, 6.0)], 8.0), vec![(0.0, 2.0), (3.0, 5.0), (6.0, 8.0)]);
+        assert_eq!(kept_less(vec![(1.0, 7.0)], &[(0.0, 2.0)], 8.0), vec![(2.0, 7.0)]);
     }
 
     /// Restart records the region that was dragged out, in points, on its

@@ -45,7 +45,11 @@ something nobody here has is in "Blocked", with what it waits for.
   - **Editor**: a timeline (pictures along it, the sound's waveform),
     trim, cut out a stretch, crop, the zooms and marks edited, sound
     muted, and Export (MP4 or GIF, size, frame rate, quality) on a worker
-    with progress and Cancel.
+    with progress and Cancel. The export itself is done (HACKING,
+    "Exporting with edits": `olo_video::export`, `olo-screenshot
+    --export`); the editor's window is next, in the Viewer (its player,
+    trim handles and crop overlay are there already), opened by the
+    card's Edit.
   - Agent-native throughout (the kit's tree, `--json`), and the skill
     says how.
 
