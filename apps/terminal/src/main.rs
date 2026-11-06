@@ -240,6 +240,44 @@ pub(crate) struct Tab {
     /// Left out of Tile All Tabs (its menu's Hide When Tiled), its tab
     /// faded in the strip.
     hidden_tiled: bool,
+    /// Keep It Going (its menu): its agent told "please continue" when it
+    /// has stopped.
+    keep_going: Option<KeepGoing>,
+}
+
+/// Keep It Going (Ben, 2026-11-06): a coding agent in the tab told
+/// "please continue" once it has been quiet `KEEP_GOING_QUIET` (nothing
+/// at all on its screen changed but a clock that counts by itself,
+/// `agent::fingerprint`, and nothing typed) and its turn is over (not
+/// working, not asking a question), at most once in `KEEP_GOING_EVERY`.
+/// A timer of its own wakes when the quiet would be long enough, and
+/// nothing else runs for it.
+pub(crate) struct KeepGoing {
+    /// When something last happened: the screen changed, or someone typed.
+    since: Instant,
+    /// When it last said so (seconds since the epoch: kept across an
+    /// upgrade).
+    said: Option<u64>,
+    _timer: olo_ui::gpui::Task<()>,
+}
+
+/// How long it waits with nothing happening (Ben: "change it from 60s to
+/// 120s without activity").
+const KEEP_GOING_QUIET: std::time::Duration = std::time::Duration::from_secs(120);
+/// At most once in this long ("limit it to sending up to one "please
+/// continue" per hour").
+const KEEP_GOING_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
+/// What it says.
+const KEEP_GOING_SAYS: &str = "please continue";
+
+/// The quiet it waits for: `KEEP_GOING_QUIET`, or in a test
+/// `OLO_TERMINAL_KEEP_GOING_SECS` (seconds).
+fn keep_going_quiet() -> std::time::Duration {
+    std::env::var("OLO_TERMINAL_KEEP_GOING_SECS").ok().and_then(|v| v.parse().ok()).map_or(KEEP_GOING_QUIET, std::time::Duration::from_secs)
+}
+
+fn epoch_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
 impl Tab {
@@ -259,14 +297,21 @@ impl Tab {
             group: None,
             own_grouping: false,
             hidden_tiled: false,
+            keep_going: None,
         }
     }
 
     /// What it's doing, for its tab's name to screen readers and agents.
     fn status(&self) -> Option<String> {
-        match self.agent {
+        let keep = self.keep_going.as_ref().map(|_| "kept going (\u{201c}please continue\u{201d} after two quiet minutes, at most hourly)");
+        let what = match self.agent {
             Some((agent, state)) => Some(format!("{}: {}", agent.name(), state.describe())),
             None => self.rang.then(|| "bell rang".into()),
+        };
+        match (what, keep) {
+            (Some(w), Some(k)) => Some(format!("{w}; {k}")),
+            (w, None) => w,
+            (None, Some(k)) => Some(k.to_owned()),
         }
     }
 
@@ -751,6 +796,10 @@ struct SavedWindow {
     /// Which tabs are hidden when tiled (`Tab::hidden_tiled`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     hidden_tiled: Vec<bool>,
+    /// Which tabs keep their agent going, and when each last said so
+    /// (`Tab::keep_going`: Some(0) on, never said).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    keep_going: Vec<Option<u64>>,
 }
 
 impl SavedWindow {
@@ -1005,6 +1054,22 @@ impl Terminal {
             }
             any = true;
             let id = self.reopen(cx, starts, grid, Some(w.size), active, (w.all_groups(), grouping), Some(w.key));
+            // Keep It Going, back on where it was (when it last said so kept).
+            let keep: Vec<(u64, Option<u64>)> = match self.windows.get(&id) {
+                Some(Win::Term(t)) => t
+                    .tabs
+                    .iter()
+                    .filter_map(|tab| {
+                        let i = ids.iter().position(|&s| s == tab.session.id)?;
+                        let said = w.keep_going.get(i).copied().flatten()?;
+                        Some((tab.session.id, (said > 0).then_some(said)))
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            for (shell, said) in keep {
+                self.set_keep_going(cx, shell, Some(said));
+            }
             if let Some(Win::Term(t)) = self.windows.get_mut(&id) {
                 t.tiled = w.tiled;
                 t.tile_groups = w.tile_groups.clone();
@@ -1406,6 +1471,15 @@ impl Terminal {
                     cx.redraw(win);
                 }
             }
+            "tab-keep-going" => {
+                if let Some(shell) = number(arg)
+                    && let Some(i) = t.position(shell)
+                {
+                    let on = t.tabs[i].keep_going.is_none();
+                    self.set_keep_going(cx, shell, on.then_some(None));
+                    self.remember_soon(cx);
+                }
+            }
             "tab-to" => {
                 if let Some((shell, target)) = arg.split_once(':').and_then(|(a, b)| Some((number(a)?, number(b)?))) {
                     self.move_tab_to(cx, win, shell, target);
@@ -1473,6 +1547,85 @@ impl Terminal {
 }
 
 impl Terminal {
+    /// Keep It Going on for `shell`'s tab (`Some`: when it last said so,
+    /// if ever) or off.
+    pub(crate) fn set_keep_going(&mut self, cx: &mut Cx, shell: u64, on: Option<Option<u64>>) {
+        let Some((win, i)) = self.find_shell(shell) else { return };
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let tab = &mut t.tabs[i];
+        tab.keep_going = on.map(|said| {
+            let timer = cx.spawn(async move |me, cx| {
+                let mut wait = keep_going_quiet();
+                loop {
+                    cx.background_executor().timer(wait).await;
+                    match me.update(cx, |t, cx| t.keep_going_turn(cx, shell)) {
+                        Ok(Some(next)) => wait = next,
+                        _ => break,
+                    }
+                }
+            });
+            KeepGoing { since: Instant::now(), said, _timer: timer }
+        });
+        tracing::info!(shell, on = tab.keep_going.is_some(), "keep it going");
+        cx.redraw(win);
+    }
+
+    /// Something happened in `shell`'s tab: its quiet starts again.
+    fn keep_going_activity(&mut self, shell: u64) {
+        let Some((win, i)) = self.find_shell(shell) else { return };
+        if let Some(Win::Term(t)) = self.windows.get_mut(&win)
+            && let Some(k) = t.tabs[i].keep_going.as_mut()
+        {
+            k.since = Instant::now();
+        }
+    }
+
+    /// Keep It Going's timer for `shell`: says "please continue" if the
+    /// tab has been quiet long enough, its agent's turn is over and it
+    /// hasn't said so within the hour. How long till it looks again
+    /// (None: off, or the tab gone).
+    fn keep_going_turn(&mut self, cx: &mut Cx, shell: u64) -> Option<std::time::Duration> {
+        let (win, i) = self.find_shell(shell)?;
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return None };
+        let tab = &mut t.tabs[i];
+        let idle = matches!(tab.agent, Some((_, State::Idle)));
+        let k = tab.keep_going.as_mut()?;
+        let (quiet, enough) = (k.since.elapsed(), keep_going_quiet());
+        if quiet < enough {
+            return Some(enough - quiet);
+        }
+        let now = epoch_secs();
+        if let Some(said) = k.said
+            && now.saturating_sub(said) < KEEP_GOING_EVERY.as_secs()
+        {
+            return Some(std::time::Duration::from_secs(KEEP_GOING_EVERY.as_secs() - now.saturating_sub(said)));
+        }
+        // Working, asking a question (its answer is the person's), or no
+        // agent at all: not now.
+        if !idle {
+            return Some(enough);
+        }
+        k.said = Some(now);
+        k.since = Instant::now();
+        tab.session.write(KEEP_GOING_SAYS.as_bytes().to_vec());
+        tracing::info!(shell, "keep it going: said \"{KEEP_GOING_SAYS}\"");
+        // Its Return a moment after, as a person types it (all at once, a
+        // TUI may take it as pasted text, the Return a new line in it).
+        cx.spawn(async move |me, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(150)).await;
+            let _ = me.update(cx, |t, _| {
+                if let Some((win, i)) = t.find_shell(shell)
+                    && let Some(Win::Term(w)) = t.windows.get(&win)
+                {
+                    w.tabs[i].session.write(b"\r".to_vec());
+                }
+            });
+        })
+        .detach();
+        self.remember_soon(cx);
+        Some(enough)
+    }
+
     /// A tab's agent started, stopped or moved on: show it, and say so
     /// when it now needs the person and they aren't looking at it.
     fn agent_changed(&mut self, cx: &mut Cx, agent::Report(shell, now): agent::Report) {
@@ -1960,6 +2113,9 @@ impl Terminal {
             .checked(t.tiled && several)
             .item(if t.tab().hidden_tiled { "Show Tab When Tiled" } else { "Hide Tab When Tiled" }, format!("tab-tile-hide:{shell}"))
             .enabled(several)
+            .item("Keep It Going", format!("tab-keep-going:{shell}"))
+            .checked(t.tab().keep_going.is_some())
+            .enabled(t.tab().agent.is_some() || t.tab().keep_going.is_some())
             .separator();
         for (i, tab) in t.tabs.iter().enumerate() {
             let label = match (tab.agent, tab.rang) {
@@ -2247,6 +2403,13 @@ impl Terminal {
             Ok(report) => return self.agent_changed(cx, *report),
             Err(m) => m,
         };
+        let message = match message.downcast::<agent::Activity>() {
+            Ok(a) => {
+                self.keep_going_activity(a.0);
+                return;
+            }
+            Err(m) => m,
+        };
         let Some(message) = self.repo_message(cx, message) else { return };
         let message = match message.downcast::<NoteEvent>() {
             Ok(event) => {
@@ -2339,6 +2502,7 @@ impl Terminal {
             own: Vec::new(),
             agent_titles: w.agent_titles.get(i).cloned().map(|t| vec![t]).unwrap_or_default(),
             hidden_tiled: Vec::new(),
+            keep_going: w.keep_going.get(i).cloned().map(|k| vec![k]).unwrap_or_default(),
         };
         let state = serde_json::to_string(&Saved { windows: vec![one], moved: true }).ok();
         olo_kit_base::moving::copy_to_screen(screen, Vec::new(), state, |_| {});
@@ -2402,6 +2566,7 @@ impl Terminal {
                         own: live.iter().map(|x| x.own_grouping).collect(),
                         agent_titles: if live.iter().any(|x| x.agent_title.is_some()) { live.iter().map(|x| x.agent_title.clone()).collect() } else { Vec::new() },
                         hidden_tiled: if live.iter().any(|x| x.hidden_tiled) { live.iter().map(|x| x.hidden_tiled).collect() } else { Vec::new() },
+                        keep_going: if live.iter().any(|x| x.keep_going.is_some()) { live.iter().map(|x| x.keep_going.as_ref().map(|k| k.said.unwrap_or(0))).collect() } else { Vec::new() },
                     })
                 }
                 _ => None,

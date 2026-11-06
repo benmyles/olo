@@ -214,6 +214,9 @@ impl Encoder {
             Choice::Cpu => cpu(),
             Choice::Nvidia => nvidia(),
             Choice::Vaapi => vaapi(),
+            // On battery, AV1 on the built-in GPU first: NVIDIA's would be
+            // woken from its sleep for it.
+            Choice::Auto if codec == Codec::Av1 && on_battery() => vaapi().or_else(|_| nvidia()).or_else(|_| cpu()),
             Choice::Auto => nvidia().or_else(|_| vaapi()).or_else(|_| cpu()),
         }
     }
@@ -266,6 +269,28 @@ impl Encoder {
             Encoder::Vaapi(e) => e.encode(data, stride, order == Order::Rgba),
         }
     }
+}
+
+/// Whether the computer runs on its battery: it has one, and no mains
+/// supply (or USB-C one) is online.
+pub fn on_battery() -> bool {
+    on_battery_in(std::path::Path::new("/sys/class/power_supply"))
+}
+
+/// [`on_battery`], from the power supplies in `supplies` (sysfs's).
+fn on_battery_in(supplies: &std::path::Path) -> bool {
+    let Ok(dir) = std::fs::read_dir(supplies) else { return false };
+    let (mut battery, mut powered) = (false, false);
+    for e in dir.flatten() {
+        let kind = std::fs::read_to_string(e.path().join("type")).unwrap_or_default();
+        let online = std::fs::read_to_string(e.path().join("online")).is_ok_and(|o| o.trim() == "1");
+        match kind.trim() {
+            "Battery" => battery |= std::fs::read_to_string(e.path().join("scope")).map_or(true, |s| s.trim() != "Device"),
+            "Mains" | "USB" => powered |= online,
+            _ => {}
+        }
+    }
+    battery && !powered
 }
 
 /// An H.264 encoder for pictures of one size (even: H.264's; [`even`]).
@@ -1240,6 +1265,38 @@ mod tests {
             eprintln!("AV1 (VA-API) q {q:3} {bytes:9} bytes  PSNR {psnr:5.2} dB  ({n} decoded)  median {:?}, slowest {:?} a frame", times[times.len() / 2], times[times.len() - 1]);
             let _ = std::fs::remove_file(&file);
         }
+    }
+
+    /// On battery: a battery and nothing that powers the computer online
+    /// (a mouse's battery doesn't count).
+    #[test]
+    fn battery_or_mains() {
+        let base = std::path::PathBuf::from(format!("/var/tmp/olo-supplies-{}", std::process::id()));
+        let supply = |name: &str, kind: &str, online: Option<&str>, scope: Option<&str>| {
+            let d = base.join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("type"), kind).unwrap();
+            if let Some(o) = online {
+                std::fs::write(d.join("online"), o).unwrap();
+            }
+            if let Some(s) = scope {
+                std::fs::write(d.join("scope"), s).unwrap();
+            }
+        };
+        supply("BAT0", "Battery\n", None, None);
+        supply("AC", "Mains\n", Some("1\n"), None);
+        assert!(!on_battery_in(&base));
+        supply("AC", "Mains\n", Some("0\n"), None);
+        supply("ucsi-source-psy-USBC000:001", "USB\n", Some("0\n"), None);
+        assert!(on_battery_in(&base));
+        // Charging over USB-C.
+        supply("ucsi-source-psy-USBC000:001", "USB\n", Some("1\n"), None);
+        assert!(!on_battery_in(&base));
+        // A desktop: a mouse's battery only.
+        let _ = std::fs::remove_dir_all(&base);
+        supply("hidpp_battery_0", "Battery\n", None, Some("Device\n"));
+        assert!(!on_battery_in(&base));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// NVIDIA's encoder, where there is one: its H.264 decodes, an MP4 of

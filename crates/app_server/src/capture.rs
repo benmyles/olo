@@ -23,7 +23,7 @@ use smithay::{
     utils::{Buffer as BufferCoords, Physical, Rectangle, Size, Transform},
     wayland::{
         dmabuf::get_dmabuf,
-        image_copy_capture::{BufferConstraints, CaptureFailureReason, DmabufConstraints, Frame, Session, SessionRef},
+        image_copy_capture::{BufferConstraints, CaptureFailureReason, CursorSession, CursorSessionRef, DmabufConstraints, Frame, Session, SessionRef},
         shm::{BufferData, with_buffer_contents, with_buffer_contents_mut},
     },
 };
@@ -136,12 +136,46 @@ struct Cast {
     damage: Option<(OutputDamageTracker, Size<i32, Physical>, f64)>,
     /// Whether it has had a frame: the first comes whatever changed.
     shown: bool,
+    targets: Targets,
+}
+
+/// Where a session's frames are drawn.
+#[derive(Default)]
+struct Targets {
     /// Its shared-memory frames, drawn here first (only where they
     /// changed) and read back.
     target: Option<(GlesTexture, OutputDamageTracker, Size<i32, Physical>, f64)>,
     /// The dmabuf it was last drawn into, which holds that frame unless the
     /// client damages it: drawn into again, only what changed is.
     drawn_into: Option<(smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer, OutputDamageTracker, Size<i32, Physical>, f64)>,
+}
+
+/// A client's cursor session on a screen: where the pointer is on it, and
+/// its picture apart from the screen's (the portal's cursor sent as
+/// metadata, for an app that draws it itself: a remote desktop's viewer).
+struct CursorCast {
+    session: CursorSession,
+    damage: Option<(OutputDamageTracker, Size<i32, Physical>, f64)>,
+    shown: bool,
+    targets: Targets,
+}
+
+/// A cursor's picture is a square this many points wide, whatever its
+/// shape (Haiku's cursors are drawn on 32; a program's own larger than
+/// that is cut).
+pub const CURSOR_BOX: f64 = 32.0;
+
+/// The size of the cursor's picture on a screen at `scale`, in pixels.
+pub fn cursor_size(scale: f64) -> Size<i32, Physical> {
+    let side = (CURSOR_BOX * scale).ceil() as i32;
+    (side, side).into()
+}
+
+/// What a client's buffers for the cursor on `output` must be (shared
+/// memory: it's small).
+pub fn cursor_constraints(output: &Output) -> BufferConstraints {
+    let size = cursor_size(output.current_scale().fractional_scale());
+    BufferConstraints { size: (size.w, size.h).into(), shm: vec![wl_shm::Format::Argb8888], dma: None }
 }
 
 /// A frame drawn into a client's dmabuf, told once the GPU is done.
@@ -157,6 +191,10 @@ pub struct Captures {
     casts: Vec<Cast>,
     /// Frames asked for, by session, waiting for their output's frame.
     pending: Vec<(SessionRef, Frame)>,
+    cursors: Vec<CursorCast>,
+    /// Cursor frames asked for, waiting for the cursor's picture to change
+    /// (the first: for its output's next frame).
+    pending_cursors: Vec<(CursorSessionRef, Frame)>,
     drawn: Vec<Drawn>,
     /// The dmabufs app_server draws into: the render node and the formats
     /// it renders (None: shared memory only).
@@ -198,7 +236,7 @@ impl Captures {
     /// A new session, kept until the client ends it (dropping it would
     /// stop it).
     pub fn add(&mut self, session: Session) {
-        self.casts.push(Cast { session, damage: None, shown: false, target: None, drawn_into: None });
+        self.casts.push(Cast { session, damage: None, shown: false, targets: Targets::default() });
     }
 
     /// Whether any session waits for a frame (else there's nothing to
@@ -220,6 +258,118 @@ impl Captures {
             return;
         }
         self.pending.push((session.clone(), frame));
+    }
+
+    /// A new cursor session, kept until the client ends it.
+    pub fn add_cursor(&mut self, session: CursorSession) {
+        self.cursors.push(CursorCast { session, damage: None, shown: false, targets: Targets::default() });
+    }
+
+    pub fn remove_cursor(&mut self, session: &CursorSessionRef) {
+        self.cursors.retain(|c| c.session.as_ref() != *session);
+        self.pending_cursors.retain(|(s, _)| s != session);
+    }
+
+    /// Whether any client follows the cursor (else nothing to tell).
+    pub fn has_cursors(&self) -> bool {
+        !self.cursors.is_empty()
+    }
+
+    /// A cursor frame `session` asked for: drawn when the cursor's
+    /// picture next changes (the first at once, with its screen's frame).
+    pub fn queue_cursor(&mut self, session: &CursorSessionRef, frame: Frame) {
+        self.pending_cursors.push((session.clone(), frame));
+    }
+
+    /// `output`'s frame: its cursor sessions told where the pointer is
+    /// on it (`at`, in the desktop's points; None off it, or hidden) and
+    /// its hotspot, and the cursor frames waiting drawn if its picture
+    /// (`status`) changed since their session's last.
+    pub fn cursors<R>(
+        &mut self,
+        renderer: &mut R,
+        output: &Output,
+        area: Rectangle<f64, smithay::utils::Logical>,
+        presented: Duration,
+        at: smithay::utils::Point<f64, smithay::utils::Logical>,
+        status: &smithay::input::pointer::CursorImageStatus,
+    ) where
+        R: Renderer + Bind<Dmabuf> + Offscreen<GlesTexture> + ExportMem + smithay::backend::renderer::ImportAll + smithay::backend::renderer::ImportMem,
+        R::Error: std::fmt::Debug,
+        R::TextureId: Texture + Clone + Send + 'static,
+    {
+        let on = |s: &CursorSessionRef| s.source().user_data().get::<WeakOutput>().and_then(|w| w.upgrade()).is_some_and(|o| o == *output);
+        if !self.cursors.iter().any(|c| on(&c.session)) {
+            return;
+        }
+        let scale = output.current_scale().fractional_scale();
+        let hidden = matches!(status, smithay::input::pointer::CursorImageStatus::Hidden);
+        let position = (!hidden && area.contains(at)).then(|| {
+            let p = (at - area.loc).to_physical(scale).to_i32_round::<i32>();
+            smithay::utils::Point::<i32, BufferCoords>::from((p.x, p.y))
+        });
+        let hotspot = match crate::cursor::named(status) {
+            Some(shape) => {
+                let (x, y) = crate::cursor::image(shape, scale).hotspot;
+                (x as i32, y as i32)
+            }
+            None => {
+                let h = crate::cursor::hotspot(status).to_f64().to_physical(scale).to_i32_round::<i32>();
+                (h.x, h.y)
+            }
+        };
+        for c in &self.cursors {
+            if on(&c.session) {
+                c.session.set_cursor_hotspot(hotspot);
+                c.session.set_cursor_pos(position);
+            }
+        }
+        let size = cursor_size(scale);
+        let mut elements: Option<Vec<crate::render::CustomRenderElements<R>>> = None;
+        for (session, frame) in std::mem::take(&mut self.pending_cursors) {
+            if !on(&session) || hidden {
+                self.pending_cursors.push((session, frame));
+                continue;
+            }
+            if frame.has_failed() {
+                continue;
+            }
+            let Some(cast) = self.cursors.iter_mut().find(|c| c.session.as_ref() == session) else {
+                frame.fail(CaptureFailureReason::Stopped);
+                continue;
+            };
+            if session.current_constraints().is_some_and(|c| c.size != (size.w, size.h).into()) {
+                session.update_constraints(cursor_constraints(output));
+                frame.fail(CaptureFailureReason::BufferConstraints);
+                continue;
+            }
+            let elements = elements.get_or_insert_with(|| crate::render::cursor_picture(renderer, scale, status));
+            if cast.damage.as_ref().is_none_or(|(_, s, sc)| *s != size || *sc != scale) {
+                cast.damage = Some((OutputDamageTracker::new(size, scale, Transform::Normal), size, scale));
+            }
+            let tracker = &mut cast.damage.as_mut().unwrap().0;
+            let damage = match tracker.damage_output(1, elements) {
+                Ok((d, _)) => d.map(|d| d.iter().map(|r| Rectangle::new((r.loc.x, r.loc.y).into(), (r.size.w, r.size.h).into())).collect::<Vec<_>>()),
+                Err(_) => {
+                    frame.fail(CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            if cast.shown && damage.is_none() {
+                self.pending_cursors.push((session, frame));
+                continue;
+            }
+            let damage = if cast.shown { damage } else { None };
+            cast.shown = true;
+            match draw(renderer, &mut cast.targets, &frame, elements, Color32F::TRANSPARENT, size, scale) {
+                Ok(Some(sync)) => self.drawn.push(Drawn { frame, sync, damage, presented }),
+                Ok(None) => frame.success(Transform::Normal, damage, presented),
+                Err(e) => {
+                    tracing::warn!("cursor capture for {}: {e}", output.name());
+                    frame.fail(e.reason());
+                }
+            }
+        }
     }
 
     /// Stop the sessions of window `id` (it went).
@@ -332,7 +482,7 @@ impl Captures {
             }
             let damage = if cast.shown { damage } else { None };
             cast.shown = true;
-            match draw(renderer, cast, &frame, &pic.elements, pic.clear, size, scale) {
+            match draw(renderer, &mut cast.targets, &frame, &pic.elements, pic.clear, size, scale) {
                 Ok(Some(sync)) => self.drawn.push(Drawn { frame, sync, damage, presented }),
                 Ok(None) => frame.success(Transform::Normal, damage, presented),
                 Err(e) => {
@@ -373,7 +523,7 @@ impl std::fmt::Display for DrawError {
 /// Draw `elements` into `frame`'s buffer: a dmabuf on the GPU (the sync
 /// point says when it is done), shared memory through `cast`'s texture
 /// (done on return).
-fn draw<R, E>(renderer: &mut R, cast: &mut Cast, frame: &Frame, elements: &[E], clear: Color32F, size: Size<i32, Physical>, scale: f64) -> Result<Option<SyncPoint>, DrawError>
+fn draw<R, E>(renderer: &mut R, cast: &mut Targets, frame: &Frame, elements: &[E], clear: Color32F, size: Size<i32, Physical>, scale: f64) -> Result<Option<SyncPoint>, DrawError>
 where
     R: Renderer + Bind<Dmabuf> + Offscreen<GlesTexture> + ExportMem,
     R::Error: std::fmt::Debug,

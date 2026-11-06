@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-06
+
+### Terminal: Keep It Going for a coding agent that stopped
+
+*00:43* — On a tab with Claude Code or Codex, its menu has Keep It Going: after two minutes with nothing at all changing on its screen (Codex's goal clock doesn't count) and its turn over, Terminal says "please continue" to it, at most once an hour. The tab's icon carries a blue disc with a go-on triangle while it's on.
+
+![Terminal: Keep It Going for a coding agent that stopped](2026-11-06/004330-terminal-keep-it-going-for-a-coding-agent-that-s.png)
+
 ## 2026-11-05
 
 ### Screen recordings on the Intel GPU: AV1 through VA-API

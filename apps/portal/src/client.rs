@@ -107,6 +107,136 @@ pub fn read_test(node: u32, out: &str, modifiers: Option<Vec<u64>>, hold: u64) -
     Ok(())
 }
 
+/// Read `node`'s stream for `secs` seconds asking for the cursor apart
+/// (its metadata), printing each place and picture that comes and how
+/// many buffers came with only the cursor: for trying the share's cursor
+/// mode `metadata` (`stream-test - SECS --cursor metadata`).
+pub fn cursor_test(node: u32, secs: u64) -> Result<(), String> {
+    use pw::spa::{param::format::FormatProperties as P, pod, sys, utils};
+    pw::init();
+    let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| e.to_string())?;
+    let context = pw::context::ContextRc::new(&mainloop, None).map_err(|e| e.to_string())?;
+    let core = context.connect_rc(None).map_err(|e| format!("can't reach PipeWire: {e}"))?;
+    let stream = pw::stream::StreamBox::new(
+        &core,
+        "olo-portal cursor-test",
+        pw::properties::properties! { *pw::keys::MEDIA_TYPE => "Video", *pw::keys::MEDIA_CATEGORY => "Capture", *pw::keys::MEDIA_ROLE => "Screen" },
+    )
+    .map_err(|e| e.to_string())?;
+    #[derive(Default)]
+    struct Seen {
+        frames: u32,
+        cursor_only: u32,
+        last: Option<(i32, i32)>,
+        pictures: u32,
+    }
+    let seen: std::rc::Rc<std::cell::RefCell<Seen>> = Default::default();
+    let _listener = stream
+        .add_local_listener_with_user_data(())
+        .param_changed(move |s, _, id, param| {
+            if param.is_none() || id != pw::spa::param::ParamType::Format.as_raw() {
+                return;
+            }
+            // The cursor's metadata, as an app asks for it.
+            let size = std::mem::size_of::<sys::spa_meta_cursor>() + std::mem::size_of::<sys::spa_meta_bitmap>() + 256 * 256 * 4;
+            let meta = pod::Value::Object(pod::Object {
+                type_: utils::SpaTypes::ObjectParamMeta.as_raw(),
+                id: pw::spa::param::ParamType::Meta.as_raw(),
+                properties: vec![
+                    pod::Property::new(sys::SPA_PARAM_META_type, pod::Value::Id(utils::Id(sys::SPA_META_Cursor))),
+                    pod::Property::new(sys::SPA_PARAM_META_size, pod::Value::Int(size as i32)),
+                ],
+            });
+            let Ok(bytes) = pod::serialize::PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &meta).map(|b| b.0.into_inner()) else { return };
+            let mut params: Vec<&pod::Pod> = pod::Pod::from_bytes(&bytes).into_iter().collect();
+            let _ = s.update_params(&mut params);
+        })
+        .process({
+            let seen = seen.clone();
+            move |s, _| {
+                // SAFETY: a dequeued buffer, given back below; its metas and
+                // first data's chunk are PipeWire's.
+                unsafe {
+                    let b = s.dequeue_raw_buffer();
+                    if b.is_null() {
+                        return;
+                    }
+                    let buffer = (*b).buffer;
+                    let mut seen = seen.borrow_mut();
+                    let d = &*(*buffer).datas;
+                    if (*d.chunk).size == 0 {
+                        seen.cursor_only += 1;
+                    } else {
+                        seen.frames += 1;
+                    }
+                    if !(*buffer).metas.is_null() {
+                        for m in std::slice::from_raw_parts((*buffer).metas, (*buffer).n_metas as usize) {
+                            if m.type_ != sys::SPA_META_Cursor || m.data.is_null() {
+                                continue;
+                            }
+                            let c = &*m.data.cast::<sys::spa_meta_cursor>();
+                            if c.id == 0 {
+                                continue;
+                            }
+                            let at = (c.position.x, c.position.y);
+                            if seen.last != Some(at) {
+                                println!("cursor at {at:?}, hotspot ({}, {})", c.hotspot.x, c.hotspot.y);
+                                seen.last = Some(at);
+                            }
+                            if c.bitmap_offset != 0 {
+                                let bm = &*m.data.cast::<u8>().add(c.bitmap_offset as usize).cast::<sys::spa_meta_bitmap>();
+                                let px = std::slice::from_raw_parts(m.data.cast::<u8>().add(c.bitmap_offset as usize + bm.offset as usize), (bm.size.width * bm.size.height * 4) as usize);
+                                let opaque = px.chunks_exact(4).filter(|p| p[3] > 0).count();
+                                println!("cursor picture {}×{} ({opaque} pixels drawn)", bm.size.width, bm.size.height);
+                                seen.pictures += 1;
+                            }
+                        }
+                    }
+                    drop(seen);
+                    s.queue_raw_buffer(b);
+                }
+            }
+        })
+        .register()
+        .map_err(|e| e.to_string())?;
+    let format = pod::object!(
+        utils::SpaTypes::ObjectParamFormat,
+        pw::spa::param::ParamType::EnumFormat,
+        pod::property!(P::MediaType, Id, pw::spa::param::format::MediaType::Video),
+        pod::property!(P::MediaSubtype, Id, pw::spa::param::format::MediaSubtype::Raw),
+        pod::property!(P::VideoFormat, Choice, Enum, Id, pw::spa::param::video::VideoFormat::BGRx, pw::spa::param::video::VideoFormat::BGRx, pw::spa::param::video::VideoFormat::BGRA),
+        pod::property!(
+            P::VideoSize,
+            Choice,
+            Range,
+            Rectangle,
+            utils::Rectangle { width: 1920, height: 1080 },
+            utils::Rectangle { width: 1, height: 1 },
+            utils::Rectangle { width: 16384, height: 16384 }
+        ),
+        pod::property!(P::VideoFramerate, Choice, Range, Fraction, utils::Fraction { num: 30, denom: 1 }, utils::Fraction { num: 0, denom: 1 }, utils::Fraction { num: 240, denom: 1 }),
+    );
+    let offered = pod::serialize::PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &pod::Value::Object(format)).map_err(|e| format!("{e:?}"))?.0.into_inner();
+    let mut params: Vec<&pod::Pod> = pod::Pod::from_bytes(&offered).into_iter().collect();
+    stream.connect(pw::spa::utils::Direction::Input, Some(node), pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS, &mut params).map_err(|e| e.to_string())?;
+    let started = std::time::Instant::now();
+    let timer = mainloop.loop_().add_timer({
+        let weak = mainloop.downgrade();
+        move |_| {
+            if started.elapsed() >= std::time::Duration::from_secs(secs)
+                && let Some(l) = weak.upgrade()
+            {
+                l.quit();
+            }
+        }
+    });
+    let _ = timer.update_timer(Some(std::time::Duration::from_millis(100)), Some(std::time::Duration::from_millis(100)));
+    mainloop.run();
+    let seen = seen.borrow();
+    println!("{} frames, {} buffers with only the cursor, {} cursor pictures", seen.frames, seen.cursor_only, seen.pictures);
+    Ok(())
+}
+
 /// The first render node's allocator, to read dmabufs back with.
 fn render_node() -> Result<gbm::Device<std::fs::File>, String> {
     let mut nodes: Vec<_> =

@@ -6393,7 +6393,10 @@ Screens' Export Video uses too).
   (iHD, Mesa) leave out the patented codecs, so on the ThinkPad's Intel
   GPU (xe) they encode AV1 profile 0 and VP9 but no H.264 or HEVC: a
   recording through VA-API is AV1 (asked for anything else, an error;
-  `--encoder auto` takes it for AV1 when there's no NVIDIA encoder).
+  `--encoder auto` takes it for AV1 when there's no NVIDIA encoder, and
+  first while the computer is on its battery, so the NVIDIA GPU isn't
+  woken for it: `olo_video::on_battery`, a battery and no mains or USB-C
+  supply online, a mouse's battery not counting).
   libva is opened at run time (`libva.so.2`, `libva-drm.so.2`; vendor/
   va-sys holds bindgen's declarations from libva 2.24's headers), the
   render node is the first whose driver offers `VAProfileAV1Profile0`
@@ -6717,7 +6720,8 @@ its request, for the app's Cancel and for holding an upgrade off.
 
 - **D-Bus** (`portal.rs`): CreateSession serves an
   `impl.portal.Session` at the handle the portal chose (Close drops its
-  streams); SelectSources keeps the cursor mode (hidden or drawn in) and
+  streams); SelectSources keeps the cursor mode (hidden, drawn in, or
+  apart as metadata: below) and
   a restore token (`("olo", 1, connector)`); Start shares without asking
   when the token names a screen still there, or when the same app asked
   less than 5 s ago (Chromium opens several sessions for one share), and
@@ -6968,6 +6972,29 @@ its request, for the app's Cancel and for holding an upgrade off.
   its request) and serves `org.freedesktop.ScreenSaver` (Inhibit gives a
   cookie, held until UnInhibit or the caller leaves the bus), each held
   by an app_server connection that asked `KeepAwake` (see "Power").
+- **The cursor as metadata** (the third cursor mode, 4: what remote
+  desktops and OBS ask for, to draw the pointer themselves): the picture
+  is captured without it, and the capture follows the pointer apart, on
+  a cursor session of ext-image-copy-capture
+  (`Capture::follow_cursor`: a `wl_pointer`, the session's position and
+  hotspot events, and a capture session of its own for the pointer's
+  picture, told apart from the screen's by its user data). app_server
+  serves those sessions for screens (`cursor_capture_constraints`: a
+  square `capture::CURSOR_BOX`, 32 points, at the screen's scale, shared
+  memory): at each frame of a screen with a session on it, where the
+  pointer is on it (its hotspot, in the screen's pixels; none off it or
+  hidden) and its hotspot (`Captures::cursors`), and a cursor frame
+  asked for drawn when the pointer's picture changed
+  (`render::cursor_picture`, its own damage tracker; the first at
+  once). Nothing runs without a session. The stream asks for
+  `SPA_META_Cursor` with its buffers (room for a 256-pixel picture) and
+  fills it on every buffer: the position and hotspot, and the picture
+  (BGRA) when it changed since last sent; off the screen, an empty one,
+  once. A move with nothing else changed is a buffer with no picture
+  (its chunk's size 0), no more often than frames may come. Tried
+  headless (`olo-portal stream-test - SECS --cursor metadata`, then
+  `olo-portal cursor-test NODE SECS`, which asks for the metadata and
+  prints it, in `tools/dev/pw-sandbox`'s PipeWire).
 - **While sharing** olo-portal writes what is shared
   (`olo_protocol::SharingState`: its pid, and each session's app,
   screens and start, in `$XDG_RUNTIME_DIR/olo-sharing-<display>.json`,
@@ -8639,6 +8666,30 @@ one line, at most 60 characters) ahead of the program's own title until
 the agent leaves the tab or sets an empty one; it is saved with the
 window, and after a restart kept only if the tab's agent is seen again
 within 5 s.
+
+**Keep It Going** (Ben, 2026-11-06; `Tab::keep_going`, `KeepGoing`): on a
+tab with a coding agent, its menu (and Tabs ▸ Keep It Going, which
+agents reach through the commands socket, `tab-keep-going:SHELL`) has
+Terminal say "please continue" to the agent once it has stopped: after
+two minutes (`KEEP_GOING_QUIET`) with nothing at all changing on its
+screen and nothing typed, its turn over (`State::Idle`: not while it
+works, nor on a question, whose answer is the person's), at most once
+an hour (`KEEP_GOING_EVERY`). Activity is the agent watcher's: when it
+reads a tab after output (at most every 600 ms, as for the agent's
+state), a change of the screen's `agent::fingerprint` is reported
+(`agent::Activity`), with the clocks that count by themselves taken out
+first (Codex's "Pursuing goal (17h 52m)", which goes on every minute).
+A timer of the tab's own sleeps until the quiet would be long enough,
+so nothing runs while it waits; the words go in as typed, the Return
+150 ms after (all at once, a TUI may take it as pasted text). The tab's
+icon carries a blue disc with a white "go on" triangle at its bottom
+corner while it's on; its name says so to screen readers and agents.
+Kept with the window (when it last spoke too, so a restart doesn't make
+the hour start again); `OLO_TERMINAL_KEEP_GOING_SECS` shortens the wait
+for a test. Tried headless with a stand-in named `claude` (an idle
+screen, a goal clock ticking every 2 s): one "please continue" after
+the quiet, none again within the hour, back after Terminal quit and
+started again.
 
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)

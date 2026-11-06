@@ -32,9 +32,11 @@ pub const PATH: &str = "/org/freedesktop/portal/desktop";
 /// Source types (bits): screens, windows.
 const MONITOR: u32 = 1;
 const WINDOW: u32 = 2;
-/// Cursor modes (bits): hidden, drawn into the picture.
+/// Cursor modes (bits): hidden, drawn into the picture, sent apart as
+/// metadata.
 const HIDDEN: u32 = 1;
 const EMBEDDED: u32 = 2;
+const METADATA: u32 = 4;
 /// Responses.
 const OK: u32 = 0;
 const CANCELLED: u32 = 1;
@@ -234,7 +236,13 @@ impl Shared {
         }
         // The streams, each on its own thread (PipeWire's start can take a
         // moment: off the bus's executor).
-        let draw_cursor = cursor & EMBEDDED != 0;
+        let cursor = if cursor & METADATA != 0 {
+            stream::Cursor::Metadata
+        } else if cursor & EMBEDDED != 0 {
+            stream::Cursor::Embedded
+        } else {
+            stream::Cursor::Hidden
+        };
         let sources: Vec<olo_capture::Source> = picked.iter().map(|s| s.source.clone()).collect();
         let (to_ui, path) = (self.to_ui.clone(), session_handle.to_string());
         let started = blocking::unblock(move || {
@@ -242,7 +250,7 @@ impl Shared {
                 .into_iter()
                 .map(|source| {
                     let (to_ui, path) = (to_ui.clone(), path.clone());
-                    stream::run(source, draw_cursor, move || to_ui(ToUi::Lost(path)))
+                    stream::run(source, cursor, move || to_ui(ToUi::Lost(path)))
                 })
                 .collect::<Result<Vec<_>, String>>()
         })
@@ -395,7 +403,7 @@ impl ScreenCast {
 
     #[zbus(property, name = "AvailableCursorModes")]
     fn available_cursor_modes(&self) -> u32 {
-        HIDDEN | EMBEDDED
+        HIDDEN | EMBEDDED | METADATA
     }
 
     #[zbus(property, name = "version")]

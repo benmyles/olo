@@ -3442,5 +3442,11 @@
   "title": "Screen recordings on the Intel GPU: AV1 through VA-API",
   "caption": "Preferences \u25b8 GPUs \u25b8 Screen Recordings offers the Intel GPU where its VA-API driver encodes AV1 (Fedora's drivers make no H.264 or HEVC): recordings are AV1 at constant quality, a 2560 \u00d7 1600 screen in about 9 ms a frame, the NVIDIA GPU left asleep.",
   "image": "2026-11-05/233632-screen-recordings-on-the-intel-gpu-av1-through-v.png"
+ },
+ {
+  "time": "2026-11-06T00:43:30",
+  "title": "Terminal: Keep It Going for a coding agent that stopped",
+  "caption": "On a tab with Claude Code or Codex, its menu has Keep It Going: after two minutes with nothing at all changing on its screen (Codex's goal clock doesn't count) and its turn over, Terminal says \"please continue\" to it, at most once an hour. The tab's icon carries a blue disc with a go-on triangle while it's on.",
+  "image": "2026-11-06/004330-terminal-keep-it-going-for-a-coding-agent-that-s.png"
  }
 ]
