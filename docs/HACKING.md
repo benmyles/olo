@@ -9221,7 +9221,12 @@ wakeups) and follows the switch live.
   GNOME's, which had its `xdg:schema`, and go-keyring reads the first it
   finds: the old one. go-keyring (gh's) reads and writes
   `…/collection/login` whenever the service lists it, whatever the
-  default alias says.
+  default alias says. And `Item.GetSecret` replies with one struct,
+  `(oayays)`, as the spec has it (a tuple returned from a zbus method is
+  several out arguments, `oayays`, though the introspection says the
+  struct; Python and libsecret, which reads through `GetSecrets`, took
+  it, go-keyring couldn't, and gh found no token). The take-over test
+  writes and reads as go-keyring does and checks the reply's signature.
 - **Mending** (`Store::heal`, every take-over, so every upgrade, which
   starts it again): every item given GNOME's `xdg:schema`; a second login
   collection (an id `login` but for its case: GNOME Keyring's "Login",

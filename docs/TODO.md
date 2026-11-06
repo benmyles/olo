@@ -49,8 +49,15 @@ Nothing: what's left is waiting for Ben or blocked.
   (11:31): the store backed up (/var/tmp/olo-secrets-backup), the fixed
   olo-secrets installed and started again: "Login" merged, 2 duplicates
   gone; gh's active-account item set to the token of his 11:21 login, as
-  gh's own login would have (nothing printed). `gh auth status` should
-  now say he's logged in.
+  gh's own login would have (nothing printed). *Then* (Ben: "did you
+  fix it yet it still doesn't work"): gh still found no token, because
+  `Item.GetSecret` replied with four values, not the spec's one struct
+  (zbus makes a returned tuple several out arguments), which go-keyring
+  can't read; Python and libsecret took it, so the replays passed.
+  *Fixed* (one struct, checked on the wire and in the take-over test),
+  installed again (store backed up), and gh's own login run with the
+  token from his 11:21 login (piped, never shown): `gh auth status`
+  says "Logged in to github.com account benmyles (keyring)".
 
 - **Olo Doctor's "Voice processing's sound isn't realtime" comes back
   after Fix** (Ben, 2026-11-06): "i press fix it, it says it's fixed,
