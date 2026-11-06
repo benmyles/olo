@@ -378,7 +378,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("daemon.pid");
         // A stand-in for Codex's daemon: a program called with `app-server`.
-        let mut child = std::process::Command::new("/bin/sh").args(["-c", "sleep 30", "app-server"]).spawn().unwrap();
+        // (`; :` keeps the shell from exec'ing sleep, which would take
+        // "app-server" off its command line before it's read.)
+        let mut child = std::process::Command::new("/bin/sh").args(["-c", "sleep 30; :", "app-server"]).spawn().unwrap();
         let pid = child.id() as i32;
         let (ticks, started) = start_of(pid).unwrap();
         let age = SystemTime::now().duration_since(started).unwrap_or_default();

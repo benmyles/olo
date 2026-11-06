@@ -7292,6 +7292,7 @@ dependencies = [
  "jxl-oxide",
  "moxcms",
  "olo-color",
+ "olo-crash",
  "rav1d",
  "rust_h265",
 ]
