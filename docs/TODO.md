@@ -17,6 +17,16 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
+- **Passwords: Add Field in each section, and search inside items**
+  (Ben, 2026-11-06): "in passwords each section needs its own add field
+  button, right now there's only one at the very bottom of all
+  sections. also, i need to be able to search/filter sections and their
+  items not just the top level vault item entries". Editing an item,
+  each section has its own Add Field (the new field goes in that
+  section); and search finds sections and fields (their labels, and
+  values that aren't secret) as well as items, showing where in an item
+  it matched.
+
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
@@ -26,6 +36,22 @@ Nothing: what's left is waiting for Ben or blocked.
   lists logins for a sign-in form.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Credit cards' expiry dates synced wrong from 1Password** (Ben,
+  2026-11-06): "credit card expiry dates aren't being properly synced
+  from 1password to passwords, please fix". A card's expiry in Passwords
+  as it is in 1Password, both ways.
+  *Found* (2026-11-06, a probe Ben allowed that shows fields' types and
+  values' shapes only, `examples/card_shapes.rs`): 1Password's SDK gives
+  most cards' expiry as `MonthYear` "NN/NNNN", but three cards' (his
+  "card of his" among them) as `Unsupported`, with no value and no
+  section; asked for by its secret reference, the expiry comes, "NN/NNNN".
+  *Fixed*: sync asks for every such field by reference
+  (`resolve_unread`), a card's expiry and valid-from becoming month and
+  years, and fetches again, once, any item synced before with one empty
+  (`a_card_expiry_1password_wont_give_is_asked_for`; the stand-in now
+  leaves an unsupported field's value out as 1Password does). *Left*
+  (Ben): Sync Now after upgrading; the work card's expiry shows.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native

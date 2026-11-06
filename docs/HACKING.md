@@ -11046,8 +11046,20 @@ person's approval. It runs in two steps, each on its own thread:
   there since is archived here from its listing (`Change::Archived`),
   archived items never synced are left out with a note, and whatever a
   batch didn't bring is fetched one at a time, so a bad item costs only
-  itself. Up: 1Password's copies of items changed here
-  are fetched to compare. The plan is the store's `Change`s, what to send,
+  itself. A field 1Password's SDK names but won't give the value of (its
+  `Unsupported`, with no value and no section: an older card's expiry,
+  three of Ben's cards) is asked for by its secret reference
+  (`op://vault/item/field`, `resolve_unread`, all of a batch at once,
+  else one by one), which 1Password answers: a card's expiry or
+  valid-from that reads as a month and year becomes a `MonthYear`
+  ("MM/YYYY"); any other keeps its value. An item synced before that
+  with such a field empty is fetched again, once, its vault changed or
+  not (`has_unread`). `cargo run -p olo-onepassword --example
+  card_shapes [VAULT ITEM]` shows what the 1Password app gives for each
+  card (or one item): every field's id, label, type and section, and its
+  value's shape only ("NN/NNNN"), never a value or a title, and how its
+  unsupported fields resolve. Up: 1Password's copies of items changed here
+  are fetched to compare (their unread fields asked for the same way). The plan is the store's `Change`s, what to send,
   and a `Row` for every change either side would see (add, change with the
   parts that differ by name, never values, archive, delete, keep both).
 * The store keeps the plan and the UI shows its rows in Review Sync. Only
