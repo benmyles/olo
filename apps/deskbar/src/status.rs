@@ -67,8 +67,9 @@ pub struct Status {
     /// Unread notifications and Do Not Disturb (None: no notification
     /// service).
     pub notifications: Option<NotificationState>,
-    /// Agent screens running (other than the one this Deskbar is on).
-    pub agent_screens: usize,
+    /// Agent screens running (other than the one this Deskbar is on):
+    /// the tray's monitor, and the menus' Move to Agent Screen.
+    pub agent_screens: Vec<olo_ui::moving::RunningScreen>,
     /// Screens apps are sharing (olo-portal's).
     pub sharing: Vec<olo_protocol::sharing::Share>,
     /// A recording of this display going (olo-screenshot's recorder).
@@ -124,25 +125,8 @@ fn screen_file(p: &std::path::Path) -> bool {
     name.ends_with(".json") && !name.ends_with("-settings.json")
 }
 
-fn agent_screens() -> usize {
-    let own = olo_xdg::display_name();
-    let Ok(read) = std::fs::read_dir(screens_dir()) else { return 0 };
-    read.flatten()
-        .filter(|e| {
-            let name = e.file_name().to_string_lossy().into_owned();
-            name.ends_with(".json") && !name.ends_with("-settings.json")
-        })
-        .filter_map(|e| std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()))
-        .filter(|v| v["wayland_display"].as_str() != Some(own.as_str()))
-        .filter(|v| {
-            let cmdline = v["pid"].as_i64().and_then(|pid| std::fs::read(format!("/proc/{pid}/cmdline")).ok()).unwrap_or_default();
-            let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-            // (`tabula-…` for a screen started before the rename.)
-            let session = args.first().is_some_and(|a| a.ends_with(b"olo-session") || a.ends_with(b"tabula-session"));
-            let socket = v["olo_socket"].as_str().or(v["tabula_socket"].as_str());
-            session && args.iter().any(|a| *a == b"--headless") && socket.is_some_and(|s| std::path::Path::new(s).exists())
-        })
-        .count()
+fn agent_screens() -> Vec<olo_ui::moving::RunningScreen> {
+    olo_ui::moving::screens()
 }
 
 enum AudioRequest {
@@ -352,7 +336,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 // before reading: `read` takes it again to publish.
                 let again = {
                     let g = counted.lock().unwrap();
-                    g.0.agent_screens > 0 || !g.0.sharing.is_empty() || g.0.recording.is_some()
+                    !g.0.agent_screens.is_empty() || !g.0.sharing.is_empty() || g.0.recording.is_some()
                 };
                 if again {
                     read(&[]);

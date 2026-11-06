@@ -1104,20 +1104,6 @@ of Finished; a new one goes where its priority puts it.
   a window's content scrolling when the window is shorter than it
   (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
 
-- **Move windows to and from Agent Screens** (Ben, 2026-10-31):
-  "everywhere we have menu options to move something to a
-  display-workspace there should also be a section in that menu to move
-  it to an agent-screen (new or existing) and when in the agent screens
-  app next to take control there should be an option to move all windows
-  in the agent screen to a user display-workspace". So: the window tab's
-  menu, Deskbar's app menu, the workspace heading's menu, Tracker's and
-  Terminal's tab menus (wherever Move to Workspace is) gain an Agent
-  Screens section (each running screen, and New Agent Screen); Agent
-  Screens gets, beside Take Control, a way to move every window on the
-  screen onto one of the person's display-workspaces. The program keeps
-  running as it moves (its connection handed between the two
-  app_servers, or the app reopened there with its saved state).
-
 - **Notifications, robust and everywhere** (Ben): after Haiku's
   notification_server and `BNotification`, better where we can. ~~Done~~:
   grouped by app, the four kinds (information, important, error,
@@ -1739,6 +1725,29 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Move windows to and from Agent Screens**~~ (done 2026-11-05,
+  HACKING's "Moving windows to and from screens": `olo-screen take` and
+  `give`; an Olo app re-executed there with its state, one window of
+  several (Tracker's, Terminal's windows and tabs) by a copy of the app,
+  any other program's connection replayed there by olo-wlproxy; the
+  window menu's, Deskbar's app and heading menus' and Terminal's tab
+  menu's Move to Agent Screen ▸, and Agent Screens' Move Windows To…
+  beside Take Control; the person's programs back when a screen stops
+  or dies, a screen's given ones outliving it. Tracker has no tab menu
+  of its own: its windows' tabs are the window menu's) (Ben, 2026-10-31):
+  "everywhere we have menu options to move something to a
+  display-workspace there should also be a section in that menu to move
+  it to an agent-screen (new or existing) and when in the agent screens
+  app next to take control there should be an option to move all windows
+  in the agent screen to a user display-workspace". So: the window tab's
+  menu, Deskbar's app menu, the workspace heading's menu, Tracker's and
+  Terminal's tab menus (wherever Move to Workspace is) gain an Agent
+  Screens section (each running screen, and New Agent Screen); Agent
+  Screens gets, beside Take Control, a way to move every window on the
+  screen onto one of the person's display-workspaces. The program keeps
+  running as it moves (its connection handed between the two
+  app_servers, or the app reopened there with its saved state).
 
 - ~~**Viewer: select and copy text in PDFs and other documents**~~ (done
   2026-11-05, HACKING's Viewer and `crates/preview`: a PDF's text read

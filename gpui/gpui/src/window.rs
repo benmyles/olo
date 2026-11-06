@@ -987,6 +987,8 @@ pub struct Window {
     pub(crate) removed: bool,
     pub(crate) platform_window: Box<dyn PlatformWindow>,
     display_id: Option<DisplayId>,
+    /// Olo: what kind it was opened as (a layer, a lock screen's).
+    kind: crate::WindowKind,
     sprite_atlas: Arc<dyn PlatformAtlas>,
     /// Olo: the path masks drawn recently (`crate::outline`).
     outlines: crate::outline::Outlines,
@@ -1507,6 +1509,7 @@ impl Window {
             removed: false,
             platform_window,
             display_id,
+            kind,
             sprite_atlas,
             outlines: Default::default(),
             text_system,
@@ -2133,6 +2136,11 @@ impl Window {
         let (done, over) = futures::channel::oneshot::channel();
         self.platform_window.start_drag(drag, done);
         over
+    }
+
+    /// Olo: what kind of window it was opened as.
+    pub fn window_kind(&self) -> crate::WindowKind {
+        self.kind
     }
 
     /// Olo: the window's surface's protocol id (Wayland's `wl_surface`),

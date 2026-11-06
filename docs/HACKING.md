@@ -497,7 +497,13 @@ fn main() {
   thread a `Proxy` whose messages `message_handler(cx, f)` takes on the
   UI thread; `stay_resident(cx)` keeps it running with no windows;
   `on_upgrade(cx, f)` keeps its state across an in-place upgrade
-  (`restored_state` gives it back; see "In-place reload"). A view
+  (`restored_state` gives it back; see "In-place reload"), which is also
+  how the app moves to another display (an agent screen's, or back:
+  "Moving windows to and from screens"); `on_move_window(cx, f)` says how
+  one window of several goes (a `WindowMove`: the arguments and state a
+  copy of the app there opens it with, and `gone`, letting it go here,
+  or why it can't), and `refuse_moves_while(cx, f)` keeps the app where
+  it is while `f` says why. A view
   draws itself in `Render`; what changes it calls `cx.notify()` (its
   window draws again); work that can take longer than a frame runs on a
   thread (see "The responsiveness rule"). There is no clipboard manager,
@@ -2477,6 +2483,23 @@ for a 3-second `sleep`.
   the session (`tsession` passes it on) to log every replayed request. Set
   `OLO_NO_WAYLAND_PROXY=1` to have app_server take `wayland-N` itself.
   If the proxy keeps crashing, the session does that on its own.
+* **Moving a program to another app_server** (an agent screen's, or from
+  one to the person's): each proxy listens on
+  `$XDG_RUNTIME_DIR/olo-wlproxy-PID.sock` (`wlproxy/src/control.rs`, a
+  line a request: `list`, `move PID PATH`, `home PATH`). `move` points
+  the program's connection at that app_server's proxied socket
+  (`Client::move_to`): the program is told what a restart ends and
+  replayed there, the same pid, so it never knows (GNOME Calculator moved
+  in 0.1 s, its 68 objects replayed). A program moved away whose
+  app_server has nobody listening any more (its session gone: a session
+  removes its sockets as it ends; a restart keeps them) comes back to
+  the proxy's own after 2 s (`AWAY_GONE`); `home PATH` brings back at
+  once every program on that app_server (a screen stopping). A screen's
+  proxy told to end (SIGTERM, `OLO_SCREEN` set) while it has programs on
+  the person's display forks: the parent exits at once (the session
+  isn't kept waiting) and the child, in a session of its own with a
+  control socket under its own pid, serves those programs until they
+  close. The person's proxy ends with their session as before.
 * **Upgrading the proxy** (`Session::renew_proxy`): restarting it would
   close every outside program's windows, so it isn't. When an upgrade
   brings a new `olo-wlproxy` (the session notes the program it started
@@ -4305,7 +4328,9 @@ the row stands for) as a window's tab menu moves one: Move to Workspace ▸
 to right, the one they're all on checked (`move:N:OUTPUT`, a
 `MoveToWorkspace { output }` each, in turn on one connection,
 `requests`), and with several displays (All) to the Next / Previous
-Display (the `next-display` shortcuts for each window).
+Display (the `next-display` shortcuts for each window), and Move (All)
+to Agent Screen ▸ (as the window menu's; a workspace heading's menu has
+Move All Windows to Agent Screen ▸ too).
 
 Twitcher (⌘Tab, ⌥Tab, ⌘\`, `twitch_step`; while ⌘ or ⌥ is held the
 pointer chooses too: over a cell it is the one chosen, a click on it
@@ -9020,7 +9045,9 @@ put it away.
   left to right as Deskbar's heading menus list them, named as Deskbar
   names them, "D1 Workspace 2"; its own display's with their keys and a
   check; another's is `MoveToWorkspace { id, index, output }`), the
-  next/previous display (with more than one), Open in Tracker (when the window's program says
+  next/previous display (with more than one), Move to Agent Screen ▸
+  (each screen running and a new one; "Moving windows to and from
+  screens"), Open in Tracker (when the window's program says
   what it shows: `commands::path`, asked of its pid with its
   `WindowInfo::surface`), Send to Back (BeOS's right-click on the tab,
   `Request::SendToBack`), then Close and Quit APP.
@@ -9553,6 +9580,81 @@ it (text, pictures, files), both ways, each side's clipboard watched
 clipboard is taken off it (an agent's screen never has the person's
 clipboard on its own); what they copied from the screen stays on
 theirs. It's joined off the UI thread (two displays' connections).
+
+### Moving windows to and from screens (apps/screen/src/moving.rs)
+
+The person can put any of their windows on an agent screen (for an agent
+to work in it: a Terminal tab, a Chrome window, a document), and give a
+screen's windows to themselves; the program keeps running as it goes.
+`olo-screen take NAME|--new --window ID…` moves the person's windows
+(ids on their display) onto a screen, and `olo-screen give NAME
+[--window ID…] [--workspace N] [--display OUTPUT]` the screen's (all of
+them by default) to the person's display, onto one of its workspaces;
+both answer JSON (`went`: each program, how it went and its windows'
+new ids; `stayed`: what didn't, and why), go in the screen's history,
+and are allowed while the person controls the screen (they're the
+person's moves). `moving::move_windows` groups the windows by program:
+- An app on Olo's kit is asked over its command socket (`{"move":…}`,
+  `olo_kit_base::moving::MoveTo`: the window's surface, or none for the
+  whole app, and the environment of the display it goes to). Its only
+  window, or all of them, and it re-executes there with its state
+  (`on_upgrade`'s), as for an upgrade, keeping its pid
+  (`upgrade::move_to`). One window of several, or an app that is also
+  part of the desktop (a layer: Tracker's desktop; resident), goes by a
+  copy of the app started there with that window's state
+  (`on_move_window`, `moving::start_copy`) and let go here: Tracker's
+  folder and Find windows, Terminal's windows. Otherwise it says why it
+  stays.
+- Any other program is moved by the olo-wlproxy holding its connection
+  (`move PID PATH`, above). A program's connection is all its windows,
+  so they all go (`went` says so).
+
+A moved kit app is started with `OLO_MOVED` (claimed as it starts), so it
+never hands itself to a copy already running there (`instance::forward`
+is skipped, and `instance::listen` leaves that copy its socket). The
+person's app on a screen carries `OLO_HOME` (`moving::env_for`: what its
+environment was, a `MoveTo` back); dropped as it goes back. It goes back
+when the screen stops (`screens::stop` first runs `moving::send_home`:
+each proxy's `home`, then each kit app with an `OLO_HOME` asked to move
+back, and a moment for them to go) or ends without a word (a kit app
+whose compositor is lost while its screen's session or socket is gone,
+`upgrade::going_home`, waits up to 2 s to tell an end from a restart; the
+proxy's `AWAY_GONE`). A program started on a screen and given to the
+person stays theirs when the screen stops (a kit app re-executed with
+their environment; another program served on by the screen's forked
+proxy). Terminal: its shells live in the olo-termd of the display it
+started on, which a moved Terminal keeps talking to (`wire::display`
+reads `OLO_HOME`), and a window or tab goes by a Terminal on the screen
+attaching its shells (`Saved::moved`: taken from the other Terminal,
+whose tab goes as olo-termd detaches it, never hung up; no other shells
+opened); a Terminal started on a screen stays there
+(`refuse_moves_while`: its shells end with the screen).
+
+Where it's offered (`olo_kit_base::moving::screens()` lists the screens
+running, by the name the person gave each; only on the person's own
+display, `menus_offer`, and only for windows whose program can move,
+`WindowInfo::kept`; each runs `olo-screen take` on a thread, a
+notification saying why if nothing moved, `take_to_screen`):
+- the window menu (a window tab's right-click): Move to Agent Screen ▸
+  each screen, New Agent Screen (`Menu::agent_screens`);
+- Deskbar's app menu: Move (All) to Agent Screen ▸; a workspace
+  heading's menu: Move All Windows to Agent Screen ▸;
+- Terminal's tab menu: Move to Agent Screen ▸ (the tab alone, by a
+  Terminal on the screen: `moving::copy_to_screen`);
+- Agent Screens, beside Take Control: Move Windows To… (and Control ▸
+  Move Windows To ▸): every window on the screen to one of the person's
+  display-workspaces (`moving::give`, on a worker; an alert says what
+  stayed).
+
+Tested in a private world (its own `XDG_RUNTIME_DIR`, HOME and bus, a
+stand-in person's `olo-session --headless` and a screen beside it):
+DeskCalc and GNOME Calculator there and back (the calculator took input
+on the screen), each coming home when the screen stopped and when its
+session was killed without a word; a screen's DeskCalc and zenity given
+to the person outliving the screen (its stop 0.05 s with the forked
+proxy, 3 s before); a Tracker folder window and a Terminal window and
+tab moved by copies, the Terminal's shell the same process on the
+screen (`echo $$`), all of them back when the screen stopped.
 
 ### Passwords for agent screens (apps/screen/src/shares.rs)
 

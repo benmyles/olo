@@ -189,18 +189,8 @@ impl Screen {
     /// screen), Chrome's profile of its own (`chrome_home`), and silence
     /// unless the screen has sound.
     pub fn env(&self) -> Vec<(String, String)> {
-        let mut env = vec![
-            ("WAYLAND_DISPLAY".to_owned(), self.wayland_display.clone()),
-            ("OLO_SOCKET".to_owned(), self.olo_socket.display().to_string()),
-            ("OLO_SESSION".to_owned(), "1".to_owned()),
-            ("OLO_SESSION_PID".to_owned(), self.pid.to_string()),
-            ("OLO_SCREEN".to_owned(), self.name.clone()),
-            ("CHROME_CONFIG_HOME".to_owned(), chrome_home(&self.name).display().to_string()),
-        ];
-        if !self.sound {
-            env.push(("PULSE_SERVER".to_owned(), format!("unix:{}", dir().join("no-sound").display())));
-        }
-        env
+        // (The kit's, which moves to a screen use too.)
+        olo_ui::moving::screen_env(&self.name, &self.wayland_display, &self.olo_socket, self.pid, self.sound)
     }
 
     /// Start `argv` on this screen (a bare name is looked for as Olo
@@ -514,6 +504,8 @@ fn stop_pid(pid: i32) {
 /// End a screen and everything started on it.
 pub fn stop(name: &str) -> Result<(), String> {
     let screen = get(name)?;
+    // The person's programs on it back to their display first.
+    crate::moving::send_home(&screen);
     stop_pid(screen.pid);
     let until = Instant::now() + Duration::from_secs(5);
     while screen.alive() && Instant::now() < until {

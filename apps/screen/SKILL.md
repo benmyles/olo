@@ -275,6 +275,26 @@ olo-screen history agent --export /tmp/agent.mp4   # all of it as a video, quiet
 olo-screen history agent --clear
 ```
 
+## Windows moved between the person and your screen
+
+The person can put one of their windows on your screen for you to work
+in (a Terminal tab, a Chrome window, a document): it just appears there,
+its program running on (an Olo app the same, another program with all
+its windows). Find it with `windows` or `tree` as usual. When you're
+done, or when they ask, hand windows back to their display:
+
+```sh
+olo-screen give agent                          # every window on the screen
+olo-screen give agent --window 4 --workspace 2 # one, onto their workspace 2
+```
+
+It answers JSON: `went` (each program and its windows' new ids on their
+display) and `stayed` (with why). Stopping a screen sends their own
+windows back by itself; what you started there and gave them stays
+theirs. `olo-screen take NAME --window ID` moves the person's windows
+onto a screen: only when they ask you to, never on your own (they're
+their windows).
+
 ## When the person takes control
 
 The person can take your screen over (Agent Screens' Take Control) to

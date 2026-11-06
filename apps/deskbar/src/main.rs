@@ -735,7 +735,12 @@ impl Deskbar {
                 to = to.item(self.workspace_name(Some(&d.name), i), format!("ws-move:{ws}:{i}:{}", d.name)).enabled(any && !here);
             }
         }
-        m.submenu(to).separator().item("Workspaces Preferences…", "pref:workspaces")
+        m = m.submenu(to);
+        // Or onto an agent screen, programs running on.
+        if olo_ui::moving::menus_offer() && self.windows_on(display).any(|w| w.workspace == ws && w.kept) {
+            m = m.submenu(Menu::agent_screens("Move All Windows to Agent Screen", &self.status.agent_screens, &format!("ws-screen:{ws}:")));
+        }
+        m.separator().item("Workspaces Preferences…", "pref:workspaces")
     }
 
     /// A command from `display`'s workspace heading's menu
@@ -749,6 +754,15 @@ impl Deskbar {
             "ws-show" if !ids.is_empty() => request(Request::ActivateAll { ids }),
             "ws-hide" => ids.into_iter().for_each(|id| request(Request::Minimize { id })),
             "ws-close" => ids.into_iter().for_each(|id| request(Request::Close { id })),
+            "ws-screen" => {
+                let rest = parts.next().unwrap_or_default();
+                let ids: Vec<u64> = self.windows_on(display).filter(|w| w.workspace == ws && w.kept).map(|w| w.id).collect();
+                if let Some(screen) = olo_ui::moving::screen_command(rest)
+                    && !ids.is_empty()
+                {
+                    olo_ui::moving::take_to_screen(screen, ids);
+                }
+            }
             "ws-move" => {
                 let (Some(to_index), Some(to), Some(output)) = (parts.next().and_then(|n| n.parse().ok()), parts.next(), display) else { return true };
                 request(Request::MoveWorkspace { output: output.to_owned(), index: ws, to: to.to_owned(), to_index: Some(to_index) });
@@ -792,6 +806,10 @@ impl Deskbar {
             m = m
                 .item(if several { "All to the Next Display" } else { "To the Next Display" }, "shortcut:next-display")
                 .item(if several { "All to the Previous Display" } else { "To the Previous Display" }, "shortcut:previous-display");
+        }
+        // Or onto an agent screen, the program running on.
+        if olo_ui::moving::menus_offer() && team.windows.iter().any(|w| w.kept) {
+            m = m.submenu(Menu::agent_screens(if several { "Move All to Agent Screen" } else { "Move to Agent Screen" }, &self.status.agent_screens, ""));
         }
         m.separator().item("Group Windows", "group-windows").checked(!self.tiling.ungrouped_apps.contains(&app)).enabled(!app.is_empty())
     }
@@ -1156,6 +1174,12 @@ impl Deskbar {
         if cmd == "show-all" {
             if !ids.is_empty() {
                 request(Request::ActivateAll { ids });
+            }
+            return;
+        }
+        if let Some(screen) = olo_ui::moving::screen_command(cmd) {
+            if !ids.is_empty() {
+                olo_ui::moving::take_to_screen(screen, ids);
             }
             return;
         }
@@ -1882,7 +1906,7 @@ impl Deskbar {
                 !st.upgrade.is_empty() || st.upgrade_waiting,
                 !st.sharing.is_empty(),
                 st.airpods.is_some(),
-                st.agent_screens > 0,
+                !st.agent_screens.is_empty(),
                 st.supervisor.is_some(),
                 // (Olo Doctor's bag, while it has found something.)
                 !st.doctor.issues.is_empty(),
@@ -2155,8 +2179,8 @@ impl Deskbar {
             );
         }
         // Agents at work on screens of their own: click to watch them.
-        if st.agent_screens > 0 {
-            let n = st.agent_screens;
+        if !st.agent_screens.is_empty() {
+            let n = st.agent_screens.len();
             let tip_text = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
             let (_, h) = tray_item(&mut d, "agent-screens", tip_text, Box::new(move |window, cx, r| status::draw_screens(window, cx, r, &theme::palette(cx), n)));
             let m = model.clone();

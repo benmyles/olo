@@ -8,6 +8,7 @@ mod clip;
 mod export;
 mod find;
 mod history;
+mod moving;
 mod picture;
 mod record;
 mod replay;
@@ -70,6 +71,14 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
        olo-screen run NAME PROGRAM [ARGS…]
                                              start a program on it; prints its pid
+       olo-screen take NAME|--new --window ID…
+                                             the person's windows (ids on their display) onto the
+                                             screen (--new: a new one), their programs running on
+                                             as they go; only when the person asks
+       olo-screen give NAME [--window ID…] [--workspace N] [--display OUTPUT]
+                                             the screen's windows (default: all) to the person's
+                                             display, onto its workspace N (from 1; default: the
+                                             one showing) of OUTPUT (default: the active display)
        olo-screen look NAME [OUT.png] [--window ID] [--crop X,Y,W,H] [--no-pointer]
                                              a picture of the screen (or one window, or part);
                                              without OUT, a new file by the logs; prints its path
@@ -124,6 +133,11 @@ FIND is --name NAME (exact, else part of it; a value counts too), --role ROLE,
 several match) and --window ID. Actions print JSON: what they matched, and
 after: the focused window and element.
 
+A moved program keeps running: an Olo app re-executes there with its
+state (one window of several by a copy of the app, where it can), any
+other program's connection is replayed there with all its windows. The
+person's programs on a screen go back to their display when it stops.
+
 Coordinates are the screen's logical pixels, from its top left; Cmd is ⌘
 (apps see it as Ctrl). Programs run on a screen with WAYLAND_DISPLAY and
 OLO_SOCKET set to it; a screen's own Deskbar and desktop are there too.";
@@ -131,6 +145,19 @@ OLO_SOCKET set to it; a screen's own Deskbar and desktop are there too.";
 fn fail(message: impl std::fmt::Display) -> i32 {
     eprintln!("olo-screen: {message}");
     1
+}
+
+/// Every `--window ID` given.
+fn window_ids(args: &[String]) -> Result<Vec<u64>, String> {
+    args.windows(2).filter(|p| p[0] == "--window").map(|p| p[1].parse::<u64>().map_err(|_| format!("{} isn't a window's id", p[1]))).collect()
+}
+
+/// Why nothing moved.
+fn stayed_why(o: &moving::Outcome) -> String {
+    match o.stayed.first() {
+        Some(s) => format!("nothing moved: {} {}", if s.app_id.is_empty() { "the window" } else { s.app_id.as_str() }, s.why),
+        None => "nothing moved".into(),
+    }
 }
 
 fn number(s: Option<&String>, what: &str) -> Result<f64, String> {
@@ -174,7 +201,7 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
         let answer = ANSWER.with(|a| a.borrow_mut().take());
         // The screen: as named, or the one `start` chose.
         let named = rest.first().filter(|a| !a.starts_with("--")).cloned();
-        let name = if command == "start" { answer.as_ref().and_then(|v| v["name"].as_str().map(str::to_owned)).or(named.clone()) } else { named.clone() };
+        let name = if matches!(command.as_str(), "start" | "take") { answer.as_ref().and_then(|v| v["name"].as_str().map(str::to_owned)).or(named.clone()) } else { named.clone() };
         if let Some(name) = name {
             let args = if named.is_some() { rest[1..].to_vec() } else { rest.to_vec() };
             let action = history::Action { at, ms: history::now_ms().saturating_sub(at), kind: command, args, result: answer, error: result.as_ref().err().cloned() };
@@ -202,7 +229,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
     let name = || rest.first().cloned().ok_or_else(|| format!("{command} needs a screen's name"));
     // While the person has the screen, an agent's actions wait for them
     // (reading it still answers): two hands on one pointer made a mess.
-    if command != "start"
+    if !matches!(command, "start" | "take" | "give")
         && (history::ACTIONS.contains(&command) || command == "maximize")
         && let Some(n) = rest.first()
         && screens::controlled(n)
@@ -264,6 +291,30 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
             for (k, v) in s.env() {
                 println!("export {k}={}", shell_quote(&v));
             }
+        }),
+        "take" => (|| {
+            let ids = window_ids(rest)?;
+            if ids.is_empty() {
+                return Err("take needs the windows to move (--window ID, as the person's display lists them)".into());
+            }
+            let person = moving::Place::person()?;
+            let s = if has(rest, "--new") {
+                let opts = screens::Options::default();
+                screens::start(&screens::free_name(), &opts)?
+            } else {
+                screen()?
+            };
+            let outcome = moving::move_windows(&person, &ids, &moving::Place::screen(&s))?;
+            let v = json!({ "name": s.name, "went": outcome.went, "stayed": outcome.stayed });
+            print_json(&v);
+            if outcome.went.is_empty() { Err(stayed_why(&outcome)) } else { Ok(()) }
+        })(),
+        "give" => screen().and_then(|s| {
+            let workspace = option(rest, "--workspace").map(|n| n.parse::<u32>().ok().filter(|n| *n >= 1).ok_or("--workspace is a number from 1")).transpose()?;
+            let outcome = moving::give(&s, Some(window_ids(rest)?), workspace.map(|n| n - 1), option(rest, "--display").cloned())?;
+            let v = json!({ "went": outcome.went, "stayed": outcome.stayed });
+            print_json(&v);
+            if outcome.went.is_empty() { Err(stayed_why(&outcome)) } else { Ok(()) }
         }),
         "run" => screen().and_then(|s| {
             let pid = s.run(&rest[1..])?;

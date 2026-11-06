@@ -1433,17 +1433,7 @@ impl Tracker {
         let mut saved = Saved { hidden: self.hidden, folders: Vec::new(), find: 0, desktop_selected: Vec::new() };
         for s in &self.windows {
             match &s.win {
-                Win::Folder(f) => {
-                    let f = f.read(cx);
-                    saved.folders.push(SavedFolder {
-                        path: f.path.clone(),
-                        size: f.size,
-                        view: f.view,
-                        sort: f.sort.unwrap_or((SortKey::Name, true)),
-                        own_sort: f.sort.is_some(),
-                        selected: f.selected_paths(),
-                    });
-                }
+                Win::Folder(f) => saved.folders.push(saved_folder(f.read(cx))),
                 Win::Find(_) => saved.find += 1,
                 Win::Desktop(d) => saved.desktop_selected = d.read(cx).selected_paths(),
                 _ => {}
@@ -1451,6 +1441,36 @@ impl Tracker {
         }
         serde_json::to_string(&saved).ok()
     }
+
+    /// One window to another display (an agent screen's, or from one to
+    /// the person's): a folder or Find window goes as a Tracker there
+    /// opens it, as it was; the desktop and the rest stay.
+    fn move_window(&mut self, handle: AnyWindowHandle, cx: &mut Context<Self>) -> Result<olo_ui::WindowMove, String> {
+        let s = self.windows.iter().find(|s| s.handle == handle).ok_or("it has no such window")?;
+        let mut saved = Saved { hidden: self.hidden, folders: Vec::new(), find: 0, desktop_selected: Vec::new() };
+        match &s.win {
+            Win::Folder(f) => saved.folders.push(saved_folder(f.read(cx))),
+            Win::Find(_) => saved.find = 1,
+            Win::Desktop(_) => return Err("the desktop stays with its display".into()),
+            _ => return Err("only folder and Find windows move".into()),
+        }
+        let key = s.key;
+        let me = cx.weak_entity();
+        Ok(olo_ui::WindowMove {
+            args: Vec::new(),
+            state: serde_json::to_string(&saved).ok(),
+            gone: Box::new(move |cx| {
+                if let Some(t) = me.upgrade() {
+                    t.update(cx, |t, cx| t.close_requested(key, cx));
+                }
+                let _ = handle.update(cx, |_, window, _| window.remove_window());
+            }),
+        })
+    }
+}
+
+fn saved_folder(f: &FolderWin) -> SavedFolder {
+    SavedFolder { path: f.path.clone(), size: f.size, view: f.view, sort: f.sort.unwrap_or((SortKey::Name, true)), own_sort: f.sort.is_some(), selected: f.selected_paths() }
 }
 
 /// Copies `clip` (each form's type and data) to the clipboard.
@@ -1502,6 +1522,8 @@ fn main() {
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |t, cx| t.message(message, cx)));
         let saving = app.clone();
         olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state(cx));
+        let moving = app.clone();
+        olo_ui::on_move_window(cx, move |handle, cx| moving.update(cx, |t, cx| t.move_window(handle, cx)));
         // A file operation under way: the new version waits for it.
         let busy = app.clone();
         olo_ui::upgrade_waits_while(cx, move |cx| !busy.read(cx).jobs.is_empty());

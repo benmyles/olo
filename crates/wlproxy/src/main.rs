@@ -14,8 +14,20 @@
 //! sends this one SIGWINCH (ignored by default, so a proxy from before
 //! this carries on rather than dying): it stops accepting and serves the
 //! programs it has until the last one closes, then exits.
+//!
+//! A program can be moved to another app_server, an agent screen's or
+//! from one to the person's (`olo-screen take` and `give`), through the
+//! proxy's control socket, `$XDG_RUNTIME_DIR/olo-wlproxy-PID.sock`: a
+//! line a request, a line an answer (`control`). The program is told
+//! what a restart ends and replayed on that app_server, as after a
+//! restart; the same pid, so it never knows. Should that app_server's
+//! session end (the screen stopped), the program comes back to the
+//! proxy's own. A screen's proxy asked to end (SIGTERM, its session
+//! ending) while it has programs on the person's display keeps serving
+//! those until they close.
 
 mod client;
+mod control;
 mod interfaces;
 mod wire;
 
@@ -38,11 +50,22 @@ fn log(msg: impl AsRef<str>) {
     eprintln!("olo-wlproxy: {}", msg.as_ref());
 }
 
+/// How long a program moved to another app_server waits for its socket
+/// to be listened on again (its session ended: the screen stopped) before
+/// it comes back to ours.
+const AWAY_GONE: Duration = Duration::from_secs(2);
+
 /// A newer proxy has the socket now (SIGWINCH).
 static RETIRE: AtomicBool = AtomicBool::new(false);
+/// The session is ending (SIGTERM).
+static TERM: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn retire(_: libc::c_int) {
     RETIRE.store(true, Ordering::Relaxed);
+}
+
+extern "C" fn term(_: libc::c_int) {
+    TERM.store(true, Ordering::Relaxed);
 }
 
 fn main() {
@@ -69,21 +92,57 @@ fn main() {
         sa.sa_sigaction = retire as *const () as usize;
         libc::sigemptyset(&mut sa.sa_mask);
         libc::sigaction(libc::SIGWINCH, &sa, std::ptr::null_mut());
+        sa.sa_sigaction = term as *const () as usize;
+        libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
     }
     let upstream = PathBuf::from(upstream);
     log(format!("listening; app_server at {}", upstream.display()));
+    let mut control = control::listen();
+    // A screen's: its programs given to the person outlive it.
+    let screen = std::env::var_os("OLO_SCREEN").is_some();
 
     let mut clients: Vec<Client> = Vec::new();
     loop {
         if RETIRE.load(Ordering::Relaxed) && listener.take().is_some() {
             log(format!("a newer proxy has the socket; serving {} program(s) until they close", clients.len()));
         }
+        if TERM.swap(false, Ordering::Relaxed) {
+            let given = clients.iter().filter(|c| c.away.is_some()).count();
+            if !screen || given == 0 {
+                control::remove(&control);
+                std::process::exit(0);
+            }
+            // Those still here end with the session; those on the
+            // person's display carry on, in a process of their own: this
+            // one exits at once, so the session isn't kept waiting for
+            // it, and the one serving them is out of the screen's group.
+            // SAFETY: this program has one thread; the child carries on
+            // with every descriptor.
+            match unsafe { libc::fork() } {
+                0 => {
+                    // SAFETY: setsid in the child.
+                    unsafe { libc::setsid() };
+                    control::remove(&control);
+                    control = control::listen();
+                    log(format!("the session is ending; serving the {given} program(s) on another display until they close"));
+                    listener = None;
+                    clients.retain(|c| c.away.is_some());
+                }
+                pid if pid > 0 => std::process::exit(0),
+                _ => {
+                    log("the session is ending, and the programs on another display couldn't be kept (fork failed)");
+                    std::process::exit(0);
+                }
+            }
+        }
         if listener.is_none() && clients.is_empty() {
             log("retired, and its last program has closed");
+            control::remove(&control);
             std::process::exit(0);
         }
         let listening = listener.as_ref().map_or(-1, |l| l.as_raw_fd());
         let mut fds = vec![libc::pollfd { fd: listening, events: libc::POLLIN, revents: 0 }];
+        fds.push(libc::pollfd { fd: control.as_ref().map_or(-1, |c| c.listener.as_raw_fd()), events: libc::POLLIN, revents: 0 });
         for c in &clients {
             fds.push(libc::pollfd { fd: c.down.fd(), events: libc::POLLIN | if c.down.backlog() > 0 { libc::POLLOUT } else { 0 }, revents: 0 });
             let up = c.up.as_ref().map(|u| (u.fd(), u.backlog() > 0));
@@ -100,7 +159,7 @@ fn main() {
 
         let mut gone = vec![false; clients.len()];
         for (i, c) in clients.iter_mut().enumerate() {
-            let (down, up) = (fds[1 + 2 * i].revents, fds[2 + 2 * i].revents);
+            let (down, up) = (fds[2 + 2 * i].revents, fds[3 + 2 * i].revents);
             if let Err(e) = step(c, down, up, &upstream) {
                 log(format!("pid {}: {e}; closing", c.pid));
                 gone[i] = true;
@@ -111,6 +170,12 @@ fn main() {
             i += 1;
             !gone[i - 1]
         });
+
+        if fds[1].revents & libc::POLLIN != 0
+            && let Some(control) = &control
+        {
+            control::serve(control, &mut clients, &upstream);
+        }
 
         if fds[0].revents & libc::POLLIN != 0
             && let Some(listener) = &listener
@@ -167,10 +232,27 @@ fn step(c: &mut Client, down: i16, up: i16, upstream: &std::path::Path) -> Resul
         }
         if c.last_try.is_none_or(|t| t.elapsed() >= RETRY) {
             c.last_try = Some(Instant::now());
-            if let Ok(s) = UnixStream::connect(upstream)
-                && let Ok(conn) = Conn::new(s)
-            {
-                c.connected(conn);
+            let to = c.away.clone().unwrap_or_else(|| upstream.to_path_buf());
+            match UnixStream::connect(&to) {
+                Ok(s) => {
+                    c.away_gone = None;
+                    if let Ok(conn) = Conn::new(s) {
+                        c.connected(conn);
+                    }
+                }
+                // Nobody there at all (a restart keeps the socket, with
+                // its session): the screen it was moved to has stopped,
+                // so back to ours.
+                Err(_) if c.away.is_some() => {
+                    if c.away_gone.get_or_insert_with(Instant::now).elapsed() > AWAY_GONE {
+                        log(format!("pid {}: the app_server it was moved to has gone; back to ours", c.pid));
+                        c.away = None;
+                        c.away_gone = None;
+                        c.last_try = None;
+                        c.down_since = Some(Instant::now());
+                    }
+                }
+                Err(_) => {}
             }
         }
         if c.down.backlog() > MAX_BACKLOG || c.waiting() > 200_000 {

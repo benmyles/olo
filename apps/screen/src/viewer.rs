@@ -100,6 +100,11 @@ pub enum Msg {
     /// Screens archived, unarchived, stopped or deleted together: what
     /// went wrong, if anything.
     Changed(Vec<String>),
+    /// The person's display-workspaces (display, index, name), where a
+    /// screen's windows can be given.
+    Spaces(Vec<(String, u32, String)>),
+    /// A screen's windows given to the person: what didn't go, and why.
+    Given(Result<Vec<String>, String>),
 }
 
 /// The chosen screen's tabs.
@@ -554,6 +559,10 @@ pub struct Viewer {
     /// window of what every screen has.
     shares: Option<(String, Entity<crate::shares::Shares>)>,
     shares_everywhere: Option<WindowHandle<Frame>>,
+    /// The person's display-workspaces (`Msg::Spaces`), and a screen's
+    /// windows being given to one.
+    spaces: Vec<(String, u32, String)>,
+    giving: bool,
 }
 
 impl Viewer {
@@ -593,8 +602,11 @@ impl Viewer {
             also: Vec::new(),
             anchor: None,
             show_archived: !saved.hide_archived,
+            spaces: Vec::new(),
+            giving: false,
         };
         v.watch(cx);
+        v.learn_spaces();
         v
     }
 
@@ -944,6 +956,15 @@ impl Viewer {
                     self.failure = Some(message);
                 }
             }
+            Msg::Spaces(spaces) => self.spaces = spaces,
+            Msg::Given(r) => {
+                self.giving = false;
+                match r {
+                    Ok(stayed) if stayed.is_empty() => {}
+                    Ok(stayed) => self.alert(&format!("Some windows stayed on the screen:\n{}", stayed.join("\n")), cx),
+                    Err(e) => self.alert(&format!("The windows couldn't be moved: {e}"), cx),
+                }
+            }
             Msg::Started(r) => {
                 self.busy = false;
                 match r {
@@ -1037,8 +1058,58 @@ impl Viewer {
                 .separator()
                 .item(if running { "Go Live" } else { "Go to Latest" }, "latest")
                 .enabled(history),
-            Menu::new("Control").item(if self.controlling { "Stop Controlling" } else { "Take Control" }, "control").key("k").enabled(running),
+            {
+                let control = Menu::new("Control").item(if self.controlling { "Stop Controlling" } else { "Take Control" }, "control").key("k").enabled(running);
+                // (From the person's own display: a viewer on a screen has
+                // no one to give them to.)
+                if olo_ui::moving::menus_offer() { control.separator().submenu(self.give_menu(running)) } else { control }
+            },
         ]
+    }
+
+    /// Move Windows To ▸ each of the person's display-workspaces: every
+    /// window on the screen there, programs running on (`moving::give`).
+    fn give_menu(&self, running: bool) -> Menu {
+        let mut m = Menu::new("Move Windows To");
+        let mut last: Option<&str> = None;
+        for (output, index, name) in &self.spaces {
+            if last.is_some_and(|l| l != output) {
+                m = m.separator();
+            }
+            last = Some(output);
+            m = m.item(name.clone(), format!("give:{index}:{output}")).enabled(running && !self.giving);
+        }
+        if self.spaces.is_empty() {
+            m = m.item("Your Display", "give-here").enabled(running && !self.giving);
+        }
+        m
+    }
+
+    /// The person's display-workspaces, asked on a worker.
+    fn learn_spaces(&self) {
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            if let Ok(spaces) = crate::moving::person_workspaces() {
+                proxy.send(Msg::Spaces(spaces));
+            }
+        });
+    }
+
+    /// Every window on the chosen screen to the person's workspace
+    /// `index` of `output` (None: wherever they come), on a worker.
+    fn give(&mut self, to: Option<(u32, String)>, cx: &mut Context<Self>) {
+        let Some(screen) = self.screen().cloned() else { return };
+        if self.giving {
+            return;
+        }
+        self.giving = true;
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let (index, output) = to.map_or((None, None), |(i, o)| (Some(i), Some(o)));
+            let r = crate::moving::give(&screen, None, index, output).map(|o| o.stayed.into_iter().map(|s| format!("{}: {}", s.app_id, s.why)).collect());
+            proxy.send(Msg::Given(r));
+        });
+        cx.notify();
     }
 
     fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -1057,6 +1128,13 @@ impl Viewer {
                 self.keep_choice_listed(cx);
             }
             "stop" => self.ask_stop(cx),
+            "give-here" => self.give(None, cx),
+            c if c.starts_with("give:") => {
+                let mut parts = c["give:".len()..].splitn(2, ':');
+                if let (Some(Ok(index)), Some(output)) = (parts.next().map(str::parse::<u32>), parts.next()) {
+                    self.give(Some((index, output.to_owned())), cx);
+                }
+            }
             "clear" => self.ask_clear(cx),
             "export" => self.ask_export(cx),
             "tab-live" if self.screen().is_some() => self.set_tab(Tab::Live, cx),
@@ -1685,13 +1763,36 @@ impl Viewer {
                 }
             })
         });
+        // Beside it, every window on the screen to one of the person's
+        // display-workspaces.
+        let giver = cx.entity();
+        let give = Button::new("Move Windows To…").id("give-windows").enabled(!self.giving).on_click(move |window, cx| {
+            giver.update(cx, |v, cx| {
+                v.learn_spaces();
+                let menu = v.give_menu(true);
+                let at = window.mouse_position();
+                let me = cx.entity();
+                olo_ui::menu::context_menu(window, cx, menu, at, move |cmd, window, cx| me.update(cx, |v, cx| v.command(cmd, window, cx)));
+            })
+        });
         div()
             .size_full()
             .flex()
             .flex_col()
             .gap(px(m::SPACING))
             .child(picture)
-            .child(div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).flex_shrink_0().child(status).child(control))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(m::SPACING))
+                    .h(px(m::CONTROL_HEIGHT))
+                    .flex_shrink_0()
+                    .child(status)
+                    .children(olo_ui::moving::menus_offer().then_some(give))
+                    .child(control),
+            )
             .into_any_element()
     }
 

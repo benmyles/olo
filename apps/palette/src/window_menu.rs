@@ -73,6 +73,10 @@ pub struct Facts {
     /// Its program (its process and the window's surface, to choose from
     /// that window's menus), and the app's name.
     pub app: Owner,
+    /// The agent screens it can be moved to (name, label), when its
+    /// program can move (`WindowInfo::kept`) and this is the person's
+    /// display; None, no Move to Agent Screen.
+    pub screens: Option<Vec<olo_ui::moving::RunningScreen>>,
 }
 
 /// Whose window it is, and the app's own Close and Quit if it's on the
@@ -126,7 +130,8 @@ pub fn learn(ask: Ask, proxy: Proxy) {
         let entry = if olo_xdg::apps::our_app(&w.app_id).is_some() { None } else { olo_xdg::desktop_entry::find(&w.app_id) };
         let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
         let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, floats_always, keys, path, app });
+        let screens = (w.kept && olo_ui::moving::menus_offer()).then(olo_ui::moving::screens);
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, floats_always, keys, path, app, screens });
     });
 }
 
@@ -226,6 +231,9 @@ pub fn build(f: &Facts) -> Menu {
         m = shortcut(m, "next-display", "To the Next Display");
         m = shortcut(m, "previous-display", "To the Previous Display");
     }
+    if let Some(screens) = &f.screens {
+        m = m.submenu(Menu::agent_screens("Move to Agent Screen", screens, ""));
+    }
     m = m.separator();
     if f.path.is_some() {
         m = m.item(tracker::LABEL, tracker::COMMAND).separator();
@@ -255,6 +263,10 @@ pub fn build(f: &Facts) -> Menu {
 
 /// Do `command` to `window` (of `app`), off the UI thread.
 pub fn perform(window: u64, app: &Owner, command: &str) {
+    if let Some(screen) = olo_ui::moving::screen_command(command) {
+        olo_ui::moving::take_to_screen(screen, vec![window]);
+        return;
+    }
     // The app's own Close and Quit, in that window.
     if let ("app-close" | "app-quit", Some(pid), Some(surface)) = (command, app.pid, app.surface) {
         let command = if command == "app-close" { "close" } else { "quit" };
@@ -411,6 +423,14 @@ mod tests {
             display: Some(1),
             others: vec![("HDMI-A-1".into(), 0)],
             app: Owner { app_id: "org.gnome.gedit".into(), name: "Gedit".into(), ..Default::default() },
+            screens: Some(vec![olo_ui::moving::RunningScreen {
+                name: "agent".into(),
+                label: "Research".into(),
+                wayland_display: "wayland-3".into(),
+                olo_socket: "/run/olo-wayland-3.sock".into(),
+                pid: 7,
+                sound: false,
+            }]),
         };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
@@ -426,9 +446,16 @@ mod tests {
         for c in &all {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
+                || olo_ui::moving::screen_command(c).is_some()
                 || ["send-to-back", "close", "quit-all", "ungroup", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
+        // Each agent screen running, and a new one; none where the
+        // program can't move or this is a screen.
+        assert!(all.contains(&"agent-screen:agent".to_owned()) && all.contains(&"agent-screen-new".to_owned()));
+        let mut stuck = Vec::new();
+        commands(&build(&Facts { screens: None, ..facts.clone() }), &mut stuck);
+        assert!(!stuck.iter().any(|c| c.starts_with("agent-screen")));
         // Remove from Group only for a window in one.
         assert!(all.contains(&"ungroup".to_owned()));
         let mut alone = Vec::new();

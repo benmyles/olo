@@ -1393,7 +1393,15 @@ impl Terminal {
                     .enabled(t.tabs[i].group.is_some())
                     .item("Move to New Window", format!("tab-detach:{shell}"))
                     .enabled(t.tabs.len() > 1)
-                    .submenu(self.move_to_window_menu(id, shell, true))
+                    .submenu(self.move_to_window_menu(id, shell, true));
+                // Or to an agent screen, its shell running on (the person's
+                // own Terminal: one started on a screen keeps its shells).
+                let menu = if olo_kit_base::moving::menus_offer() {
+                    menu.submenu(Menu::agent_screens("Move to Agent Screen", &olo_kit_base::moving::screens(), &format!("tab-screen:{shell}:")))
+                } else {
+                    menu
+                };
+                let menu = menu
                     .separator()
                     .item("Close Other Tabs", format!("tab-close-others:{shell}"))
                     .item("Close Tab", format!("tab-close:{shell}"))

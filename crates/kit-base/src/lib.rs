@@ -15,6 +15,7 @@ pub mod layout_review;
 pub mod list;
 pub mod masonry;
 pub mod metrics;
+pub mod moving;
 pub mod notify;
 pub mod places;
 pub mod restore;

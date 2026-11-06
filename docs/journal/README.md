@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### A Terminal window moved to an agent screen
+
+*18:04* — The same shell (its pid) on the screen, typed into there.
+
+![A Terminal window moved to an agent screen](2026-11-05/180415-a-terminal-window-moved-to-an-agent-screen.png)
+
+### Terminal: a tab to an agent screen
+
+*18:04* — Terminal's tab menu sends one tab to an agent screen: a Terminal there takes its shell, which keeps running in the person's olo-termd.
+
+![Terminal: a tab to an agent screen](2026-11-05/180415-terminal-a-tab-to-an-agent-screen.png)
+
+### Window menu: Move to Agent Screen
+
+*18:04* — A window's tab menu puts the window on an agent screen (or a new one), the program running on: an Olo app re-executed there, any other program replayed there by olo-wlproxy.
+
+![Window menu: Move to Agent Screen](2026-11-05/180415-window-menu-move-to-agent-screen.png)
+
+### Agent Screens: Move Windows To…
+
+*18:04* — Beside Take Control, every window on the screen goes to one of the person's display-workspaces, its program running on (Control ▸ Move Windows To ▸ too).
+
+![Agent Screens: Move Windows To…](2026-11-05/180414-agent-screens-move-windows-to.png)
+
 ### Preferences ▸ Security: Face Unlock
 
 *16:48* — A look at the infrared camera can stand for the password: sudo, administrator requests, Passwords and the lock screen. Olo reads the IR camera over V4L2, lights its emitter through its UVC control, finds and recognises faces with two small models in process, and keeps the faces with a root service no app can read. Install… sets it up as root through Olo's polkit agent; Set Up… takes the password and five looks.

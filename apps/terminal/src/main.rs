@@ -683,6 +683,11 @@ fn estimate(settings: &Settings, cols: usize, rows: usize) -> (u32, u32) {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Saved {
     windows: Vec<SavedWindow>,
+    /// Windows moved here from another Terminal (an agent screen's, or
+    /// back from one): their shells are taken from it (olo-termd detaches
+    /// them there), and no others are opened.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    moved: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -953,7 +958,8 @@ impl Terminal {
     fn reattach(&mut self, cx: &mut Cx, shells: Vec<wire::ShellInfo>, saved: Option<&Saved>, restore: bool) -> bool {
         let ours = std::process::id() as i32;
         // SAFETY: signal 0 only checks the process exists.
-        let free = |s: &wire::ShellInfo| s.client.is_none_or(|p| p == ours || unsafe { libc::kill(p, 0) } != 0);
+        let moved = saved.filter(|s| s.moved).map(|s| s.windows.iter().flat_map(|w| w.tabs.iter().copied().chain([w.shell])).collect::<std::collections::HashSet<u64>>()).unwrap_or_default();
+        let free = |s: &wire::ShellInfo| moved.contains(&s.id) || s.client.is_none_or(|p| p == ours || unsafe { libc::kill(p, 0) } != 0);
         let free: Vec<&wire::ShellInfo> = shells.iter().filter(|s| free(s)).collect();
         let mut used = std::collections::HashSet::new();
         let mut any = false;
@@ -1001,7 +1007,8 @@ impl Terminal {
                 retitle(cx, id, t);
             }
         }
-        let rest: Vec<&wire::ShellInfo> = free.iter().filter(|s| !used.contains(&s.id)).copied().collect();
+        // (A window moved here brings its own shells, no others.)
+        let rest: Vec<&wire::ShellInfo> = if moved.is_empty() { free.iter().filter(|s| !used.contains(&s.id)).copied().collect() } else { Vec::new() };
         for shell in &rest {
             self.reopen(cx, vec![Start::Attach(shell.id)], Some(shell), None, 0, Default::default(), None);
         }
@@ -2168,6 +2175,9 @@ impl Terminal {
                     self.close_tab_requested(cx, window, shell, "the tab's menu ▸ Close Tab");
                 } else if let Some(shell) = c.strip_prefix("tab-detach:").and_then(|n| n.parse().ok()) {
                     self.detach(cx, window, shell, false);
+                } else if let Some((shell, to)) = c.strip_prefix("tab-screen:").and_then(|r| r.split_once(':')).and_then(|(n, to)| Some((n.parse::<u64>().ok()?, olo_ui::moving::screen_command(to)?)))
+                {
+                    self.tab_to_screen(cx, shell, to);
                 } else if let Some(shell) = c.strip_prefix(olo_kit_base::tracker::COMMAND).and_then(|n| n.strip_prefix(':')?.parse::<u64>().ok()) {
                     if let Some(tab) = t.position(shell).map(|i| &t.tabs[i]) {
                         open_in_tracker(tab);
@@ -2285,6 +2295,59 @@ impl Terminal {
         serde_json::to_string(&self.layout(cx)).ok()
     }
 
+    /// A tab to an agent screen (`screen`; None: a new one): a Terminal
+    /// there takes its shell (olo-termd detaching it here, so the tab goes
+    /// as it's taken, the shell running on), in a window of its own.
+    fn tab_to_screen(&mut self, cx: &mut Cx, shell: u64, screen: Option<String>) {
+        if std::env::var_os("OLO_SCREEN").is_some() && olo_kit_base::moving::home().is_none() {
+            return;
+        }
+        let layout = self.layout(cx);
+        let Some(w) = layout.windows.iter().find(|w| w.tabs.contains(&shell)) else { return };
+        let i = w.tabs.iter().position(|&s| s == shell).unwrap_or(0);
+        let one = SavedWindow {
+            key: new_window_key(),
+            shell,
+            tabs: vec![shell],
+            active: 0,
+            size: w.size,
+            group: None,
+            tiled: false,
+            tile_groups: Vec::new(),
+            tile_heights: Default::default(),
+            tile_widths: Default::default(),
+            cwds: vec![w.cwds.get(i).cloned().flatten()],
+            own_grouping: false,
+            groups: Vec::new(),
+            tab_groups: Vec::new(),
+            own: Vec::new(),
+            agent_titles: w.agent_titles.get(i).cloned().map(|t| vec![t]).unwrap_or_default(),
+            hidden_tiled: Vec::new(),
+        };
+        let state = serde_json::to_string(&Saved { windows: vec![one], moved: true }).ok();
+        olo_kit_base::moving::copy_to_screen(screen, Vec::new(), state, |_| {});
+    }
+
+    /// One window to another display (an agent screen's, or back): a
+    /// Terminal started there with that window's layout takes its shells
+    /// (olo-termd detaching them here, so each tab goes as it's taken, its
+    /// shell running on), from this display's olo-termd still
+    /// (`wire::display`).
+    pub(crate) fn move_window(&mut self, handle: olo_ui::gpui::AnyWindowHandle, cx: &mut Cx) -> Result<olo_ui::WindowMove, String> {
+        let id = ui::window_of(cx, handle).ok_or("it has no such window")?;
+        let key = match self.windows.get(&id) {
+            Some(Win::Term(t)) => t.key,
+            _ => return Err("only terminal windows move".into()),
+        };
+        let mut saved = self.layout(cx);
+        saved.windows.retain(|w| w.key == key);
+        if saved.windows.is_empty() {
+            return Err("its shells have all ended".into());
+        }
+        saved.moved = true;
+        Ok(olo_ui::WindowMove { args: Vec::new(), state: serde_json::to_string(&saved).ok(), gone: Box::new(|_| {}) })
+    }
+
     pub(crate) fn window_dropped(&mut self, cx: &mut Cx, window: WindowId, onto: WindowId, place: Option<usize>) {
         if let Some(place) = place {
             self.merge(cx, window, onto, place);
@@ -2328,7 +2391,7 @@ impl Terminal {
                 _ => None,
             })
             .collect();
-        Saved { windows }
+        Saved { windows, moved: false }
     }
 
     /// Keep the windows as they are on disk, so that the next Terminal
@@ -2605,6 +2668,14 @@ fn main() {
         olo_ui::message_handler(cx, move |message, cx| t.update(cx, |t, cx| t.message(cx, message)));
         let t = term.clone();
         olo_ui::on_upgrade(cx, move |cx| t.read(cx).save_state(cx));
+        let t = term.clone();
+        olo_ui::on_move_window(cx, move |handle, cx| t.update(cx, |t, cx| t.move_window(handle, cx)));
+        // Started on an agent screen, its shells are that screen's
+        // olo-termd's, which ends with it.
+        olo_ui::refuse_moves_while(cx, |_| {
+            (std::env::var_os("OLO_SCREEN").is_some() && olo_kit_base::moving::home().is_none())
+                .then(|| "Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep".to_owned())
+        });
         let t = term.downgrade();
         widgets::strip::on_window_dropped(cx, move |window, onto, place, cx| {
             let (Some(window), Some(onto)) = (ui::window_of(cx, window), ui::window_of(cx, onto)) else { return };

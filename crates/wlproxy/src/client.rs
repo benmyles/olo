@@ -196,6 +196,12 @@ pub struct Client {
     old_server: i32,
     pub down_since: Option<Instant>,
     pub last_try: Option<Instant>,
+    /// Moved to another app_server (an agent screen's, or from one to the
+    /// person's): its socket for proxied programs. None: the proxy's own.
+    pub away: Option<std::path::PathBuf>,
+    /// Since when that app_server's socket has had no one listening (its
+    /// session gone), while waiting for it.
+    pub away_gone: Option<Instant>,
     /// app_server sent a protocol error: the connection ends for good.
     errored: bool,
     objs: HashMap<u32, Obj>,
@@ -252,6 +258,8 @@ impl Client {
             old_server: 0,
             down_since: Some(Instant::now()),
             last_try: None,
+            away: None,
+            away_gone: None,
             errored: false,
             objs,
             seq: 1,
@@ -288,6 +296,32 @@ impl Client {
 
     pub fn waiting(&self) -> usize {
         self.queue.len()
+    }
+
+    /// Take the program to another app_server (`to`: its socket for
+    /// proxied programs; None, the proxy's own): this one is let go as if
+    /// it had restarted (the program is told what a restart ends), and
+    /// everything is replayed on that one, as after a restart. Refused
+    /// while a replay is under way.
+    pub fn move_to(&mut self, to: Option<std::path::PathBuf>) -> Res {
+        if !matches!(self.phase, Phase::Live | Phase::Down) {
+            return Err("it is being replayed; try again in a moment".into());
+        }
+        if self.errored {
+            return Err("its connection is ending".into());
+        }
+        if self.away == to {
+            return Ok(());
+        }
+        self.away = to;
+        self.away_gone = None;
+        if self.phase == Phase::Live {
+            self.lost();
+        }
+        // (At once, not after the usual pause.)
+        self.last_try = None;
+        self.down_since = Some(Instant::now());
+        Ok(())
     }
 
     // ---- from the program -------------------------------------------------

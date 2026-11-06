@@ -822,6 +822,12 @@ pub fn stay_resident(cx: &mut App) {
     cx.set_global(Resident);
 }
 
+/// The app runs with no windows open (`stay_resident`): a service of the
+/// display it's on, which a move leaves there.
+pub(crate) fn resident(cx: &App) -> bool {
+    cx.has_global::<Resident>()
+}
+
 /// Runs the app: its theme, its socket for agents, and `build`, which
 /// opens its windows. It ends when its last window closes.
 pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
@@ -834,6 +840,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut App) + 'static) {
     // The state an upgrade handed over, its file gone whether or not the
     // app asks for it.
     olo_kit_base::restore::claim();
+    olo_kit_base::moving::claim();
     crate::upgrade::claim();
     // Olo's own crates keep their info (what is rare and worth knowing
     // after: a chat list loaded, sudo approved without asking),
