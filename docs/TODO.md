@@ -1381,7 +1381,16 @@ people.
   virtual display to test with: `sudo modprobe vkms enable_cursor=1
   enable_overlay=1` (in this kernel, not loaded; root needed), kept off
   his session's seat by a udev rule (`ID_SEAT`), so a test app_server
-  could drive planes and vblank without his screen.
+  could drive planes and vblank without his screen. The other "Next",
+  the cost of a frame with something changing every frame (a call),
+  looked at headless too (2026-11-06): app_server 6.7% of a core at 60
+  frames a second on Ben's panel (about 1.1 ms of processor a frame,
+  read-only `tools/dev/cost`), 3.3% headless with a Terminal printing
+  nonstop at 2560 × 1600; a profile of that spreads it thinly over
+  Smithay's per-frame bookkeeping (nothing above 16% of 31 ms a
+  second, `popups_for_surface` 0.6%): no low-hanging fruit, so, as Ben
+  asked, nothing changed for its own sake. The main loop's holds are
+  the other item's (below).
 
 - **app_server's critical path on threads of its own** (Ben,
   2026-11-01: "why run the risk of a blocking call? threads would
