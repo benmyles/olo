@@ -360,6 +360,9 @@ pub struct Doc {
     pub generation: u64,
     /// The generation that was last saved or loaded.
     pub saved_generation: u64,
+    /// Each change to the text since last taken, where its lines are
+    /// (for source code's syntax: `take_edits`); None: not kept.
+    edits: Option<Vec<olo_ui::code::Edit>>,
 }
 
 /// What each printed page shows above and below its text: left, centre
@@ -454,6 +457,7 @@ impl Doc {
             last_edit: None,
             generation: 1,
             saved_generation: 1,
+            edits: None,
         };
         d.index_runs();
         d.index_paras();
@@ -469,6 +473,39 @@ impl Doc {
 
     pub fn paras(&self) -> &[Para] {
         &self.paras
+    }
+
+    /// Whether it's plain text: no styles, paragraph settings or
+    /// alignment of its own (nothing lost shown as code or Markdown).
+    pub fn is_plain(&self) -> bool {
+        self.runs.iter().all(|r| r.style == Style::default()) && self.paras.iter().all(|p| *p == Para::default()) && self.align == Align::Left
+    }
+
+    /// Keep each change to the text, for [`take_edits`](Self::take_edits)
+    /// (source code's syntax follows them), or stop.
+    pub fn keep_edits(&mut self, on: bool) {
+        self.edits = on.then(Vec::new);
+    }
+
+    /// The changes to the text since last taken, in order.
+    pub fn take_edits(&mut self) -> Vec<olo_ui::code::Edit> {
+        self.edits.as_mut().map(std::mem::take).unwrap_or_default()
+    }
+
+    /// Bytes `removed` are about to become `inserted`: kept, if changes
+    /// are, with where they are in lines (from the paragraphs' starts).
+    fn note_edit(&mut self, removed: &Range<usize>, inserted: &str) {
+        if self.edits.is_none() {
+            return;
+        }
+        let place = |at: usize| {
+            let i = self.para_index(at);
+            (i, at - self.para_starts[i])
+        };
+        let e = olo_ui::code::Edit::new(removed.clone(), inserted, place(removed.start), place(removed.end));
+        if let Some(v) = self.edits.as_mut() {
+            v.push(e);
+        }
     }
 
     /// The paragraph holding byte `at` (a newline belongs to the one it
@@ -526,7 +563,7 @@ impl Doc {
                 left: p.level as f32 * INDENT,
                 align: halign,
                 justify: Some(a == Align::Justify),
-                row: Some(editor::Row { columns: r.columns.clone(), header: r.header }),
+                row: Some(editor::Row { columns: r.columns.clone(), header: r.header, cells: None }),
                 ..Default::default()
             };
         }
@@ -543,6 +580,7 @@ impl Doc {
             tabs: p.tab_stops(),
             // (Its pictures' images are the window's: `Styled::paragraph`.)
             pictures: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -672,6 +710,8 @@ impl Doc {
     /// the pending typing style, the style of what it replaces, or the
     /// style of the character before it.
     fn splice(&mut self, removed: Range<usize>, inserted: &str) {
+        // (Where its lines were, before they move.)
+        self.note_edit(&removed, inserted);
         let p = removed.start;
         let added = match &self.clip {
             Some((text, runs)) if text == inserted => runs.clone(),
@@ -745,7 +785,10 @@ impl Doc {
 
     /// Before bytes `removed` become `inserted` bytes: a step to undo it.
     fn push_undo(&mut self, removed: Range<usize>, inserted: usize, selection: Range<usize>) {
-        self.undo.push(State { at: removed.start, now: inserted, was: self.text[removed].to_owned(), runs: self.runs.clone(), paras: self.paras.clone(), selection });
+        // (Text alone, source code's or Markdown's, has no paragraph
+        // settings to keep: a long one's aren't copied for each step.)
+        let paras = if self.edits.is_some() { Vec::new() } else { self.paras.clone() };
+        self.undo.push(State { at: removed.start, now: inserted, was: self.text[removed].to_owned(), runs: self.runs.clone(), paras, selection });
         // Plenty, without keeping every keystroke of a long session.
         if self.undo.len() > 500 {
             self.undo.remove(0);
@@ -844,16 +887,23 @@ impl Doc {
     /// Put `s` back, keeping what it replaces on the other stack.
     fn restore(&mut self, s: State, selection: Range<usize>, redoing: bool) -> (Range<usize>, Change) {
         let removed = s.at..s.at + s.now;
+        let text_only = self.edits.is_some() && s.paras.is_empty();
         let back = State {
             at: s.at,
             now: s.was.len(),
             was: self.text[removed.clone()].to_owned(),
             runs: std::mem::replace(&mut self.runs, s.runs),
-            paras: std::mem::replace(&mut self.paras, s.paras),
+            paras: if text_only { Vec::new() } else { std::mem::replace(&mut self.paras, s.paras) },
             selection,
         };
+        self.note_edit(&removed, &s.was);
         self.text.replace_range(removed.clone(), &s.was);
         self.index_runs();
+        if text_only {
+            // One plain paragraph a line, as many as there are now.
+            let n = self.text.bytes().filter(|&b| b == b'\n').count() + 1;
+            self.paras.resize(n, Para::default());
+        }
         self.index_paras();
         if redoing {
             self.undo.push(back)
@@ -976,6 +1026,8 @@ fn span(len: usize, s: &Style, font: &mut dyn FnMut(&Style) -> Font) -> Span {
         underline: s.underline,
         strike: s.strikeout,
         picture: None,
+        hidden: false,
+        background: None,
     }
 }
 
@@ -1412,5 +1464,34 @@ mod tests {
         let other = Doc::with_paras("one\ntwo\nthree".into(), None, Some(d.paras().to_vec()));
         assert!(other.paras().iter().all(|p| *p == Para::default()));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod timing {
+    use super::*;
+
+    #[test]
+    fn typing_in_a_long_document_is_quick() {
+        let line = "    let x = foo(bar, baz); // a comment that goes on\n";
+        let text = line.repeat(100_000);
+        let mut d = Doc::new(text, None);
+        d.keep_edits(true);
+        let mid = d.text().len() / 2;
+        let t = std::time::Instant::now();
+        d.edit(mid..mid, "a", mid..mid);
+        let first = t.elapsed();
+        let t = std::time::Instant::now();
+        d.edit(mid + 1..mid + 1, "b", mid + 1..mid + 1);
+        let next = t.elapsed();
+        eprintln!("first key {first:?}, next {next:?}");
+        // Undone and done again, text alone.
+        d.edit(mid..mid, "line\nbreak\n", mid..mid);
+        let n = d.paras().len();
+        d.undo(mid..mid);
+        assert_eq!(d.paras().len(), n - 2);
+        d.redo(mid..mid);
+        assert_eq!(d.paras().len(), n);
+        assert!(d.text().contains("line\nbreak\n"));
     }
 }

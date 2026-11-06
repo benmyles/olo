@@ -4,10 +4,16 @@
 //! Replace windows as in Haiku; unsaved work survives a reload. On Olo's
 //! GPUI: the document in the kit's editor (`olo_ui::editor`), its
 //! paragraphs' indents and tabs on the kit's ruler.
+//!
+//! A file's kind sets how it's shown ([`Mode`]): source code (by its name
+//! or `#!` line) in the kit's code view (`olo_ui::code`: coloured by its
+//! language, line numbers), Markdown as it looks or as its source
+//! (markdown.rs), anything else as a styled document.
 
 mod convert;
 mod doc;
 mod fonts;
+mod markdown;
 mod pages;
 mod pictures;
 mod table;
@@ -22,6 +28,7 @@ use std::{
 use doc::{Align, Change, Doc, Run, Style};
 use olo_ui::{
     Frame, Menu, MenuBar, MenuItem, WindowOptions,
+    code::{self, Code},
     editor::{self, EditKey, Editor, EditorHost},
     file_panel::{FilePanel, Filter, PanelResult},
     gpui::{
@@ -87,6 +94,134 @@ enum After {
 /// Words in the selection (if any) and in the whole document.
 type Words = (Option<usize>, usize);
 
+/// How a document is shown and edited (Ben, 2026-11-05: "when opening a
+/// markdown file StyledEdit should natively support the Markdown … and
+/// in source mode it should be like a code editor").
+enum Mode {
+    /// A styled document: its styles its own, kept beside the file.
+    Styled,
+    /// Source code: the file's own text in the monospaced face, coloured
+    /// by its language, with line numbers; `indent` is what Tab types.
+    Code { code: Code, indent: String },
+    /// Markdown: the file's own text as it looks, or as its source.
+    Markdown(markdown::Look),
+}
+
+impl Mode {
+    /// How a file opens: Markdown by its name, code by its name or `#!`
+    /// line, otherwise (and whenever it has styles of its own) styled.
+    fn for_file(path: &Path, text: &str, styled: bool) -> Mode {
+        if styled {
+            return Mode::Styled;
+        }
+        if markdown::is_markdown(path) {
+            return Mode::Markdown(markdown::Look::new(false));
+        }
+        match code::detect(path, text.lines().next().unwrap_or("")) {
+            Some(lang) => Mode::code(lang, text),
+            None => Mode::Styled,
+        }
+    }
+
+    fn code(lang: &'static code::Language, text: &str) -> Mode {
+        Mode::Code { code: Code::new(lang, markdown::CODE), indent: indent_unit(text) }
+    }
+
+    fn is_styled(&self) -> bool {
+        matches!(self, Mode::Styled)
+    }
+
+    /// Shown as code: source code, or Markdown as its source.
+    fn is_source(&self) -> bool {
+        match self {
+            Mode::Styled => false,
+            Mode::Code { .. } => true,
+            Mode::Markdown(l) => l.source,
+        }
+    }
+
+    /// What it's saved as across a reload ([`Mode::named`]).
+    fn id(&self) -> String {
+        match self {
+            Mode::Styled => "styled".into(),
+            Mode::Markdown(l) => if l.source { "markdown-source" } else { "markdown" }.into(),
+            Mode::Code { code, .. } => code.language().id.into(),
+        }
+    }
+
+    /// The mode saved as `id`, for `text`.
+    fn named(id: &str, text: &str) -> Option<Mode> {
+        Some(match id {
+            "styled" => Mode::Styled,
+            "markdown" => Mode::Markdown(markdown::Look::new(false)),
+            "markdown-source" => Mode::Markdown(markdown::Look::new(true)),
+            id => Mode::code(code::by_name(id)?, text),
+        })
+    }
+
+    /// What the status line says it is.
+    fn name(&self) -> Option<&'static str> {
+        match self {
+            Mode::Styled => None,
+            Mode::Code { code, .. } => Some(code.language().name),
+            Mode::Markdown(l) => Some(if l.source { "Markdown Source" } else { "Markdown" }),
+        }
+    }
+}
+
+/// What Tab types in source code: a tab if its lines are indented with
+/// them, else as many spaces as its indents step by (two or four).
+fn indent_unit(text: &str) -> String {
+    let (mut tabs, mut spaces, mut twos) = (0, 0, 0);
+    for line in text.lines().take(2000) {
+        if line.starts_with('\t') {
+            tabs += 1;
+        } else if line.starts_with(' ') {
+            spaces += 1;
+            let n = line.len() - line.trim_start_matches(' ').len();
+            if n % 4 == 2 {
+                twos += 1;
+            }
+        }
+    }
+    if tabs > spaces {
+        "\t".into()
+    } else if spaces > 0 && twos * 5 > spaces {
+        "  ".into()
+    } else {
+        "    ".into()
+    }
+}
+
+/// A picture's file from what a Markdown document names (`![](file)`):
+/// from its folder when relative, `%20` and the like decoded. None: on
+/// the web (not fetched).
+fn markdown_picture(src: &str, folder: Option<&Path>) -> Option<PathBuf> {
+    if src.contains("://") && !src.starts_with("file://") {
+        return None;
+    }
+    let src = src.strip_prefix("file://").unwrap_or(src);
+    let mut bytes = Vec::with_capacity(src.len());
+    let b = src.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && let Some(v) = src.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok())
+        {
+            bytes.push(v);
+            i += 3;
+            continue;
+        }
+        bytes.push(b[i]);
+        i += 1;
+    }
+    let p = PathBuf::from(String::from_utf8(bytes).ok()?);
+    Some(match folder {
+        Some(f) if p.is_relative() => f.join(p),
+        _ => p,
+    })
+}
+
 /// A document's window.
 struct DocView {
     app: WeakEntity<StyledEdit>,
@@ -131,6 +266,10 @@ struct DocView {
     common: Rc<RefCell<Common>>,
     /// A picture pasted (its bytes), to put in once kept.
     pasted: Option<Vec<u8>>,
+    /// Styled, source code or Markdown.
+    mode: Mode,
+    /// Source shows line numbers (Document ▸ Line Numbers).
+    line_numbers: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -144,6 +283,26 @@ struct Styled<'a> {
     folder: Option<&'a Path>,
     pasted: &'a mut Option<Vec<u8>>,
     editable: bool,
+    mode: &'a mut Mode,
+    palette: &'a olo_theme::Palette,
+    /// The text's width, for a Markdown picture's.
+    width: f32,
+}
+
+impl Styled<'_> {
+    /// Source code's syntax (a Markdown document's lines) told of the
+    /// text's changes.
+    fn sync(&mut self) {
+        sync_mode(self.mode, self.doc);
+    }
+
+    /// A Markdown picture's size, if it's loaded (fit to the text).
+    fn picture_size(pictures: &RefCell<pictures::Pictures>, folder: Option<&Path>, width: f32, src: &str) -> Option<(f32, f32)> {
+        let path = markdown_picture(src, folder)?;
+        let img = pictures.borrow_mut().image(&path)?;
+        let s = img.size(0);
+        Some(pictures::fit((s.width.0.max(1) as u32, s.height.0.max(1) as u32), width.max(40.0), 600.0))
+    }
 }
 
 impl editor::Document for Styled<'_> {
@@ -152,10 +311,33 @@ impl editor::Document for Styled<'_> {
     }
 
     fn spans(&mut self, range: Range<usize>, out: &mut Vec<editor::Span>) {
-        self.doc.spans(range, &mut fonts::font, out);
+        self.sync();
+        let (pictures, folder, width) = (self.pictures, self.folder, self.width);
+        match &mut *self.mode {
+            Mode::Styled => self.doc.spans(range, &mut fonts::font, out),
+            Mode::Code { code, .. } => code.spans(self.doc.text(), range, self.palette, out),
+            Mode::Markdown(look) => {
+                look.sync(self.doc.text(), self.doc.generation);
+                look.spans(self.doc.text(), range, self.palette, &mut |src| Styled::picture_size(pictures, folder, width, src), out);
+            }
+        }
     }
 
     fn paragraph(&mut self, range: Range<usize>) -> editor::Paragraph {
+        self.sync();
+        let (pictures, folder, width) = (self.pictures, self.folder, self.width);
+        match &mut *self.mode {
+            Mode::Styled => {}
+            Mode::Code { .. } => return editor::Paragraph::default(),
+            Mode::Markdown(look) => {
+                look.sync(self.doc.text(), self.doc.generation);
+                return look.paragraph(range, self.palette, &mut |src| {
+                    let size = Styled::picture_size(pictures, folder, width, src)?;
+                    let image = pictures.borrow_mut().image(&markdown_picture(src, folder)?);
+                    Some(editor::Picture { image, size })
+                });
+            }
+        }
         let mut f = self.doc.format(self.doc.para_index(range.start), self.doc.align);
         for (at, pic) in self.doc.pictures_in(range) {
             let image = self.pictures.borrow_mut().image(&pic.resolve(self.folder));
@@ -166,6 +348,7 @@ impl editor::Document for Styled<'_> {
 
     fn replace(&mut self, range: Range<usize>, text: &str, selection: Range<usize>) {
         self.doc.edit(range, text, selection);
+        self.sync();
     }
 
     fn copied(&mut self, range: Range<usize>) {
@@ -177,10 +360,58 @@ impl editor::Document for Styled<'_> {
     }
 
     fn move_text(&mut self, from: Range<usize>, to: usize, selection: Range<usize>) -> Range<usize> {
-        self.doc.move_text(from, to, selection)
+        let r = self.doc.move_text(from, to, selection);
+        self.sync();
+        r
+    }
+
+    /// Markdown's Return goes on with the list or quotation it's in;
+    /// source code's keeps the line's indent, and its Tab types the
+    /// file's own indent (⇧Tab takes one away).
+    fn types(&mut self, key: EditKey, sel: Range<usize>) -> Option<(Range<usize>, String, usize)> {
+        if !self.editable {
+            return None;
+        }
+        let text = self.doc.text();
+        match (&mut *self.mode, key) {
+            (Mode::Markdown(look), EditKey::Enter) => {
+                look.sync(text, self.doc.generation);
+                look.newline(text, sel)
+            }
+            (Mode::Code { .. }, EditKey::Enter) => {
+                let start = text[..sel.start].rfind('\n').map_or(0, |i| i + 1);
+                let indent: String = text[start..sel.start].chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+                let typed = format!("\n{indent}");
+                let n = typed.len();
+                (!indent.is_empty()).then_some((sel, typed, n))
+            }
+            (Mode::Code { indent, .. }, EditKey::Tab) if sel.is_empty() && indent.as_str() != "\t" => {
+                // To the next indent stop.
+                let start = text[..sel.start].rfind('\n').map_or(0, |i| i + 1);
+                let col = text[start..sel.start].chars().count();
+                let n = indent.len() - col % indent.len();
+                Some((sel, " ".repeat(n), n))
+            }
+            (Mode::Code { indent, .. }, EditKey::BackTab) if sel.is_empty() => {
+                let start = text[..sel.start].rfind('\n').map_or(0, |i| i + 1);
+                let line = &text[start..sel.start];
+                let take = if line.starts_with('\t') { 1 } else { line.len() - line.trim_start_matches(' ').len().min(line.len()) };
+                let take = take.min(if indent.as_str() == "\t" { 1 } else { indent.len() });
+                (take > 0).then(|| {
+                    let rest = line[take..].to_owned();
+                    let n = rest.len();
+                    (start..sel.start, rest, n)
+                })
+            }
+            _ => None,
+        }
     }
 
     fn paste(&mut self, item: &ClipboardItem, _: Range<usize>) -> Option<String> {
+        // Source code and Markdown take text alone.
+        if !self.mode.is_styled() {
+            return item.text();
+        }
         // A picture on the clipboard goes in as one; else its text.
         for e in item.entries() {
             match e {
@@ -202,7 +433,7 @@ impl editor::Document for Styled<'_> {
     /// ends the list (or steps out a level), Tab and ⇧Tab indent it more
     /// or less, Backspace at its start takes its marker away.
     fn key(&mut self, key: EditKey, sel: Range<usize>) -> bool {
-        if !self.editable {
+        if !self.editable || !self.mode.is_styled() {
             return false;
         }
         let i = self.doc.para_index(sel.start);
@@ -231,8 +462,11 @@ impl EditorHost for DocView {
     fn editor(&mut self, _: usize, cx: &mut Context<Self>, f: &mut dyn FnMut(&mut Editor, &mut dyn editor::Document, &mut Context<Self>)) {
         let editable = !self.read_only && !self.loading;
         let folder = self.path.as_deref().and_then(Path::parent);
-        let mut styled = Styled { doc: &mut self.doc, pictures: &self.pictures, folder, pasted: &mut self.pasted, editable };
+        let palette = theme::palette(cx);
+        let width = self.editor.text_span().map_or(400.0, |s| s.1);
+        let mut styled = Styled { doc: &mut self.doc, pictures: &self.pictures, folder, pasted: &mut self.pasted, editable, mode: &mut self.mode, palette: &palette, width };
         f(&mut self.editor, &mut styled, cx);
+        styled.sync();
     }
 
     fn text_moved(&mut self, _: usize, (origin, width): (f32, f32), cx: &mut Context<Self>) {
@@ -331,6 +565,8 @@ impl DocView {
             pictures,
             common,
             pasted: None,
+            mode: Mode::Styled,
+            line_numbers: true,
             _subs: vec![sub],
         }
     }
@@ -407,17 +643,121 @@ impl DocView {
     /// The document changed under the editor (undo, Replace): show it,
     /// selecting `select`.
     fn changed(&mut self, change: Change, select: Range<usize>) {
+        self.sync_code();
         self.editor.replaced(self.doc.text(), change.removed, change.inserted);
         self.editor.select(self.doc.text(), select);
+    }
+
+    /// Source code's syntax told of the text's changes (undo, Replace).
+    fn sync_code(&mut self) {
+        sync_mode(&mut self.mode, &mut self.doc);
+    }
+
+    /// Shown as `mode` from now (the text the same, its place kept).
+    fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+        self.doc.keep_edits(!self.mode.is_styled());
+        if let Mode::Code { code, .. } = &mut self.mode {
+            code.reset();
+        }
+        self.editor.relayout();
     }
 
     /// A new document (loaded, restored), selecting `select`.
     fn reset(&mut self, doc: Doc, select: Range<usize>) {
         self.doc = doc;
+        self.doc.keep_edits(!self.mode.is_styled());
+        if let Mode::Code { code, .. } = &mut self.mode {
+            code.reset();
+        }
         // (Its generations start again: the count kept was the old one's.)
         self.words = None;
         self.editor.reset(self.doc.text());
         self.editor.select(self.doc.text(), select);
+    }
+
+    /// Document ▸ Language: shown as styled text, Markdown, or source code
+    /// in language `id`.
+    fn choose_language(&mut self, id: &str) {
+        let mode = match id {
+            "styled" => Mode::Styled,
+            "markdown" => Mode::Markdown(markdown::Look::new(false)),
+            id => match code::by_name(id) {
+                Some(lang) => Mode::code(lang, self.doc.text()),
+                None => return,
+            },
+        };
+        // (Styles would be lost: a styled document with its own stays.)
+        if self.mode.is_styled() && !matches!(mode, Mode::Styled) && !self.doc.is_plain() {
+            return;
+        }
+        self.set_mode(mode);
+    }
+
+    /// A Markdown document's own commands: styles and paragraphs made with
+    /// its marks. Whether `command` was one.
+    fn markdown_command(&mut self, command: &str) -> bool {
+        if self.read_only || self.loading {
+            return false;
+        }
+        use markdown::Make;
+        match command {
+            "bold" => self.md_wrap("**"),
+            "italic" => self.md_wrap("*"),
+            "strikeout" => self.md_wrap("~~"),
+            "md:code" => self.md_wrap("`"),
+            "md:link" => {
+                // [the selection](), the caret where the address goes.
+                let sel = self.bytes();
+                let typed = format!("[{}]()", &self.doc.text()[sel.clone()]);
+                let at = sel.start + typed.len() - 1;
+                let change = self.doc.replace(sel.clone(), &typed, sel);
+                self.changed(change, at..at);
+            }
+            "md:body" => self.md_lines(Make::Body),
+            "md:quote" => self.md_lines(Make::Quote),
+            "list-bullet" => self.md_lines(Make::Bullets),
+            "list-number" => self.md_lines(Make::Numbers),
+            "md:tasks" => self.md_lines(Make::Tasks),
+            c => match c.strip_prefix("md:heading-").and_then(|n| n.parse::<u8>().ok()) {
+                Some(n) => self.md_lines(Make::Heading(n)),
+                None => return false,
+            },
+        }
+        true
+    }
+
+    /// The selection between `mark`s (`**` bold): taken away if it's
+    /// already between them.
+    fn md_wrap(&mut self, mark: &str) {
+        let sel = self.bytes();
+        let text = self.doc.text();
+        let m = mark.len();
+        let around = sel.start >= m && text.get(sel.start - m..sel.start) == Some(mark) && text.get(sel.end..sel.end + m) == Some(mark);
+        if around {
+            if let Some(change) = self.doc.replace_all(&[sel.start - m..sel.start, sel.end..sel.end + m], "", sel.clone()) {
+                self.changed(change, sel.start - m..sel.end - m);
+            }
+        } else {
+            let typed = format!("{mark}{}{mark}", &text[sel.clone()]);
+            let change = self.doc.replace(sel.clone(), &typed, sel.clone());
+            self.changed(change, sel.start + m..sel.end + m);
+        }
+    }
+
+    /// The selection's lines made `make` (a heading, a list), as one step.
+    fn md_lines(&mut self, make: markdown::Make) {
+        let sel = self.bytes();
+        let r = self.doc.paras_in(sel.clone());
+        let whole = self.doc.para_range(r.start).start..self.doc.para_range(r.end - 1).end;
+        let was = &self.doc.text()[whole.clone()];
+        let made = markdown::make_lines(was, make);
+        if made == was {
+            return;
+        }
+        let change = self.doc.replace(whole.clone(), &made, sel.clone());
+        let to = if sel.is_empty() { whole.start + made.len()..whole.start + made.len() } else { whole.start..whole.start + made.len() };
+        self.changed(change, to);
     }
 
     /// Select bytes `r` of the text.
@@ -449,11 +789,42 @@ impl DocView {
         if self.latin1 {
             info.push_str("   Latin-1 (saved as UTF-8)");
         }
+        if let Some(name) = self.mode.name() {
+            info.push_str("   ");
+            info.push_str(name);
+        }
         info
     }
 
     /// A command about the document itself (its styles, layout, undo).
     fn command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+        match command {
+            "source" => {
+                if let Mode::Markdown(look) = &mut self.mode {
+                    look.source = !look.source;
+                    self.editor.relayout();
+                }
+                return cx.notify();
+            }
+            "line-numbers" => {
+                self.line_numbers = !self.line_numbers;
+                return cx.notify();
+            }
+            c if c.starts_with("language:") => {
+                self.choose_language(&c["language:".len()..]);
+                return cx.notify();
+            }
+            _ => {}
+        }
+        if matches!(self.mode, Mode::Markdown(_)) && self.markdown_command(command) {
+            return cx.notify();
+        }
+        // (Styles are a styled document's alone.)
+        let style_command = ["bold", "italic", "underline", "strikeout", "indent-more", "indent-less", "list-bullet", "list-number"].contains(&command)
+            || ["align-", "kind:", "size:", "color:", "family:", "table:", "picture:"].iter().any(|p| command.starts_with(p));
+        if !self.mode.is_styled() && style_command {
+            return;
+        }
         let selection = self.bytes();
         let bytes = selection.clone();
         let restyle = |d: &mut DocView, f: &dyn Fn(&mut Style)| {
@@ -892,21 +1263,111 @@ fn doc_menus(app: &Common, d: &DocView, ink: gpui::Hsla) -> Vec<Menu> {
         .separator()
         .item("Even Columns", "table:even")
         .enabled(t);
-    let document = Menu::new("Document")
+    let styled = d.mode.is_styled();
+    let source = d.mode.is_source();
+    let mut document = Menu::new("Document");
+    if let Mode::Markdown(look) = &d.mode {
+        document = document.item("Show Source", "source").key("/").checked(look.source).separator();
+    }
+    document = document
         .item("Wrap Lines", "wrap")
         .checked(d.doc.wrap)
+        .item("Line Numbers", "line-numbers")
+        .checked(source && d.line_numbers)
+        .enabled(source)
         .item("Show Ruler", "ruler")
-        .checked(d.ruler && d.doc.wrap)
-        .enabled(d.doc.wrap)
+        .checked(d.ruler && d.doc.wrap && styled)
+        .enabled(d.doc.wrap && styled)
         .item("Page View", "page-view")
-        .checked(d.page_view)
+        .checked(d.page_view && !source)
+        .enabled(!source)
         .item("Show Toolbars", "tool-bars")
-        .checked(d.tool_bars)
+        .checked(d.tool_bars && styled)
+        .enabled(styled)
+        .separator()
+        .submenu(language_menu(d))
         .separator()
         .item("Header & Footer…", "margins");
+    // Markdown's own Paragraph menu: what its lines' marks make them.
+    if matches!(d.mode, Mode::Markdown(_)) {
+        let font = Menu::new("Font")
+            .item("Bold", "bold")
+            .key("b")
+            .item("Italic", "italic")
+            .key("i")
+            .item("Strikeout", "strikeout")
+            .item("Code", "md:code")
+            .key("e")
+            .separator()
+            .item("Link", "md:link")
+            .key("k");
+        let mut kinds = Menu::new("Paragraph").item("Body", "md:body");
+        for n in 1..=6u8 {
+            kinds = kinds.item(format!("Heading {n}"), format!("md:heading-{n}"));
+        }
+        let paragraph = kinds.separator().item("Quote", "md:quote").separator().item("Bulleted List", "list-bullet").item("Numbered List", "list-number").item("Task List", "md:tasks");
+        return vec![file, edit, all_enabled(font, editable), all_enabled(paragraph, editable), all_enabled(document, editable)];
+    }
+    if !styled {
+        return vec![file, edit, all_enabled(document, editable)];
+    }
     // Styles and layout are saved with the file, so a read-only one
     // keeps its own (as Haiku's StyledEdit has it).
     vec![file, edit, all_enabled(font, editable), all_enabled(paragraph, editable), all_enabled(tables, editable), all_enabled(document, editable)]
+}
+
+/// Document ▸ Language: what the text is shown as (styled, Markdown, or
+/// source code in a language). A document with styles of its own stays
+/// styled (they'd be lost).
+fn language_menu(d: &DocView) -> Menu {
+    let plain = !d.mode.is_styled() || d.doc.is_plain();
+    let current = match &d.mode {
+        Mode::Styled => "styled",
+        Mode::Markdown(_) => "markdown",
+        Mode::Code { code, .. } => code.language().id,
+    };
+    let mut menu =
+        Menu::new("Language").item("Styled Text", "language:styled").checked(current == "styled").item("Markdown", "language:markdown").checked(current == "markdown").enabled(plain).separator();
+    for l in &code::syntax::LANGUAGES {
+        menu = menu.item(l.name, format!("language:{}", l.id)).checked(current == l.id).enabled(plain);
+    }
+    menu
+}
+
+/// The text's changes since, given to what follows them: source code's
+/// syntax, a big Markdown document's lines.
+fn sync_mode(mode: &mut Mode, doc: &mut Doc) {
+    match mode {
+        Mode::Code { code, .. } => {
+            for e in doc.take_edits() {
+                code.edit(&e);
+            }
+        }
+        Mode::Markdown(look) => {
+            for e in doc.take_edits() {
+                look.edited(e.removed(), e.inserted().len());
+            }
+        }
+        Mode::Styled => {}
+    }
+}
+
+/// A Markdown document's look, editor, text and generation (for
+/// `markdown::parse` to find them again).
+fn markdown_of(d: &mut DocView) -> Option<(&mut markdown::Look, &mut Editor, &str, u64)> {
+    match &mut d.mode {
+        Mode::Markdown(look) => Some((look, &mut d.editor, d.doc.text(), d.doc.generation)),
+        _ => None,
+    }
+}
+
+/// A document's source code and text, if it's source code (for
+/// `code::parse` to find them again).
+fn code_of(d: &mut DocView) -> Option<(&mut Code, &str)> {
+    match &mut d.mode {
+        Mode::Code { code, .. } => Some((code, d.doc.text())),
+        _ => None,
+    }
 }
 
 /// `menu` with every item (and its submenus') enabled only if `on`.
@@ -937,26 +1398,44 @@ impl Render for DocView {
                 app.update(cx, |a, cx| a.doc_command(&doc, cmd, window, cx));
             }
         };
-        let bars = self.tool_bars.then(|| tool_bars(&me, self, &menus, ink, on_command.clone()));
+        let styled = self.mode.is_styled();
+        let source = self.mode.is_source();
+        // (Styles are a styled document's: its tool bars and ruler too.)
+        let bars = (self.tool_bars && styled).then(|| tool_bars(&me, self, &menus, ink, on_command.clone()));
         let bar = MenuBar::new(menus, on_command);
         let editable = !self.read_only && !self.loading;
+        // Markdown: the lines the selection is on show their marks.
+        if let Mode::Markdown(look) = &mut self.mode {
+            look.set_reveal(self.editor.selection());
+        }
+        // Source code (a big Markdown document): parsed on a worker as it
+        // changes.
+        match &mut self.mode {
+            Mode::Code { code, .. } => code::parse(cx, code, self.doc.text(), code_of),
+            Mode::Markdown(look) => {
+                look.sync(self.doc.text(), self.doc.generation);
+                markdown::parse(cx, look, self.doc.text(), self.doc.generation, markdown_of);
+            }
+            Mode::Styled => {}
+        }
         let options = editor::Options {
             editable,
             wrap: self.doc.wrap,
-            align: self.doc.align.to_kit(),
-            justify: self.doc.align == Align::Justify,
+            align: if styled { self.doc.align.to_kit() } else { editor::Align::Left },
+            justify: styled && self.doc.align == Align::Justify,
             margin: (m::TEXT_INSET, 4.0),
             background: Some(p.document_background),
-            spelling,
+            spelling: spelling && !source,
             // On the paper it prints on, with the margins it prints with.
-            pages: (self.page_view && self.doc.wrap).then(|| {
+            pages: (self.page_view && self.doc.wrap && !source).then(|| {
                 let paper = olo_print::local_paper();
                 editor::Pages { paper: (paper.width, paper.height), margin: pages::MARGIN, gap: PAGE_GAP }
             }),
+            line_numbers: (source && self.line_numbers).then_some(markdown::CODE * 0.9),
         };
         // The ruler, over the text (when it wraps: the text is then the
         // view's width), showing the caret's paragraph's indents and tabs.
-        let show_ruler = self.ruler && self.doc.wrap;
+        let show_ruler = self.ruler && self.doc.wrap && styled;
         if show_ruler {
             // (Where the text was last drawn; drawn again when it moves.)
             let (origin, width) = self.editor.text_span().unwrap_or((m::TEXT_INSET, 400.0));
@@ -1158,6 +1637,11 @@ struct SavedDoc {
     page_view: bool,
     #[serde(default = "shown")]
     tool_bars: bool,
+    /// How it showed (`Mode::id`): None, as its kind has it.
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default = "shown")]
+    line_numbers: bool,
 }
 
 fn shown() -> bool {
@@ -1470,8 +1954,17 @@ impl StyledEdit {
             doc.update(cx, |d, _| d.after_save = after);
             return self.open_panel(Some(doc.clone()), Purpose::SaveAs, cx);
         };
-        let (text, runs, paras, align, wrap, page, generation) =
-            (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.doc.wrap, d.doc.page.clone(), d.doc.generation);
+        // (Source code and Markdown are their text alone.)
+        let styled = d.mode.is_styled();
+        let (text, runs, paras, align, wrap, page, generation) = (
+            d.doc.text().to_owned(),
+            if styled { d.doc.runs().to_vec() } else { Vec::new() },
+            if styled { d.doc.paras().to_vec() } else { Vec::new() },
+            if styled { d.doc.align } else { Align::Left },
+            d.doc.wrap,
+            d.doc.page.clone(),
+            d.doc.generation,
+        );
         doc.update(cx, |d, cx| {
             d.saving = true;
             d.after_save = after;
@@ -1784,6 +2277,14 @@ impl StyledEdit {
                     cx.notify();
                     match result {
                         Ok(l) => {
+                            // How it shows: by its kind (Markdown and code
+                            // as they were, when it's read again).
+                            let styled = l.runs.is_some() || l.paras.is_some();
+                            d.mode = match (std::mem::replace(&mut d.mode, Mode::Styled), Mode::for_file(&path, &l.text, styled)) {
+                                (Mode::Markdown(old), Mode::Markdown(_)) => Mode::Markdown(markdown::Look::new(old.source)),
+                                (Mode::Code { code, .. }, _) if !styled => Mode::code(code.language(), &l.text),
+                                (_, m) => m,
+                            };
                             let mut doc = Doc::with_paras(l.text, l.runs, l.paras);
                             doc.align = l.align;
                             doc.wrap = l.wrap;
@@ -1823,6 +2324,13 @@ impl StyledEdit {
                                 d.path = Some(path.clone());
                                 d.read_only = false;
                                 d.set_title(cx);
+                                // Plain text saved as Markdown or code shows as that now.
+                                if d.mode.is_styled() && d.doc.is_plain() {
+                                    let mode = Mode::for_file(&path, d.doc.text(), false);
+                                    if !mode.is_styled() {
+                                        d.set_mode(mode);
+                                    }
+                                }
                             }
                             d.latin1 = false;
                             d.doc.saved_generation = generation;
@@ -1925,6 +2433,8 @@ impl StyledEdit {
                     page_view: d.page_view,
                     tool_bars: d.tool_bars,
                     page: d.doc.page.clone(),
+                    mode: Some(d.mode.id()),
+                    line_numbers: d.line_numbers,
                 }
             })
             .collect();
@@ -1944,6 +2454,9 @@ impl StyledEdit {
                             d.ruler = s.ruler;
                             d.page_view = s.page_view;
                             d.tool_bars = s.tool_bars;
+                            d.line_numbers = s.line_numbers;
+                            let styled = runs.iter().any(|r| r.style != Style::default()) || !s.paras.is_empty();
+                            d.mode = s.mode.as_deref().and_then(|m| Mode::named(m, &text)).unwrap_or_else(|| Mode::for_file(path.as_deref().unwrap_or(Path::new("")), &text, styled));
                             let mut doc = Doc::with_paras(text, Some(runs), Some(s.paras).filter(|p| !p.is_empty()));
                             doc.align = s.align;
                             doc.wrap = s.wrap;
@@ -1967,6 +2480,11 @@ impl StyledEdit {
                             d.ruler = s.ruler;
                             d.page_view = s.page_view;
                             d.tool_bars = s.tool_bars;
+                            d.line_numbers = s.line_numbers;
+                            // (As it showed; its text, read, decides the rest.)
+                            if let Some(m) = s.mode.as_deref().and_then(|m| Mode::named(m, "")) {
+                                d.mode = m;
+                            }
                             d.loading = true;
                             d.restore = Some((s.selection.0..s.selection.1, s.view));
                         },

@@ -103,6 +103,14 @@ pub trait Document {
     fn key(&mut self, _key: EditKey, _selection: Range<usize>) -> bool {
         false
     }
+    /// What a key types at the selection, if not what it would (Return
+    /// or Tab): the bytes it replaces, what with, and how far into that
+    /// the caret goes. A Markdown list item's Return types its next
+    /// marker after the newline (in an empty one, takes its marker
+    /// away); code's copies the line's indent. None: as it would.
+    fn types(&mut self, _key: EditKey, _selection: Range<usize>) -> Option<(Range<usize>, String, usize)> {
+        None
+    }
 }
 
 /// Keys a [`Document`] may take first ([`Document::key`]).
@@ -140,6 +148,17 @@ pub struct Paragraph {
     /// Its pictures: each one's character ([`PICTURE`]), in bytes from the
     /// paragraph's start, and how it is drawn there.
     pub pictures: Vec<(usize, Picture)>,
+    /// Filled behind it, from its indent to the text's right edge and from
+    /// its top to its bottom (its space above and below too): a code
+    /// block's ground, paragraphs one after another making one box.
+    pub shade: Option<Hsla>,
+    /// A bar down its left, in the room `left` leaves (a quotation's).
+    pub bar: Option<Hsla>,
+    /// A rule across its middle, its indent to the text's edge (a
+    /// Markdown `---`).
+    pub rule: Option<Hsla>,
+    /// Code: its words aren't checked for spelling.
+    pub verbatim: bool,
 }
 
 /// The character a picture is in the text.
@@ -185,6 +204,10 @@ pub struct Row {
     pub columns: Vec<f32>,
     /// A header row: shaded.
     pub header: bool,
+    /// Where each cell is in the paragraph's text, as (start, length)
+    /// from its start (a Markdown row's, between its pipes, the pipes
+    /// themselves in none); None: a tab between each ([`cells`]).
+    pub cells: Option<Vec<(usize, usize)>>,
 }
 
 /// Between a cell's rules and its text, in points.
@@ -262,13 +285,26 @@ pub struct Options {
     /// The text set on pages, as it prints (else in one column the view's
     /// width).
     pub pages: Option<Pages>,
+    /// Each paragraph's number (its line's, in code) down a gutter at the
+    /// left, at this size in the monospaced face; the caret's brighter.
+    pub line_numbers: Option<f32>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { editable: true, wrap: true, align: Align::Left, justify: false, margin: (m::TEXT_INSET, 4.0), background: None, spelling: false, pages: None }
+        Options { editable: true, wrap: true, align: Align::Left, justify: false, margin: (m::TEXT_INSET, 4.0), background: None, spelling: false, pages: None, line_numbers: None }
     }
 }
+
+/// A shade's reach past the text either side, a bar's width and its gap
+/// before the text ([`Paragraph::shade`], [`Paragraph::bar`]), in points.
+const SHADE_PAD: f32 = 6.0;
+const BAR_WIDTH: f32 = 3.0;
+const BAR_GAP: f32 = 9.0;
+
+/// Between the line numbers and the text, and before them, in points.
+const GUTTER_GAP: f32 = 10.0;
+const GUTTER_LEAD: f32 = 6.0;
 
 /// Text set on pages ([`Options::pages`]): sheets of paper down a desk,
 /// the text within each one's margins, a page's text going on to the
@@ -347,6 +383,10 @@ struct Placed {
     pictures: Vec<(usize, Picture)>,
     /// A list's marker, and the gap before the text.
     marker: Option<Rc<Laid>>,
+    /// Its shade, bar and rule ([`Paragraph::shade`]).
+    deco: (Option<Hsla>, Option<Hsla>, Option<Hsla>),
+    /// Not checked for spelling ([`Paragraph::verbatim`]).
+    verbatim: bool,
     /// What its layouts were made from, together.
     key: u64,
 }
@@ -469,6 +509,11 @@ pub struct Editor {
     tops_dirty: bool,
     /// The widest paragraph, unwrapped.
     widest: f32,
+    /// Line numbers' gutter ([`Options::line_numbers`]): its left edge
+    /// (the view's margin), its width and the numbers' size.
+    gutter: Option<(f32, f32, f32)>,
+    /// A digit's width at a size (its bits), for the gutter.
+    digit: Option<(u32, f32)>,
     /// The text's width in the view (a table's, when rows don't wrap).
     width: f32,
     look: Option<Look>,
@@ -608,6 +653,8 @@ impl Editor {
             tops: Vec::new(),
             tops_dirty: true,
             widest: 0.0,
+            gutter: None,
+            digit: None,
             width: 400.0,
             look: None,
             key: 2,
@@ -741,6 +788,7 @@ impl Editor {
     /// Everything is laid out again (fonts loaded, the alignment changed).
     pub fn relayout(&mut self) {
         self.key += 1;
+        self.digit = None;
         for p in &mut self.paras {
             p.key = p.key.min(STALE);
         }
@@ -912,6 +960,7 @@ impl Editor {
             let mut h = std::collections::hash_map::DefaultHasher::new();
             r.columns.iter().for_each(|c| c.to_bits().hash(&mut h));
             r.header.hash(&mut h);
+            r.cells.hash(&mut h);
             h.finish()
         });
         // (A table's rows meet: no space between them.)
@@ -964,17 +1013,28 @@ impl Editor {
                     l
                 });
                 let marker = f.marker.as_ref().filter(|m| !m.is_empty()).map(|m| {
+                    // (In the first style's face, drawn whatever that is:
+                    // a hidden Markdown mark's, the bullet it stands for.)
+                    let first = Span { hidden: false, picture: None, background: None, strike: false, underline: false, ..spans[0].clone() };
                     let mut h = std::collections::hash_map::DefaultHasher::new();
                     ("marker", m).hash(&mut h);
-                    hash_spans(&spans[..1], &mut h);
-                    self.kept.get(h.finish(), || lay_out_line(sh, m, &spans[0]))
+                    hash_spans(std::slice::from_ref(&first), &mut h);
+                    self.kept.get(h.finish(), || lay_out_line(sh, m, &first))
                 });
-                Placed { parts: vec![Part { laid, at: (0.0, 0.0), start: 0, len: p.len, frame: (0.0, 0.0) }], row: None, pictures: f.pictures.clone(), marker, key }
+                Placed {
+                    parts: vec![Part { laid, at: (0.0, 0.0), start: 0, len: p.len, frame: (0.0, 0.0) }],
+                    row: None,
+                    pictures: f.pictures.clone(),
+                    marker,
+                    deco: (f.shade, f.bar, f.rule),
+                    verbatim: f.verbatim,
+                    key,
+                }
             }
             Some(row) => {
                 let width = (wrap.unwrap_or(self.width) - set.left - set.right).max(1.0);
                 let text = doc.text()[range.clone()].to_owned();
-                let cs = cells(&text);
+                let cs = row.cells.clone().filter(|c| !c.is_empty() && c.iter().all(|(s, l)| s + l <= text.len())).unwrap_or_else(|| cells(&text));
                 let columns = cell_columns(row, cs.len(), width);
                 let halign = f.align.unwrap_or(Align::Left);
                 let mut parts = Vec::with_capacity(cs.len());
@@ -1008,7 +1068,7 @@ impl Editor {
                     q.at.1 = (h - tallest) / 2.0;
                 }
                 row.header.hash(&mut all);
-                Placed { parts, row: Some((h, row.header)), pictures: f.pictures.clone(), marker: None, key: all.finish() | 2 }
+                Placed { parts, row: Some((h, row.header)), pictures: f.pictures.clone(), marker: None, deco: (f.shade, f.bar, f.rule), verbatim: f.verbatim, key: all.finish() | 2 }
             }
         };
         self.spans = spans;
@@ -1200,11 +1260,11 @@ impl Editor {
 
     /// The caret's cell, if it is in a table's row: the row's paragraph,
     /// its cells (bytes of the text) and which one.
-    fn cell(&self, text: &str) -> Option<(usize, Vec<Range<usize>>, usize)> {
+    fn cell(&self, doc: &mut dyn Document) -> Option<(usize, Vec<Range<usize>>, usize)> {
         let i = self.para_of(self.caret);
         let p = self.paras[i];
         p.set.row?;
-        let cs: Vec<Range<usize>> = cells_of(text, p.start, p.len);
+        let cs = row_cells(doc, p.start, p.len);
         let k = cs.iter().position(|c| self.caret <= c.end).unwrap_or(cs.len() - 1);
         Some((i, cs, k))
     }
@@ -1212,7 +1272,7 @@ impl Editor {
     /// Tab (or ⇧Tab) in a table's row: the next (previous) cell, all of
     /// it selected; Tab in the last cell of a table's last row adds a row.
     fn tab(&mut self, doc: &mut dyn Document, back: bool) -> Option<bool> {
-        let (i, cs, k) = self.cell(doc.text())?;
+        let (i, cs, k) = self.cell(doc)?;
         let select = |e: &mut Editor, r: Range<usize>| {
             e.anchor = r.start;
             e.caret = r.end;
@@ -1224,7 +1284,7 @@ impl Editor {
                 select(self, cs[k - 1].clone());
             } else if i > 0 && self.paras[i - 1].set.row.is_some() {
                 let q = self.paras[i - 1];
-                let last = cells_of(doc.text(), q.start, q.len).pop().unwrap_or(q.start..q.start);
+                let last = row_cells(doc, q.start, q.len).pop().unwrap_or(q.start..q.start);
                 select(self, last);
             }
             return Some(false);
@@ -1235,8 +1295,13 @@ impl Editor {
         }
         if i + 1 < self.paras.len() && self.paras[i + 1].set.row.is_some() {
             let q = self.paras[i + 1];
-            let first = cells_of(doc.text(), q.start, q.len).swap_remove(0);
+            let first = row_cells(doc, q.start, q.len).swap_remove(0);
             select(self, first);
+            return Some(false);
+        }
+        // (A row whose cells its document places, a Markdown one's: a row
+        // is added as Return adds it, `Document::types`.)
+        if doc.paragraph(self.paras[i].start..self.paras[i].start + self.paras[i].len).row.is_some_and(|r| r.cells.is_some()) {
             return Some(false);
         }
         Some(self.add_row(doc, i, cs.len()))
@@ -1275,14 +1340,30 @@ impl Editor {
         let o = match o.pages {
             Some(pg) => {
                 let sheet_x = ((vw - pg.paper.0) / 2.0).max(pg.gap).round();
-                Options { margin: (sheet_x + pg.margin, pg.gap + pg.margin), wrap: true, ..*o }
+                Options { margin: (sheet_x + pg.margin, pg.gap + pg.margin), wrap: true, line_numbers: None, ..*o }
             }
             None => *o,
         };
+        // Line numbers: a gutter as wide as the most digits, the text
+        // after it (its left margin that much wider, the right as it was).
+        self.gutter = o.line_numbers.map(|size| {
+            let digits = (self.paras.len().max(1).ilog10() + 1).max(2) as f32;
+            let w = match self.digit {
+                Some((at, w)) if at == size.to_bits() => w,
+                _ => {
+                    let w = digit_width(sh, size);
+                    self.digit = Some((size.to_bits(), w));
+                    w
+                }
+            };
+            (o.margin.0, (GUTTER_LEAD + digits * w + GUTTER_GAP).ceil(), size)
+        });
+        let gutter = self.gutter.map_or(0.0, |g| g.1);
         let inner = match o.pages {
             Some(pg) => pg.text_w(),
-            None => (vw - 2.0 * o.margin.0).max(1.0),
+            None => (vw - 2.0 * o.margin.0 - gutter).max(1.0),
         };
+        let o = Options { margin: (o.margin.0 + gutter, o.margin.1), ..o };
         if !o.wrap && (self.width - inner.round()).abs() > 0.5 {
             // (Unwrapped, a table is the view's width.)
             self.width = inner.round();
@@ -1489,8 +1570,12 @@ impl Editor {
                     self.relayout_near();
                     return true;
                 }
+                if let Some((r, text, caret)) = doc.types(EditKey::Enter, sel.clone()) {
+                    self.edit_raw(doc, r, &text, caret);
+                    return true;
+                }
                 // In a table, a row below.
-                if let Some((i, cs, _)) = self.cell(doc.text()) {
+                if let Some((i, cs, _)) = self.cell(doc) {
                     return self.add_row(doc, i, cs.len());
                 }
                 self.edit(doc, sel, "\n");
@@ -1501,8 +1586,14 @@ impl Editor {
                     self.relayout_near();
                     return true;
                 }
-                if self.cell(doc.text()).is_some() {
+                if self.cell(doc).is_some() {
                     return if o.editable { self.tab(doc, back).unwrap_or(false) } else { false };
+                }
+                if o.editable
+                    && let Some((r, text, caret)) = doc.types(if back { EditKey::BackTab } else { EditKey::Tab }, sel.clone())
+                {
+                    self.edit_raw(doc, r, &text, caret);
+                    return true;
                 }
                 if o.editable && !back {
                     self.edit(doc, sel, "\t");
@@ -1691,6 +1782,8 @@ impl Editor {
         let shown = std::mem::take(&mut self.shown.paras);
         let text = doc.text();
         let line = |v: f32| ((v * s).floor() + 0.5) / s;
+        // The text's width (a shade and a rule go across it).
+        let text_w = self.look.and_then(|l| l.0).unwrap_or(self.width.max(self.widest));
         // The text in one layer: one place in the scene for all its
         // glyphs, lines and fills (each glyph its own, outside one, made
         // painting a page's worth cost milliseconds). Fills go under
@@ -1699,11 +1792,53 @@ impl Editor {
         // a layer, fills go under its sprites).
         let mut tints = Vec::new();
         window.paint_layer(view, |window| {
+            // Shades and bars, top to bottom of their paragraphs (space
+            // above and below too): one after another, alike, one fill (a
+            // code block's ground, a quotation's bar), under everything.
+            let mut fills: Vec<(f32, f32, f32, f32, Hsla)> = Vec::new();
+            for (i, placed) in &shown {
+                let (ground, bar, _) = placed.deco;
+                if ground.is_none() && bar.is_none() {
+                    continue;
+                }
+                let set = self.paras[*i].set;
+                let y0 = f32::from(origin.y) + o.margin.1 + self.tops[*i];
+                let y1 = f32::from(origin.y) + o.margin.1 + self.tops.get(*i + 1).copied().unwrap_or(self.tops[*i]);
+                let left = f32::from(origin.x) + o.margin.0 + set.left;
+                let right = f32::from(origin.x) + o.margin.0 + text_w - set.right;
+                let mut add = |x0: f32, x1: f32, c: Hsla| match fills.iter_mut().find(|f| f.0 == x0 && f.1 == x1 && f.4 == c && (f.3 - y0).abs() < 0.01) {
+                    Some(f) => f.3 = y1,
+                    None => fills.push((x0, x1, y0, y1, c)),
+                };
+                if let Some(c) = ground {
+                    add(left - SHADE_PAD, right + SHADE_PAD, c);
+                }
+                if let Some(c) = bar {
+                    let x = left - BAR_GAP - BAR_WIDTH;
+                    add(x, x + BAR_WIDTH, c);
+                }
+            }
+            for (x0, x1, y0, y1, c) in fills {
+                style::fill_rect(window, Bounds::from_corners(point(px(snap(x0, s)), px(snap(y0, s))), point(px(snap(x1, s)), px(snap(y1, s)))), c);
+            }
             for (i, placed) in &shown {
                 let para = self.paras[*i];
                 let (ox, oy) = self.origin(*i, &o);
                 let at = (snap(f32::from(origin.x) + ox, s), snap(f32::from(origin.y) + oy, s));
                 let end = para.start + para.len;
+                // Its rule across (its shade and bar went first).
+                let (_, _, rule_c) = placed.deco;
+                if rule_c.is_some() {
+                    let y0 = f32::from(origin.y) + o.margin.1 + self.tops[*i];
+                    let y1 = f32::from(origin.y) + o.margin.1 + self.tops.get(*i + 1).copied().unwrap_or(self.tops[*i]);
+                    let left = f32::from(origin.x) + o.margin.0 + para.set.left;
+                    let right = f32::from(origin.x) + o.margin.0 + text_w - para.set.right;
+                    if let Some(c) = rule_c {
+                        let thick = snap(1.0, s).max(px1);
+                        let y = snap((y0 + y1) / 2.0 - thick / 2.0, s);
+                        style::fill_rect(window, Bounds::from_corners(point(px(snap(left, s)), px(y)), point(px(snap(right, s)), px(y + thick))), c);
+                    }
+                }
                 // A row: its cells' rules, a device pixel wide on device
                 // pixels (rows meet on one), and a header's shade.
                 if let Some((h, header)) = placed.row {
@@ -1757,6 +1892,11 @@ impl Editor {
                             style::fill_rect(window, b, fill);
                         }
                     }
+                    // Its spans' grounds (inline code), under the selection's.
+                    for ((x0, y0, x1, y1), c) in q.laid.backgrounds() {
+                        let b = Bounds::from_corners(point(px(snap(qat.0 + x0, s)), px(snap(qat.1 + y0, s))), point(px(snap(qat.0 + x1, s)), px(snap(qat.1 + y1, s))));
+                        window.paint_quad(gpui::fill(b, c).corner_radii(px(snap(2.0, s))));
+                    }
                     // What an input method is composing, underlined.
                     if let Some(mk) = self.marked.clone().filter(|mk| mk.start < qe && mk.end > qs) {
                         let local = mk.start.clamp(qs, qe) - qs..mk.end.clamp(qs, qe) - qs;
@@ -1785,7 +1925,7 @@ impl Editor {
                         }
                     }
                 }
-                if checker.is_some() {
+                if checker.is_some() && !placed.verbatim {
                     let ptext = &text[para.start..end];
                     let key = {
                         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -1837,6 +1977,29 @@ impl Editor {
         });
         for b in tints {
             style::fill_rect(window, b, fill.opacity(fill.a * 0.6));
+        }
+        // Line numbers, down the gutter (over the text, scrolled under it
+        // sideways), each on its paragraph's first baseline.
+        if let Some((gx, gw, size)) = self.gutter {
+            let sh = window.text_system().clone();
+            let ground = style::c(o.background.unwrap_or(p.document_background));
+            let gutter = Bounds::from_corners(point(view.left(), view.top()), point(px(snap(f32::from(view.left()) + gx + gw - GUTTER_GAP / 2.0, s)), view.bottom()));
+            style::fill_rect(window, gutter, ground);
+            let dim = style::c(olo_theme::readable(olo_theme::mix(p.document_text, o.background.unwrap_or(p.document_background), 0.55), o.background.unwrap_or(p.document_background), 3.0));
+            let caret_para = self.para_of(self.caret);
+            let right = f32::from(view.left()) + gx + gw - GUTTER_GAP;
+            for (i, placed) in &shown {
+                let n = (*i + 1).to_string();
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                ("line number", &n, size.to_bits()).hash(&mut h);
+                let laid = self.kept.get(h.finish(), || lay_out_line(&*sh, &n, &Span::new(n.len(), style::mono_font(gpui::FontWeight::NORMAL), size)));
+                let first = &placed.parts[0].laid;
+                let (_, oy) = self.origin(*i, &o);
+                let top = f32::from(origin.y) + oy + placed.parts[0].at.1 + first.rows.first().map_or(0.0, |r| r.top);
+                let dy = first.rows.first().map_or(0.0, |r| r.ascent) - laid.rows.first().map_or(0.0, |r| r.ascent);
+                let color = if *i == caret_para { text_color } else { dim };
+                laid.paint(window, point(px(snap(right - laid.width(), s)), px(snap(top + dy, s))), color, clip);
+            }
         }
         self.shown.paras = shown;
         if let Some(c) = checker
@@ -2717,14 +2880,21 @@ fn space_width(sh: &dyn Shaper, span: &Span) -> f32 {
     f32::from(sh.layout(" ", span.size, &[run]).width)
 }
 
+/// A digit's width in the monospaced face at `size`.
+fn digit_width(sh: &dyn Shaper, size: f32) -> f32 {
+    let span = Span::new(1, style::mono_font(gpui::FontWeight::NORMAL), size);
+    lay_out_line(sh, "0", &span).width()
+}
+
 fn hash_spans(spans: &[Span], h: &mut impl Hasher) {
     for s in spans {
         s.len.hash(h);
         s.font.hash(h);
         s.size.to_bits().hash(h);
         s.color.map(|c| (c.h.to_bits(), c.s.to_bits(), c.l.to_bits(), c.a.to_bits())).hash(h);
-        (s.underline, s.strike).hash(h);
+        (s.underline, s.strike, s.hidden).hash(h);
         s.picture.map(|(w, ht)| (w.to_bits(), ht.to_bits())).hash(h);
+        s.background.map(|c| (c.h.to_bits(), c.s.to_bits(), c.l.to_bits(), c.a.to_bits())).hash(h);
     }
 }
 
@@ -2767,6 +2937,15 @@ fn squiggle(segs: &mut Vec<(Point<Pixels>, Point<Pixels>)>, x0: f32, x1: f32, y:
 /// of the text.
 fn cells_of(text: &str, start: usize, len: usize) -> Vec<Range<usize>> {
     cells(&text[start..start + len]).into_iter().map(|(s, l)| start + s..start + s + l).collect()
+}
+
+/// The cells of the row at bytes `start..start + len`, as its document
+/// places them (`Row::cells`) or a tab apart.
+fn row_cells(doc: &mut dyn Document, start: usize, len: usize) -> Vec<Range<usize>> {
+    match doc.paragraph(start..start + len).row.and_then(|r| r.cells).filter(|c| !c.is_empty()) {
+        Some(cs) => cs.into_iter().map(|(s, l)| start + s..start + s + l).collect(),
+        None => cells_of(doc.text(), start, len),
+    }
 }
 
 /// Paragraphs of `text[start..end]` (which starts one): their starts and
@@ -2893,7 +3072,7 @@ mod tests {
         assert_eq!(cells("a\tbc\t"), [(0, 1), (2, 2), (5, 0)]);
         assert_eq!(cells(""), [(0, 0)]);
         // Equal shares unless there is one a cell; whole points that add up.
-        let row = Row { columns: vec![1.0, 3.0], header: false };
+        let row = Row { columns: vec![1.0, 3.0], header: false, cells: None };
         assert_eq!(cell_columns(&row, 2, 400.0), [(0.0, 100.0), (100.0, 300.0)]);
         assert_eq!(cell_columns(&row, 3, 100.0), [(0.0, 33.0), (33.0, 34.0), (67.0, 33.0)]);
         assert_eq!(cells_of("x\na\tb", 2, 3), [2..3, 4..5]);
