@@ -1,11 +1,11 @@
 #!/usr/bin/python3
-"""Frozen release ordinary text cost around CSS env support.
+"""Frozen release ordinary text cost around browser worker changes.
 
-ROOT OUTPUT.json; ROOT is owned /var/tmp scratch with page/scene-before/after.
+ROOT OUTPUT.json [BASELINE]; ROOT owns page/scene-before/after in /var/tmp.
 Stop own builds and GUI checks first. Seven rotated samples,
 one performance CPU. Wait for rustc; record concurrent Cargo/test processes
 separately (these samples do not establish complete host isolation).
-Chrome environment fixtures provide independent semantic evidence separately.
+Independent component fixtures provide separate semantic evidence.
 No network, JS, form interaction, GPU, presentation or website speed coverage.
 """
 import hashlib
@@ -20,6 +20,7 @@ import sys
 root = Path(sys.argv[1]).resolve()
 assert root.is_relative_to('/var/tmp')
 destination = Path(sys.argv[2])
+baseline = sys.argv[3] if len(sys.argv) > 3 else '3c9bc54a (web core unchanged since 85200762; frozen default-feature examples)'
 allowed = sorted(os.sched_getaffinity(0))
 
 
@@ -89,4 +90,4 @@ for mode, variants in [('page', ['before', 'after']), ('scene', ['before', 'afte
     for identity in references:
         metrics = ['pipeline_us' if mode == 'page' else 'scene_us']
         print(mode, identity, {v: {k: statistics.median(c[k] for r in group if r['variant'] == v for c in r['rows'] if c['elements'] == identity) for k in metrics} for v in variants}, flush=True)
-destination.write_text(json.dumps(dict(scope=__doc__, before='3c9bc54a (web core unchanged since 85200762; frozen default-feature examples)', cpu=cpu, allowed_cpus=allowed, binaries=hashes, observations=rows, discarded=discarded, build_waits=waits), indent=2) + '\n')
+destination.write_text(json.dumps(dict(scope=__doc__, before=baseline, cpu=cpu, allowed_cpus=allowed, binaries=hashes, observations=rows, discarded=discarded, build_waits=waits), indent=2) + '\n')

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser query-container lengths, dark 2x
+
+*14:21* — The same native component after live mode/scale changes. Fifteen configured mode/scale reviews and visual checks; no Chrome pixel, forced-dark website or night-output acceptance.
+
+![Browser query-container lengths, dark 2x](2026-11-06/142143-browser-query-container-lengths-dark-2x.png)
+
+### Browser query-container lengths, light 1x
+
+*14:21* — Owned authored component: nested box lengths use their eligible ancestor content sizes. 240 independent Chrome width observations across five DPRs; no website accepted. Stripe now stops at flex layout.
+
+![Browser query-container lengths, light 1x](2026-11-06/142141-browser-query-container-lengths-light-1x.png)
+
 ### Browser bounded minification
 
 *12:24* — Lazy source-pixel mipmaps reduce aliasing; bounded worker cache, cancellation and scalar/SIMD byte controls. All 15 native mode/scale reviews pass. Chrome component pixels improve 49/60 to 53/60; seven nonpasses and the 79 ms stress-test frame remain open.

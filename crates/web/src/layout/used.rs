@@ -1,3 +1,4 @@
+use super::containers::QueryBasis;
 use super::*;
 use crate::css::{
     math,
@@ -7,20 +8,21 @@ use crate::css::{
 pub(super) fn grid(value: f64, scale: f64) -> f64 {
     (value * scale * 64.).trunc() / (scale * 64.)
 }
-struct Basis(Option<f64>);
+struct Basis(Option<f64>, QueryBasis);
 impl math::Context for Basis {
     fn factor(&self, unit: math::RelativeUnit) -> math::Result<f64> {
-        if unit == math::RelativeUnit::Percentage { self.0.map(|v| v / 100.).ok_or(math::Error::ContextUnavailable) } else { Err(math::Error::ContextUnavailable) }
+        if unit == math::RelativeUnit::Percentage { self.0.map(|v| v / 100.).ok_or(math::Error::ContextUnavailable) } else { self.1.factor(unit) }
     }
 }
-pub(super) fn length(s: &Style, p: P, basis: Option<f64>, fallback: Option<f64>, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Option<f64>> {
+#[allow(clippy::too_many_arguments)] // Explicit immutable length bases and worker resources.
+pub(super) fn length(s: &Style, p: P, basis: Option<f64>, fallback: Option<f64>, queries: QueryBasis, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Option<f64>> {
     match s.value(p) {
         Value::Keyword(K::Auto | K::None) => Ok(fallback),
         Value::Numeric(n) => {
             if basis.is_none() && n.expression().dependencies().contains(math::RelativeUnit::Percentage) {
                 return Ok(fallback);
             }
-            Ok(Some(grid(n.resolve(&Basis(basis), scratch, Default::default(), cancel)?, scale)))
+            Ok(Some(grid(n.resolve(&Basis(basis, queries), scratch, Default::default(), cancel)?, scale)))
         }
         _ => Err(Error::Unsupported("intrinsic/fit-content box sizing")),
     }
@@ -29,8 +31,8 @@ pub(super) fn has_inline_edge(s: &Style, start: bool) -> bool {
     let props = if start { [P::MarginLeft, P::PaddingLeft] } else { [P::MarginRight, P::PaddingRight] };
     props.into_iter().any(|p| !matches!(s.value(p), Value::Keyword(K::Auto)) && s.value(p).scalar() != Some(0.))
 }
-pub(super) fn inline_edges(s: &Style, width: f64, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<((f64, bool), (f64, bool))> {
-    let mut value = |p| length(s, p, Some(width), Some(0.), scratch, cancel, scale).map(|v| v.unwrap_or(0.));
+pub(super) fn inline_edges(s: &Style, width: f64, queries: QueryBasis, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<((f64, bool), (f64, bool))> {
+    let mut value = |p| length(s, p, Some(width), Some(0.), queries, scratch, cancel, scale).map(|v| v.unwrap_or(0.));
     let (ml, pl) = (value(P::MarginLeft)?, value(P::PaddingLeft)?.max(0.));
     let (mr, pr) = (value(P::MarginRight)?, value(P::PaddingRight)?.max(0.));
     let (left, right) = (ml + pl, mr + pr);
@@ -56,8 +58,9 @@ pub(super) struct Used {
     pub rtl: bool,
 }
 impl Used {
-    pub fn new(s: &Style, width: f64, height: Option<f64>, parent_rtl: bool, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Self> {
-        let mut value = |p, fallback| length(s, p, Some(width), fallback, scratch, cancel, scale);
+    #[allow(clippy::too_many_arguments)] // Explicit parent geometry/context and worker resources.
+    pub fn new(s: &Style, width: f64, height: Option<f64>, parent_rtl: bool, queries: QueryBasis, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Self> {
+        let mut value = |p, fallback| length(s, p, Some(width), fallback, queries, scratch, cancel, scale);
         let padding = Edges {
             top: value(P::PaddingTop, None)?.ok_or(Error::Invalid)?,
             right: value(P::PaddingRight, None)?.ok_or(Error::Invalid)?,
@@ -70,16 +73,16 @@ impl Used {
             bottom: s.used_border_width(P::BorderBottomWidth)?,
             left: s.used_border_width(P::BorderLeftWidth)?,
         };
-        let mt = length(s, P::MarginTop, Some(width), Some(0.), scratch, cancel, scale)?.unwrap();
-        let mb = length(s, P::MarginBottom, Some(width), Some(0.), scratch, cancel, scale)?.unwrap();
-        let ml = length(s, P::MarginLeft, Some(width), None, scratch, cancel, scale)?;
-        let mr = length(s, P::MarginRight, Some(width), None, scratch, cancel, scale)?;
+        let mt = length(s, P::MarginTop, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap();
+        let mb = length(s, P::MarginBottom, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap();
+        let ml = length(s, P::MarginLeft, Some(width), None, queries, scratch, cancel, scale)?;
+        let mr = length(s, P::MarginRight, Some(width), None, queries, scratch, cancel, scale)?;
         let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
         let extra = padding.horizontal() + border.horizontal();
         let content = |v: f64| nonnegative(v - if border_box { extra } else { 0. });
-        let specified = length(s, P::Width, Some(width), None, scratch, cancel, scale)?.map(content);
-        let min = length(s, P::MinWidth, Some(width), Some(0.), scratch, cancel, scale)?.map(content).unwrap();
-        let max = length(s, P::MaxWidth, Some(width), None, scratch, cancel, scale)?.map(content).unwrap_or(f64::MAX);
+        let specified = length(s, P::Width, Some(width), None, queries, scratch, cancel, scale)?.map(content);
+        let min = length(s, P::MinWidth, Some(width), Some(0.), queries, scratch, cancel, scale)?.map(content).unwrap();
+        let max = length(s, P::MaxWidth, Some(width), None, queries, scratch, cancel, scale)?.map(content).unwrap_or(f64::MAX);
         let solve = |w: Option<f64>| {
             let mut left = ml.unwrap_or(0.);
             let mut right = mr.unwrap_or(0.);
@@ -112,20 +115,29 @@ impl Used {
         }
         let extra_y = padding.vertical() + border.vertical();
         let content_y = |v: f64| nonnegative(v - if border_box { extra_y } else { 0. });
-        let h = length(s, P::Height, height, None, scratch, cancel, scale)?.map(content_y);
-        let min_height = length(s, P::MinHeight, height, Some(0.), scratch, cancel, scale)?.map(content_y).unwrap();
-        let max_height = length(s, P::MaxHeight, height, None, scratch, cancel, scale)?.map(content_y).unwrap_or(f64::MAX);
+        let mut h = length(s, P::Height, height, None, queries, scratch, cancel, scale)?.map(content_y);
+        let min_height = length(s, P::MinHeight, height, Some(0.), queries, scratch, cancel, scale)?.map(content_y).unwrap();
+        let max_height = length(s, P::MaxHeight, height, None, queries, scratch, cancel, scale)?.map(content_y).unwrap_or(f64::MAX);
+        let contained = match s.value(P::ContainerType) {
+            Value::Keyword(K::Normal) => false,
+            Value::Keyword(K::InlineSize) => true,
+            Value::Keyword(K::Size) => {
+                h = Some(h.unwrap_or(0.));
+                true
+            }
+            _ => return Err(Error::Invalid),
+        };
         let mut relative = Point::default();
         if matches!(s.value(P::Position), Value::Keyword(K::Relative)) {
-            let l = length(s, P::Left, Some(width), None, scratch, cancel, scale)?;
-            let r = length(s, P::Right, Some(width), None, scratch, cancel, scale)?;
+            let l = length(s, P::Left, Some(width), None, queries, scratch, cancel, scale)?;
+            let r = length(s, P::Right, Some(width), None, queries, scratch, cancel, scale)?;
             relative.x = match (l, r) {
                 (Some(l), r) if !parent_rtl || r.is_none() => l,
                 (_, r) => -r.unwrap_or(0.),
             };
-            relative.y = length(s, P::Top, height, None, scratch, cancel, scale)?.unwrap_or(-length(s, P::Bottom, height, None, scratch, cancel, scale)?.unwrap_or(0.));
+            relative.y = length(s, P::Top, height, None, queries, scratch, cancel, scale)?.unwrap_or(-length(s, P::Bottom, height, None, queries, scratch, cancel, scale)?.unwrap_or(0.));
         }
-        let mut bfc = false;
+        let mut bfc = contained;
         for p in [P::OverflowX, P::OverflowY] {
             match s.value(p) {
                 Value::Keyword(K::Hidden) => bfc = true,

@@ -5,7 +5,7 @@
   "files": {
     ".gitattributes": "c6a6c303cfda51673d39df3addb42834783bf6f675b033f963d7eff77600d8c0",
     "LICENSE.md": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
-    "README.md": "e9f88f13fd7aff6e370e60c34220077d09b1476d9dd38b0f951cb07e2583a348",
+    "README.md": "518f10854ebf4d697057208883d832b0d26d0bda2dbb4181e65eb2a35c52c619",
     "derived.json": "45b7429351a17f2e4a3b6db19178c49fd4bfd6be10be72c0fced00a703825a08",
     "extract.py": "0b950e2d58482e0950ea723d5aa437eb7ec84664a30bd2f60810b7ebd2a05f98",
     "wpt/computed-testcommon.js": "20bd767e8a8bd9e4857a29aecfd52cad305ed4af1cf73a5064916a8a1d38ab01",

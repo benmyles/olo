@@ -1,0 +1,1101 @@
+{
+  "scope": "Initial horizontal box query-container lengths, not complete containment or site acceptance. Real Stripe now reaches flex formatting-tree rejection before its own query geometry is available.",
+  "parent": "84e30b31 (web identical to frozen5b07a3df)",
+  "checks": {
+    "final-default-tests": {
+      "passed": 280,
+      "sha256": "0a491a2cdf9f52bf17f6e384b7c9cb9c8a24e9a5ca80c124e9c313780f6b06c9",
+      "tail": [
+        "",
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "all-tests": {
+      "passed": 266,
+      "sha256": "ea06d6233c92d7ffd69068ad205da9f96b2ff470fc8d0ebf9c185597e3bb4031",
+      "tail": [
+        "",
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "final-focused": {
+      "passed": 23,
+      "sha256": "09f2d6316d11d69158fbebcb8ac0acb675c46399f6b4bef6c612d7cc8d473236",
+      "tail": [
+        "test whitespace_inheritance_reset_substitution_and_preparation_binding ... ok",
+        "test independent_pinned_computed_style_ports ... ok",
+        "",
+        "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        ""
+      ]
+    },
+    "latest-clippy": {
+      "passed": 0,
+      "sha256": "439212bbb6d6a339098ed67c941affc9031d956780a3c33b583d3fa52b57a38b",
+      "tail": [
+        "warning: `gpui` (lib) generated 7 warnings (run `cargo clippy --fix --lib -p gpui -- --no-deps -D warnings` to apply 1 suggestion)",
+        "    Checking olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 0.79s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    },
+    "workspace": {
+      "passed": 0,
+      "sha256": "db9072ee4da8551f84241191a3200f35013ef8c66baa5991fd5f690cad7aa4d8",
+      "tail": [
+        "   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 26.33s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    },
+    "fixture_documentation_hashes": {
+      "passed": 26,
+      "scope": "Only local README hashes updated; all upstream/derived inputs and references unchanged. Style/font tests re-run after docs update."
+    }
+  },
+  "independent_reference": {
+    "version": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/157.0.8103.38",
+      "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "jsVersion": "15.7.112.23"
+    },
+    "source_sha256": "426d3647259ccbde0c5fdd6d15e2eefe5188ced320865b14ebe6b39f08a89a7e",
+    "width_observations": 240,
+    "dprs": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "tolerance_css_px": 0.0001,
+    "fixture_revision": "Border shorthand replaced by equivalent longhands and recaptured; all probe/host observations retained. Input helper measures fractional small viewport without modifying native fixture."
+  },
+  "native": {
+    "identity": {
+      "pid": 152848,
+      "binary_sha256": "c642f768b5231e90b0a5831d4bc7c1dcec43117f624fde2b8c3e6c0092412097",
+      "windows": [
+        {
+          "id": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "pid": 152848,
+          "workspace": 0,
+          "minimized": false,
+          "focused": true,
+          "kept": false,
+          "groupable": true,
+          "output": "HEADLESS-1",
+          "frame": {
+            "x": 48,
+            "y": 40,
+            "width": 1010,
+            "height": 731
+          },
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "least": [
+            650,
+            511
+          ],
+          "tab_frame": {
+            "x": 48,
+            "y": 40,
+            "width": 100,
+            "height": 21
+          },
+          "stack": 0,
+          "surface": 37
+        }
+      ]
+    },
+    "result": {
+      "found": {
+        "window": 2,
+        "role": "Label",
+        "name": "flow layout Unsupported(\"flex box formatting\")",
+        "x": 69.0,
+        "y": 733.5,
+        "width": 968.0,
+        "height": 16.5,
+        "center": [
+          553.0,
+          742.0
+        ]
+      }
+    },
+    "tree": [
+      {
+        "window": 2,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://stripe.com/",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 577.5,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "flow layout Unsupported(\"flex box formatting\")",
+            "x": 69.0,
+            "y": 733.5,
+            "width": 968.0,
+            "height": 16.5,
+            "enabled": true
+          }
+        ]
+      }
+    ]
+  },
+  "native_navigation": {
+    "scope": "Native navigation on an OWN Agent Screen; authored fixtures accept no sites.\nStart release olo-browser there, eval olo-screen env, then run NAME OUTPUT_DIR.\nChecks canonical redirects, query-container box padding, in-document identity/no I/O, history, keyboard focus\nand scroll restoration at all native modes/scales. HTTP server is test-only.\n",
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "initial": {
+          "document": 3,
+          "navigation": 2,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 3,
+          "navigation": 3,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 5,
+          "navigation": 7,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "initial": {
+          "document": 6,
+          "navigation": 10,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 6,
+          "navigation": 11,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 8,
+          "navigation": 15,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "initial": {
+          "document": 9,
+          "navigation": 18,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 9,
+          "navigation": 19,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 11,
+          "navigation": 23,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "initial": {
+          "document": 12,
+          "navigation": 26,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 12,
+          "navigation": 27,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 14,
+          "navigation": 31,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "initial": {
+          "document": 15,
+          "navigation": 34,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 15,
+          "navigation": 35,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 17,
+          "navigation": 39,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "initial": {
+          "document": 18,
+          "navigation": 42,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 18,
+          "navigation": 43,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 20,
+          "navigation": 47,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "initial": {
+          "document": 21,
+          "navigation": 50,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 21,
+          "navigation": 51,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 23,
+          "navigation": 55,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "initial": {
+          "document": 24,
+          "navigation": 58,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 24,
+          "navigation": 59,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 26,
+          "navigation": 63,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "initial": {
+          "document": 27,
+          "navigation": 66,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 27,
+          "navigation": 67,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 29,
+          "navigation": 71,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "initial": {
+          "document": 30,
+          "navigation": 74,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 30,
+          "navigation": 75,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 32,
+          "navigation": 79,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "initial": {
+          "document": 33,
+          "navigation": 82,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 33,
+          "navigation": 83,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 35,
+          "navigation": 87,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "initial": {
+          "document": 36,
+          "navigation": 90,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 36,
+          "navigation": 91,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 38,
+          "navigation": 95,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "initial": {
+          "document": 39,
+          "navigation": 98,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 39,
+          "navigation": 99,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 41,
+          "navigation": 103,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "initial": {
+          "document": 42,
+          "navigation": 106,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 42,
+          "navigation": 107,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 44,
+          "navigation": 111,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "initial": {
+          "document": 45,
+          "navigation": 114,
+          "url": "http://127.0.0.1:44467/nav"
+        },
+        "fragment": {
+          "document": 45,
+          "navigation": 115,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "restored": {
+          "document": 47,
+          "navigation": 119,
+          "url": "http://127.0.0.1:44467/nav#section"
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      }
+    ],
+    "requests": [
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/nav"
+    ],
+    "reload": {
+      "before": {
+        "document": 47,
+        "navigation": 121,
+        "url": "http://127.0.0.1:44467/nav#section"
+      },
+      "restored": {
+        "document": 1,
+        "navigation": 1,
+        "url": "http://127.0.0.1:44467/nav#section"
+      },
+      "section_y": 145.20801,
+      "forward_then_back_without_requests": true,
+      "reload_and_history_checks_seconds": 1.535571105996496
+    },
+    "accepted_websites": 0
+  },
+  "visual": {
+    "scope": "Original visible horizontal query-container component; native15 mode/scale reviews, not Chrome pixels or website acceptance.",
+    "source": "<!doctype html><title>Container lengths</title><style>\nbody{margin:20px}h1{font-size:24px}p{margin:4px 0;font-size:14px}\n.box{display:block;container-type:inline-size;width:600px;max-width:100%;padding:10px;border-width:1px;border-style:solid;border-color:GrayText}\n.inner{width:50cqi;margin-top:12px}.bar{height:12px;background-color:Highlight;margin-top:4px;margin-bottom:8px}.half{width:50cqi}.quarter{width:25cqi}\n</style><h1>Query-container lengths</h1><div class=box><p>Outer content: 600 CSS pixels</p><p>50cqi</p><div class=\"bar half\"></div><p>25cqi</p><div class=\"bar quarter\"></div><div class=\"box inner\"><p>Nested content: 50cqi of its ancestor</p><p>Half of the nested container</p><div class=\"bar half\"></div></div></div>",
+    "driver": "import copy,hashlib,json,os,socket,subprocess\nfrom pathlib import Path\nr=Path('/var/tmp/olo-browser-stripe/containers');screen='browser-stripe-native';assert os.environ['OLO_SCREEN']==screen\nout=r/'visual';out.mkdir(exist_ok=True)\ndef run(*a):return subprocess.check_output(['olo-screen',*map(str,a)],text=True)\ndef ipc(body):\n if body['type']!='get_settings':run('wait',screen,'--free')\n with socket.socket(socket.AF_UNIX)as s:\n  s.connect(os.environ['OLO_SOCKET']);s.sendall((json.dumps(body)+'\\n').encode());return json.loads(s.makefile().readline())\ndef tree():return next(w for w in json.loads(run('tree',screen,'--json'))if w['app_id']=='olo.browser')\nw=next(w for w in json.loads(run('windows',screen))if w['app_id']=='olo.browser');pid=w['pid'];assert os.readlink(f'/proc/{pid}/exe')==str(r/'browser-final')\nrun('set',screen,'--name','Address',r/'visual.html');run('click',screen,'--role','Button','--name','Go');run('wait',screen,'--text','Half of the nested container','--timeout',10000)\noriginal=ipc({'type':'get_settings'})['settings'];rows=[]\ntry:\n for theme in ['light','dark','night']:\n  for scale in [1,1.25,1.5,1.75,2]:\n   settings=copy.deepcopy(original);settings['appearance']['theme']='dark'if theme=='night'else theme;settings['appearance']['night_light']['mode']='on'if theme=='night'else'off';settings['appearance']['night_light']['temperature']=4500;settings['display']['scale']=scale\n   for o in settings['display'].get('outputs',{}).values():o.pop('scale',None)\n   assert ipc({'type':'set_settings','settings':settings})['type']=='ok';run('wait',screen,'--text','Half of the nested container','--timeout',10000);run('wait',screen,'--idle');w=tree();review=json.loads(run('review',screen,'--window',w['window'],'--json'));assert all(not x['findings']for x in review),review;run('look',screen,out/f'{theme}-{scale}.png','--window',w['window'],'--no-pointer');rows.append(dict(theme=theme,scale=scale,review=review,tree=w))\n (out/'report.json').write_text(json.dumps(dict(scope='Original visible horizontal query-container component; native15 mode/scale reviews, not Chrome pixels or website acceptance.',source_sha256=hashlib.sha256((r/'visual.html').read_bytes()).hexdigest(),pid=pid,rows=rows),indent=2)+'\\n');print('Visual reviews',len(rows))\nfinally:ipc({'type':'set_settings','settings':original})\n",
+    "source_sha256": "55af375825fe32753f796787952a5ef8a1e4500bab1d25eee8143a7c21165029",
+    "reviews": 15,
+    "review_findings": [
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ]
+    ],
+    "screenshots_inspected": 15
+  },
+  "idle": {
+    "seconds": 5.0,
+    "total": {
+      "cpu": 0.0,
+      "wakeups": 0
+    },
+    "threads": [
+      {
+        "tid": 152848,
+        "name": "browser-final",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 165778,
+        "name": "Timer",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 165792,
+        "name": "theme-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 165799,
+        "name": "menus",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 165800,
+        "name": "upgrade-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 165848,
+        "name": "browser:disk$0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 165860,
+        "name": "browse:traceq0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 165910,
+        "name": "browser-page",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 165916,
+        "name": "browser-final",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      }
+    ],
+    "windows": [
+      {
+        "title": "Browser",
+        "frames": 0,
+        "per_second": 0.0,
+        "mean_us": 0,
+        "ui_us": 0,
+        "tessellate_us": 0,
+        "submit_us": 0,
+        "slowest_us": 0
+      }
+    ]
+  },
+  "coverage": {
+    "style": {
+      "passed": 312,
+      "unsupported": 29
+    },
+    "original_style_passes_preserved": 243,
+    "font": {
+      "passed": 137,
+      "unsupported": 12,
+      "total": 149
+    }
+  },
+  "journal": {
+    "preserved": 606,
+    "appended": 2,
+    "entries": [
+      {
+        "time": "2026-11-06T14:21:41",
+        "title": "Browser query-container lengths, light 1x",
+        "caption": "Owned authored component: nested box lengths use their eligible ancestor content sizes. 240 independent Chrome width observations across five DPRs; no website accepted. Stripe now stops at flex layout.",
+        "image": "2026-11-06/142141-browser-query-container-lengths-light-1x.png"
+      },
+      {
+        "time": "2026-11-06T14:21:43",
+        "title": "Browser query-container lengths, dark 2x",
+        "caption": "The same native component after live mode/scale changes. Fifteen configured mode/scale reviews and visual checks; no Chrome pixel, forced-dark website or night-output acceptance.",
+        "image": "2026-11-06/142143-browser-query-container-lengths-dark-2x.png"
+      }
+    ]
+  },
+  "integration_note": "One tree request reset during owned re-exec; expected reconnect loop retried, then restored URL/navigation/scroll and forward/back without network assertions passed. Timer includes later history checks; not isolated presentation latency.",
+  "limitations": [
+    "Horizontal normal-flow box dimensions, margins, padding and insets only",
+    "Early font/color/border contexts and pending inherited query lengths remain explicit errors",
+    "No combined type, container shorthand/name/query conditions, vertical modes, replaced containment or all containment effects",
+    "Prior and current performance nonpasses remain open",
+    "No useful native Stripe page content, JS, full web fonts/SVG/layout or site interactions accepted"
+  ],
+  "accepted": {
+    "stripe": 0,
+    "sites": 0,
+    "configurations": 0
+  }
+}

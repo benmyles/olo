@@ -179,6 +179,11 @@ pub enum TreeCount {
     SiblingCount,
 }
 impl Dependencies {
+    pub const PERCENTAGE: Self = Self(1 << RelativeUnit::Percentage as u8);
+    pub const CONTAINERS: Self = Self(((1u64 << (RelativeUnit::Cqmax as u8 + 1)) - 1) & !((1u64 << RelativeUnit::Cqw as u8) - 1));
+    pub fn intersects(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
     pub fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }

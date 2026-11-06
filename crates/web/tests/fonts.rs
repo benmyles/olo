@@ -186,8 +186,8 @@ fn family_storage_shares_across_inheritance_and_bounds_compilation() {
 fn independent_pinned_font_assertions_and_explicit_browser_nonpasses() {
     let report = fixtures::evaluate(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/font-fixtures"));
     assert_eq!(report["total"], 149);
-    assert_eq!(report["counts"]["passed"], 93, "{report}");
-    assert_eq!(report["counts"]["unsupported"], 56);
+    assert_eq!(report["counts"]["passed"], 137, "{report}");
+    assert_eq!(report["counts"]["unsupported"], 12);
     for failure in ["mismatch", "error", "panic"] {
         assert!(report["counts"][failure].is_null(), "{report}");
     }

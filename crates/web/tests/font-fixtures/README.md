@@ -7,7 +7,7 @@ except itself. `extract.py` reads literal assertions and expands the original
 width resource's two-property loop; no upstream JS or font engine executes.
 Re-extraction must reproduce derived.json exactly.
 
-**140 native assertions plus nine unported browser drivers: 93 pass, 56
+**140 native assertions plus nine unported browser drivers: 137 pass, 12
 unsupported, no unexpected mismatch/error/panic.** Parsing assertions check
 acceptance only, not CSSOM serialization/round-trip. The computed adapter
 applies the ported input to original inert HTML, compiles original context
@@ -16,9 +16,9 @@ family references preserve named/generic identity; width references compare
 percent quantities and style references compare keywords/degree angles.
 Expected values never come from the engine parser or serializer.
 
-All 47 style/width computed assertions require unimplemented container-type
-context (style also imports Ahem), so every one stays unsupported. The adapter
-does not ignore context declarations even for constant examples. Ten family
+Recognizing the original container-type contexts enables44 additional style/
+width assertions; three literal assertions and nine drivers remain unsupported.
+The adapter does not ignore context declarations even for constant examples. Ten family
 computed assertions pass with supplied numeric test metrics; no assertion
 claims actual font loading, matching, shaping, CSSOM, layout or rasterization.
 Browser drivers are separate explicit non-passes. The native host supplies

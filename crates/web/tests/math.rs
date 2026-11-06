@@ -20,6 +20,20 @@ struct Host {
     width: f64,
 }
 #[test]
+fn container_lengths_can_wait_for_layout_while_font_context_is_frozen() {
+    let specified = parse("calc(2em + 10cqw + 20%)", Options { percentage_hint: Some(D::Length), ..Default::default() }).unwrap();
+    let computed = specified.computed_retaining(&Host { em: 16., width: 100. }, Dependencies::CONTAINERS.union(Dependencies::PERCENTAGE), Default::default(), None).unwrap();
+    assert!(!computed.dependencies().contains(U::Em));
+    assert!(computed.dependencies().contains(U::Cqw));
+    assert!(computed.dependencies().contains(U::Percentage));
+    assert_eq!(computed.resolve_raw(&Host { em: 999., width: 400. }, Default::default(), None).unwrap().value, 152.);
+    assert!(computed.computed(&Host { em: 999., width: 400. }, false, Default::default(), None).unwrap().constant().is_some());
+    for limits in [Limits { work: 0, ..Default::default() }, Limits { instructions: 0, ..Default::default() }, Limits { stack: 0, ..Default::default() }] {
+        assert_eq!(specified.computed_retaining(&Host { em: 16., width: 100. }, Dependencies::CONTAINERS, limits, None).unwrap_err(), Error::Limit);
+    }
+    assert_eq!(specified.computed_retaining(&math::NoContext, Dependencies::CONTAINERS, Default::default(), Some(&AtomicBool::new(true))).unwrap_err(), Error::Cancelled);
+}
+#[test]
 fn computed_calculations_freeze_units_tree_counts_and_preserve_layout_percentages() {
     let options = Options { percentage_hint: Some(D::Length), ..Default::default() };
     let parent = Host { em: 16., width: 100. };

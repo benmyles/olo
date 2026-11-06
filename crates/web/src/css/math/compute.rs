@@ -19,12 +19,18 @@ impl Value {
     /// Unchanged programs share their allocation; changed programs own only
     /// the remaining calculation, never the host or source expression.
     pub fn computed(&self, context: &impl Context, defer_percentage: bool, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+        self.computed_retaining(context, if defer_percentage { Dependencies::PERCENTAGE } else { Dependencies::default() }, limits, cancelled)
+    }
+    /// Preserve selected relative units until their layout context exists.
+    /// Tree counts are always resolved; callers must not rebind inherited
+    /// computations to a different element's container context.
+    pub fn computed_retaining(&self, context: &impl Context, deferred: Dependencies, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
         check(cancelled)?;
         let Self::Expression(program) = self else { return Ok(self.clone()) };
         if program.code.len() > limits.instructions || program.stack > limits.stack {
             return Err(Error::Limit);
         }
-        let retained = if defer_percentage { 1u64 << RelativeUnit::Percentage as u8 } else { 0 };
+        let retained = deferred.0 & ((1u64 << (RelativeUnit::Cqmax as u8 + 1)) - 1);
         if program.dependencies.0 != 0 && program.dependencies.0 & !retained == 0 {
             return Ok(self.clone());
         }
@@ -42,7 +48,7 @@ impl Value {
             let start = if arity == 0 { code.len() } else { terms[operands].start };
             let constant = match original.op {
                 Op::Constant => Some(original.value),
-                Op::Relative if defer_percentage && original.unit == RelativeUnit::Percentage => None,
+                Op::Relative if retained & (1u64 << original.unit as u8) != 0 => None,
                 Op::Relative => {
                     let factor = context.factor(original.unit)?;
                     if !factor.is_finite() || original.unit != RelativeUnit::Percentage && factor.is_sign_negative() {

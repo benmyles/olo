@@ -5,7 +5,7 @@
   "files": {
     ".gitattributes": "c6a6c303cfda51673d39df3addb42834783bf6f675b033f963d7eff77600d8c0",
     "LICENSE.md": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
-    "README.md": "268dcbd74afed672d649ba0bb6eb3c202773bfe9241b316cd7ce00fd85cce551",
+    "README.md": "daefc02b7671dda2d651ac43a657e54d7d67176f102f9cac35ee2c0b9e1d7be9",
     "derived.json": "0c987f8efcad1ab735171819eb8eabdd0b8b271fdc16369f7f002e403361c633",
     "extract.py": "15db8b9a79706a66ec0e00be9a44cd90f29b649a026ba6c276a9fe1ad2e5a472",
     "wpt/css-backgrounds/parsing/border-width-computed.html": "fb8ab14984f94380e3063cd94b889df78b8c009881d5aa67aee93f68f438a370",

@@ -1051,8 +1051,8 @@ are in `measurements/2026-11-05-logical*.json`; journal records the outcomes.
 
 ## Frozen initial computed styles
 
-`css::style` computes immutable values for the current **94 longhands and 17
-shorthands**, stored under **74 canonical physical/unpaired longhands**. This
+`css::style` computes immutable values for the current **95 longhands and 17
+shorthands**, stored under **75 canonical physical/unpaired longhands**. This
 is a bounded worker stage, not complete CSS or a rendering engine. `Defaults`
 compiles typed initial spellings and their computed baseline once per immutable
 `Host::revision`, shared across styles. Initial values are not an HTML UA
@@ -1076,9 +1076,30 @@ root font computation. Inheritance copies computed values, not specified
 expressions. Unitless line heights retain their multiplier; percentages and
 lengths freeze against the subject's computed font. `normal` retains its marker
 and the supplied used line metric. Numeric partial evaluation freezes
-font/viewport/container/tree inputs while retaining layout percentages and the
+font/viewport/tree inputs while retaining layout percentages and the
 original arithmetic evaluation order. Final range/rounding/IEEE normalization
 happens at the property boundary, not inside partially folded expressions.
+
+Supported box dimensions, margins, padding and insets can also retain query-
+container units until horizontal flow layout has the relevant ancestor geometry.
+`container-type:normal|inline-size|size` controls per-axis eligibility. Each
+active layout frame carries16 bytes of nearest eligible content-size bases;
+absent axes use the small viewport. A container's own lengths use its ancestors,
+and size containment supplies a definite empty auto block size. No ancestor walk
+or second document index is needed per length. Box percentages and already
+frozen font units retain their distinct bases. Resizing can reuse prepared
+styles/text and recompute query lengths during layout.
+
+This is initial horizontal box support: early font/color/border contexts,
+inherited still-pending query lengths, replaced-element containment, named and
+conditional queries, combined types, vertical modes and full containment remain
+required. Unavailable early contexts and pending inheritance fail explicitly;
+an inherited expression is not silently rebound to a child's container. These
+internal delayed values are not a complete computed-style/CSSOM API. Independent
+Chrome widths match240 observations across five native DPRs within0.0001 CSS px
+(float32 exposure tolerance), not pixel or website acceptance. The actual Stripe
+startup now reaches **flex box formatting**, before its own query geometry can
+be observed. See `tests/container-fixtures` and the active Stripe queue.
 
 Computed `color` becomes concrete; other `currentcolor` values retain that
 marker across inheritance and resolve against the subject through `used_color`.
@@ -1137,11 +1158,12 @@ There are no threads, timers, I/O or idle work inside the module; callers run
 and schedule the job on a worker.
 
 Independent ports in `tests/style-fixtures` pin nine unchanged WPT documents
-and helpers: **243/341 pass, 98 unsupported**, no unexpected mismatch/error or
+and helpers: **312/341 pass, 29 unsupported**, no unexpected mismatch/error or
 panic. There are 316 literal native assertions and 25 unported browser
-drivers. All 73 weight/line-height assertions requiring unimplemented
-`container-type` contexts remain unsupported, including assertions whose
-scalar alone could otherwise be accepted. The adapter applies ported mutations
+drivers. Recognizing the original container-type contexts enables69 more
+assertions without changing pinned inputs/references; all243 prior passing
+identities are explicitly preserved. Four literal assertions still need missing
+contexts. The adapter applies ported mutations
 to original inert HTML and runs the production document job. Display tuples
 and numeric references are decoded independently. These are semantic ports,
 not 341 complete WPT browser tests or a CSSOM serializer. See the fixture README
@@ -1189,7 +1211,7 @@ Normative rules consulted 2026-11-05: [CSS Cascade 5 defaulting](https://drafts.
 
 ## Font longhands and face requests
 
-The supported registry now has **94 longhands** (93 reset by all), including
+The supported registry now has **95 longhands** (94 reset by all), including
 `font-family`, `font-style` and `font-width`. `Name::parse` canonicalizes the
 legacy name `font-stretch` to FontWidth, sharing one declaration/cascade identity
 and source order. This is an alias, not a second competing computed value.
@@ -1244,13 +1266,13 @@ DOM/rules; it is distinct from process RSS. No new threads/I/O/polling/SIMD/GPU
 path is introduced by these scalar grammars and dependency rules.
 
 Independent native ports pin nine original WPT pages and two helpers in
-`tests/font-fixtures`: **93/149 pass; 56 unsupported**, no unexpected
+`tests/font-fixtures`: **137/149 pass; 12 unsupported**, no unexpected
 mismatch/error/panic. The 140 literal assertion inputs plus nine browser drivers
 retain the denominator. Grammar ports check acceptance only. Ten family
 computed assertions run the production initial document job with independent
-canonical semantic references. All 47 original style/width computed assertions
-require missing container-type context (style also links Ahem) and remain
-unsupported, even for constant inputs. Tests do not supply real selected fonts
+canonical semantic references. Recognizing container-type enables44 additional
+original style/width assertions; three literal assertions and nine original
+browser drivers remain unsupported. Tests do not supply real selected fonts
 or execute CSSOM/JS/shaping/layout/rasterization. See the fixture README and
 coverage artifact for exact scope.
 
@@ -1577,7 +1599,7 @@ context, before bidi/shaping. Typed inherited `white-space-collapse` and
 `text-wrap-mode` longhands support the two-longhand `white-space` shorthand,
 legacy aliases, arbitrary ordering, defaults, CSS-wide resets and pending
 substitution. Discard and white-space-trim remain unsupported. The registry has
-94 longhands and 17 shorthands; this does not imply used-value/layout support.
+95 longhands and 17 shorthands; this does not imply complete used-value/layout support.
 
 `WhiteSpace::for_style` binds the prepared text settings to frozen computed
 styles. Hosts supply one Arc source and an exact partition of nonempty UTF-8

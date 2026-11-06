@@ -1,3 +1,4 @@
+use super::containers::QueryBasis;
 use super::used::{Used, grid, length};
 use super::*;
 use crate::css::{
@@ -5,13 +6,27 @@ use crate::css::{
     style::{Keyword as K, Property as P, Style, Value},
 };
 #[allow(clippy::too_many_arguments)]
-pub(super) fn used(s: &Style, width: f64, height: Option<f64>, natural: (u32, u32), block: bool, rtl: bool, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Used> {
+pub(super) fn used(
+    s: &Style,
+    width: f64,
+    height: Option<f64>,
+    natural: (u32, u32),
+    block: bool,
+    rtl: bool,
+    queries: QueryBasis,
+    scratch: &mut math::Scratch,
+    cancel: Option<&AtomicBool>,
+    scale: f64,
+) -> Result<Used> {
     check(cancel)?;
+    if !matches!(s.value(P::ContainerType), Value::Keyword(K::Normal)) {
+        return Err(Error::Unsupported("query container replaced-element containment"));
+    }
     let padding = Edges {
-        top: length(s, P::PaddingTop, Some(width), Some(0.), scratch, cancel, scale)?.unwrap().max(0.),
-        right: length(s, P::PaddingRight, Some(width), Some(0.), scratch, cancel, scale)?.unwrap().max(0.),
-        bottom: length(s, P::PaddingBottom, Some(width), Some(0.), scratch, cancel, scale)?.unwrap().max(0.),
-        left: length(s, P::PaddingLeft, Some(width), Some(0.), scratch, cancel, scale)?.unwrap().max(0.),
+        top: length(s, P::PaddingTop, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap().max(0.),
+        right: length(s, P::PaddingRight, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap().max(0.),
+        bottom: length(s, P::PaddingBottom, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap().max(0.),
+        left: length(s, P::PaddingLeft, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap().max(0.),
     };
     let border = Edges {
         top: s.used_border_width(P::BorderTopWidth)?,
@@ -23,12 +38,12 @@ pub(super) fn used(s: &Style, width: f64, height: Option<f64>, natural: (u32, u3
     let border_box = matches!(s.value(P::BoxSizing), Value::Keyword(K::BorderBox));
     let x = |n: f64| (n - if border_box { ex } else { 0. }).max(0.);
     let y = |n: f64| (n - if border_box { ey } else { 0. }).max(0.);
-    let sw = length(s, P::Width, Some(width), None, scratch, cancel, scale)?.map(x);
-    let sh = length(s, P::Height, height, None, scratch, cancel, scale)?.map(y);
-    let minw = x(length(s, P::MinWidth, Some(width), Some(0.), scratch, cancel, scale)?.unwrap());
-    let maxw = length(s, P::MaxWidth, Some(width), None, scratch, cancel, scale)?.map(x).unwrap_or(f64::MAX).max(minw);
-    let minh = y(length(s, P::MinHeight, height, Some(0.), scratch, cancel, scale)?.unwrap());
-    let maxh = length(s, P::MaxHeight, height, None, scratch, cancel, scale)?.map(y).unwrap_or(f64::MAX).max(minh);
+    let sw = length(s, P::Width, Some(width), None, queries, scratch, cancel, scale)?.map(x);
+    let sh = length(s, P::Height, height, None, queries, scratch, cancel, scale)?.map(y);
+    let minw = x(length(s, P::MinWidth, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap());
+    let maxw = length(s, P::MaxWidth, Some(width), None, queries, scratch, cancel, scale)?.map(x).unwrap_or(f64::MAX).max(minw);
+    let minh = y(length(s, P::MinHeight, height, Some(0.), queries, scratch, cancel, scale)?.unwrap());
+    let maxh = length(s, P::MaxHeight, height, None, queries, scratch, cancel, scale)?.map(y).unwrap_or(f64::MAX).max(minh);
     let ratio = f64::from(natural.0) / f64::from(natural.1);
     let (mut w, mut h) = match (sw, sh) {
         (Some(w), Some(h)) => (w.clamp(minw, maxw), h.clamp(minh, maxh)),
@@ -68,13 +83,13 @@ pub(super) fn used(s: &Style, width: f64, height: Option<f64>, natural: (u32, u3
     };
     w = grid(w, scale);
     h = grid(h, scale);
-    let ml = length(s, P::MarginLeft, Some(width), None, scratch, cancel, scale)?;
-    let mr = length(s, P::MarginRight, Some(width), None, scratch, cancel, scale)?;
+    let ml = length(s, P::MarginLeft, Some(width), None, queries, scratch, cancel, scale)?;
+    let mr = length(s, P::MarginRight, Some(width), None, queries, scratch, cancel, scale)?;
     let mut margin = Edges {
         left: ml.unwrap_or(0.),
         right: mr.unwrap_or(0.),
-        top: length(s, P::MarginTop, Some(width), Some(0.), scratch, cancel, scale)?.unwrap(),
-        bottom: length(s, P::MarginBottom, Some(width), Some(0.), scratch, cancel, scale)?.unwrap(),
+        top: length(s, P::MarginTop, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap(),
+        bottom: length(s, P::MarginBottom, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap(),
     };
     if block {
         let remainder = width - ex - w - margin.left - margin.right;

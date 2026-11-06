@@ -47,8 +47,14 @@ segment values remain undefined. This is not every possible UA environment.
 The live page now advances to **CSS style ContextUnavailable**. Preserving font
 loader error detail leaves that diagnostic unchanged; no font-loader failure
 was observed in that retry. A further real retry with a named numeric-unit diagnostic confirms
-**Numeric(UnitContextUnavailable(Cqi))**. The next required work is query-container
-inline-size selection and resolution against layout geometry. There is still no useful native Stripe content.
+**Numeric(UnitContextUnavailable(Cqi))**. Initial horizontal box lengths now
+retain container-dependent parts until layout and select nearest eligible
+content-size bases per axis. Eight original ancestor contexts ×six units ×five
+native DPRs match240 Chrome widths; inheritance/early contexts still needing
+geometry fail explicitly. The real HTTPS startup advances to
+**flow layout Unsupported("flex box formatting")**. Stripe's own container
+geometry is not observed yet because formatting-tree construction stops first.
+There is still no useful native Stripe content.
 Do not suppress selector/value failures or replace the site with authored HTML.
 
 ## Work queue
@@ -59,7 +65,10 @@ Do not suppress selector/value failures or replace the site with authored HTML.
 - [x] Release state cost/full checks:273 default /259 all-feature web tests,
   strict clippy and workspace build pass. Cost regressions remain explicit.
 - [x] Implement required initial CSS environment substitution; retry the real site.
-- [ ] Identify the new missing CSS context and implement its required semantics.
+- [x] Identify Cqi and implement initial horizontal box query-container lengths.
+- [ ] Implement required original flex layout; retry the same real site.
+- [ ] Complete container semantics: early/inherited contexts, query conditions,
+  vertical modes, replaced containment and additional type/name grammars.
 - [ ] Pin a complete replay, locale/region/cohort, assets, fonts and dynamic clock
   policy; capture meaningful reference checkpoints. Live changes cannot be
   mistaken for renderer differences, and blank/error views never pass.

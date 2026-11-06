@@ -440,9 +440,22 @@ fn independent_pinned_computed_style_ports() {
     }
     let failures: Vec<_> = report["results"].as_array().unwrap().iter().filter(|r| matches!(r["outcome"].as_str(), Some("mismatch" | "error" | "panic"))).collect();
     assert!(failures.is_empty(), "{failures:?}");
+    // Preserve every original passing identity, rather than letting new passes
+    // conceal an old pass becoming unsupported while the totals still agree.
+    let baseline: serde_json::Value = serde_json::from_str(include_str!("../../../docs/browser/measurements/2026-11-05-style-coverage.json")).unwrap();
+    let key = |row: &serde_json::Value| serde_json::to_string(&[&row["file"], &row["line"], &row["kind"], &row["property"], &row["specified"]]).unwrap();
+    let old_unsupported: std::collections::BTreeSet<_> = baseline["unsupported"].as_array().unwrap().iter().map(key).collect();
+    let mut preserved = 0;
+    for row in report["results"].as_array().unwrap() {
+        if !old_unsupported.contains(&key(row)) {
+            assert_eq!(row["outcome"], "passed", "original passing case regressed: {row}");
+            preserved += 1;
+        }
+    }
+    assert_eq!(preserved, 243);
     assert_eq!(report["total"], 341);
-    assert_eq!(report["counts"]["passed"], 243);
-    assert_eq!(report["counts"]["unsupported"], 98);
+    assert_eq!(report["counts"]["passed"], 312);
+    assert_eq!(report["counts"]["unsupported"], 29);
 }
 
 #[test]

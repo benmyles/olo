@@ -4195,3 +4195,70 @@ through repeated exec upgrades. Main sync is pushed with this journal checkpoint
 Stripe's active next task remains query-container box-length resolution. Frozen
 parent benchmark examples use this merged web core before container changes.
 No site/configuration was accepted and prior performance failures remain open.
+
+### 2026-11-06 — Stripe reaches flex; initial horizontal container box lengths
+
+Implemented container-type normal/inline-size/size, including all:initial reset,
+and selected deferred relative units in the existing typed numeric evaluator.
+Supported box dimensions, margins, padding and insets can wait for horizontal
+layout; font/viewport/tree inputs keep their original computed context. Active
+layout frames carry16 bytes of per-axis nearest eligible ancestor content-size
+bases. A container's own dimensions use its ancestors; nested eligible axes can
+differ and missing axes use the small viewport. Size containment freezes an
+empty auto block size; query containers establish their formatting context.
+No per-length ancestor walk, second document index, polling or frame timer.
+Prepared styles/text survive resize while query geometry is recalculated.
+
+This is partial support, with explicit errors for early font/color/border
+contexts and still-pending inherited query lengths rather than rebinding them
+to a child. Vertical layout, named/conditional queries, combined types/container
+shorthand, replaced-element containment and complete containment remain open.
+Stripe's retained CSS actually uses inline-size containers. The live HTTPS
+startup now gets through the initial style stage and stops at **flex box
+formatting**. Its own deferred query lengths have not yet been resolved: the
+formatting tree stops before geometry. No useful native Stripe content and no
+site/configuration is accepted.
+
+Independent original Chrome:8 ancestor contexts ×6 units ×5 verified native
+DPRs =240 widths, all match the full native page pipeline within0.0001 CSS px
+(float32 exposure tolerance, below a layout subpixel). Captured fractional small
+viewport dimensions because innerWidth/Height round them. The first authored
+fixture used unsupported border shorthand; replaced it with equivalent longhands
+and recaptured Chrome with the new hash. All240 probe and host observations stay
+identical. No actual Stripe input or Chrome expected value was edited. Additional
+checks cover changed containment, all reset, cancellation, cache reuse on resize
+and early/inherited context rejection. Broad border shorthand remains required.
+
+Recognizing the original fixture container-type contexts enables69 more style
+ports:312/341 pass,29 unsupported. Every original243 passing identity is guarded;
+all remain passing. The font subset improves93→137/149,12 unsupported. Pinned
+upstream/derived inputs/references stay unchanged; only local fixture README
+hashes update with documentation. Default browser/web280, all-feature web266,
+final focused23 and post-documentation style/font26 pass. Strict all-target
+clippy, format/AST/diff and workspace release build26.33s pass. Earlier old-count
+assertions failed and were corrected only after validating the independent
+outcomes. Final production source is frozen in the measured release binaries.
+
+Native navigation with actual Cqi padding:15 mode/scale reviews, history/scroll
+and owned re-exec pass. One tree request resets during re-exec and the expected
+reconnect loop retries it; restored URL/navigation generation, section position
+and forward/back without network requests pass. Reload+following history checks
+1.536s, not isolated presentation latency. A visible authored nested-container
+component also passes15 reviews, with all15 screenshots inspected. Five-second
+useful-component idle0 CPU/0 wakeups. Both owned screens quit/stopped. Global
+journal preserves606 entries and adds two component shots (608), with original
+JSON formatting; no forced-dark site/night-output or Chrome pixel acceptance.
+
+Ordinary cost against frozen merged-parent5b07a3df:CPU0, seven rotated processes
+per variant,28 accepted samples,2 compiler-overlap discards/4 waits/3 samples with
+Cargo/test context, load43.72–46.01.100/1000-element pipeline
+1271.93→1149.55 /11127.51→11899.97µs; retained scene
+272.26→236.98 /4264.27→4328.84µs. Source/geometry/pixels agree. Larger pipeline
+~6.9% and scene~1.5% regressions stay nonpasses; host isolation/causality is not
+established. Prior image/environment/scene/fuzz performance failures remain open.
+Evidence:2026-11-06-stripe-containers-{checks,cost}.json, original fixtures and
+native navigation/screenshot journal. No general website speedup is claimed.
+
+Origin/main advanced to9f23236a (recording controls); merge next after committing
+this working milestone. **Stripe0/30, corpus0/100,0/3000; goal active.** Next
+required site feature is the original flex formatting/layout implementation.

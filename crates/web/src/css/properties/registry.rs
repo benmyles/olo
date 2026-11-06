@@ -74,6 +74,7 @@ keyword_registry! {
     Horizontal => "horizontal",
     HorizontalTb => "horizontal-tb",
     Inline => "inline",
+    InlineSize => "inline-size",
     InlineEnd => "inline-end",
     InlineStart => "inline-start",
     Italic => "italic",
@@ -115,6 +116,7 @@ keyword_registry! {
     SidewaysLr => "sideways-lr",
     SidewaysRl => "sideways-rl",
     Small => "small",
+    Size => "size",
     Smaller => "smaller",
     Solid => "solid",
     Start => "start",
@@ -181,6 +183,7 @@ property_registry! {
     Clear, "clear", Grammar::Keywords(&[Keyword::None,Keyword::Left,Keyword::Right,Keyword::Both,Keyword::InlineStart,Keyword::InlineEnd]), "none", false;
     Color, "color", Grammar::Color(&[]), "canvastext", true;
     ColumnGap, "column-gap", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::Normal]), "normal", false;
+    ContainerType, "container-type", Grammar::Keywords(&[Keyword::Normal,Keyword::InlineSize,Keyword::Size]), "normal", false;
     Direction, "direction", Grammar::Keywords(&[Keyword::Ltr,Keyword::Rtl]), "ltr", true;
     Display, "display", Grammar::Display, "inline", false;
     FlexBasis, "flex-basis", Grammar::Size(SizeKind::Basis), "auto", false;
@@ -271,7 +274,7 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
+    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,ContainerType,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;

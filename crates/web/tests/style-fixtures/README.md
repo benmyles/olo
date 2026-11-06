@@ -12,10 +12,12 @@ compiles original context styles, and runs the production document style job.
 Parents, root fonts, logical mapping, inherited values, stylesheet matching,
 inline declarations and computed values use the original engine. Unsupported
 context declarations cannot disappear to manufacture a pass. The font-weight
-and line-height resources currently require unimplemented CSS container
-contexts, so all 73 of their native assertions stay unsupported.
+and line-height resources include container-type contexts. Recognizing those
+contexts enables69 additional assertions without changing the pinned inputs or
+expected values; four literal assertions still require unavailable early
+container geometry. Every one of the original243 passing identities is guarded.
 
-**243 passes, 98 unsupported assertions/drivers, no unexpected mismatch,
+**312 passes, 29 unsupported assertions/drivers, no unexpected mismatch,
 error or panic.** These are selected native semantic/resolved-value ports,
 not 341 complete upstream browser tests or CSSOM serialization tests. Display
 references compare independent keyword/box tuples; numbers use decimal

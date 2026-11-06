@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """Native navigation on an OWN Agent Screen; authored fixtures accept no sites.
 Start release olo-browser there, eval olo-screen env, then run NAME OUTPUT_DIR.
-Checks canonical redirects, in-document identity/no I/O, history, keyboard focus
+Checks canonical redirects, query-container box padding, in-document identity/no I/O, history, keyboard focus
 and scroll restoration at all native modes/scales. HTTP server is test-only.
 """
 import copy
@@ -36,8 +36,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             body = '<title>Other destination</title><h1>Other destination</h1>'
         else:
             body = '''<title>Navigation fixture</title>
-<style>body{margin:20px}a{color:blue}a:focus-visible{color:purple}
-p:target{color:red}h1{font-size:28px}</style>
+<style>body{margin:20px;container-type:inline-size}a{color:blue}a:focus-visible{color:purple}
+p:target{color:red}h1{font-size:28px;padding-left:5cqi}</style>
 <h1>Navigation fixture</h1><a href='#section'>Jump section</a>
 <div style='height:1500px'></div>
 <p id=section>Section target</p><a href='#top'>Back to top</a>
@@ -110,6 +110,7 @@ try:
             settled('Navigation fixture')
             initial = document()
             assert initial['url'] == base + '/nav', initial
+            assert node('Label', 'Navigation fixture')['x'] > node('Link', 'Jump section')['x'] + 20
             before = len(requests)
             # Native keys and documented agent menu commands share control.
             run('key', screen, 'Tab')

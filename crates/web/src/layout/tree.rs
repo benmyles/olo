@@ -480,7 +480,17 @@ impl<'a> BuildJob<'a> {
                             let id = self.add(node, node, BoxKind::Block { flow_root: inner == Inner::FlowRoot, root }, container)?;
                             self.push(node, id, node, true)?;
                         }
-                        _ => return Err(Error::Unsupported("non-flow box formatting")),
+                        _ => {
+                            return Err(Error::Unsupported(match display {
+                                Display::Box { list_item: true, .. } => "list-item box formatting",
+                                Display::Box { inner: Inner::Flex, .. } => "flex box formatting",
+                                Display::Box { inner: Inner::Grid, .. } => "grid box formatting",
+                                Display::Box { inner: Inner::Table, .. } | Display::Internal(_) => "table/internal box formatting",
+                                Display::Box { inner: Inner::Ruby, .. } => "ruby box formatting",
+                                Display::Box { outer: Outer::Inline, inner: Inner::FlowRoot, .. } => "inline-block box formatting",
+                                _ => "non-flow box formatting",
+                            }));
+                        }
                     }
                 }
                 NodeType::Text => self.text(node, container, parent_style)?,

@@ -47,7 +47,12 @@ impl Numeric {
     /// that require layout. Inheritance copies this result, not the original
     /// specified expression. Range/rounding applies once fully resolved.
     pub fn computed(&self, context: &impl math::Context, defer_percentage: bool, limits: math::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
-        let expression = self.expression.computed(context, defer_percentage, limits, cancelled).map_err(Error::Numeric)?;
+        self.computed_retaining(context, if defer_percentage { math::Dependencies::PERCENTAGE } else { Default::default() }, limits, cancelled)
+    }
+    /// Internal delayed box lengths. The owner must supply the original
+    /// element's container context when resolving the remaining expression.
+    pub fn computed_retaining(&self, context: &impl math::Context, deferred: math::Dependencies, limits: math::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+        let expression = self.expression.computed_retaining(context, deferred, limits, cancelled).map_err(Error::Numeric)?;
         let mut computed = Self { expression, range: self.range, integer: self.integer, percentage_number: self.percentage_number };
         if computed.expression.constant().is_some() {
             let value = computed.resolve(&math::NoContext, &mut math::Scratch::default(), limits, cancelled)?;

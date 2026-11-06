@@ -1,3 +1,4 @@
+use super::containers::QueryBasis;
 use super::used::Used;
 use super::*;
 use crate::{
@@ -306,6 +307,7 @@ struct Frame {
     collapse_top: bool,
     collapse_bottom: bool,
     through: bool,
+    queries: QueryBasis,
 }
 struct Completed {
     before: Strut,
@@ -369,7 +371,19 @@ impl<'a> Job<'a> {
             cancel,
             geometry,
             texts,
-            stack: vec![Frame { id: root, next, used, cursor: 0., pending: Strut::default(), top: Strut::default(), at_start: true, collapse_top: false, collapse_bottom: false, through: false }],
+            stack: vec![Frame {
+                id: root,
+                next,
+                used,
+                cursor: 0.,
+                pending: Strut::default(),
+                top: Strut::default(),
+                at_start: true,
+                collapse_top: false,
+                collapse_bottom: false,
+                through: false,
+                queries: QueryBasis::viewport(viewport),
+            }],
             scratch: math::Scratch::default(),
             progress: Progress::default(),
             failed: false,
@@ -383,14 +397,16 @@ impl<'a> Job<'a> {
         if self.stack.len() >= self.limits.depth {
             return Err(Error::Limit);
         }
-        let parent = self.stack.last().ok_or(Error::Invalid)?.used;
+        let frame = self.stack.last().ok_or(Error::Invalid)?;
+        let parent = frame.used;
+        let queries = frame.queries;
         let b = self.cache.tree.get(id).ok_or(Error::Invalid)?;
         let BoxKind::Block { flow_root, root } = b.kind else { return Err(Error::Invalid) };
         let style = self.cache.tree.style(id).ok_or(Error::Invalid)?;
         if style.font().context() != self.scope.context() {
             return Err(Error::Stale);
         }
-        let mut used = Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, &mut self.scratch, self.cancel, self.scale)?;
+        let mut used = Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
         used.bfc |= flow_root || root;
         let collapse_top = !used.bfc && used.padding.top + used.border.top == 0.;
         let collapse_bottom = !used.bfc && used.height.is_none() && used.min_height == 0. && used.padding.bottom + used.border.bottom == 0.;
@@ -401,7 +417,20 @@ impl<'a> Job<'a> {
             border_width: used.border,
             margin: used.margin,
         };
-        self.stack.push(Frame { id, next: b.first_child, used, cursor: 0., pending: Strut::default(), top: Strut::new(used.margin.top), at_start: true, collapse_top, collapse_bottom, through });
+        let queries = queries.descendants(style, used.width, used.height(0.))?;
+        self.stack.push(Frame {
+            id,
+            next: b.first_child,
+            used,
+            cursor: 0.,
+            pending: Strut::default(),
+            top: Strut::new(used.margin.top),
+            at_start: true,
+            collapse_top,
+            collapse_bottom,
+            through,
+            queries,
+        });
         Ok(())
     }
     fn place(&mut self, id: BoxId, result: Completed) -> Result<()> {
@@ -443,7 +472,7 @@ impl<'a> Job<'a> {
             if !used::has_inline_edge(s, true) && !used::has_inline_edge(s, false) {
                 continue;
             }
-            let ((left, left_break), (right, right_break)) = used::inline_edges(s, parent.used.width, &mut self.scratch, self.cancel, self.scale)?;
+            let ((left, left_break), (right, right_break)) = used::inline_edges(s, parent.used.width, parent.queries, &mut self.scratch, self.cancel, self.scale)?;
             if !left_break && !right_break {
                 continue;
             }
@@ -499,6 +528,7 @@ impl<'a> Job<'a> {
                 (pixels.width(), pixels.height()),
                 false,
                 parent.used.rtl,
+                parent.queries,
                 &mut self.scratch,
                 self.cancel,
                 self.scale,
@@ -571,7 +601,9 @@ impl<'a> Job<'a> {
                         self.progress.boxes += 1
                     }
                     BoxKind::BlockImage { image } => {
-                        let parent = self.stack.last().ok_or(Error::Invalid)?.used;
+                        let frame = self.stack.last().ok_or(Error::Invalid)?;
+                        let parent = frame.used;
+                        let queries = frame.queries;
                         let s = self.cache.tree.style(child).ok_or(Error::Invalid)?;
                         let pixels = self.cache.tree.image(image).ok_or(Error::Invalid)?;
                         let used = super::images::used(
@@ -581,6 +613,7 @@ impl<'a> Job<'a> {
                             (pixels.width(), pixels.height()),
                             true,
                             parent.rtl,
+                            queries,
                             &mut self.scratch,
                             self.cancel,
                             self.scale,

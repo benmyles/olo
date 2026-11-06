@@ -116,6 +116,11 @@ fn snap_border(value: f64, scale: f64) -> Result<f64> {
 fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_, impl Host>, parent: Option<&Style>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     let Source::Specified(value) = source else {
         let Source::Inherited(value) = source else { unreachable!() };
+        if let Value::Numeric(n) = value
+            && n.expression().dependencies().intersects(math::Dependencies::CONTAINERS)
+        {
+            return Err(Error::Unsupported("inherited container-dependent box length"));
+        }
         return Ok(value.clone());
     };
     Ok(match value {
@@ -124,7 +129,34 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
             if angle == 0. { Value::Keyword(Keyword::Normal) } else { Value::Oblique(angle) }
         }
         p::Value::Numeric(n) => {
-            let computed = n.computed(&numeric, !matches!(property, Property::LineHeight | Property::FontWidth), limits.math, cancelled).map_err(Error::property)?;
+            let defer_percentage = !matches!(property, Property::LineHeight | Property::FontWidth);
+            let computed = if matches!(
+                property,
+                Property::Width
+                    | Property::Height
+                    | Property::MinWidth
+                    | Property::MaxWidth
+                    | Property::MinHeight
+                    | Property::MaxHeight
+                    | Property::MarginTop
+                    | Property::MarginRight
+                    | Property::MarginBottom
+                    | Property::MarginLeft
+                    | Property::PaddingTop
+                    | Property::PaddingRight
+                    | Property::PaddingBottom
+                    | Property::PaddingLeft
+                    | Property::Top
+                    | Property::Right
+                    | Property::Bottom
+                    | Property::Left
+            ) && n.expression().dependencies().intersects(math::Dependencies::CONTAINERS)
+            {
+                n.computed_retaining(&numeric, math::Dependencies::CONTAINERS.union(if defer_percentage { math::Dependencies::PERCENTAGE } else { Default::default() }), limits.math, cancelled)
+            } else {
+                n.computed(&numeric, defer_percentage, limits.math, cancelled)
+            }
+            .map_err(Error::property)?;
             if border_width(property) {
                 scalar(snap_border(computed.expression().constant().ok_or(Error::Invalid)?.value, numeric.host.device_scale())?, math::Dimension::Length, p::Range::Nonnegative)
             } else {
