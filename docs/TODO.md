@@ -7,21 +7,6 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **The battery's charge limit at 90%, not 80%** (Ben, 2026-11-05):
-  "for the battery option to stop charging at 80%/75% change it to be
-  90%/85% instead". Preferences ▸ Power ▸ Battery's "Stop charging at
-  80% (and start again below 75%)" says UPower's thresholds
-  (`olo_system::battery::charge_limit`, `ChargeStartThreshold` and
-  `ChargeEndThreshold`), which are UPower's defaults: Olo only turns
-  the limit on and off (`EnableChargeThreshold`). UPower 1.91.5 (here)
-  takes others from the battery's udev property `CHARGE_LIMIT` ("85,90"),
-  read as it finds the battery. So: a udev rule giving the system
-  battery `CHARGE_LIMIT=85,90` (data/udev, installed with the others,
-  and offered by Olo Doctor where it's missing, root through polkit),
-  UPower made to read it again (the device re-triggered, or upowerd
-  restarted), and the check box then saying 90% and 85% as UPower does;
-  a battery limited already, kept limited at the new thresholds.
-
 - **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
   screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
   incorrectly showing up as a keyboard"): "Yubico YubiKey OTP+FIDO+CCID"
