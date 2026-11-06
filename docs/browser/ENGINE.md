@@ -719,3 +719,101 @@ other functions/attribute and URL taint, animation integration, CSSOM,
 actual declaration/cascade/style hosts and live invalidation remain open.
 No webpage, Chrome rendering, browser memory, UI latency or all-site dark
 mode capability follows from these native ports or microbenchmarks.
+
+## Typed property declarations
+
+`css::properties::Declaration::compile(&Statement, Limits, cancellation)`
+connects the generic declaration parser to original typed grammars. The
+standalone `parse(decoded_name, Components, important, ...)` API takes an
+already-decoded CSS property name; it is not a CSSOM setProperty/string-name
+parser. Static ASCII case-insensitive binary lookup covers **88 longhands
+and 15 shorthands**, with canonical names, inherited flags and initial-value
+spellings. The registry intentionally exposes its implemented scope; fonts,
+background images/layers, border-image/radius, transforms, grid templates,
+alignment, animations, transitions, many shorthands and descriptors remain.
+UnknownProperty, Invalid, Unsupported and operational failures are distinct.
+An unrecognized property does not prove its grammar is invalid.
+
+Typed values are CSS-wide keywords, registry keywords, original numeric/color
+values, structured display box types, fit-content numeric arguments or shared
+pending tokens. The compiler validates dimensional/range rules, accepts bare
+zero for lengths, preserves percent/font/viewport/tree dependencies and keeps
+logical longhands distinct from physical ones. Initial spellings are metadata
+for a future shared default-style table, not a computed default style. There
+is no property-to-element application yet.
+
+Nonnegative literals are rejected when negative; numeric functions can be
+out of range and clamp at computation. Numeric resolution uses the supplied
+property-specific host and retained math scratch. Widths, margins, font-size
+and line-height need different percentage/font snapshots. Opacity normalizes
+percentages and clamps to [0,1]. Integers from functions round to nearest with
+ties toward positive infinity; literal integer syntax is required otherwise.
+IEEE specials are censored at the property boundary, after inner math;
+unbounded literal overflow is accepted and materialized to finite f64 bounds.
+Line-height numbers remain multipliers, distinct from length calculations;
+actual used line metrics are not computed here.
+
+Quad/pair shorthands expand atomically in physical/logical order; flex-flow
+accepts its direction/wrap keywords in either order and fills omitted initial
+values. Importance comes from the original declaration and applies to all
+assignments. CSS-wide keywords expand over every implemented member. Display
+retains outer/inner/list-item or internal table/ruby roles and recognizes
+legacy aliases. No box tree, blockification, coupled overflow computation,
+layout mapping of logical axes or CSSOM serializer is implemented.
+
+The existing variable scanner validates generic contents and var() arguments
+without copying tokens on an ordinary declaration. A pending shorthand holds
+one Arc<Pending> shared by every longhand assignment. Its tokens are compact
+owned copies, releasing the original stylesheet Syntax. The cascade host must
+select winning assignments before `Pending::resolve(...)`, resolve each shared
+pending value once for its snapshot, and retain the resulting typed values.
+Invalid computed output produces unset for every affected longhand; it must
+not expose an older declaration. Unsupported functions, resource limits and
+cancellation stay explicit errors. Custom declarations preserve decoded
+case-sensitive names, importance and distinct valid empty token values.
+
+Limits preflight the flat node ranges and source spans, then bound the generic
+scanner and each nested math/color/token compiler. These are per-invocation
+bounds with fixed extra passes: at most four shorthand members. They are not
+one exact combined instruction counter or a whole-stylesheet memory budget.
+Default input is 1 MiB/65,536 nodes, work 1,000,000, nesting 64. The original
+math/color/variable hard caps also apply. Cancellation is checked while
+scanning/copying/evaluating. Worker ownership, batching/progress and lifecycle
+invalidation belong to the future style job; this module adds no threads,
+I/O, timers, polling or idle work.
+
+`Value::dependencies()` reports numeric/color/substitution inputs, including
+pending values explicitly. Property-specific font, cascade, logical-axis and
+layout dependencies are additional host responsibilities, not inferred from
+an empty token dependency mask. `reserved_bytes()` counts referenced heap
+storage; clones/shared arenas must be counted once by their owner. The native
+benchmark records independent retained declarations and excludes original
+Syntax, allocator metadata and runtime host state.
+
+Independent evidence comes from 126 pinned unmodified WPT resources. Literal
+ports inventory **1,109 cases: 821 passes and 288 explicit non-passes**, with
+no unexpected mismatch/error/panic. Declaration ports check acceptance only,
+not the upstream helper's CSSOM serialization. Shorthand maps compare actual
+member identities and independent literal values. Isolated numeric/keyword/
+absolute-color references use no engine parser to interpret expected values;
+font/percent/intrinsic/used-value/element/display-CSSOM contexts and nonliteral
+JS drivers remain unsupported. This is no browser execution or rendering
+claim, and the evaluator exits 1. Eight native groups also check source
+release, dimensional/range/rounding behavior, shared pending values, invalid
+computed output, logical identities, cancellation/quotas and 2,000 generated hostile
+inputs. Both assignment-storage controls pass the same native checks.
+
+```sh
+cargo test --release -p olo-web --test properties
+cargo run --release -p olo-web --example properties_eval -- /var/tmp/property-report.json
+cargo run --release -p olo-web --example properties_bench -- 20000
+```
+
+Primary grammar references consulted 2026-11-05:
+[CSS Sizing 3](https://drafts.csswg.org/css-sizing-3/),
+[CSS Box 4](https://drafts.csswg.org/css-box-4/),
+[CSS Display 3](https://drafts.csswg.org/css-display-3/),
+[CSS Overflow 3](https://drafts.csswg.org/css-overflow-3/),
+[CSS Cascade 5](https://drafts.csswg.org/css-cascade-5/) and
+[CSS Values 4](https://drafts.csswg.org/css-values-4/) and
+[CSS Values 5 substitution](https://drafts.csswg.org/css-values-5/#arbitrary-substitution).

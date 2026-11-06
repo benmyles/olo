@@ -56,6 +56,13 @@ item means implemented and verified; a partial implementation stays open.
   remain unimplemented.
 - [ ] Implement CSS property grammars, cascade, media queries and real
   element/style invalidation.
+- [x] Core typed declaration compilation: 88 longhands and 15 shorthands,
+  dimensional/range rules, structured display values, shared pending shorthand
+  substitution and invalid-at-computed-value unset; independent native ports
+  821/1,109 pass, 288 explicit non-passes. No actual style/layout execution.
+- [ ] Complete property registry/grammars (fonts/families, backgrounds/images,
+  border-image/radius, grid/alignment, transforms, animations/transitions,
+  aliases/descriptors), CSSOM, computed/used-value contexts and style hosts.
 - [x] Core unregistered custom-property token compilation/substitution:
   compact batch arenas, dynamic names/argument wrappers, demand-driven cycles,
   revision-aware memoization, taint/keyword hooks and bounded expansion;
@@ -105,8 +112,8 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: CSS property/style compilation using typed tokens/math/colors and substitution;
-stylesheet contexts/rule indexing,
+Next: actual cascade and element/style snapshots using typed declarations;
+stylesheet contexts/rule indexing, property coverage and computed-value hosts,
 remaining selector integrations, descriptor-aware parsing and
 HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
 and the six tree cases requiring script execution.

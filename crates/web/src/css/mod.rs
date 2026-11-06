@@ -5,6 +5,7 @@ pub use bytes::{ByteDecoder, ByteOptions, ByteParseError, ByteSyntax, EncodingCh
 pub mod color;
 pub mod math;
 mod parser;
+pub mod properties;
 pub mod selectors;
 mod syntax;
 pub mod variables;

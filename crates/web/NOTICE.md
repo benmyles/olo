@@ -96,3 +96,9 @@ inventoried non-passes document the native grammar/cycle/substituted-name
 ports. No upstream JS or page executes, and no third-party variable or
 style engine is embedded. Production substitution and token assembly are
 original Rust based on CSS Variables and CSS Values/Syntax.
+
+The 126 property grammar/expansion/computed-reference WPT resources in
+`tests/property-fixtures/wpt` are unmodified at the revision recorded in
+`tests/property-fixtures/SOURCE.json`. The BSD license is reproduced beside
+them. Literal extraction/native adapters are original Olo code; these ports
+do not execute WPT's JS, CSSOM, style or layout drivers.

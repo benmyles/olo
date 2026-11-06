@@ -3,6 +3,7 @@
 mod compile;
 mod resolve;
 use super::{Components, Kind, Syntax, syntax::Assembler};
+pub(crate) use compile::inspect;
 pub use resolve::{Binding, Context, Resolver, Stats};
 use std::sync::{
     Arc,

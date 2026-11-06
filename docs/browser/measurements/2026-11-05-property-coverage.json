@@ -1,0 +1,3850 @@
+{
+  "scope": "Native declaration grammar, shorthand expansion and isolated numeric/keyword references; not CSSOM serialization, cascade, style, layout, JS or document execution",
+  "base_commit": "baa75e86e2c91ccdbfc4861ad5d394a67265eb63",
+  "total": 1109,
+  "counts": {
+    "passed": 821,
+    "unsupported": 288
+  },
+  "resource_files": 126,
+  "literal_cases": 1090,
+  "unported_drivers": 19,
+  "fixture_manifest_sha256": "3f009220d2355026047e4a8356a301bab12ffb77b59bcafc1e7d787f1edcd5ff",
+  "full_report_sha256": "14169fab49c14530737ea8266d80873fbe24d6f1b70ffa2637412c2633387ab7",
+  "commands": [
+    "/usr/bin/python3 crates/web/tests/property-fixtures/extract.py",
+    "cargo run --release -p olo-web --example properties_eval -- /var/tmp/olo-browser-research/properties/final-report.json"
+  ],
+  "extraction_reproduces_exact_bytes": true,
+  "evaluator_exit_code": 1,
+  "unexpected_mismatches_errors_panics": 0,
+  "per_file_counts": {
+    "css/css-align/parsing/column-gap-computed.html": {
+      "passed": 1,
+      "unsupported": 4
+    },
+    "css/css-align/parsing/column-gap-invalid.html": {
+      "passed": 5
+    },
+    "css/css-align/parsing/column-gap-valid.html": {
+      "passed": 6
+    },
+    "css/css-align/parsing/gap-computed.html": {
+      "unsupported": 11
+    },
+    "css/css-align/parsing/gap-invalid.html": {
+      "passed": 4
+    },
+    "css/css-align/parsing/gap-shorthand.html": {
+      "passed": 2,
+      "unsupported": 2
+    },
+    "css/css-align/parsing/gap-valid.html": {
+      "passed": 9
+    },
+    "css/css-align/parsing/row-gap-computed.html": {
+      "passed": 2,
+      "unsupported": 4
+    },
+    "css/css-align/parsing/row-gap-invalid.html": {
+      "passed": 4
+    },
+    "css/css-align/parsing/row-gap-valid.html": {
+      "passed": 5
+    },
+    "css/css-backgrounds/parsing/border-color-invalid.html": {
+      "passed": 3
+    },
+    "css/css-backgrounds/parsing/border-color-shorthand.html": {
+      "unsupported": 4
+    },
+    "css/css-backgrounds/parsing/border-color-valid.html": {
+      "passed": 7
+    },
+    "css/css-backgrounds/parsing/border-style-computed.html": {
+      "unsupported": 4,
+      "passed": 4
+    },
+    "css/css-backgrounds/parsing/border-style-invalid.html": {
+      "passed": 2
+    },
+    "css/css-backgrounds/parsing/border-style-shorthand.html": {
+      "passed": 4
+    },
+    "css/css-backgrounds/parsing/border-style-valid.html": {
+      "passed": 8
+    },
+    "css/css-backgrounds/parsing/border-width-computed.html": {
+      "unsupported": 8,
+      "passed": 2
+    },
+    "css/css-backgrounds/parsing/border-width-invalid.html": {
+      "passed": 3
+    },
+    "css/css-backgrounds/parsing/border-width-shorthand.html": {
+      "passed": 4
+    },
+    "css/css-backgrounds/parsing/border-width-valid.html": {
+      "passed": 6
+    },
+    "css/css-box/parsing/clear-computed.html": {
+      "passed": 6
+    },
+    "css/css-box/parsing/clear-invalid.html": {
+      "passed": 2
+    },
+    "css/css-box/parsing/clear-valid.html": {
+      "passed": 6
+    },
+    "css/css-box/parsing/float-computed.html": {
+      "passed": 5
+    },
+    "css/css-box/parsing/float-invalid.html": {
+      "passed": 3
+    },
+    "css/css-box/parsing/float-valid.html": {
+      "passed": 5
+    },
+    "css/css-box/parsing/height-invalid.html": {
+      "passed": 10
+    },
+    "css/css-box/parsing/height-valid.html": {
+      "passed": 7
+    },
+    "css/css-box/parsing/margin-computed.html": {
+      "unsupported": 4,
+      "passed": 4
+    },
+    "css/css-box/parsing/margin-invalid.html": {
+      "passed": 6,
+      "unsupported": 1
+    },
+    "css/css-box/parsing/margin-shorthand.html": {
+      "passed": 4
+    },
+    "css/css-box/parsing/margin-valid.html": {
+      "passed": 15
+    },
+    "css/css-box/parsing/max-height-invalid.html": {
+      "passed": 12
+    },
+    "css/css-box/parsing/max-height-valid.html": {
+      "passed": 7
+    },
+    "css/css-box/parsing/max-width-invalid.html": {
+      "passed": 12
+    },
+    "css/css-box/parsing/max-width-valid.html": {
+      "passed": 7
+    },
+    "css/css-box/parsing/overflow-invalid.html": {
+      "passed": 6
+    },
+    "css/css-box/parsing/overflow-valid.html": {
+      "passed": 8
+    },
+    "css/css-box/parsing/padding-computed.html": {
+      "unsupported": 9,
+      "passed": 4
+    },
+    "css/css-box/parsing/padding-invalid.html": {
+      "passed": 9,
+      "unsupported": 1
+    },
+    "css/css-box/parsing/padding-shorthand.html": {
+      "passed": 4
+    },
+    "css/css-box/parsing/padding-valid.html": {
+      "passed": 11
+    },
+    "css/css-box/parsing/visibility-computed.html": {
+      "passed": 3
+    },
+    "css/css-box/parsing/visibility-invalid.html": {
+      "passed": 2
+    },
+    "css/css-box/parsing/visibility-valid.html": {
+      "passed": 3
+    },
+    "css/css-box/parsing/width-invalid.html": {
+      "passed": 13
+    },
+    "css/css-box/parsing/width-valid.html": {
+      "passed": 7
+    },
+    "css/css-color/parsing/opacity-computed.html": {
+      "passed": 30
+    },
+    "css/css-color/parsing/opacity-invalid.html": {
+      "passed": 3
+    },
+    "css/css-color/parsing/opacity-valid.html": {
+      "passed": 30
+    },
+    "css/css-display/parsing/display-computed.html": {
+      "unsupported": 108
+    },
+    "css/css-display/parsing/display-invalid.html": {
+      "passed": 55
+    },
+    "css/css-display/parsing/display-valid.html": {
+      "passed": 108
+    },
+    "css/css-flexbox/parsing/flex-basis-computed.html": {
+      "passed": 6,
+      "unsupported": 6
+    },
+    "css/css-flexbox/parsing/flex-basis-invalid.html": {
+      "passed": 5,
+      "unsupported": 2
+    },
+    "css/css-flexbox/parsing/flex-basis-valid.html": {
+      "passed": 8
+    },
+    "css/css-flexbox/parsing/flex-direction-computed.html": {
+      "passed": 4
+    },
+    "css/css-flexbox/parsing/flex-direction-invalid.html": {
+      "passed": 2
+    },
+    "css/css-flexbox/parsing/flex-direction-valid.html": {
+      "passed": 4
+    },
+    "css/css-flexbox/parsing/flex-flow-computed.html": {
+      "unsupported": 2
+    },
+    "css/css-flexbox/parsing/flex-flow-invalid.html": {
+      "passed": 2
+    },
+    "css/css-flexbox/parsing/flex-flow-shorthand.html": {
+      "passed": 2
+    },
+    "css/css-flexbox/parsing/flex-flow-valid.html": {
+      "passed": 7
+    },
+    "css/css-flexbox/parsing/flex-grow-computed.html": {
+      "passed": 4
+    },
+    "css/css-flexbox/parsing/flex-grow-invalid.html": {
+      "passed": 4
+    },
+    "css/css-flexbox/parsing/flex-grow-valid.html": {
+      "passed": 4
+    },
+    "css/css-flexbox/parsing/flex-shrink-computed.html": {
+      "passed": 4
+    },
+    "css/css-flexbox/parsing/flex-shrink-invalid.html": {
+      "passed": 4
+    },
+    "css/css-flexbox/parsing/flex-shrink-valid.html": {
+      "passed": 4
+    },
+    "css/css-flexbox/parsing/flex-wrap-computed.html": {
+      "passed": 3
+    },
+    "css/css-flexbox/parsing/flex-wrap-invalid.html": {
+      "passed": 2
+    },
+    "css/css-flexbox/parsing/flex-wrap-valid.html": {
+      "passed": 3
+    },
+    "css/css-flexbox/parsing/order-computed.html": {
+      "passed": 3
+    },
+    "css/css-flexbox/parsing/order-invalid.html": {
+      "passed": 3
+    },
+    "css/css-flexbox/parsing/order-valid.html": {
+      "passed": 3
+    },
+    "css/css-fonts/parsing/font-size-computed.html": {
+      "passed": 1,
+      "unsupported": 5
+    },
+    "css/css-fonts/parsing/font-size-invalid.html": {
+      "passed": 4
+    },
+    "css/css-fonts/parsing/font-size-valid.html": {
+      "passed": 13
+    },
+    "css/css-fonts/parsing/font-weight-computed.html": {
+      "unsupported": 3,
+      "passed": 17
+    },
+    "css/css-fonts/parsing/font-weight-invalid.html": {
+      "passed": 2
+    },
+    "css/css-fonts/parsing/font-weight-valid.html": {
+      "passed": 22
+    },
+    "css/css-overflow/parsing/overflow-computed.html": {
+      "unsupported": 34
+    },
+    "css/css-overflow/parsing/overflow-invalid.html": {
+      "passed": 6
+    },
+    "css/css-overflow/parsing/overflow-valid.html": {
+      "passed": 18
+    },
+    "css/css-position/parsing/bottom-computed.html": {
+      "unsupported": 5
+    },
+    "css/css-position/parsing/bottom-invalid.html": {
+      "passed": 3
+    },
+    "css/css-position/parsing/bottom-valid.html": {
+      "passed": 4
+    },
+    "css/css-position/parsing/left-computed.html": {
+      "unsupported": 5
+    },
+    "css/css-position/parsing/left-invalid.html": {
+      "passed": 3
+    },
+    "css/css-position/parsing/left-valid.html": {
+      "passed": 4
+    },
+    "css/css-position/parsing/position-computed.html": {
+      "unsupported": 5
+    },
+    "css/css-position/parsing/position-invalid.html": {
+      "passed": 2
+    },
+    "css/css-position/parsing/position-valid.html": {
+      "passed": 5
+    },
+    "css/css-position/parsing/right-computed.html": {
+      "unsupported": 5
+    },
+    "css/css-position/parsing/right-invalid.html": {
+      "passed": 3
+    },
+    "css/css-position/parsing/right-valid.html": {
+      "passed": 4
+    },
+    "css/css-position/parsing/top-computed.html": {
+      "unsupported": 5
+    },
+    "css/css-position/parsing/top-invalid.html": {
+      "passed": 3
+    },
+    "css/css-position/parsing/top-valid.html": {
+      "passed": 4
+    },
+    "css/css-position/parsing/z-index-computed.html": {
+      "passed": 3
+    },
+    "css/css-position/parsing/z-index-invalid.html": {
+      "passed": 4
+    },
+    "css/css-position/parsing/z-index-valid.html": {
+      "passed": 4
+    },
+    "css/css-sizing/parsing/box-sizing-computed.html": {
+      "passed": 2
+    },
+    "css/css-sizing/parsing/box-sizing-invalid.html": {
+      "passed": 7
+    },
+    "css/css-sizing/parsing/box-sizing-valid.html": {
+      "passed": 2
+    },
+    "css/css-sizing/parsing/height-invalid.html": {
+      "passed": 4
+    },
+    "css/css-sizing/parsing/height-valid.html": {
+      "passed": 10
+    },
+    "css/css-sizing/parsing/max-height-computed.html": {
+      "passed": 4,
+      "unsupported": 8
+    },
+    "css/css-sizing/parsing/max-height-invalid.html": {
+      "passed": 4
+    },
+    "css/css-sizing/parsing/max-height-valid.html": {
+      "passed": 10
+    },
+    "css/css-sizing/parsing/max-width-computed.html": {
+      "passed": 4,
+      "unsupported": 8
+    },
+    "css/css-sizing/parsing/max-width-invalid.html": {
+      "passed": 4
+    },
+    "css/css-sizing/parsing/max-width-valid.html": {
+      "passed": 10
+    },
+    "css/css-sizing/parsing/min-height-computed.html": {
+      "passed": 3,
+      "unsupported": 8
+    },
+    "css/css-sizing/parsing/min-height-invalid.html": {
+      "passed": 11
+    },
+    "css/css-sizing/parsing/min-height-valid.html": {
+      "passed": 10
+    },
+    "css/css-sizing/parsing/min-width-computed.html": {
+      "passed": 3,
+      "unsupported": 8
+    },
+    "css/css-sizing/parsing/min-width-invalid.html": {
+      "passed": 11
+    },
+    "css/css-sizing/parsing/min-width-valid.html": {
+      "passed": 10
+    },
+    "css/css-sizing/parsing/width-invalid.html": {
+      "passed": 4
+    },
+    "css/css-sizing/parsing/width-valid.html": {
+      "passed": 10
+    },
+    "css/css-backgrounds/parsing/border-color-computed.html": {
+      "unsupported": 8
+    },
+    "css/css-position/parsing/inset-computed.html": {
+      "unsupported": 2
+    },
+    "css/css-position/parsing/inset-invalid.html": {
+      "unsupported": 3
+    },
+    "css/css-position/parsing/inset-valid.html": {
+      "unsupported": 6
+    }
+  },
+  "nonpass_reasons": {
+    "font/percent/viewport/tree numeric host": 27,
+    "preserved percentage computation host": 10,
+    "noncanonical numeric reference or relative host": 8,
+    "compound computed reference": 31,
+    "contextual color host": 1,
+    "noncanonical/compound color reference": 3,
+    "property not implemented": 2,
+    "display computed/CSSOM reference driver": 108,
+    "anchor or intrinsic sizing function": 2,
+    "font keyword computation host": 2,
+    "coupled/used-value element and layout host": 59,
+    "intrinsic size computation host": 16,
+    "nonliteral expected value": 8,
+    "nonliteral helper call or loop driver": 11
+  },
+  "nonpasses": [
+    {
+      "expected": "30px",
+      "file": "css/css-align/parsing/column-gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 22,
+      "mode": "computed",
+      "offset": 594,
+      "outcome": "unsupported",
+      "property": "column-gap",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-align/parsing/column-gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 23,
+      "mode": "computed",
+      "offset": 659,
+      "outcome": "unsupported",
+      "property": "column-gap",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "40%",
+      "file": "css/css-align/parsing/column-gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "40%",
+      "line": 24,
+      "mode": "computed",
+      "offset": 723,
+      "outcome": "unsupported",
+      "property": "column-gap",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": "calc(50% + 60px)",
+      "file": "css/css-align/parsing/column-gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(50% + 60px)",
+      "line": 25,
+      "mode": "computed",
+      "offset": 765,
+      "outcome": "unsupported",
+      "property": "column-gap",
+      "reason": "noncanonical numeric reference or relative host"
+    },
+    {
+      "expected": "normal",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "normal",
+      "line": 20,
+      "mode": "computed",
+      "offset": 563,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "10px",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "10px",
+      "line": 21,
+      "mode": "computed",
+      "offset": 601,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "20%",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 22,
+      "mode": "computed",
+      "offset": 637,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "calc(20% + 10px)",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(20% + 10px)",
+      "line": 23,
+      "mode": "computed",
+      "offset": 672,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(-0.5em + 10px)",
+      "line": 24,
+      "mode": "computed",
+      "offset": 720,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(0.5em + 10px)",
+      "line": 25,
+      "mode": "computed",
+      "offset": 778,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "normal 10px",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "normal 10px",
+      "line": 27,
+      "mode": "computed",
+      "offset": 837,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "10px 20%",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "10px 20%",
+      "line": 28,
+      "mode": "computed",
+      "offset": 880,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "20% calc(20% + 10px)",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "20% calc(20% + 10px)",
+      "line": 29,
+      "mode": "computed",
+      "offset": 920,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "calc(20% + 10px) normal",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(20% + 10px) normal",
+      "line": 30,
+      "mode": "computed",
+      "offset": 972,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "0px 30px",
+      "file": "css/css-align/parsing/gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(-0.5em + 10px) calc(0.5em + 10px)",
+      "line": 32,
+      "mode": "computed",
+      "offset": 1028,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": {
+        "column-gap": "20%",
+        "row-gap": "10px"
+      },
+      "file": "css/css-align/parsing/gap-shorthand.html",
+      "helper": "test_shorthand_value",
+      "input": "10px 20%",
+      "line": 19,
+      "mode": "shorthand",
+      "offset": 561,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": {
+        "column-gap": "calc(20% + 10px)",
+        "row-gap": "normal"
+      },
+      "file": "css/css-align/parsing/gap-shorthand.html",
+      "helper": "test_shorthand_value",
+      "input": "normal calc(20% + 10px)",
+      "line": 29,
+      "mode": "shorthand",
+      "offset": 747,
+      "outcome": "unsupported",
+      "property": "gap",
+      "reason": "noncanonical numeric reference or relative host"
+    },
+    {
+      "expected": "20%",
+      "file": "css/css-align/parsing/row-gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 23,
+      "mode": "computed",
+      "offset": 663,
+      "outcome": "unsupported",
+      "property": "row-gap",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": "calc(20% + 10px)",
+      "file": "css/css-align/parsing/row-gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(20% + 10px)",
+      "line": 24,
+      "mode": "computed",
+      "offset": 702,
+      "outcome": "unsupported",
+      "property": "row-gap",
+      "reason": "noncanonical numeric reference or relative host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-align/parsing/row-gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(-0.5em + 10px)",
+      "line": 26,
+      "mode": "computed",
+      "offset": 755,
+      "outcome": "unsupported",
+      "property": "row-gap",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-align/parsing/row-gap-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(0.5em + 10px)",
+      "line": 27,
+      "mode": "computed",
+      "offset": 817,
+      "outcome": "unsupported",
+      "property": "row-gap",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": {
+        "border-bottom-color": "currentcolor",
+        "border-left-color": "currentcolor",
+        "border-right-color": "currentcolor",
+        "border-top-color": "currentcolor"
+      },
+      "file": "css/css-backgrounds/parsing/border-color-shorthand.html",
+      "helper": "test_shorthand_value",
+      "input": "currentcolor",
+      "line": 14,
+      "mode": "shorthand",
+      "offset": 497,
+      "outcome": "unsupported",
+      "property": "border-color",
+      "reason": "contextual color host"
+    },
+    {
+      "expected": {
+        "border-bottom-color": "red",
+        "border-left-color": "yellow",
+        "border-right-color": "yellow",
+        "border-top-color": "red"
+      },
+      "file": "css/css-backgrounds/parsing/border-color-shorthand.html",
+      "helper": "test_shorthand_value",
+      "input": "red yellow",
+      "line": 21,
+      "mode": "shorthand",
+      "offset": 714,
+      "outcome": "unsupported",
+      "property": "border-color",
+      "reason": "noncanonical/compound color reference"
+    },
+    {
+      "expected": {
+        "border-bottom-color": "green",
+        "border-left-color": "yellow",
+        "border-right-color": "yellow",
+        "border-top-color": "red"
+      },
+      "file": "css/css-backgrounds/parsing/border-color-shorthand.html",
+      "helper": "test_shorthand_value",
+      "input": "red yellow green",
+      "line": 28,
+      "mode": "shorthand",
+      "offset": 899,
+      "outcome": "unsupported",
+      "property": "border-color",
+      "reason": "noncanonical/compound color reference"
+    },
+    {
+      "expected": {
+        "border-bottom-color": "green",
+        "border-left-color": "blue",
+        "border-right-color": "yellow",
+        "border-top-color": "red"
+      },
+      "file": "css/css-backgrounds/parsing/border-color-shorthand.html",
+      "helper": "test_shorthand_value",
+      "input": "red yellow green blue",
+      "line": 35,
+      "mode": "shorthand",
+      "offset": 1092,
+      "outcome": "unsupported",
+      "property": "border-color",
+      "reason": "noncanonical/compound color reference"
+    },
+    {
+      "expected": "none",
+      "file": "css/css-backgrounds/parsing/border-style-computed.html",
+      "helper": "test_computed_value",
+      "input": "none",
+      "line": 15,
+      "mode": "computed",
+      "offset": 508,
+      "outcome": "unsupported",
+      "property": "border-style",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "inset outset",
+      "file": "css/css-backgrounds/parsing/border-style-computed.html",
+      "helper": "test_computed_value",
+      "input": "inset outset",
+      "line": 16,
+      "mode": "computed",
+      "offset": 553,
+      "outcome": "unsupported",
+      "property": "border-style",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "hidden dotted dashed",
+      "file": "css/css-backgrounds/parsing/border-style-computed.html",
+      "helper": "test_computed_value",
+      "input": "hidden dotted dashed",
+      "line": 17,
+      "mode": "computed",
+      "offset": 606,
+      "outcome": "unsupported",
+      "property": "border-style",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "solid double groove ridge",
+      "file": "css/css-backgrounds/parsing/border-style-computed.html",
+      "helper": "test_computed_value",
+      "input": "solid double groove ridge",
+      "line": 18,
+      "mode": "computed",
+      "offset": 667,
+      "outcome": "unsupported",
+      "property": "border-style",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "1px",
+      "file": "css/css-backgrounds/parsing/border-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "1px",
+      "line": 34,
+      "mode": "computed",
+      "offset": 1104,
+      "outcome": "unsupported",
+      "property": "border-width",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "1px 2px",
+      "file": "css/css-backgrounds/parsing/border-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "1px 2px",
+      "line": 35,
+      "mode": "computed",
+      "offset": 1148,
+      "outcome": "unsupported",
+      "property": "border-width",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "1px 2px 3px",
+      "file": "css/css-backgrounds/parsing/border-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "1px 2px 3px",
+      "line": 36,
+      "mode": "computed",
+      "offset": 1196,
+      "outcome": "unsupported",
+      "property": "border-width",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "1px 2px 3px 4px",
+      "file": "css/css-backgrounds/parsing/border-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "1px 2px 3px 4px",
+      "line": 37,
+      "mode": "computed",
+      "offset": 1248,
+      "outcome": "unsupported",
+      "property": "border-width",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "20px",
+      "file": "css/css-backgrounds/parsing/border-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "0.5em",
+      "line": 39,
+      "mode": "computed",
+      "offset": 1305,
+      "outcome": "unsupported",
+      "property": "border-width",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "2px ",
+      "file": "css/css-backgrounds/parsing/border-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "2px thin medium thick",
+      "line": 40,
+      "mode": "computed",
+      "offset": 1359,
+      "outcome": "unsupported",
+      "property": "border-width",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-backgrounds/parsing/border-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(-0.5em + 10px)",
+      "line": 44,
+      "mode": "computed",
+      "offset": 1580,
+      "outcome": "unsupported",
+      "property": "border-bottom-width",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-backgrounds/parsing/border-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(0.5em + 10px)",
+      "line": 45,
+      "mode": "computed",
+      "offset": 1654,
+      "outcome": "unsupported",
+      "property": "border-left-width",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "10px",
+      "file": "css/css-box/parsing/margin-computed.html",
+      "helper": "test_computed_value",
+      "input": "10px",
+      "line": 28,
+      "mode": "computed",
+      "offset": 662,
+      "outcome": "unsupported",
+      "property": "margin",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "10px 20px 30px 40px",
+      "file": "css/css-box/parsing/margin-computed.html",
+      "helper": "test_computed_value",
+      "input": "10px 20px 30px 40px",
+      "line": 29,
+      "mode": "computed",
+      "offset": 701,
+      "outcome": "unsupported",
+      "property": "margin",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-box/parsing/margin-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(0.5em + 10px)",
+      "line": 30,
+      "mode": "computed",
+      "offset": 755,
+      "outcome": "unsupported",
+      "property": "margin",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "60px",
+      "file": "css/css-box/parsing/margin-computed.html",
+      "helper": "test_computed_value",
+      "input": "30%",
+      "line": 31,
+      "mode": "computed",
+      "offset": 816,
+      "outcome": "unsupported",
+      "property": "margin",
+      "reason": "compound computed reference"
+    },
+    {
+      "file": "css/css-box/parsing/margin-invalid.html",
+      "helper": "test_invalid_value",
+      "input": "none",
+      "line": 22,
+      "mode": "parse",
+      "offset": 912,
+      "outcome": "unsupported",
+      "property": "margin-bottom-left",
+      "reason": "property not implemented",
+      "serialization_reference": "none",
+      "valid": false
+    },
+    {
+      "expected": "10px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "10px",
+      "line": 33,
+      "mode": "computed",
+      "offset": 828,
+      "outcome": "unsupported",
+      "property": "padding",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "10px 20px 30px 40px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "10px 20px 30px 40px",
+      "line": 34,
+      "mode": "computed",
+      "offset": 868,
+      "outcome": "unsupported",
+      "property": "padding",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "40px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 41,
+      "mode": "computed",
+      "offset": 1107,
+      "outcome": "unsupported",
+      "property": "padding",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "10px 40px 60px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "10px 20% 30% 40px",
+      "line": 42,
+      "mode": "computed",
+      "offset": 1154,
+      "outcome": "unsupported",
+      "property": "padding",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "40px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 43,
+      "mode": "computed",
+      "offset": 1225,
+      "outcome": "unsupported",
+      "property": "padding-right",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10% - 40px)",
+      "line": 45,
+      "mode": "computed",
+      "offset": 1279,
+      "outcome": "unsupported",
+      "property": "padding-top",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "60px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10% + 40px)",
+      "line": 46,
+      "mode": "computed",
+      "offset": 1342,
+      "outcome": "unsupported",
+      "property": "padding-right",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 47,
+      "mode": "computed",
+      "offset": 1408,
+      "outcome": "unsupported",
+      "property": "padding-bottom",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-box/parsing/padding-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 48,
+      "mode": "computed",
+      "offset": 1476,
+      "outcome": "unsupported",
+      "property": "padding-left",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "file": "css/css-box/parsing/padding-invalid.html",
+      "helper": "test_invalid_value",
+      "input": "10px 20px",
+      "line": 23,
+      "mode": "parse",
+      "offset": 907,
+      "outcome": "unsupported",
+      "property": "padding-bottom-left",
+      "reason": "property not implemented",
+      "serialization_reference": "10px 20px",
+      "valid": false
+    },
+    {
+      "expected": "grid",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "grid",
+      "line": 22,
+      "mode": "computed",
+      "offset": 881,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-grid",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline-grid",
+      "line": 23,
+      "mode": "computed",
+      "offset": 921,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline",
+      "line": 26,
+      "mode": "computed",
+      "offset": 1028,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "block",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block",
+      "line": 27,
+      "mode": "computed",
+      "offset": 1070,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item",
+      "line": 28,
+      "mode": "computed",
+      "offset": 1111,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-block",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline-block",
+      "line": 29,
+      "mode": "computed",
+      "offset": 1156,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table",
+      "line": 30,
+      "mode": "computed",
+      "offset": 1204,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-table",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline-table",
+      "line": 31,
+      "mode": "computed",
+      "offset": 1245,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table-row-group",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table-row-group",
+      "line": 32,
+      "mode": "computed",
+      "offset": 1293,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table-header-group",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table-header-group",
+      "line": 33,
+      "mode": "computed",
+      "offset": 1344,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table-footer-group",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table-footer-group",
+      "line": 34,
+      "mode": "computed",
+      "offset": 1398,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table-row",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table-row",
+      "line": 35,
+      "mode": "computed",
+      "offset": 1452,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table-column-group",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table-column-group",
+      "line": 36,
+      "mode": "computed",
+      "offset": 1497,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table-column",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table-column",
+      "line": 37,
+      "mode": "computed",
+      "offset": 1551,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table-cell",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table-cell",
+      "line": 38,
+      "mode": "computed",
+      "offset": 1599,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table-caption",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table-caption",
+      "line": 39,
+      "mode": "computed",
+      "offset": 1645,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "none",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "none",
+      "line": 40,
+      "mode": "computed",
+      "offset": 1694,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flex",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flex",
+      "line": 43,
+      "mode": "computed",
+      "offset": 1794,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-flex",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline-flex",
+      "line": 44,
+      "mode": "computed",
+      "offset": 1834,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "contents",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "contents",
+      "line": 46,
+      "mode": "computed",
+      "offset": 1882,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in",
+      "line": 48,
+      "mode": "computed",
+      "offset": 1927,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "block",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow",
+      "line": 49,
+      "mode": "computed",
+      "offset": 1969,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root",
+      "line": 50,
+      "mode": "computed",
+      "offset": 2018,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "ruby",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "ruby",
+      "line": 51,
+      "mode": "computed",
+      "offset": 2063,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "ruby-base",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "ruby-base",
+      "line": 52,
+      "mode": "computed",
+      "offset": 2103,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "ruby-text",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "ruby-text",
+      "line": 53,
+      "mode": "computed",
+      "offset": 2148,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow list-item",
+      "line": 55,
+      "mode": "computed",
+      "offset": 2194,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item flow",
+      "line": 56,
+      "mode": "computed",
+      "offset": 2257,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root list-item",
+      "line": 57,
+      "mode": "computed",
+      "offset": 2320,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item flow-root",
+      "line": 58,
+      "mode": "computed",
+      "offset": 2398,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "block",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block flow",
+      "line": 60,
+      "mode": "computed",
+      "offset": 2477,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "block",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow block",
+      "line": 61,
+      "mode": "computed",
+      "offset": 2532,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root block",
+      "line": 62,
+      "mode": "computed",
+      "offset": 2587,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block flow-root",
+      "line": 63,
+      "mode": "computed",
+      "offset": 2651,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flex",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flex block",
+      "line": 64,
+      "mode": "computed",
+      "offset": 2715,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flex",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block flex",
+      "line": 65,
+      "mode": "computed",
+      "offset": 2769,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "grid",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "grid block",
+      "line": 66,
+      "mode": "computed",
+      "offset": 2823,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "grid",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block grid",
+      "line": 67,
+      "mode": "computed",
+      "offset": 2877,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table block",
+      "line": 68,
+      "mode": "computed",
+      "offset": 2931,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "table",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block table",
+      "line": 69,
+      "mode": "computed",
+      "offset": 2987,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "block ruby",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block ruby",
+      "line": 70,
+      "mode": "computed",
+      "offset": 3043,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "block ruby",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "ruby block",
+      "line": 71,
+      "mode": "computed",
+      "offset": 3103,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block list-item",
+      "line": 72,
+      "mode": "computed",
+      "offset": 3163,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item block",
+      "line": 73,
+      "mode": "computed",
+      "offset": 3227,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow block list-item",
+      "line": 74,
+      "mode": "computed",
+      "offset": 3291,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block flow list-item",
+      "line": 75,
+      "mode": "computed",
+      "offset": 3360,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow list-item block",
+      "line": 76,
+      "mode": "computed",
+      "offset": 3429,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block list-item flow",
+      "line": 77,
+      "mode": "computed",
+      "offset": 3498,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item block flow",
+      "line": 78,
+      "mode": "computed",
+      "offset": 3567,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item flow block",
+      "line": 79,
+      "mode": "computed",
+      "offset": 3636,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root block list-item",
+      "line": 80,
+      "mode": "computed",
+      "offset": 3705,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block flow-root list-item",
+      "line": 81,
+      "mode": "computed",
+      "offset": 3789,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root list-item block",
+      "line": 82,
+      "mode": "computed",
+      "offset": 3873,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "block list-item flow-root",
+      "line": 83,
+      "mode": "computed",
+      "offset": 3957,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item block flow-root",
+      "line": 84,
+      "mode": "computed",
+      "offset": 4041,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item flow-root block",
+      "line": 85,
+      "mode": "computed",
+      "offset": 4125,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline flow",
+      "line": 87,
+      "mode": "computed",
+      "offset": 4210,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow inline",
+      "line": 88,
+      "mode": "computed",
+      "offset": 4267,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-block",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root inline",
+      "line": 89,
+      "mode": "computed",
+      "offset": 4324,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-block",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline flow-root",
+      "line": 90,
+      "mode": "computed",
+      "offset": 4392,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-flex",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flex inline",
+      "line": 91,
+      "mode": "computed",
+      "offset": 4460,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-flex",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline flex",
+      "line": 92,
+      "mode": "computed",
+      "offset": 4522,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-grid",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "grid inline",
+      "line": 93,
+      "mode": "computed",
+      "offset": 4584,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-grid",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline grid",
+      "line": 94,
+      "mode": "computed",
+      "offset": 4646,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-table",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table inline",
+      "line": 95,
+      "mode": "computed",
+      "offset": 4708,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline-table",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline table",
+      "line": 96,
+      "mode": "computed",
+      "offset": 4772,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "ruby",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline ruby",
+      "line": 97,
+      "mode": "computed",
+      "offset": 4836,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "ruby",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "ruby inline",
+      "line": 98,
+      "mode": "computed",
+      "offset": 4891,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline list-item",
+      "line": 99,
+      "mode": "computed",
+      "offset": 4946,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item inline",
+      "line": 100,
+      "mode": "computed",
+      "offset": 5018,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow inline list-item",
+      "line": 101,
+      "mode": "computed",
+      "offset": 5090,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline flow list-item",
+      "line": 102,
+      "mode": "computed",
+      "offset": 5167,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow list-item inline",
+      "line": 103,
+      "mode": "computed",
+      "offset": 5244,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline list-item flow",
+      "line": 104,
+      "mode": "computed",
+      "offset": 5321,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item inline flow",
+      "line": 105,
+      "mode": "computed",
+      "offset": 5398,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item flow inline",
+      "line": 106,
+      "mode": "computed",
+      "offset": 5475,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root inline list-item",
+      "line": 107,
+      "mode": "computed",
+      "offset": 5552,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline flow-root list-item",
+      "line": 108,
+      "mode": "computed",
+      "offset": 5644,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root list-item inline",
+      "line": 109,
+      "mode": "computed",
+      "offset": 5736,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "inline list-item flow-root",
+      "line": 110,
+      "mode": "computed",
+      "offset": 5828,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item inline flow-root",
+      "line": 111,
+      "mode": "computed",
+      "offset": 5920,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "inline flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item flow-root inline",
+      "line": 112,
+      "mode": "computed",
+      "offset": 6012,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in flow",
+      "line": 114,
+      "mode": "computed",
+      "offset": 6105,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow run-in",
+      "line": 115,
+      "mode": "computed",
+      "offset": 6162,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flow-root",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root run-in",
+      "line": 116,
+      "mode": "computed",
+      "offset": 6219,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flow-root",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in flow-root",
+      "line": 117,
+      "mode": "computed",
+      "offset": 6291,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flex",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flex run-in",
+      "line": 118,
+      "mode": "computed",
+      "offset": 6363,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flex",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in flex",
+      "line": 119,
+      "mode": "computed",
+      "offset": 6425,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in grid",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "grid run-in",
+      "line": 120,
+      "mode": "computed",
+      "offset": 6487,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in grid",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in grid",
+      "line": 121,
+      "mode": "computed",
+      "offset": 6549,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in table",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "table run-in",
+      "line": 122,
+      "mode": "computed",
+      "offset": 6611,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in table",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in table",
+      "line": 123,
+      "mode": "computed",
+      "offset": 6675,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in ruby",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in ruby",
+      "line": 124,
+      "mode": "computed",
+      "offset": 6739,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in ruby",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "ruby run-in",
+      "line": 125,
+      "mode": "computed",
+      "offset": 6801,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in list-item",
+      "line": 126,
+      "mode": "computed",
+      "offset": 6863,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item run-in",
+      "line": 127,
+      "mode": "computed",
+      "offset": 6935,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow run-in list-item",
+      "line": 128,
+      "mode": "computed",
+      "offset": 7007,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in flow list-item",
+      "line": 129,
+      "mode": "computed",
+      "offset": 7084,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow list-item run-in",
+      "line": 130,
+      "mode": "computed",
+      "offset": 7161,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in list-item flow",
+      "line": 131,
+      "mode": "computed",
+      "offset": 7238,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item run-in flow",
+      "line": 132,
+      "mode": "computed",
+      "offset": 7315,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item flow run-in",
+      "line": 133,
+      "mode": "computed",
+      "offset": 7392,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root run-in list-item",
+      "line": 134,
+      "mode": "computed",
+      "offset": 7469,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in flow-root list-item",
+      "line": 135,
+      "mode": "computed",
+      "offset": 7561,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "flow-root list-item run-in",
+      "line": 136,
+      "mode": "computed",
+      "offset": 7653,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "run-in list-item flow-root",
+      "line": 137,
+      "mode": "computed",
+      "offset": 7745,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item run-in flow-root",
+      "line": 138,
+      "mode": "computed",
+      "offset": 7837,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "run-in flow-root list-item",
+      "file": "css/css-display/parsing/display-computed.html",
+      "helper": "test_computed_value",
+      "input": "list-item flow-root run-in",
+      "line": 139,
+      "mode": "computed",
+      "offset": 7929,
+      "outcome": "unsupported",
+      "property": "display",
+      "reason": "display computed/CSSOM reference driver"
+    },
+    {
+      "expected": "400%",
+      "file": "css/css-flexbox/parsing/flex-basis-computed.html",
+      "helper": "test_computed_value",
+      "input": "400%",
+      "line": 22,
+      "mode": "computed",
+      "offset": 689,
+      "outcome": "unsupported",
+      "property": "flex-basis",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-flexbox/parsing/flex-basis-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 29,
+      "mode": "computed",
+      "offset": 972,
+      "outcome": "unsupported",
+      "property": "flex-basis",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-flexbox/parsing/flex-basis-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 30,
+      "mode": "computed",
+      "offset": 1037,
+      "outcome": "unsupported",
+      "property": "flex-basis",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "10%",
+      "file": "css/css-flexbox/parsing/flex-basis-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10%)",
+      "line": 31,
+      "mode": "computed",
+      "offset": 1101,
+      "outcome": "unsupported",
+      "property": "flex-basis",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": "calc(0% + 10px)",
+      "file": "css/css-flexbox/parsing/flex-basis-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(0% + 10px)",
+      "line": 33,
+      "mode": "computed",
+      "offset": 1207,
+      "outcome": "unsupported",
+      "property": "flex-basis",
+      "reason": "noncanonical numeric reference or relative host"
+    },
+    {
+      "expected": "10%",
+      "file": "css/css-flexbox/parsing/flex-basis-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10% + 0px)",
+      "line": 34,
+      "mode": "computed",
+      "offset": 1280,
+      "outcome": "unsupported",
+      "property": "flex-basis",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "file": "css/css-flexbox/parsing/flex-basis-invalid.html",
+      "helper": "test_invalid_value",
+      "input": "anchor-size(--a width)",
+      "line": 20,
+      "mode": "parse",
+      "offset": 812,
+      "outcome": "unsupported",
+      "property": "flex-basis",
+      "reason": "anchor or intrinsic sizing function",
+      "serialization_reference": "anchor-size(--a width)",
+      "valid": false
+    },
+    {
+      "file": "css/css-flexbox/parsing/flex-basis-invalid.html",
+      "helper": "test_invalid_value",
+      "input": "anchor-size(--a width, 10px)",
+      "line": 21,
+      "mode": "parse",
+      "offset": 872,
+      "outcome": "unsupported",
+      "property": "flex-basis",
+      "reason": "anchor or intrinsic sizing function",
+      "serialization_reference": "anchor-size(--a width, 10px)",
+      "valid": false
+    },
+    {
+      "expected": "column wrap-reverse",
+      "file": "css/css-flexbox/parsing/flex-flow-computed.html",
+      "helper": "test_computed_value",
+      "input": "column wrap-reverse",
+      "line": 15,
+      "mode": "computed",
+      "offset": 480,
+      "outcome": "unsupported",
+      "property": "flex-flow",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "row-reverse wrap",
+      "file": "css/css-flexbox/parsing/flex-flow-computed.html",
+      "helper": "test_computed_value",
+      "input": "row-reverse wrap",
+      "line": 16,
+      "mode": "computed",
+      "offset": 537,
+      "outcome": "unsupported",
+      "property": "flex-flow",
+      "reason": "compound computed reference"
+    },
+    {
+      "expected": "8px",
+      "file": "css/css-fonts/parsing/font-size-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 49,
+      "mode": "computed",
+      "offset": 1587,
+      "outcome": "unsupported",
+      "property": "font-size",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-fonts/parsing/font-size-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(30% - 40px)",
+      "line": 50,
+      "mode": "computed",
+      "offset": 1635,
+      "outcome": "unsupported",
+      "property": "font-size",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "52px",
+      "file": "css/css-fonts/parsing/font-size-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(30% + 40px)",
+      "line": 51,
+      "mode": "computed",
+      "offset": 1696,
+      "outcome": "unsupported",
+      "property": "font-size",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-fonts/parsing/font-size-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 52,
+      "mode": "computed",
+      "offset": 1758,
+      "outcome": "unsupported",
+      "property": "font-size",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-fonts/parsing/font-size-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 53,
+      "mode": "computed",
+      "offset": 1821,
+      "outcome": "unsupported",
+      "property": "font-size",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "400",
+      "file": "css/css-fonts/parsing/font-weight-computed.html",
+      "helper": "test_computed_value",
+      "input": "normal",
+      "line": 24,
+      "mode": "computed",
+      "offset": 616,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "font keyword computation host"
+    },
+    {
+      "expected": "700",
+      "file": "css/css-fonts/parsing/font-weight-computed.html",
+      "helper": "test_computed_value",
+      "input": "bold",
+      "line": 25,
+      "mode": "computed",
+      "offset": 669,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "font keyword computation host"
+    },
+    {
+      "expected": "95",
+      "file": "css/css-fonts/parsing/font-weight-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(100 + (sign(20cqw - 10px) * 5))",
+      "line": 43,
+      "mode": "computed",
+      "offset": 1506,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "visible",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible",
+      "line": 15,
+      "mode": "computed",
+      "offset": 525,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "hidden",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "hidden",
+      "line": 16,
+      "mode": "computed",
+      "offset": 569,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "clip",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "clip",
+      "line": 17,
+      "mode": "computed",
+      "offset": 612,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "scroll",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "scroll",
+      "line": 18,
+      "mode": "computed",
+      "offset": 653,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto",
+      "line": 19,
+      "mode": "computed",
+      "offset": 696,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto auto",
+      "line": 21,
+      "mode": "computed",
+      "offset": 738,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto clip",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto clip",
+      "line": 22,
+      "mode": "computed",
+      "offset": 792,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto visible",
+      "line": 23,
+      "mode": "computed",
+      "offset": 838,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "clip auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "clip auto",
+      "line": 24,
+      "mode": "computed",
+      "offset": 895,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "clip",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "clip clip",
+      "line": 25,
+      "mode": "computed",
+      "offset": 941,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "clip hidden",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "clip hidden",
+      "line": 26,
+      "mode": "computed",
+      "offset": 995,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "clip scroll",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "clip scroll",
+      "line": 27,
+      "mode": "computed",
+      "offset": 1043,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "clip visible",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "clip visible",
+      "line": 28,
+      "mode": "computed",
+      "offset": 1091,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "hidden clip",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "hidden clip",
+      "line": 29,
+      "mode": "computed",
+      "offset": 1156,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "hidden auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "hidden visible",
+      "line": 30,
+      "mode": "computed",
+      "offset": 1204,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "scroll auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "scroll auto",
+      "line": 31,
+      "mode": "computed",
+      "offset": 1270,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "scroll clip",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "scroll clip",
+      "line": 32,
+      "mode": "computed",
+      "offset": 1318,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "scroll auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "scroll visible",
+      "line": 33,
+      "mode": "computed",
+      "offset": 1366,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible auto",
+      "line": 34,
+      "mode": "computed",
+      "offset": 1432,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto hidden",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible hidden",
+      "line": 35,
+      "mode": "computed",
+      "offset": 1489,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto scroll",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible scroll",
+      "line": 36,
+      "mode": "computed",
+      "offset": 1555,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "visible clip",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible clip",
+      "line": 37,
+      "mode": "computed",
+      "offset": 1621,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "visible",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible visible",
+      "line": 38,
+      "mode": "computed",
+      "offset": 1686,
+      "outcome": "unsupported",
+      "property": "overflow",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "scroll",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "scroll",
+      "line": 41,
+      "mode": "computed",
+      "offset": 1751,
+      "outcome": "unsupported",
+      "property": "overflow-x",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "hidden",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "hidden",
+      "line": 42,
+      "mode": "computed",
+      "offset": 1796,
+      "outcome": "unsupported",
+      "property": "overflow-x",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "visible",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible",
+      "line": 43,
+      "mode": "computed",
+      "offset": 1841,
+      "outcome": "unsupported",
+      "property": "overflow-x",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "clip",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "clip",
+      "line": 44,
+      "mode": "computed",
+      "offset": 1887,
+      "outcome": "unsupported",
+      "property": "overflow-y",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto",
+      "line": 45,
+      "mode": "computed",
+      "offset": 1930,
+      "outcome": "unsupported",
+      "property": "overflow-y",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "visible",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible",
+      "line": 46,
+      "mode": "computed",
+      "offset": 1973,
+      "outcome": "unsupported",
+      "property": "overflow-y",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "hidden",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "hidden",
+      "line": 47,
+      "mode": "computed",
+      "offset": 2019,
+      "outcome": "unsupported",
+      "property": "overflow-block",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "clip",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "clip",
+      "line": 48,
+      "mode": "computed",
+      "offset": 2068,
+      "outcome": "unsupported",
+      "property": "overflow-block",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "visible",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible",
+      "line": 49,
+      "mode": "computed",
+      "offset": 2115,
+      "outcome": "unsupported",
+      "property": "overflow-block",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "scroll",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "scroll",
+      "line": 50,
+      "mode": "computed",
+      "offset": 2165,
+      "outcome": "unsupported",
+      "property": "overflow-inline",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "visible",
+      "file": "css/css-overflow/parsing/overflow-computed.html",
+      "helper": "test_computed_value",
+      "input": "visible",
+      "line": 51,
+      "mode": "computed",
+      "offset": 2215,
+      "outcome": "unsupported",
+      "property": "overflow-inline",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-position/parsing/bottom-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto",
+      "line": 20,
+      "mode": "computed",
+      "offset": 544,
+      "outcome": "unsupported",
+      "property": "bottom",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-position/parsing/bottom-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 22,
+      "mode": "computed",
+      "offset": 584,
+      "outcome": "unsupported",
+      "property": "bottom",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "-10px",
+      "file": "css/css-position/parsing/bottom-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 23,
+      "mode": "computed",
+      "offset": 645,
+      "outcome": "unsupported",
+      "property": "bottom",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "-40%",
+      "file": "css/css-position/parsing/bottom-computed.html",
+      "helper": "test_computed_value",
+      "input": "-40%",
+      "line": 24,
+      "mode": "computed",
+      "offset": 707,
+      "outcome": "unsupported",
+      "property": "bottom",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "calc(50% + 60px)",
+      "file": "css/css-position/parsing/bottom-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(50% + 60px)",
+      "line": 25,
+      "mode": "computed",
+      "offset": 746,
+      "outcome": "unsupported",
+      "property": "bottom",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-position/parsing/left-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto",
+      "line": 20,
+      "mode": "computed",
+      "offset": 538,
+      "outcome": "unsupported",
+      "property": "left",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-position/parsing/left-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 22,
+      "mode": "computed",
+      "offset": 576,
+      "outcome": "unsupported",
+      "property": "left",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "-10px",
+      "file": "css/css-position/parsing/left-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 23,
+      "mode": "computed",
+      "offset": 635,
+      "outcome": "unsupported",
+      "property": "left",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "-40%",
+      "file": "css/css-position/parsing/left-computed.html",
+      "helper": "test_computed_value",
+      "input": "-40%",
+      "line": 24,
+      "mode": "computed",
+      "offset": 695,
+      "outcome": "unsupported",
+      "property": "left",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "calc(50% + 60px)",
+      "file": "css/css-position/parsing/left-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(50% + 60px)",
+      "line": 25,
+      "mode": "computed",
+      "offset": 732,
+      "outcome": "unsupported",
+      "property": "left",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "static",
+      "file": "css/css-position/parsing/position-computed.html",
+      "helper": "test_computed_value",
+      "input": "static",
+      "line": 15,
+      "mode": "computed",
+      "offset": 501,
+      "outcome": "unsupported",
+      "property": "position",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "relative",
+      "file": "css/css-position/parsing/position-computed.html",
+      "helper": "test_computed_value",
+      "input": "relative",
+      "line": 16,
+      "mode": "computed",
+      "offset": 544,
+      "outcome": "unsupported",
+      "property": "position",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "absolute",
+      "file": "css/css-position/parsing/position-computed.html",
+      "helper": "test_computed_value",
+      "input": "absolute",
+      "line": 17,
+      "mode": "computed",
+      "offset": 589,
+      "outcome": "unsupported",
+      "property": "position",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "sticky",
+      "file": "css/css-position/parsing/position-computed.html",
+      "helper": "test_computed_value",
+      "input": "sticky",
+      "line": 18,
+      "mode": "computed",
+      "offset": 634,
+      "outcome": "unsupported",
+      "property": "position",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "fixed",
+      "file": "css/css-position/parsing/position-computed.html",
+      "helper": "test_computed_value",
+      "input": "fixed",
+      "line": 19,
+      "mode": "computed",
+      "offset": 677,
+      "outcome": "unsupported",
+      "property": "position",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-position/parsing/right-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto",
+      "line": 20,
+      "mode": "computed",
+      "offset": 541,
+      "outcome": "unsupported",
+      "property": "right",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-position/parsing/right-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 22,
+      "mode": "computed",
+      "offset": 580,
+      "outcome": "unsupported",
+      "property": "right",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "-10px",
+      "file": "css/css-position/parsing/right-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 23,
+      "mode": "computed",
+      "offset": 640,
+      "outcome": "unsupported",
+      "property": "right",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "-40%",
+      "file": "css/css-position/parsing/right-computed.html",
+      "helper": "test_computed_value",
+      "input": "-40%",
+      "line": 24,
+      "mode": "computed",
+      "offset": 701,
+      "outcome": "unsupported",
+      "property": "right",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "calc(50% + 60px)",
+      "file": "css/css-position/parsing/right-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(50% + 60px)",
+      "line": 25,
+      "mode": "computed",
+      "offset": 739,
+      "outcome": "unsupported",
+      "property": "right",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "auto",
+      "file": "css/css-position/parsing/top-computed.html",
+      "helper": "test_computed_value",
+      "input": "auto",
+      "line": 20,
+      "mode": "computed",
+      "offset": 535,
+      "outcome": "unsupported",
+      "property": "top",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-position/parsing/top-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 22,
+      "mode": "computed",
+      "offset": 572,
+      "outcome": "unsupported",
+      "property": "top",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "-10px",
+      "file": "css/css-position/parsing/top-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 23,
+      "mode": "computed",
+      "offset": 630,
+      "outcome": "unsupported",
+      "property": "top",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "-40%",
+      "file": "css/css-position/parsing/top-computed.html",
+      "helper": "test_computed_value",
+      "input": "-40%",
+      "line": 24,
+      "mode": "computed",
+      "offset": 689,
+      "outcome": "unsupported",
+      "property": "top",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "calc(50% + 60px)",
+      "file": "css/css-position/parsing/top-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(50% + 60px)",
+      "line": 25,
+      "mode": "computed",
+      "offset": 725,
+      "outcome": "unsupported",
+      "property": "top",
+      "reason": "coupled/used-value element and layout host"
+    },
+    {
+      "expected": "20%",
+      "file": "css/css-sizing/parsing/max-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 25,
+      "mode": "computed",
+      "offset": 771,
+      "outcome": "unsupported",
+      "property": "max-height",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": "calc(10% + 40px)",
+      "file": "css/css-sizing/parsing/max-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10% + 40px)",
+      "line": 27,
+      "mode": "computed",
+      "offset": 814,
+      "outcome": "unsupported",
+      "property": "max-height",
+      "reason": "noncanonical numeric reference or relative host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-sizing/parsing/max-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 28,
+      "mode": "computed",
+      "offset": 869,
+      "outcome": "unsupported",
+      "property": "max-height",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-sizing/parsing/max-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 29,
+      "mode": "computed",
+      "offset": 933,
+      "outcome": "unsupported",
+      "property": "max-height",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "fit-content(10px)",
+      "file": "css/css-sizing/parsing/max-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(10px)",
+      "line": 31,
+      "mode": "computed",
+      "offset": 999,
+      "outcome": "unsupported",
+      "property": "max-height",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(20%)",
+      "file": "css/css-sizing/parsing/max-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(20%)",
+      "line": 32,
+      "mode": "computed",
+      "offset": 1055,
+      "outcome": "unsupported",
+      "property": "max-height",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(calc(10% + 40px))",
+      "file": "css/css-sizing/parsing/max-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(calc(10% + 40px))",
+      "line": 33,
+      "mode": "computed",
+      "offset": 1110,
+      "outcome": "unsupported",
+      "property": "max-height",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(30px)",
+      "file": "css/css-sizing/parsing/max-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(calc(10px + 0.5em))",
+      "line": 34,
+      "mode": "computed",
+      "offset": 1178,
+      "outcome": "unsupported",
+      "property": "max-height",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "20%",
+      "file": "css/css-sizing/parsing/max-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 25,
+      "mode": "computed",
+      "offset": 764,
+      "outcome": "unsupported",
+      "property": "max-width",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": "calc(10% + 40px)",
+      "file": "css/css-sizing/parsing/max-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10% + 40px)",
+      "line": 27,
+      "mode": "computed",
+      "offset": 806,
+      "outcome": "unsupported",
+      "property": "max-width",
+      "reason": "noncanonical numeric reference or relative host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-sizing/parsing/max-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 28,
+      "mode": "computed",
+      "offset": 860,
+      "outcome": "unsupported",
+      "property": "max-width",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-sizing/parsing/max-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 29,
+      "mode": "computed",
+      "offset": 923,
+      "outcome": "unsupported",
+      "property": "max-width",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "fit-content(10px)",
+      "file": "css/css-sizing/parsing/max-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(10px)",
+      "line": 31,
+      "mode": "computed",
+      "offset": 988,
+      "outcome": "unsupported",
+      "property": "max-width",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(20%)",
+      "file": "css/css-sizing/parsing/max-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(20%)",
+      "line": 32,
+      "mode": "computed",
+      "offset": 1043,
+      "outcome": "unsupported",
+      "property": "max-width",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(calc(10% + 40px))",
+      "file": "css/css-sizing/parsing/max-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(calc(10% + 40px))",
+      "line": 33,
+      "mode": "computed",
+      "offset": 1097,
+      "outcome": "unsupported",
+      "property": "max-width",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(30px)",
+      "file": "css/css-sizing/parsing/max-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(calc(10px + 0.5em))",
+      "line": 34,
+      "mode": "computed",
+      "offset": 1164,
+      "outcome": "unsupported",
+      "property": "max-width",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "20%",
+      "file": "css/css-sizing/parsing/min-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 24,
+      "mode": "computed",
+      "offset": 728,
+      "outcome": "unsupported",
+      "property": "min-height",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": "calc(10% + 40px)",
+      "file": "css/css-sizing/parsing/min-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10% + 40px)",
+      "line": 26,
+      "mode": "computed",
+      "offset": 771,
+      "outcome": "unsupported",
+      "property": "min-height",
+      "reason": "noncanonical numeric reference or relative host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-sizing/parsing/min-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 27,
+      "mode": "computed",
+      "offset": 826,
+      "outcome": "unsupported",
+      "property": "min-height",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-sizing/parsing/min-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 28,
+      "mode": "computed",
+      "offset": 890,
+      "outcome": "unsupported",
+      "property": "min-height",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "fit-content(10px)",
+      "file": "css/css-sizing/parsing/min-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(10px)",
+      "line": 30,
+      "mode": "computed",
+      "offset": 956,
+      "outcome": "unsupported",
+      "property": "min-height",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(20%)",
+      "file": "css/css-sizing/parsing/min-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(20%)",
+      "line": 31,
+      "mode": "computed",
+      "offset": 1012,
+      "outcome": "unsupported",
+      "property": "min-height",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(calc(10% + 40px))",
+      "file": "css/css-sizing/parsing/min-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(calc(10% + 40px))",
+      "line": 32,
+      "mode": "computed",
+      "offset": 1067,
+      "outcome": "unsupported",
+      "property": "min-height",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(30px)",
+      "file": "css/css-sizing/parsing/min-height-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(calc(10px + 0.5em))",
+      "line": 33,
+      "mode": "computed",
+      "offset": 1135,
+      "outcome": "unsupported",
+      "property": "min-height",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "20%",
+      "file": "css/css-sizing/parsing/min-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "20%",
+      "line": 24,
+      "mode": "computed",
+      "offset": 722,
+      "outcome": "unsupported",
+      "property": "min-width",
+      "reason": "preserved percentage computation host"
+    },
+    {
+      "expected": "calc(10% + 40px)",
+      "file": "css/css-sizing/parsing/min-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10% + 40px)",
+      "line": 26,
+      "mode": "computed",
+      "offset": 764,
+      "outcome": "unsupported",
+      "property": "min-width",
+      "reason": "noncanonical numeric reference or relative host"
+    },
+    {
+      "expected": "0px",
+      "file": "css/css-sizing/parsing/min-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px - 0.5em)",
+      "line": 27,
+      "mode": "computed",
+      "offset": 818,
+      "outcome": "unsupported",
+      "property": "min-width",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "30px",
+      "file": "css/css-sizing/parsing/min-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "calc(10px + 0.5em)",
+      "line": 28,
+      "mode": "computed",
+      "offset": 881,
+      "outcome": "unsupported",
+      "property": "min-width",
+      "reason": "font/percent/viewport/tree numeric host"
+    },
+    {
+      "expected": "fit-content(10px)",
+      "file": "css/css-sizing/parsing/min-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(10px)",
+      "line": 30,
+      "mode": "computed",
+      "offset": 946,
+      "outcome": "unsupported",
+      "property": "min-width",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(20%)",
+      "file": "css/css-sizing/parsing/min-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(20%)",
+      "line": 31,
+      "mode": "computed",
+      "offset": 1001,
+      "outcome": "unsupported",
+      "property": "min-width",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(calc(10% + 40px))",
+      "file": "css/css-sizing/parsing/min-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(calc(10% + 40px))",
+      "line": 32,
+      "mode": "computed",
+      "offset": 1055,
+      "outcome": "unsupported",
+      "property": "min-width",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "expected": "fit-content(30px)",
+      "file": "css/css-sizing/parsing/min-width-computed.html",
+      "helper": "test_computed_value",
+      "input": "fit-content(calc(10px + 0.5em))",
+      "line": 33,
+      "mode": "computed",
+      "offset": 1122,
+      "outcome": "unsupported",
+      "property": "min-width",
+      "reason": "intrinsic size computation host"
+    },
+    {
+      "file": "css/css-backgrounds/parsing/border-color-computed.html",
+      "helper": "test_computed_value",
+      "line": 27,
+      "offset": 737,
+      "outcome": "unsupported",
+      "reason": "nonliteral expected value"
+    },
+    {
+      "file": "css/css-backgrounds/parsing/border-color-computed.html",
+      "helper": "test_computed_value",
+      "line": 28,
+      "offset": 804,
+      "outcome": "unsupported",
+      "reason": "nonliteral expected value"
+    },
+    {
+      "file": "css/css-backgrounds/parsing/border-color-computed.html",
+      "helper": "test_computed_value",
+      "line": 29,
+      "offset": 875,
+      "outcome": "unsupported",
+      "reason": "nonliteral expected value"
+    },
+    {
+      "file": "css/css-backgrounds/parsing/border-color-computed.html",
+      "helper": "test_computed_value",
+      "line": 30,
+      "offset": 980,
+      "outcome": "unsupported",
+      "reason": "nonliteral expected value"
+    },
+    {
+      "file": "css/css-backgrounds/parsing/border-color-computed.html",
+      "helper": "test_computed_value",
+      "line": 32,
+      "offset": 1090,
+      "outcome": "unsupported",
+      "reason": "nonliteral expected value"
+    },
+    {
+      "file": "css/css-backgrounds/parsing/border-color-computed.html",
+      "helper": "test_computed_value",
+      "line": 33,
+      "offset": 1143,
+      "outcome": "unsupported",
+      "reason": "nonliteral expected value"
+    },
+    {
+      "file": "css/css-backgrounds/parsing/border-color-computed.html",
+      "helper": "test_computed_value",
+      "line": 34,
+      "offset": 1204,
+      "outcome": "unsupported",
+      "reason": "nonliteral expected value"
+    },
+    {
+      "file": "css/css-backgrounds/parsing/border-color-computed.html",
+      "helper": "test_computed_value",
+      "line": 35,
+      "offset": 1264,
+      "outcome": "unsupported",
+      "reason": "nonliteral expected value"
+    },
+    {
+      "file": "css/css-position/parsing/inset-computed.html",
+      "helper": "test_computed_value",
+      "line": 30,
+      "offset": 790,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-computed.html",
+      "helper": "test_computed_value",
+      "line": 32,
+      "offset": 859,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-invalid.html",
+      "helper": "test_invalid_value",
+      "line": 24,
+      "offset": 631,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-invalid.html",
+      "helper": "test_invalid_value",
+      "line": 28,
+      "offset": 778,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-invalid.html",
+      "helper": "test_invalid_value",
+      "line": 30,
+      "offset": 868,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-valid.html",
+      "helper": "test_valid_value",
+      "line": 33,
+      "offset": 870,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-valid.html",
+      "helper": "test_valid_value",
+      "line": 35,
+      "offset": 936,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-valid.html",
+      "helper": "test_valid_value",
+      "line": 41,
+      "offset": 1138,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-valid.html",
+      "helper": "test_valid_value",
+      "line": 43,
+      "offset": 1205,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-valid.html",
+      "helper": "test_valid_value",
+      "line": 47,
+      "offset": 1350,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    },
+    {
+      "file": "css/css-position/parsing/inset-valid.html",
+      "helper": "test_valid_value",
+      "line": 49,
+      "offset": 1417,
+      "outcome": "unsupported",
+      "reason": "nonliteral helper call or loop driver"
+    }
+  ],
+  "website_cases_passed": 0,
+  "website_cases_total": 3000,
+  "website_sites_passed": 0,
+  "website_sites_total": 100
+}

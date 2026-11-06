@@ -1471,3 +1471,148 @@ provided snapshots do not prove these hosts. Networking, layout, GPU paint,
 V8, native browser shell, Olo integrations and executable site journeys
 remain substantial required work. Avoiding output materialization once a
 property guard is known cyclic is also a remaining profiling opportunity.
+
+
+## 2026-11-05 — typed property declarations
+
+Added original `css::properties` compilation for **88 longhands and 15
+shorthands**, connecting generic declarations to typed math/color/token
+values. Registry names use case-insensitive binary lookup; inherited flags
+and initial spellings are explicit metadata. Logical properties retain
+logical identities until an actual style/writing-mode host maps them.
+The decoded-name API is not CSSOM setProperty or a string-name parser.
+
+Box sizing, margins/padding/insets, border colors/styles/widths, gaps, flex
+basis/direction/wrap/numbers/order, font size/weight/line height, opacity,
+positioning/overflow and other core keywords have typed values. Structured
+display values retain outer/inner/list-item and internal table/ruby roles,
+including legacy aliases and order-independent modern forms. This compiles
+grammars only; it creates no box tree, fonts, cascade or rendered content.
+
+Lengths accept bare zero; dimensions and range restrictions are checked.
+Negative nonnegative literals are rejected, while numeric functions clamp
+at computation. Opacity normalizes percentages; integer functions round
+ties toward positive infinity. Number line-heights remain multipliers.
+IEEE specials are censored only at the property's boundary. Review fixed
+unbounded finite-token overflow (e.g. `1e999px`): it remains valid and clamps
+to finite f64 representation when computed. Font/percent/viewport/tree
+snapshots are explicit; no layout basis or font metrics are guessed.
+
+Quad/pair shorthands expand atomically, with flex-flow's unordered keywords
+and omitted defaults. Importance applies to all expanded assignments.
+CSS-wide keywords expand over every member. The existing variable scanner
+validates generic/substitution syntax without allocating token copies for
+ordinary typed declarations. Pending shorthands share one Arc and one
+compact token arena across every longhand; the future cascade host must
+resolve that shared value once after selecting winners and retain the typed
+result. Invalid computed results become unset, preserving the winning
+assignment rather than revealing an older declaration. Unsupported features,
+cancellation/resource failures remain explicit. Custom declarations retain
+case-sensitive decoded names, importance and valid empty token values.
+
+Preflight bounds flat node ranges/source spans, and every nested scanner/
+math/color/token compiler has work/depth/output limits. These are bounded
+per-invocation passes (at most four shorthand members), not one exact global
+instruction counter or a stylesheet memory cap. Defaults: 1 MiB input,
+65,536 nodes, 1,000,000 work and nesting 64. Declared dependency metadata
+includes numeric/color and pending-substitution inputs; property-specific
+font, cascade, logical-axis and layout dependencies remain host work.
+No thread, timer, polling, I/O or idle work is introduced.
+
+Imported **126 unmodified pinned WPT resources**, with independent literal
+extraction/expected decoding: **1,109 inventoried native cases, 821 passes,
+288 explicit non-passes**, no unexpected mismatch/error/panic. Parsing ports
+check acceptance, not CSSOM serialization from the original helper. Actual
+shorthand member identities and literal references are compared. Numeric
+references use independent canonical decimal/px parsing; simple keyword
+and absolute rgb references are checked independently. Expected strings
+are never passed through the engine's property/color/math parser. Missing
+font/percent/intrinsic/used-size, coupled overflow/positioning, display CSSOM,
+compound references and live element contexts stay unsupported; so do
+nonliteral JS drivers. The evaluator exits 1. Literal extraction reproduces
+exact bytes and every source manifest hash matches. No website pass follows.
+
+Eight native groups check registry defaults, dimensions/zero/percent/ranges,
+integer rounding/IEEE boundaries, expansion/logical identities, structured
+display, typed colors, source release, shared pending substitution and
+invalid computed values, cancellation/quotas and 2,000 generated hostile
+inputs. All groups pass in both storage controls and with all measurement
+features enabled. These are native token/typed-value checks, not CSSOM,
+actual cascade, style/layout/painting or JS execution.
+
+Release measurements: Core Ultra 7 356H, CPU 0, rustc 1.99.1, three sequential
+alternating four-slot/one-slot runs, middle reversed; 20,000 operations per
+case. Figures are medians of three run means. Original lexical/source and
+statement parsing costs are excluded from the property benchmark. Numeric
+scratch and the variable resolver are retained; pending resolution includes
+typed reparsing and assignment allocation. Display/color resolve samples
+are reference-access controls, not color conversion or box computation.
+Other load, clocks/thermals, allocator/code layout are uncontrolled; no
+concurrent checks were launched by this session during samples.
+
+The initial four-inline-assignment representation made **every declaration
+184 bytes**. One inline assignment reduces that to **64 bytes**, with Value
+**32 bytes**, Assignment **40 bytes**, and Assignments **176 → 56 bytes**.
+This is an initial implementation control, not a previous production API.
+Both controls pass the same checks. Retained batches of 1,000 declarations:
+
+- Scalar width: **184,000 → 64,000 bytes**, no assignment heap allocations.
+- Four-value padding: **184,000 → 224,000 bytes**. One slot spills **160,000
+  bytes** of assignments; this is a real tradeoff, not a universal reduction.
+- One pending width each: **576,000 → 456,000 bytes**, including distinct
+  pending/token arenas. Each shared allocation is counted once.
+
+Compile/drop: scalar width **0.1170 → 0.1051 µs**, contextual numeric width
+**0.2135 → 0.2135 µs**, four-value margin **0.3547 → 0.3412 µs**, border colors **0.5032 → 0.4634 µs**,
+display **0.0889 → 0.0749 µs**, font weight **0.1122 → 0.1006 µs**, pending padding **0.2643 → 0.2795 µs**,
+pending width **0.3049 → 0.2933 µs**. Pending padding resolution
+**0.2209 → 0.2303 µs**; it must be cached by the future style host after
+its first substitution. These numbers do not establish a uniform speedup.
+
+First-compile final medians **0.595–5.043 µs**, largest sampled
+**7.119 µs**. First-resolve final medians **0.042–2.857 µs**, largest sampled
+**3.328 µs**. Synthetic worker latencies, not UI or worst-case guarantees.
+Peak whole-benchmark RSS: four-slot **3,548–3,988 KiB**,
+one-slot **3,724–3,960 KiB**. Retained capacity accounting excludes
+allocator metadata, original Syntax and runtime host state; RSS includes
+transient buffers, libraries and allocator retention. This is not page or
+browser memory, and the lower declaration size does not guarantee lower RSS.
+
+Captured exact `baa75e86` parent exports/variable files with new modules
+excluded, restored working source in finally, and compared unchanged CSS,
+color and warm variable benchmarks. Three alternating parent → final runs:
+CSS stylesheet **8.0822 → 8.0610** ms, declaration list
+**8.2205 → 7.7566** ms, 8,000 mixed rules
+**2.2077 → 2.2205** ms. Color RGB parsing
+**81.222 → 80.258** ns, OKLCH **85.691 → 84.480** ns.
+Warm variable aliases **0.0530 → 0.0568** µs, 1,000-reference
+cached expansion **0.0655 → 0.0650** µs. No intended
+algorithm change to these paths.
+
+Named-color medians initially **92.654 → 104.123 ns** (+12.4%), with individual
+samples spread across **90.100–111.426 ns**. A focused three-pair follow-up
+using the same binaries gave **111.446 → 104.450 ns**, reversing the direction;
+individual samples **90.370–120.942 ns**. Both full datasets are retained.
+The variation does not establish a stable regression/speedup or its cause;
+no improvement is attributed to the unchanged parser. Performance acceptance
+for a real browser remains unproven.
+
+Raw data, exact commands, parent/control/source/binary identities and checks:
+`measurements/2026-11-05-properties.json`; per-file coverage and all remaining
+cases: `measurements/2026-11-05-property-coverage.json`. No new SIMD/GPU code;
+existing native memory/token/math/color machinery is reused. New compilation
+will run on workers and retained style results must avoid per-frame parsing.
+
+All **96 engine release tests** pass, all eight property groups pass with
+all features, default/all-feature strict release clippy and package format
+checks pass. Full workspace release build passes (**2.31 s**, existing GPUI
+warnings and proc-macro-error2 future-compatibility notice). No GUI launched,
+no personal session changed and no visible UI to screenshot-journal yet.
+
+Full browser goal remains active: **0/3,000 website cases, 0/100 sites**, no
+usable browser. Next: actual cascade and element/style snapshots, stylesheet
+contexts/rule indexing/inheritance/invalidation and computed-value hosts.
+Remaining property grammars include fonts/families, backgrounds/images,
+border-image/radius, transforms, grid/alignment, animation/transition and
+aliases/descriptors. HTML/encoding/Web IDL, networking, layout, GPU painting,
+V8, native shell/Olo integrations and executable site journeys remain required.

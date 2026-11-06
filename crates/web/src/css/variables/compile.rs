@@ -115,3 +115,7 @@ pub(super) fn batch<'a>(values: impl IntoIterator<Item = Components<'a>>, limits
     let syntax = Arc::new(assembled.finish());
     Ok(ranges.into_iter().map(|range| Value { syntax: syntax.clone(), start: range.start, end: range.end }).collect())
 }
+
+pub(crate) fn inspect(values: Components<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<bool> {
+    Compiler { limits, work: 0, cancelled }.scan(values, true, 0)
+}
