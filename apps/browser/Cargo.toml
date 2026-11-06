@@ -12,3 +12,9 @@ olo-xdg.workspace = true
 olo-web = { path = "../../crates/web" }
 serde.workspace = true
 serde_json.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "http2", "gzip", "brotli", "deflate", "zstd"] }
+tokio = { version = "1", features = ["rt", "net", "time", "macros"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+url = "2"
+encoding_rs = "0.8"
+mime = "0.3"

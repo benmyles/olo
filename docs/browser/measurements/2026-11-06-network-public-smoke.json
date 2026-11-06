@@ -1,0 +1,1004 @@
+{
+  "scope": "Live public smoke only; not pinned resources or Chrome journey comparisons. Example Domain is visibly incomplete; Hacker News fails selector state; CERN text renders. Native HTML uses its own web spacing, which the kit review currently misclassifies as a window inset finding.",
+  "rows": [
+    {
+      "url": "https://example.com",
+      "tree": [
+        {
+          "window": 3,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "https://example.com/",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "This domain is for use in documentation examples",
+              "x": 364.016,
+              "y": 305.76,
+              "width": 377.40796,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "without needing permission. This is not a service; avoid",
+              "x": 345.936,
+              "y": 326.84,
+              "width": 412.944,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "relying on it for testing and monitoring purposes.",
+              "x": 368.504,
+              "y": 348.76,
+              "width": 369.19998,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Example Domain \u00b7 1 inert scripts \u00b7 3 stylesheet issues",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ],
+      "accepted": false
+    },
+    {
+      "url": "https://news.ycombinator.com",
+      "tree": [
+        {
+          "window": 3,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "https://news.ycombinator.com/",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "CSS style Cascade(Selectors(StateUnavailable))",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ],
+      "accepted": false
+    },
+    {
+      "url": "http://info.cern.ch/hypertext/WWW/TheProject.html",
+      "tree": [
+        {
+          "window": 3,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://info.cern.ch/hypertext/WWW/TheProject.html",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "World Wide Web",
+              "x": 61.0,
+              "y": 171.64801,
+              "width": 258.944,
+              "height": 24.672005,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "The WorldWideWeb (W3) is a wide-area",
+              "x": 61.16,
+              "y": 231.84,
+              "width": 291.648,
+              "height": 14.688004,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "hypermedia",
+              "x": 359.624,
+              "y": 231.84,
+              "width": 87.79199,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "information retrieval initiative aiming to give universal access",
+              "x": 454.12,
+              "y": 231.76001,
+              "width": 457.82397,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "to a large",
+              "x": 917.08,
+              "y": 231.84,
+              "width": 70.09601,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Label",
+              "name": "universe of documents.",
+              "x": 62.264,
+              "y": 252.76001,
+              "width": 174.12799,
+              "height": 12.4640045,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "Everything there is online about W3 is linked directly or indire",
+              "x": 62.552002,
+              "y": 290.84,
+              "width": 458.24,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Label",
+              "name": "ctly to this document, including an",
+              "x": 522.48804,
+              "y": 290.84,
+              "width": 256.57596,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Label",
+              "name": "executive summary",
+              "x": 785.4,
+              "y": 291.208,
+              "width": 144.992,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "of the project,",
+              "x": 935.432,
+              "y": 290.76,
+              "width": 102.79999,
+              "height": 16.080002,
+              "enabled": true
+            },
+            {
+              "id": 17,
+              "parent": 1,
+              "role": "Label",
+              "name": "Mailing lists",
+              "x": 62.552002,
+              "y": 312.84,
+              "width": 86.848,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 18,
+              "parent": 1,
+              "role": "Label",
+              "name": ",",
+              "x": 154.936,
+              "y": 323.14398,
+              "width": 2.4160004,
+              "height": 3.9200134,
+              "enabled": true
+            },
+            {
+              "id": 19,
+              "parent": 1,
+              "role": "Label",
+              "name": "Policy",
+              "x": 164.28,
+              "y": 312.84,
+              "width": 41.90399,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 20,
+              "parent": 1,
+              "role": "Label",
+              "name": ", November's",
+              "x": 211.0,
+              "y": 312.84,
+              "width": 97.600006,
+              "height": 14.223999,
+              "enabled": true
+            },
+            {
+              "id": 21,
+              "parent": 1,
+              "role": "Label",
+              "name": "W3 news",
+              "x": 313.672,
+              "y": 313.41602,
+              "width": 66.112,
+              "height": 11.744003,
+              "enabled": true
+            },
+            {
+              "id": 22,
+              "parent": 1,
+              "role": "Label",
+              "name": ",",
+              "x": 385.32,
+              "y": 323.14398,
+              "width": 2.415985,
+              "height": 3.9200134,
+              "enabled": true
+            },
+            {
+              "id": 23,
+              "parent": 1,
+              "role": "Label",
+              "name": "Frequently Asked Questions",
+              "x": 394.664,
+              "y": 312.84,
+              "width": 207.87201,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 24,
+              "parent": 1,
+              "role": "Label",
+              "name": ".",
+              "x": 608.568,
+              "y": 323.064,
+              "width": 1.9840088,
+              "height": 2.1600037,
+              "enabled": true
+            },
+            {
+              "id": 25,
+              "parent": 1,
+              "role": "Label",
+              "name": "What's out there?",
+              "x": 61.192,
+              "y": 350.84,
+              "width": 130.624,
+              "height": 12.384003,
+              "enabled": true
+            },
+            {
+              "id": 26,
+              "parent": 1,
+              "role": "Label",
+              "name": "Pointers to the world's online information,",
+              "x": 197.944,
+              "y": 350.76,
+              "width": 314.48,
+              "height": 14.303986,
+              "enabled": true
+            },
+            {
+              "id": 27,
+              "parent": 1,
+              "role": "Label",
+              "name": "subjects",
+              "x": 518.61597,
+              "y": 350.84,
+              "width": 60.12802,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 28,
+              "parent": 1,
+              "role": "Label",
+              "name": ",",
+              "x": 584.28,
+              "y": 361.14398,
+              "width": 2.4160156,
+              "height": 3.9200134,
+              "enabled": true
+            },
+            {
+              "id": 29,
+              "parent": 1,
+              "role": "Label",
+              "name": "W3 servers",
+              "x": 592.264,
+              "y": 351.41602,
+              "width": 82.0,
+              "height": 11.743988,
+              "enabled": true
+            },
+            {
+              "id": 30,
+              "parent": 1,
+              "role": "Label",
+              "name": ", etc.",
+              "x": 675.64,
+              "y": 352.456,
+              "width": 33.40802,
+              "height": 12.608002,
+              "enabled": true
+            },
+            {
+              "id": 31,
+              "parent": 1,
+              "role": "Label",
+              "name": "Help",
+              "x": 715.912,
+              "y": 350.84,
+              "width": 32.416016,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 32,
+              "parent": 1,
+              "role": "Label",
+              "name": "on the browser you are using",
+              "x": 754.248,
+              "y": 350.84,
+              "width": 217.60004,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 33,
+              "parent": 1,
+              "role": "Label",
+              "name": "Software",
+              "x": 978.184,
+              "y": 350.76,
+              "width": 64.97601,
+              "height": 12.399994,
+              "enabled": true
+            },
+            {
+              "id": 34,
+              "parent": 1,
+              "role": "Label",
+              "name": "Products",
+              "x": 62.552002,
+              "y": 372.84,
+              "width": 64.224,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 35,
+              "parent": 1,
+              "role": "Label",
+              "name": "A list of W3 project components and their current state. (e.g.",
+              "x": 131.656,
+              "y": 372.76,
+              "width": 451.104,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 36,
+              "parent": 1,
+              "role": "Label",
+              "name": "Line Mode",
+              "x": 589.624,
+              "y": 372.84,
+              "width": 76.27197,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 37,
+              "parent": 1,
+              "role": "Label",
+              "name": ",X11",
+              "x": 671.528,
+              "y": 373.576,
+              "width": 27.840027,
+              "height": 13.488007,
+              "enabled": true
+            },
+            {
+              "id": 38,
+              "parent": 1,
+              "role": "Label",
+              "name": "Viola",
+              "x": 707.0,
+              "y": 372.84,
+              "width": 35.216003,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 39,
+              "parent": 1,
+              "role": "Label",
+              "name": ",",
+              "x": 748.328,
+              "y": 383.14398,
+              "width": 2.4160156,
+              "height": 3.9200134,
+              "enabled": true
+            },
+            {
+              "id": 40,
+              "parent": 1,
+              "role": "Label",
+              "name": "NeXTStep",
+              "x": 757.672,
+              "y": 373.41602,
+              "width": 70.448,
+              "height": 15.424011,
+              "enabled": true
+            },
+            {
+              "id": 41,
+              "parent": 1,
+              "role": "Label",
+              "name": ",",
+              "x": 833.816,
+              "y": 383.14398,
+              "width": 2.4160156,
+              "height": 3.9200134,
+              "enabled": true
+            },
+            {
+              "id": 42,
+              "parent": 1,
+              "role": "Label",
+              "name": "Servers",
+              "x": 842.424,
+              "y": 373.41602,
+              "width": 54.304016,
+              "height": 11.743988,
+              "enabled": true
+            },
+            {
+              "id": 43,
+              "parent": 1,
+              "role": "Label",
+              "name": ",",
+              "x": 902.264,
+              "y": 383.14398,
+              "width": 2.4160156,
+              "height": 3.9200134,
+              "enabled": true
+            },
+            {
+              "id": 44,
+              "parent": 1,
+              "role": "Label",
+              "name": "Tools",
+              "x": 910.216,
+              "y": 372.84,
+              "width": 38.047974,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 45,
+              "parent": 1,
+              "role": "Label",
+              "name": ",",
+              "x": 953.8,
+              "y": 383.14398,
+              "width": 2.4160156,
+              "height": 3.9200134,
+              "enabled": true
+            },
+            {
+              "id": 46,
+              "parent": 1,
+              "role": "Label",
+              "name": "Mail",
+              "x": 963.144,
+              "y": 372.84,
+              "width": 28.83197,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 47,
+              "parent": 1,
+              "role": "Label",
+              "name": "robot",
+              "x": 62.36,
+              "y": 393.84,
+              "width": 39.552,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 48,
+              "parent": 1,
+              "role": "Label",
+              "name": ",",
+              "x": 107.08,
+              "y": 404.144,
+              "width": 2.4160004,
+              "height": 3.9200134,
+              "enabled": true
+            },
+            {
+              "id": 49,
+              "parent": 1,
+              "role": "Label",
+              "name": "Library",
+              "x": 116.423996,
+              "y": 393.84,
+              "width": 50.831997,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 50,
+              "parent": 1,
+              "role": "Label",
+              "name": ")",
+              "x": 171.896,
+              "y": 394.576,
+              "width": 3.6800003,
+              "height": 13.951996,
+              "enabled": true
+            },
+            {
+              "id": 51,
+              "parent": 1,
+              "role": "Label",
+              "name": "Technical",
+              "x": 180.53601,
+              "y": 393.84,
+              "width": 67.648,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 52,
+              "parent": 1,
+              "role": "Label",
+              "name": "Details of protocols, formats, program internals etc",
+              "x": 255.256,
+              "y": 393.76,
+              "width": 382.03204,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 53,
+              "parent": 1,
+              "role": "Label",
+              "name": "Bibliography",
+              "x": 643.528,
+              "y": 393.84,
+              "width": 93.74402,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 54,
+              "parent": 1,
+              "role": "Label",
+              "name": "Paper documentation on W3 and",
+              "x": 742.984,
+              "y": 393.84,
+              "width": 245.344,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 55,
+              "parent": 1,
+              "role": "Label",
+              "name": "references.",
+              "x": 62.36,
+              "y": 415.76,
+              "width": 81.184,
+              "height": 12.463989,
+              "enabled": true
+            },
+            {
+              "id": 56,
+              "parent": 1,
+              "role": "Label",
+              "name": "People",
+              "x": 150.40799,
+              "y": 415.84,
+              "width": 49.008003,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 57,
+              "parent": 1,
+              "role": "Label",
+              "name": "A list of some people involved in the project.",
+              "x": 204.392,
+              "y": 415.76,
+              "width": 330.448,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 58,
+              "parent": 1,
+              "role": "Label",
+              "name": "History",
+              "x": 541.704,
+              "y": 416.208,
+              "width": 52.319977,
+              "height": 15.631989,
+              "enabled": true
+            },
+            {
+              "id": 59,
+              "parent": 1,
+              "role": "Label",
+              "name": "A summary of the history of the project.",
+              "x": 598.184,
+              "y": 415.76,
+              "width": 297.76,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 60,
+              "parent": 1,
+              "role": "Label",
+              "name": "How can I help",
+              "x": 902.808,
+              "y": 415.84,
+              "width": 108.68799,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 61,
+              "parent": 1,
+              "role": "Label",
+              "name": "? If",
+              "x": 1016.728,
+              "y": 415.76,
+              "width": 22.528015,
+              "height": 12.463989,
+              "enabled": true
+            },
+            {
+              "id": 62,
+              "parent": 1,
+              "role": "Label",
+              "name": "you would like to support the web..",
+              "x": 61.016,
+              "y": 437.84,
+              "width": 262.912,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 63,
+              "parent": 1,
+              "role": "Label",
+              "name": "Getting code",
+              "x": 330.216,
+              "y": 437.84,
+              "width": 94.672,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 64,
+              "parent": 1,
+              "role": "Label",
+              "name": "Getting the code by",
+              "x": 430.84,
+              "y": 437.84,
+              "width": 146.176,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 65,
+              "parent": 1,
+              "role": "Label",
+              "name": "anonymous FTP",
+              "x": 581.912,
+              "y": 438.576,
+              "width": 118.27197,
+              "height": 15.264008,
+              "enabled": true
+            },
+            {
+              "id": 66,
+              "parent": 1,
+              "role": "Label",
+              "name": ", etc.",
+              "x": 705.816,
+              "y": 439.456,
+              "width": 33.40802,
+              "height": 12.608002,
+              "enabled": true
+            },
+            {
+              "id": 67,
+              "parent": 1,
+              "role": "Label",
+              "name": "The World Wide Web project",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ],
+      "accepted": false
+    }
+  ]
+}

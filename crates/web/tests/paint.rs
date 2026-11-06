@@ -249,3 +249,42 @@ fn translucent_and_asymmetric_border_tiles_have_no_seams_or_double_alpha() {
         }
     }
 }
+
+#[test]
+fn linked_sheets_use_first_base_and_document_cascade_order() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let source = Arc::from(
+        "<!doctype html><link rel=stylesheet href=first.css><base href='/assets/'><base href='/ignored/'><style>body{margin:0}div{height:20px;background-color:red}</style><link rel=stylesheet href=last.css><link rel=stylesheet href=missing.css><div></div>",
+    );
+    let mut requests = Vec::new();
+    let page = olo_web::page::load_resources(
+        source,
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+        |base, href| {
+            assert_eq!(base, Some("/assets/"));
+            requests.push(href.to_owned());
+            let css = match href {
+                "first.css" => "div{background-color:blue}",
+                "last.css" => "div{background-color:green}",
+                "missing.css" => return Ok(None),
+                _ => unreachable!(),
+            };
+            Ok(Some(olo_web::css::Syntax::parse(Arc::from(css), Default::default(), None)?))
+        },
+    )
+    .unwrap();
+    assert_eq!(requests, ["first.css", "last.css", "missing.css"]);
+    assert_eq!(page.stylesheet_issues, 1);
+    assert_eq!(pixel(&render(&mut painter, &page.scene), 50, 10), [0, 128, 0, 255]);
+}

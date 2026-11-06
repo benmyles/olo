@@ -11,19 +11,16 @@ use olo_web::{
     text::shaping,
 };
 use std::{
+    cell::Cell,
     collections::HashMap,
-    path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Arc, atomic::Ordering, mpsc},
     time::{Duration, Instant},
 };
-const ABOUT: &str = "<!doctype html><title>Olo Browser</title><style>body{max-width:680px;margin:24px auto;padding:0 20px}h1{font-size:32px;line-height:40px}p{line-height:24px}.note{padding:16px;border-width:1px;border-style:solid;border-color:GrayText}</style><h1>Olo Browser</h1><p>A native window over Olo's original Rust page engine.</p><div class=note><p>Open a local HTML file by entering its path above.</p><p>This development build renders static documents. Network navigation, JavaScript and complete web layout are still being built.</p></div>";
+const ABOUT: &str = "<!doctype html><title>Olo Browser</title><style>body{max-width:680px;margin:24px auto;padding:0 20px}h1{font-size:32px;line-height:40px}p{line-height:24px}.note{padding:16px;border-width:1px;border-style:solid;border-color:GrayText}</style><h1>Olo Browser</h1><p>A native window over Olo's original Rust page engine.</p><div class=note><p>Enter a website URL or a local HTML file path above.</p><p>This development build renders static documents. HTTP/HTTPS navigation is available. JavaScript, complete web layout and browser security isolation are still being built.</p></div>";
 #[derive(Clone, PartialEq)]
 pub struct Key {
     pub source: String,
+    pub cwd: Option<std::path::PathBuf>,
     pub revision: u64,
     pub width: u32,
     pub height: u32,
@@ -39,7 +36,7 @@ pub struct Request {
     pub id: u64,
     pub key: Key,
     pub scroll: i32,
-    pub cancel: Arc<AtomicBool>,
+    pub cancel: crate::network::Cancel,
     pub recycle: Vec<Arc<RenderImage>>,
 }
 pub struct Label {
@@ -48,6 +45,7 @@ pub struct Label {
 }
 pub enum Reply {
     Status(u64, String),
+    Location(u64, String),
     Ready { id: u64, title: String, tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)> },
     Content { id: u64, labels: Vec<Label>, extent: f64, scroll: i32 },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
@@ -63,9 +61,10 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Request> {
                 let mut builder = Builder::new(Default::default());
                 builder.load_file(&path, |_| {}, None)?;
                 let scope = FontSet::new(builder.finish(None)?, GenericPolicy::new(&["Noto Sans"])?, Default::default())?.scope("en")?;
+                let loader = crate::network::Loader::new()?;
                 let mut shaper = shaping::Engine::default();
                 let mut painter = paint::Engine::default();
-                let mut cached: Option<(Key, page::Page)> = None;
+                let mut cached: Option<(Key, page::Page, bool)> = None;
                 let mut tiles = HashMap::new();
                 let mut clock = 0u64;
                 while let Ok(mut r) = rx.recv() {
@@ -76,7 +75,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Request> {
                     if r.cancel.load(Ordering::Relaxed) {
                         continue;
                     }
-                    let result = render(&r, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock);
+                    let result = render(&r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock);
                     if let Err(error) = result
                         && !r.cancel.load(Ordering::Relaxed)
                     {
@@ -96,10 +95,11 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Request> {
 #[allow(clippy::too_many_arguments)] // Persistent worker resources and explicit request/output channel.
 fn render(
     r: &Request,
+    loader: &crate::network::Loader,
     scope: &Scope,
     shaper: &mut shaping::Engine,
     painter: &mut paint::Engine,
-    cached: &mut Option<(Key, page::Page)>,
+    cached: &mut Option<(Key, page::Page, bool)>,
     proxy: &Proxy,
     cache: &mut HashMap<(i32, i32), (Arc<RenderImage>, u64)>,
     clock: &mut u64,
@@ -107,57 +107,56 @@ fn render(
     if r.key.width > MAX_VIEWPORT || r.key.height > MAX_VIEWPORT || !r.key.scale.is_finite() || r.key.scale <= 0. {
         return Err("Viewport exceeds the development renderer limits".into());
     }
-    if let Some((key, page)) = cached.as_mut()
+    if let Some((key, page, viewport_dependent)) = cached.as_mut()
         && key.source == r.key.source
         && key.revision == r.key.revision
-        && key.scale == r.key.scale
-        && key.palette == r.key.palette
-        && (key.width != r.key.width || key.height != r.key.height)
+        && key.cwd == r.key.cwd
+        && (key.width != r.key.width || key.height != r.key.height || key.scale != r.key.scale || key.palette != r.key.palette)
     {
         proxy.send(Reply::Status(r.id, "Laying out…".into()));
-        let mut job = layout::Job::new(
-            shaper,
-            scope,
-            page.scene.layout().cache().clone(),
-            layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale },
-            Default::default(),
-            Some(&r.cancel),
-        )?;
-        while !job.step(64)?.finished {}
-        let layout = Arc::new(job.finish()?);
-        let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: r.key.palette.document_background }, Default::default(), Some(&r.cancel))?;
-        while !job.step(32)?.finished {}
-        page.scene = job.finish()?;
+        if *viewport_dependent || key.scale != r.key.scale || key.palette != r.key.palette {
+            let host = PageHost::new(scope, &r.key);
+            page.restyle(&host, scope, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {})?;
+            *viewport_dependent = host.viewport_used.get();
+        } else {
+            let mut job = layout::Job::new(
+                shaper,
+                scope,
+                page.scene.layout().cache().clone(),
+                layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale },
+                Default::default(),
+                Some(&r.cancel),
+            )?;
+            while !job.step(64)?.finished {}
+            let layout = Arc::new(job.finish()?);
+            let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: r.key.palette.document_background }, Default::default(), Some(&r.cancel))?;
+            while !job.step(32)?.finished {}
+            page.scene = job.finish()?;
+        }
         *key = r.key.clone();
         cache.clear();
     }
-    if cached.as_ref().is_none_or(|(key, _)| *key != r.key) {
+    if cached.as_ref().is_none_or(|(key, _, _)| *key != r.key) {
         *cached = None;
         cache.clear();
         proxy.send(Reply::Status(r.id, "Loading…".into()));
-        let source = if r.key.source == "about:engine" {
-            Arc::from(ABOUT)
+        let mut document = if r.key.source == "about:engine" {
+            None
         } else {
-            if r.key.source.contains("://") && !r.key.source.starts_with("file://") {
-                return Err("Network navigation is not available in this build".into());
-            }
-            let name = r.key.source.strip_prefix("file://").unwrap_or(&r.key.source);
-            let path = Path::new(name);
-            if std::fs::metadata(path)?.len() > 16 * 1024 * 1024 {
-                return Err("HTML file exceeds the current size limit".into());
-            }
-            use std::io::Read;
-            let mut text = String::new();
-            std::fs::File::open(path)?.take(16 * 1024 * 1024 + 1).read_to_string(&mut text)?;
-            if text.len() > 16 * 1024 * 1024 {
-                return Err("HTML file exceeds the current size limit".into());
-            }
-            Arc::from(text)
+            Some(loader.document(&r.key.source, r.key.cwd.as_deref(), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "document"))?)
         };
-        let host = PageHost { scope: scope.clone(), palette: r.key.palette.clone(), scale: r.key.scale };
+        if let Some(document) = &document {
+            proxy.send(Reply::Location(r.id, document.url.to_string()));
+        }
+        let source = match &mut document {
+            Some(document) => document.take_html(&r.cancel)?,
+            None => Arc::from(ABOUT),
+        };
+        let host = PageHost::new(scope, &r.key);
         let mut last = Instant::now();
         let mut phase = None;
-        let page = page::load(
+        let mut resources = 0usize;
+        let page = page::load_resources(
             source,
             &host,
             scope,
@@ -185,8 +184,26 @@ fn render(
                     ));
                 }
             },
+            |base, href| {
+                let Some(document) = &document else {
+                    return Ok(None);
+                };
+                resources += 1;
+                if resources > 128 {
+                    return Err("Page exceeds the development stylesheet request limit".into());
+                }
+                proxy.send(Reply::Status(r.id, "Loading stylesheet…".into()));
+                match loader.stylesheet(document, base, href, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "stylesheet")) {
+                    Ok(sheet) => Ok(Some(sheet)),
+                    Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
+                    Err(error) => {
+                        eprintln!("Browser stylesheet: {error}");
+                        Ok(None)
+                    }
+                }
+            },
         )?;
-        *cached = Some((r.key.clone(), page));
+        *cached = Some((r.key.clone(), page, host.viewport_used.get()));
         cache.clear();
     }
     let page = &cached.as_ref().unwrap().1;
@@ -255,6 +272,9 @@ fn render(
             if title.chars().nth(256).is_some() {
                 short.push('…');
             }
+            if page.scripts > 0 || page.stylesheet_issues > 0 {
+                short.push_str(&format!(" · {} inert scripts · {} stylesheet issues", page.scripts, page.stylesheet_issues));
+            }
             short
         },
         tiles,
@@ -265,10 +285,23 @@ struct PageHost {
     scope: Scope,
     palette: Arc<Palette>,
     scale: f64,
+    viewport: layout::Viewport,
+    viewport_used: Cell<bool>,
+}
+impl PageHost {
+    fn new(scope: &Scope, key: &Key) -> Self {
+        Self {
+            scope: scope.clone(),
+            palette: key.palette.clone(),
+            scale: key.scale,
+            viewport: layout::Viewport { width: f64::from(key.width) / key.scale, height: f64::from(key.height) / key.scale, scale: key.scale },
+            viewport_used: Cell::new(false),
+        }
+    }
 }
 impl Host for PageHost {
     fn revision(&self) -> u64 {
-        self.scope.revision() ^ self.scale.to_bits()
+        self.scope.revision() ^ self.scale.to_bits() ^ self.viewport.width.to_bits().rotate_left(13) ^ self.viewport.height.to_bits().rotate_left(29)
     }
     fn scheme(&self) -> Scheme {
         if self.palette.is_dark() { Scheme::Dark } else { Scheme::Light }
@@ -314,8 +347,33 @@ impl Host for PageHost {
     fn device_scale(&self) -> f64 {
         self.scale
     }
-    fn factor(&self, _: math::RelativeUnit, _: Option<Axes>) -> math::Result<f64> {
-        Err(math::Error::ContextUnavailable)
+    fn factor(&self, unit: math::RelativeUnit, axes: Option<Axes>) -> math::Result<f64> {
+        use math::RelativeUnit::*;
+        let (w, h) = (self.viewport.width, self.viewport.height);
+        let vertical = axes.unwrap_or_default().writing_mode != style::WritingMode::HorizontalTb;
+        let value = match unit {
+            Vw | Svw | Lvw | Dvw => w,
+            Vh | Svh | Lvh | Dvh => h,
+            Vi | Svi | Lvi | Dvi => {
+                if vertical {
+                    h
+                } else {
+                    w
+                }
+            }
+            Vb | Svb | Lvb | Dvb => {
+                if vertical {
+                    w
+                } else {
+                    h
+                }
+            }
+            Vmin | Svmin | Lvmin | Dvmin => w.min(h),
+            Vmax | Svmax | Lvmax | Dvmax => w.max(h),
+            _ => return Err(math::Error::ContextUnavailable),
+        };
+        self.viewport_used.set(true);
+        Ok(value / 100.)
     }
 }
 
@@ -323,9 +381,54 @@ impl Host for PageHost {
 mod tests {
     use super::*;
     #[test]
+    fn viewport_restyle_reuses_dom_and_compiled_external_sheets() {
+        let mut builder = Builder::new(Default::default());
+        builder.load_file(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/web/tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+        let scope = FontSet::new(builder.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+        let mut key = Key { source: "about:engine".into(), cwd: None, revision: 0, width: 1000, height: 600, scale: 2., palette: Arc::new(Palette::light()) };
+        let host = PageHost::new(&scope, &key);
+        let mut shaper = shaping::Engine::default();
+        let mut painter = paint::Engine::default();
+        let mut fetched = 0;
+        let mut page = page::load_resources(
+            Arc::from("<!doctype html><link rel=stylesheet href=sheet.css><div></div>"),
+            &host,
+            &scope,
+            &mut shaper,
+            &mut painter,
+            host.viewport,
+            None,
+            |_, _| {},
+            |_, _| {
+                fetched += 1;
+                Ok(Some(olo_web::css::Syntax::parse(Arc::from("body{margin:0}div{height:10vh;width:50vw;background-color:red}"), Default::default(), None)?))
+            },
+        )
+        .unwrap();
+        let red = |page: &page::Page| page.scene.commands().iter().find(|c| matches!(c.primitive, paint::Primitive::Fill { color: [255, 0, 0, 255] })).unwrap().bounds;
+        assert_eq!((red(&page).width, red(&page).height), (250., 30.));
+        assert!(host.viewport_used.get());
+        let identity = page.document.id();
+        key.width = 600;
+        key.height = 400;
+        let host = PageHost::new(&scope, &key);
+        page.restyle(&host, &scope, &mut shaper, &mut painter, host.viewport, None, |_, _| {}).unwrap();
+        assert_eq!((red(&page).width, red(&page).height), (150., 20.));
+        assert_eq!(page.document.id(), identity);
+        assert_eq!(fetched, 1);
+        use math::RelativeUnit::*;
+        let axes = Axes { writing_mode: style::WritingMode::VerticalRl, ..Default::default() };
+        assert_eq!(host.factor(Vi, Some(axes)).unwrap(), 2.);
+        assert_eq!(host.factor(Vb, Some(axes)).unwrap(), 3.);
+        for unit in [Vw, Svw, Lvw, Dvw] {
+            assert_eq!(host.factor(unit, None).unwrap(), 3.);
+        }
+        assert_eq!(host.factor(Vmin, None).unwrap(), 2.);
+    }
+    #[test]
     fn extreme_document_scroll_still_leaves_room_for_viewport_and_tile() {
         for height in [1, 256, MAX_VIEWPORT] {
-            let key = Key { source: "about:engine".into(), revision: 0, width: 100, height, scale: 2., palette: Arc::new(Palette::light()) };
+            let key = Key { source: "about:engine".into(), cwd: None, revision: 0, width: 100, height, scale: 2., palette: Arc::new(Palette::light()) };
             let scroll = max_scroll(&key, 1e300);
             assert!(scroll.checked_add(height as i32).and_then(|end| end.checked_add(256)).is_some());
             assert_eq!(max_scroll(&key, 0.), 0);

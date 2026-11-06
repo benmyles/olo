@@ -39,7 +39,13 @@ revalidate the merged workspace and push the integration with browser work.
   Web IDL innerHTML/setHTML APIs.
 - [ ] Declarative shadow roots, template content patching, inert owner-document/
   realm semantics and web-facing template APIs.
-- [ ] Add network/encoding/cache/cookies with security and memory bounds.
+- [ ] Complete network/encoding/cache/cookies with security and memory bounds.
+  Initial in-process HTTP/HTTPS, bounded decoded bodies, redirects, native TLS
+  roots, wakeable cancellation, HTML encoding prescan and linked CSS now work.
+  Document base/order, CSS MIME/encoding, local-file and mixed-content boundaries
+  have regressions; compiled sheets survive resize/theme/scale changes.
+  Streaming HTML parse, HTTP caches/cookies/referrer/origin policy, parallel
+  prioritised resources, imports/media/SRI, downloads and renderer isolation remain.
 - [x] Original CSS tokenizer, compact component arena and generic rule/
   declaration/block construction; independent syntax corpus, reviewed
   current-spec updates, native fail-closed evaluator and release comparisons.
@@ -311,3 +317,13 @@ this is a harness correction, not a browser speedup.
   after validating shared-cluster paint boundaries; omit fully transparent
   border paint commands while retaining box geometry. Measure the hidden-text
   path as well as the normal visible path.
+
+- [ ] Public navigation smoke failures: Example Domain is visibly incomplete;
+  Hacker News fails on unavailable selector state. Implement real initial/live
+  element state, then table layout; preserve these explicit failures in evals.
+- [ ] Keep web content geometry out of native kit inset lint: CERN's valid
+  8px UA body margin currently yields a kit window-edge finding. Don't change
+  website spacing to satisfy desktop widget spacing rules.
+- [ ] Investigate the small-page pipeline sample regression: 100 elements
+  948.099→1016.547 µs median; 1k 9183.913→9217.438 µs. Retaining compiled rules
+  enables I/O-free restyle; samples do not establish a speedup or full cost acceptance.

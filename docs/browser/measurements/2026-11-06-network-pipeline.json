@@ -1,0 +1,193 @@
+{
+  "scope": "Run frozen before/after page_bench binaries on CPU 0. No concurrent builds\nor owned GUI clients. Compile both against the same new harness: before uses\n6251094a's page.rs, after uses the current page.rs. This isolates the pipeline\nchange (ordered resources and retained compiled rules), not HTTP throughput.\nArgs: /var/tmp/OWNED (contains page-before/page-after), OUTPUT.json\n",
+  "machine": "Linux-7.2.15-300.fc45.x86_64-x86_64-with-glibc2.44",
+  "captured_at_unix": 1793966790.3351674,
+  "rows": [
+    {
+      "repeat": 0,
+      "revision": "before",
+      "binary_sha256": "a203cca2be21e330427f0608257eb3fa3883b782d05968737ba3457356be5316",
+      "result": {
+        "features": [],
+        "rounds": 150,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 939.8185,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9183.9134,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "peak_rss_kib": 9036,
+        "user_seconds": 1.45,
+        "system_seconds": 0.04,
+        "elapsed_seconds": 1.53
+      }
+    },
+    {
+      "repeat": 0,
+      "revision": "after",
+      "binary_sha256": "74bfd41f3f36a8a0afcec234e5da106ac6a466c18811605f884abd47d0897384",
+      "result": {
+        "features": [],
+        "rounds": 150,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 958.3218933333334,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9325.732013333334,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "peak_rss_kib": 9168,
+        "user_seconds": 1.47,
+        "system_seconds": 0.03,
+        "elapsed_seconds": 1.55
+      }
+    },
+    {
+      "repeat": 1,
+      "revision": "after",
+      "binary_sha256": "74bfd41f3f36a8a0afcec234e5da106ac6a466c18811605f884abd47d0897384",
+      "result": {
+        "features": [],
+        "rounds": 150,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 1016.5469066666666,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9217.438180000001,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "peak_rss_kib": 8880,
+        "user_seconds": 1.48,
+        "system_seconds": 0.02,
+        "elapsed_seconds": 1.54
+      }
+    },
+    {
+      "repeat": 1,
+      "revision": "before",
+      "binary_sha256": "a203cca2be21e330427f0608257eb3fa3883b782d05968737ba3457356be5316",
+      "result": {
+        "features": [],
+        "rounds": 150,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 1172.5189466666668,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9127.86118,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "peak_rss_kib": 9200,
+        "user_seconds": 1.47,
+        "system_seconds": 0.03,
+        "elapsed_seconds": 1.56
+      }
+    },
+    {
+      "repeat": 2,
+      "revision": "before",
+      "binary_sha256": "a203cca2be21e330427f0608257eb3fa3883b782d05968737ba3457356be5316",
+      "result": {
+        "features": [],
+        "rounds": 150,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 948.0987399999999,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9336.536806666667,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "peak_rss_kib": 8884,
+        "user_seconds": 1.46,
+        "system_seconds": 0.04,
+        "elapsed_seconds": 1.55
+      }
+    },
+    {
+      "repeat": 2,
+      "revision": "after",
+      "binary_sha256": "74bfd41f3f36a8a0afcec234e5da106ac6a466c18811605f884abd47d0897384",
+      "result": {
+        "features": [],
+        "rounds": 150,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 1115.11302,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9126.442593333335,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "peak_rss_kib": 8928,
+        "user_seconds": 1.46,
+        "system_seconds": 0.03,
+        "elapsed_seconds": 1.55
+      }
+    }
+  ]
+}

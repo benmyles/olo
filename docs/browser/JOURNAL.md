@@ -3103,3 +3103,67 @@ Restarting that new owned app_server restores Browser's document and scroll.
 Evidence is in `2026-11-06-edge-main-integration.json`. No personal desktop
 was installed, upgraded or reloaded. Historical full-desktop findings are
 not a new passing global result; site acceptance remains **0/100**.
+
+## 2026-11-06 — initial HTTP/HTTPS navigation and linked CSS
+
+The native shell now drives in-process HTTP/HTTPS on its page worker, with
+pooled connections, native TLS trust, HTTP/2 and transport decompression.
+Cancellation wakes stalled network futures; Stop/Escape and newer requests
+share the same generation checks. Redirects preserve final URL identity and
+fragment inheritance; Reload and upgrade state use that final URL. Relative
+file launches resolve against the sender's cwd on the worker, and file URLs
+are percent-decoded. Encoded HTML buffers are released before DOM/layout work.
+
+Document decoding now selects BOM/transport/meta/XML metadata, with a bounded
+1024-byte prescan and windows-1252 fallback. Plain text stays literal and its
+escaped representation is bounded. Linked CSS uses the existing CSS byte
+decoder, strict MIME checking, the first document base and document cascade
+order. Failed sheets count as issues. Body/redirect/request/source quotas,
+web-to-file and HTTPS-to-HTTP stylesheet boundaries have explicit checks.
+This is buffered top-level loading, not streaming Fetch, cookies/caches or
+complete browser security; scripts remain inert. Imports, conditional sheets,
+SRI and many CSS/layout behaviors remain required.
+
+Public smoke exposed real gaps: Example Domain initially failed on viewport
+units. Added desktop viewport factors and retained compiled rules; resize,
+scale and palette changes now restyle without network I/O, retaining the
+layout-only path for independent styles. Example Domain now renders partial
+content, Hacker News fails selector state, and CERN's original page renders
+text. None is accepted. CERN's valid 8px body margin also exposes a kit inset
+lint false positive; don't change website spacing to meet desktop metrics.
+
+The repeatable native fixture suite passes redirects, canonical Reload,
+UTF-8 meta, external CSS order/green pixels, literal plain text, pending Stop
+recovery and no resize/theme/scale refetch. All **15 live mode/scale reviews**
+pass at odd coordinates (light/dark/night × 1/1.25/1.5/1.75/2). Night uses dark
+appearance plus forced 4500K night light. Its entire sequence makes 17 requests;
+Go-to-stall, Stop and subsequent successful navigation together take **1.340 s**
+including CLI input/waits; that is not a transport-cancellation latency figure.
+
+Frozen CPU-0 three-pair static pipeline samples, against 6251094a's page.rs
+under the same new harness: 100 elements **948.099→1016.547 µs** median;
+1,000 **9183.913→9217.438 µs**. Geometry/source hashes agree, feature vectors
+are empty. Process peak RSS ranges **8884–9200→8880–9168 KiB**. The small-page
+sample regression remains follow-up work; no speedup or full cost acceptance
+is claimed. The compiled-rule retention buys I/O-free restyle.
+
+Frozen native local-scroll measurements: warmed RSS **82612→85060 KiB**.
+Both idle three-second samples have **0% CPU, zero wakeups and zero frames**.
+Median first-report→moving client-frame marks, drag/flick/wheel, are
+**8.830/8.897/.367→8.948/8.910/.315 ms** over three runs each. No hitches;
+these are client marks, not compositor presentation or optical latency.
+
+**220 default / 219 all-feature web release tests and seven browser tests**
+pass; strict default/all-feature clippy, release workspace, twelve kit/Preferences
+layout tests and 1280×800 live Browser lint pass. Owned-session restart restores
+the final redirected URL and visible scrolled rows. A first harness attempt
+incorrectly signalled app_server directly, ending only the owned session and
+causing its waiting browser to time out; the corrected test signals olo-session,
+as `tsession reload` does. No personal desktop was installed or reloaded.
+
+Raw evidence: `2026-11-06-network-{pipeline,ui-cost,public-smoke,native}.json`,
+`page_bench`, the measurement runner and `tools/browser/network-smoke.py`.
+The visual journal records light 2× and night 1.5×. **Goal active: 0/100
+websites and 0/3,000 site combinations accepted.** Next: initial/live selector
+state, real document input/links, conditional CSS/imports and table layout,
+then JavaScript/runtime and isolated resource loading.

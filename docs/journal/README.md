@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: network page in night mode
+
+*04:10* — Same native HTTP fixture at live 1.5×, with dark appearance and 4500K night light. Theme, scale and viewport changes reuse the DOM and compiled sheets without HTTP requests. This is a development fixture, not a website compatibility pass.
+
+![Browser: network page in night mode](2026-11-06/041046-browser-network-page-in-night-mode.png)
+
+### Browser: native HTTP navigation and linked styles
+
+*04:10* — The original Rust engine follows a redirect, uses the first document base, decodes UTF-8 meta and applies linked sheets in order. The green box comes from the last external sheet. Native progress, cancellation and structured visible text work; full website fidelity, JavaScript and browser isolation remain required. Checked light, dark and night at five live scales.
+
+![Browser: native HTTP navigation and linked styles](2026-11-06/041044-browser-native-http-navigation-and-linked-styles.png)
+
 ### Browser: snapped edges and mixed border corners
 
 *03:12* — Static native page at 1.5x on an isolated Agent Screen: device-snapped sharp rectangles and clips, disjoint solid border strips, premultiplied corner colour mixing and device-pixel text baselines. All five scales and light/dark/night reviewed live. The expanded native Chrome suite still has exact font-mask, corner-coverage and colour-precision failures; this is not website compatibility.

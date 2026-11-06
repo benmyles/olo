@@ -1895,3 +1895,55 @@ under tests/paint-fixtures/emulated; the authoritative native matrix now has
 36 remain failures. Reference dimensions, input coverage and immutable source/
 image hashes are verified. This is not website acceptance or complete font/
 colour/GPU fidelity.
+
+
+## Initial native network navigation (2026-11-06)
+
+`apps/browser/src/network.rs` owns one pooled reqwest client and a current-thread
+Tokio runtime on the page worker. TLS uses native trust roots; pending network
+I/O races a wakeable cancellation token. No network runtime runs on the UI.
+HTTP/1.1 and HTTP/2, gzip/Brotli/deflate/zstd decoding, bounded redirect chains,
+final URL identity and file URL decoding are connected to the native address,
+Go/Enter, Reload and Stop/Escape commands. Launch-relative files resolve against
+the sender's cwd on the worker. Response HTML error bodies remain renderable;
+plain text is escaped into an inert bounded preformatted document.
+
+Responses are buffered before parsing, capped at 16 MiB for documents and
+4 MiB per CSS response after transport decompression; document UTF-8 output
+and generated plain-text HTML are capped at 16 MiB. The page caps aggregate
+stylesheet UTF-8 source at 4 MiB and external requests at 128. These development
+quotas are explicit errors, not website passes. HTTP pages cannot load local
+files; HTTPS sheets cannot downgrade to HTTP, including through redirects.
+Embedded URL credentials are rejected. Cookies, Fetch/web APIs, caches, full
+origin/referrer/mixed-content policy and process sandboxing remain required.
+
+`html::bytes::encoding` selects BOM, supported transport charset, bounded
+1024-byte meta/XML prescan, then windows-1252. This is initial top-level input,
+not the complete browser encoding/restart/locale algorithm. `text::Decoder`
+performs bounded cancellable decoding; encoded document storage is released
+before DOM/layout work. Linked CSS reuses `Syntax::parse_bytes` with transport
+and document-environment encoding. Strict CSS MIME failures become resource
+issues; HTML style/link order and the first base href are preserved.
+
+`page::load_resources` delegates linked CSS to a worker resolver and retains
+compiled rules. `Page::restyle` reuses DOM/rules on viewport-dependent resize,
+scale and palette changes, without network requests. A host records whether
+viewport units were used; the layout-only resize path remains for independent
+styles. Desktop small/large/dynamic viewport dimensions currently coincide.
+Unsupported media/import/conditional/SRI semantics remain visible issues or
+explicit failures; this is not a complete stylesheet loader.
+
+Run release regressions with `cargo test --release -p olo-web -p olo-browser`.
+For native fixture checks, start a release browser on an owned Agent Screen
+at 1280×800 and initial 2× (so physical output fits every tested scale), eval
+its environment, then run `/usr/bin/python3 tools/browser/network-smoke.py
+NAME /var/tmp/OWNED/output`. It checks redirects, final-URL reload, UTF-8 meta,
+linked CSS pixels/order, no resize/theme/scale refetch, Stop recovery and plain
+text, plus 15 live light/dark/night and 1/1.25/1.5/1.75/2× reviews. Night is dark
+appearance plus forced 4500K night light. The fixture server is test-only Python;
+production resource loading is Rust. It records no website compatibility pass.
+
+`page_bench` measures the complete static pipeline, with feature flags, source
+and geometry hashes. The network measurement script alternates frozen binaries
+on CPU 0; the parent variant uses 6251094a's page.rs against the same new harness.
+This isolates pipeline/resource-retention overhead, not HTTP throughput.

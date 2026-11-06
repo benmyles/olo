@@ -1,5 +1,6 @@
 //! Development browser shell over Olo's original engine. Static local pages
 //! first; full network/JS/web compatibility is an active, uncompleted goal.
+mod network;
 mod worker;
 use olo_ui::{
     Menu, MenuBar, WindowOptions, agent,
@@ -14,11 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
     rc::Rc,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Arc, mpsc},
 };
 const APP_ID: &str = "olo.browser";
 #[derive(Serialize, Deserialize, Default)]
@@ -30,10 +27,12 @@ struct Browser {
     address: Entity<TextField>,
     focus: gpui::FocusHandle,
     source: String,
+    final_url: Option<String>,
+    cwd: Option<std::path::PathBuf>,
     revision: u64,
     _address_events: gpui::Subscription,
     tx: mpsc::Sender<worker::Request>,
-    cancel: Arc<AtomicBool>,
+    cancel: network::Cancel,
     id: u64,
     key: Option<worker::Key>,
     tiles: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>,
@@ -46,7 +45,7 @@ impl Browser {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let saved: Saved = olo_ui::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
         let source = if saved.source.is_empty() { std::env::args().nth(1).unwrap_or_else(|| "about:engine".into()) } else { saved.source };
-        let address = text_field(cx, |f| f.name("Address").hint("Local HTML path or about:engine").keeps_enter());
+        let address = text_field(cx, |f| f.name("Address").hint("Website URL or local HTML path").keeps_enter());
         address.update(cx, |f, cx| f.set_text(source.clone(), cx));
         let events = cx.subscribe_in(&address, window, |this, _, event, window, cx| {
             if matches!(event, olo_ui::widgets::TextFieldEvent::Entered) {
@@ -61,8 +60,10 @@ impl Browser {
             _address_events: events,
             address,
             source,
+            final_url: None,
+            cwd: None,
             tx: worker::start(olo_ui::proxy(cx)),
-            cancel: Arc::new(AtomicBool::new(false)),
+            cancel: network::Cancel::default(),
             id: 0,
             key: None,
             tiles: Vec::new(),
@@ -76,7 +77,7 @@ impl Browser {
         if width == 0 || height == 0 {
             return;
         }
-        let key = worker::Key { source: self.source.clone(), revision: self.revision, width, height, scale, palette };
+        let key = worker::Key { source: self.source.clone(), cwd: self.cwd.clone(), revision: self.revision, width, height, scale, palette };
         if self.key.as_ref() == Some(&key) {
             return;
         }
@@ -84,8 +85,8 @@ impl Browser {
             self.scroll = (f64::from(self.scroll) * scale / old.scale).round() as i32;
         }
         self.status = "Loading…".into();
-        self.cancel.store(true, Ordering::Relaxed);
-        self.cancel = Arc::new(AtomicBool::new(false));
+        self.cancel.cancel();
+        self.cancel = network::Cancel::default();
         self.id += 1;
         let recycle = std::mem::take(&mut self.tiles).into_iter().map(|(_, image)| image).collect();
         self.labels.clear();
@@ -99,6 +100,7 @@ impl Browser {
                 window.focus(&self.focus);
                 self.revision = self.revision.wrapping_add(1);
                 self.source = self.address.read(cx).text().to_string();
+                self.final_url = None;
                 if self.source.is_empty() {
                     self.source = "about:engine".into()
                 }
@@ -106,17 +108,21 @@ impl Browser {
                 self.key = None;
             }
             "reload" => {
+                if let Some(url) = self.final_url.take() {
+                    self.source = url;
+                }
                 self.key = None;
                 self.revision = self.revision.wrapping_add(1);
             }
             "stop" => {
                 self.id += 1; // Ignore replies queued just before cancellation.
-                self.cancel.store(true, Ordering::Relaxed);
+                self.cancel.cancel();
                 self.status = "Stopped".into();
             }
             "home" => {
                 self.revision = self.revision.wrapping_add(1);
                 self.source = "about:engine".into();
+                self.final_url = None;
                 self.address.update(cx, |f, cx| f.set_text("about:engine", cx));
                 self.scroll = 0;
                 self.key = None;
@@ -131,6 +137,12 @@ impl Browser {
     }
     fn reply(&mut self, message: worker::Reply, cx: &mut Context<Self>) {
         match message {
+            worker::Reply::Location(id, url) if id == self.id => {
+                // Preserve the request cache key through redirects; display and
+                // persist the final URL. Reload uses this canonical location.
+                self.final_url = Some(url.clone());
+                self.address.update(cx, |f, cx| f.set_text(url, cx));
+            }
             worker::Reply::Status(id, s) if id == self.id => self.status = s,
             worker::Reply::Error(id, s) if id == 0 || id == self.id => self.status = s,
             worker::Reply::Ready { id, title, tiles } if id == self.id => {
@@ -156,7 +168,7 @@ impl Browser {
 }
 impl Drop for Browser {
     fn drop(&mut self) {
-        self.cancel.store(true, Ordering::Relaxed)
+        self.cancel.cancel()
     }
 }
 impl Render for Browser {
@@ -239,8 +251,8 @@ impl Render for Browser {
                     return;
                 }
                 if let Some(key) = v.key.clone() {
-                    v.cancel.store(true, Ordering::Relaxed);
-                    v.cancel = Arc::new(AtomicBool::new(false));
+                    v.cancel.cancel();
+                    v.cancel = network::Cancel::default();
                     v.id += 1;
                     let mut recycle = Vec::new();
                     let height = key.height as i32;
@@ -301,7 +313,8 @@ fn main() {
         olo_ui::on_upgrade(cx, move |cx| {
             saved.borrow().as_ref().map(|v| {
                 let v = v.read(cx);
-                serde_json::to_string(&Saved { source: v.source.clone(), scroll: f64::from(v.scroll) / v.key.as_ref().map_or(1., |k| k.scale) }).unwrap_or_default()
+                serde_json::to_string(&Saved { source: v.final_url.clone().unwrap_or_else(|| v.source.clone()), scroll: f64::from(v.scroll) / v.key.as_ref().map_or(1., |k| k.scale) })
+                    .unwrap_or_default()
             })
         });
         let messages = view.clone();
@@ -312,22 +325,19 @@ fn main() {
                 }
             } else if message.is::<Launch>() {
                 let launch = *message.downcast::<Launch>().unwrap();
-                if let Some(source) = launch.args.first() {
-                    let source = if !source.contains("://") && source != "about:engine" && std::path::Path::new(source).is_relative() {
-                        launch.cwd.as_ref().map_or_else(|| source.clone(), |cwd| cwd.join(source).to_string_lossy().into_owned())
-                    } else {
-                        source.clone()
-                    };
-                    if let Some(v) = messages.borrow().as_ref() {
-                        v.update(cx, |v, cx| {
-                            v.address.update(cx, |f, cx| f.set_text(source.clone(), cx));
-                            v.source = source;
-                            v.scroll = 0;
-                            v.revision = v.revision.wrapping_add(1);
-                            v.key = None;
-                            cx.notify();
-                        });
-                    }
+                if let Some(source) = launch.args.first()
+                    && let Some(v) = messages.borrow().as_ref()
+                {
+                    v.update(cx, |v, cx| {
+                        v.address.update(cx, |f, cx| f.set_text(source.clone(), cx));
+                        v.source = source.clone();
+                        v.final_url = None;
+                        v.cwd = launch.cwd.clone();
+                        v.scroll = 0;
+                        v.revision = v.revision.wrapping_add(1);
+                        v.key = None;
+                        cx.notify();
+                    });
                 }
                 olo_ui::raise(handle, cx);
             }

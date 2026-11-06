@@ -8,8 +8,10 @@ available while this one is developed. Nothing here changes defaults.
 **Status: the original Rust engine now parses static HTML, resolves selected
 CSS/styles and native fonts, shapes text, lays out initial normal flow and
 paints bounded retained tiles in a native `olo-browser` development window.
-Local HTML, progress/cancellation, initial structured visible text, scrolling
-and restart restoration work. Networking, JavaScript, complete web layout,
+Local HTML, initial HTTP/HTTPS navigation and linked CSS, cancellable network
+progress, initial structured visible text, scrolling and restart restoration
+work. The development loader has bounded decoded resources and native TLS
+verification. Complete Fetch/HTTP caching/cookies, JavaScript, complete web layout,
 images/media, semantic document actions, universal dark mode and Olo/password/
 passkey integrations remain substantial required work. There is no demonstrated
 website compatibility: 0/100 sites and 0/3,000 combinations accepted.**
