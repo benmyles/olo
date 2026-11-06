@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Preferences ▸ Touchpad on a ThinkPad: its own palm model
+
+*21:26* — On the ThinkPad's pad: palms kept palms until they lift, Olo's own model for this kind of touchpad (made from Ben's hands), and no pressure controls it has no use for.
+
+![Preferences ▸ Touchpad on a ThinkPad: its own palm model](2026-11-05/212614-preferences-touchpad-on-a-thinkpad-its-own-palm-.png)
+
+### Palm trainer on the ThinkPad: a palm drawn as one
+
+*21:26* — The ThinkPad's pad gives no contact size (its pressure is the click's force: a resting palm weighs 0), so palms were drawn as dots. Now a palm the touchpad marks is drawn palm-sized and a fingertip fingertip-sized; the trainer runs the ThinkPad's own model.
+
+![Palm trainer on the ThinkPad: a palm drawn as one](2026-11-05/212613-palm-trainer-on-the-thinkpad-a-palm-drawn-as-one.png)
+
 ### olo-slack: Slack's notifications are Olo's
 
 *20:31* — A Slack message as an Olo notification (Message style, Slack's edge); a click goes to the conversation. Shown here from a stand-in page.

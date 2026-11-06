@@ -322,9 +322,13 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
             });
         },
         |ui| {
-            // (A ThinkPad's click is its own button: nothing to set.)
-            ui.enabled_if(pressure_pad, |ui| {
-                ui.bbox("Click", |ui| {
+            ui.bbox("Click", |ui| {
+                // (A ThinkPad's click is its own button: nothing to set.)
+                if !pressure_pad {
+                    ui.note("Its click is its own: a resting palm can't press.");
+                    return;
+                }
+                {
                     let mut names: Vec<SharedString> = CLICK_PRESSURES.iter().map(|(n, _, _)| SharedString::from(*n)).collect();
                     let i = match CLICK_PRESSURES.iter().position(|(_, p, r)| *p == f.click_press && *r == f.click_release) {
                         Some(i) => i,
@@ -349,10 +353,7 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                     if let Some((press, release)) = pad.and_then(|p| p.driver_click) {
                         ui.note(format!("The pad clicks at {press}/{release} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone."));
                     }
-                    if !pressure_pad {
-                        ui.note("This touchpad's click is its own: a palm resting on it doesn't press.");
-                    }
-                })
+                }
             });
             ui.bbox("While Typing", |ui| {
                 ui.check("Ignore the touchpad while typing", t.disable_while_typing, |s, v| tuned(s, |t| t.disable_while_typing = v));
