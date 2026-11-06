@@ -1565,7 +1565,9 @@ pub struct TrackerSettings {
 #[serde(default)]
 pub struct ScreenRecordingSettings {
     /// "auto" (the most powerful there is: an NVIDIA GPU's encoder
-    /// where it opens, else the processor), "nvidia" or "cpu".
+    /// where it opens, else, for AV1, an Intel or AMD GPU's through
+    /// VA-API, else the processor), "nvidia", "vaapi" (AV1 only) or
+    /// "cpu".
     pub encoder: String,
     /// What recordings are coded as: "h264" (plays everywhere), "hevc"
     /// or "av1" (smaller, on NVIDIA's encoder; the processor makes

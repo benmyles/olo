@@ -21,6 +21,8 @@ olo-protocol.workspace = true
 olo-color.workspace = true
 olo-screensavers = { workspace = true, features = ["gpui"] }
 olo-system.workspace = true
+# What the GPUs' VA-API drivers encode (Screen Recordings).
+olo-vaapi.workspace = true
 olo-fido.workspace = true
 olo-sync.workspace = true
 olo-complete.workspace = true

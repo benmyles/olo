@@ -16,6 +16,7 @@ olo-color = { path = "crates/color" }
 olo-sync = { path = "crates/sync" }
 olo-crash = { path = "crates/crash" }
 olo-video = { path = "crates/video" }
+olo-vaapi = { path = "crates/vaapi" }
 olo-camera = { path = "crates/camera" }
 olo-ui = { path = "crates/ui" }
 gpui = { path = "gpui/gpui" }

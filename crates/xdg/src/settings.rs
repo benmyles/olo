@@ -115,6 +115,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "gpus", tab: "", group: "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU", name: "Keep its driver ready", role: "CheckBox" },
     Setting { panel: "gpus", tab: "", group: "", name: "Apply", role: "Button" },
     Setting { panel: "gpus", tab: "", group: "Screen Recordings", name: "Encode on", role: "ComboBox" },
+    Setting { panel: "gpus", tab: "", group: "Screen Recordings", name: "Format", role: "ComboBox" },
     Setting { panel: "integrations", tab: "", group: "GitHub", name: "Connect with a Token…", role: "Button" },
     Setting { panel: "integrations", tab: "", group: "GitHub", name: "Check Again", role: "Button" },
     Setting { panel: "integrations", tab: "", group: "Telegram", name: "Open my.telegram.org", role: "Button" },

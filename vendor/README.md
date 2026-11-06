@@ -36,6 +36,10 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   libnvidia-encode and Olo builds and starts without NVIDIA's driver.
   olo-video's `nvenc` opens the library at run time and calls it through
   its function table.
+- **va-sys/** (MIT): libva 2.24's declarations (va.h, va_drm.h,
+  va_drmcommon.h, va_enc_av1.h) for what olo-video's VA-API AV1 encoder
+  uses, from bindgen, types only (how: its README): nothing links libva;
+  olo-video's `vaapi` opens libva.so.2 and libva-drm.so.2 at run time.
 - **bebook/**: the Be Book as Markdown, for reference (see its README).
 
 # Vendored libraries

@@ -7567,6 +7567,7 @@ dependencies = [
  "olo-tg",
  "olo-theme",
  "olo-ui",
+ "olo-vaapi",
  "olo-voice",
  "olo-xdg",
  "qrcode",
@@ -8004,6 +8005,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-vaapi"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "va-sys",
+]
+
+[[package]]
 name = "olo-video"
 version = "0.1.0"
 dependencies = [
@@ -8013,6 +8022,7 @@ dependencies = [
  "mp4",
  "nvenc-sys",
  "olo-images",
+ "olo-vaapi",
  "openh264",
  "png 0.18.1",
 ]
@@ -12713,6 +12723,10 @@ dependencies = [
  "num-traits",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "va-sys"
+version = "2.24.0"
 
 [[package]]
 name = "valuable"

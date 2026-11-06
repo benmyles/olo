@@ -490,13 +490,15 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     // (A GIF has no sound: none recorded.)
     let sound = if as_gif { crate::sound::Which::Nothing } else { sound };
     let choice = match chosen.as_deref() {
-        Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu or nvidia")?,
+        Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu, nvidia or vaapi")?,
         None => olo_video::Choice::Auto,
     };
     // H.264, HEVC or AV1: as asked, else as Preferences ▸ GPUs has it (on
-    // the processor, H.264 whatever it says: the processor makes only that).
+    // the processor, H.264 whatever it says: the processor makes only that;
+    // through VA-API, AV1, the only one Fedora's drivers make).
     let codec = match option(args, "--codec") {
         Some(c) => olo_video::Codec::parse(c).ok_or("--codec is h264, hevc or av1")?,
+        None if choice == olo_video::Choice::Vaapi => olo_video::Codec::Av1,
         None => match settings.as_ref().and_then(|s| olo_video::Codec::parse(&s.codec)) {
             Some(_) if choice == olo_video::Choice::Cpu => olo_video::Codec::H264,
             Some(c) => c,

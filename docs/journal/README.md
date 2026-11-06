@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Screen recordings on the Intel GPU: AV1 through VA-API
+
+*23:36* — Preferences ▸ GPUs ▸ Screen Recordings offers the Intel GPU where its VA-API driver encodes AV1 (Fedora's drivers make no H.264 or HEVC): recordings are AV1 at constant quality, a 2560 × 1600 screen in about 9 ms a frame, the NVIDIA GPU left asleep.
+
+![Screen recordings on the Intel GPU: AV1 through VA-API](2026-11-05/233632-screen-recordings-on-the-intel-gpu-av1-through-v.png)
+
 ### Remote control in Deskbar, with Stop Remote Control
 
 *23:16* — While a program controls the computer, Deskbar's sharing item says so (An app is controlling your keyboard and pointer) and Stop Remote Control ends the session: app_server closes its libei connection and lets go of keys left down.

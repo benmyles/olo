@@ -1,0 +1,11 @@
+[package]
+name = "olo-vaapi"
+description = "AV1 encoded on Intel's and AMD's GPUs through VA-API (libva opened at run time), and what each GPU's driver can encode"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libc = "0.2"
+# libva's declarations, nothing linked (the library is opened at run time).
+va-sys = { path = "../../vendor/va-sys" }

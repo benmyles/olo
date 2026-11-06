@@ -9,6 +9,7 @@ pub mod aac;
 pub mod config;
 pub mod gif;
 pub mod nvenc;
+pub use olo_vaapi as vaapi;
 pub mod trim;
 
 use std::{
@@ -164,6 +165,9 @@ pub enum Choice {
     Cpu,
     /// NVIDIA's GPU (NVENC), or an error saying why not.
     Nvidia,
+    /// Intel's or AMD's GPU through VA-API: AV1 only (what Fedora's
+    /// drivers encode), or an error saying why not.
+    Vaapi,
 }
 
 impl Choice {
@@ -172,6 +176,7 @@ impl Choice {
             "auto" => Some(Choice::Auto),
             "cpu" => Some(Choice::Cpu),
             "nvidia" | "nvenc" | "gpu" => Some(Choice::Nvidia),
+            "vaapi" | "intel" | "amd" => Some(Choice::Vaapi),
             _ => None,
         }
     }
@@ -182,13 +187,15 @@ impl Choice {
 pub enum Encoder {
     Cpu(H264),
     Nvidia(nvenc::Nvenc, Vec<u8>),
+    Vaapi(vaapi::Av1),
 }
 
 impl Encoder {
     /// One for `width` × `height` (even) pictures at up to `fps` a second,
-    /// coded as `codec`. Auto falls back to the processor, and so to
-    /// H.264, where NVIDIA's doesn't open ([`Encoder::codec`] says which);
-    /// the processor asked for another codec is an error.
+    /// coded as `codec`. Auto takes NVIDIA's where it opens, else, for
+    /// AV1, Intel's or AMD's through VA-API, else the processor, and so
+    /// H.264 ([`Encoder::codec`] says which); the processor asked for
+    /// another codec is an error, as VA-API asked for other than AV1.
     pub fn new(width: u32, height: u32, fps: u32, choice: Choice, codec: Codec) -> Result<Encoder, String> {
         let nvidia = || nvenc::Nvenc::with_rate(width, height, fps.clamp(1, 120), quality(codec, bitrate(width, height, fps)), codec).map(|e| Encoder::Nvidia(e, Vec::new()));
         let cpu = || {
@@ -197,10 +204,17 @@ impl Encoder {
             }
             H264::new(width, height, fps).map(Encoder::Cpu)
         };
+        let vaapi = || {
+            if codec != Codec::Av1 {
+                return Err(format!("the GPU's driver encodes AV1 only here, not {}", codec.name()));
+            }
+            vaapi::Av1::new(None, width, height, fps, vaapi::QUALITY).map(Encoder::Vaapi)
+        };
         match choice {
             Choice::Cpu => cpu(),
             Choice::Nvidia => nvidia(),
-            Choice::Auto => nvidia().or_else(|_| cpu()),
+            Choice::Vaapi => vaapi(),
+            Choice::Auto => nvidia().or_else(|_| vaapi()).or_else(|_| cpu()),
         }
     }
 
@@ -209,6 +223,7 @@ impl Encoder {
         match self {
             Encoder::Cpu(_) => Codec::H264,
             Encoder::Nvidia(e, _) => e.codec(),
+            Encoder::Vaapi(_) => Codec::Av1,
         }
     }
 
@@ -217,6 +232,9 @@ impl Encoder {
         match self {
             Encoder::Cpu(_) => "the processor (OpenH264)",
             Encoder::Nvidia(..) => "NVIDIA's GPU (NVENC)",
+            Encoder::Vaapi(e) if e.driver().contains("Intel") => "the Intel GPU (VA-API)",
+            Encoder::Vaapi(e) if e.driver().contains("AMD") || e.driver().contains("Radeon") => "the AMD GPU (VA-API)",
+            Encoder::Vaapi(_) => "the GPU (VA-API)",
         }
     }
 
@@ -224,11 +242,12 @@ impl Encoder {
         match self {
             Encoder::Cpu(e) => e.size(),
             Encoder::Nvidia(e, _) => e.size(),
+            Encoder::Vaapi(e) => e.size(),
         }
     }
 
-    /// One picture encoded: its Annex B bytes, and whether it's a key
-    /// frame.
+    /// One picture encoded: its Annex B bytes (AV1: a temporal unit's
+    /// OBUs), and whether it's a key frame.
     pub fn encode(&mut self, data: &[u8], stride: usize, order: Order) -> Result<(Vec<u8>, bool), String> {
         match self {
             Encoder::Cpu(e) => e.encode(data, stride, order),
@@ -244,6 +263,7 @@ impl Encoder {
                     e.encode(swapped, stride)
                 }
             },
+            Encoder::Vaapi(e) => e.encode(data, stride, order == Order::Rgba),
         }
     }
 }
@@ -1002,20 +1022,15 @@ mod tests {
         }
     }
 
-    /// Sizes and picture quality of each codec at each rate, on a real
-    /// screen (`OLO_BENCH_SCREEN`, a PNG) with typing drawn onto it, three
-    /// seconds at 30 a second: what Olo's recordings should be set to
-    /// (`--ignored`: it needs the GPU).
-    #[test]
-    #[ignore]
-    fn codec_sizes() {
+    /// A real screen (`OLO_BENCH_SCREEN`, a PNG; None if unset) with
+    /// typing drawn onto it, 90 frames of BGRA (or, with
+    /// `OLO_BENCH_SCROLL`, the screen scrolling 6 rows a frame): its
+    /// (even) size and the frames.
+    fn bench_frames() -> Option<(u32, u32, Vec<Vec<u8>>)> {
         let Some(path) = std::env::var_os("OLO_BENCH_SCREEN") else {
             eprintln!("OLO_BENCH_SCREEN unset: nothing to try");
-            return;
+            return None;
         };
-        if !nvenc::available() {
-            return;
-        }
         let png = std::fs::read(&path).unwrap();
         let mut dec = png::Decoder::new(std::io::Cursor::new(png));
         dec.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
@@ -1050,7 +1065,6 @@ mod tests {
             }
             px
         };
-        // (OLO_BENCH_SCROLL: the screen scrolling 6 rows a frame instead.)
         let scroll = std::env::var_os("OLO_BENCH_SCROLL").is_some();
         let frames: Vec<Vec<u8>> = (0..90)
             .map(|i| {
@@ -1064,7 +1078,42 @@ mod tests {
                 px
             })
             .collect();
+        Some((w, h, frames))
+    }
+
+    /// An MP4's luma PSNR against the `frames` it was made from, over the
+    /// pictures decoded (BT.601 luma, as the others were measured), and
+    /// how many decoded.
+    fn mp4_psnr(file: &std::path::Path, w: u32, h: u32, frames: &[Vec<u8>]) -> (f64, usize) {
         let luma = |p: &[u8], o: usize| 0.299 * f64::from(p[o + 2]) + 0.587 * f64::from(p[o + 1]) + 0.114 * f64::from(p[o]);
+        let v = gif::tests_open(file).unwrap();
+        let (mut n, mut mse_sum) = (0usize, 0f64);
+        v.each_decoded(&mut |rgb| {
+            let src = &frames[n];
+            let mut mse = 0f64;
+            for p in 0..(w * h) as usize {
+                let y_src = luma(src, p * 4);
+                let y_dec = 0.299 * f64::from(rgb[p * 3]) + 0.587 * f64::from(rgb[p * 3 + 1]) + 0.114 * f64::from(rgb[p * 3 + 2]);
+                mse += (y_src - y_dec).powi(2);
+            }
+            mse_sum += mse / f64::from(w * h);
+            n += 1;
+            Ok(())
+        })
+        .unwrap();
+        (10.0 * (255f64.powi(2) / (mse_sum / n.max(1) as f64)).log10(), n)
+    }
+
+    /// Sizes and picture quality of each codec at each rate, on a real
+    /// screen (`bench_frames`) three seconds at 30 a second: what Olo's
+    /// recordings should be set to (`--ignored`: it needs the GPU).
+    #[test]
+    #[ignore]
+    fn codec_sizes() {
+        if !nvenc::available() {
+            return;
+        }
+        let Some((w, h, frames)) = bench_frames() else { return };
         let bps = bitrate(w, h, 30);
         let codecs: Vec<Codec> = std::env::var("OLO_BENCH_CODECS").ok().map(|v| v.split(',').filter_map(Codec::parse).collect()).unwrap_or_else(|| vec![Codec::H264, Codec::Hevc, Codec::Av1]);
         for codec in codecs {
@@ -1085,26 +1134,111 @@ mod tests {
                 }
                 mp4.finish().unwrap();
                 let bytes = std::fs::metadata(&file).unwrap().len();
-                // Luma PSNR, over the pictures decoded.
-                let v = gif::tests_open(&file).unwrap();
-                let (mut n, mut mse_sum) = (0usize, 0f64);
-                v.each_decoded(&mut |rgb| {
-                    let src = &frames[n];
-                    let mut mse = 0f64;
-                    for p in 0..(w * h) as usize {
-                        let y_src = luma(src, p * 4);
-                        let y_dec = 0.299 * f64::from(rgb[p * 3]) + 0.587 * f64::from(rgb[p * 3 + 1]) + 0.114 * f64::from(rgb[p * 3 + 2]);
-                        mse += (y_src - y_dec).powi(2);
-                    }
-                    mse_sum += mse / f64::from(w * h);
-                    n += 1;
-                    Ok(())
-                })
-                .unwrap();
-                let psnr = 10.0 * (255f64.powi(2) / (mse_sum / n.max(1) as f64)).log10();
+                let (psnr, n) = mp4_psnr(&file, w, h, &frames);
                 eprintln!("{:5} {:24} {:9} bytes  PSNR {:5.2} dB  ({n} decoded)", codec.name(), format!("{rate:?}"), bytes, psnr);
                 let _ = std::fs::remove_file(&file);
             }
+        }
+    }
+
+    /// AV1's sequence header as written for VA-API reads back as its
+    /// av1C says it.
+    #[test]
+    fn the_vaapi_sequence_header_reads_back() {
+        let seq = vaapi::obu(vaapi::OBU_SEQUENCE_HEADER, &vaapi::sequence_header(2560, 1600, 12), 1);
+        let c = config::av1c(&seq).expect("av1C");
+        // Marker and version, profile 0 at level 12, Main tier, 8 bits,
+        // 4:2:0.
+        assert_eq!(c[0], 0x81);
+        assert_eq!(c[1], 12);
+        assert_eq!(c[2] & 0b0110_1100, 0b0000_1100);
+    }
+
+    /// Encodes a few frames on this computer's GPU (where VA-API encodes
+    /// AV1) and decodes them back with rav1d: the pictures come back.
+    #[test]
+    fn vaapi_frames_come_back() {
+        let Some(node) = vaapi::av1_node() else {
+            eprintln!("no GPU encodes AV1 through VA-API here");
+            return;
+        };
+        let (w, h) = (640u32, 360u32);
+        let mut e = vaapi::Av1::new(Some(&node), w, h, 30, vaapi::QUALITY).unwrap();
+        let mut d = olo_images::av1::Decoder::new(1, 1).unwrap();
+        let mut shown = Vec::new();
+        let mut sent = Vec::new();
+        for i in 0..8u32 {
+            let px: Vec<u8> = (0..h).flat_map(|y| (0..w).flat_map(move |x| [(x + i * 4) as u8, y as u8, 128, 255])).collect();
+            let (bits, key) = e.encode(&px, w as usize * 4, false).unwrap();
+            assert_eq!(key, i == 0);
+            d.decode(&bits, &mut shown).unwrap();
+            sent.push(px);
+        }
+        d.flush(&mut shown);
+        assert_eq!(shown.len(), 8, "every frame decoded");
+        assert_eq!((shown[0].width, shown[0].height), (w, h));
+        // Each as it was sent: its luma within a few levels (PSNR).
+        for (f, px) in shown.iter().zip(&sent) {
+            let rgba = f.to_rgba();
+            let mut mse = 0f64;
+            for p in 0..(w * h) as usize {
+                let y = |r: u8, g: u8, b: u8| 0.2126 * f64::from(r) + 0.7152 * f64::from(g) + 0.0722 * f64::from(b);
+                let a = y(px[p * 4 + 2], px[p * 4 + 1], px[p * 4]);
+                let b = y(rgba[p * 4], rgba[p * 4 + 1], rgba[p * 4 + 2]);
+                mse += (a - b).powi(2);
+            }
+            let psnr = 10.0 * (255f64.powi(2) / (mse / f64::from(w * h)).max(1e-9)).log10();
+            assert!(psnr > 38.0, "luma PSNR {psnr:.1} dB");
+        }
+    }
+
+    /// AV1 through VA-API (the Intel or AMD GPU), as `codec_sizes` does
+    /// NVENC's: each quantizer's size, picture quality and time a frame
+    /// (`OLO_BENCH_Q`: the quantizers, 0–255).
+    #[test]
+    #[ignore]
+    fn vaapi_sizes() {
+        let Some(node) = vaapi::av1_node() else {
+            eprintln!("no GPU encodes AV1 through VA-API here");
+            return;
+        };
+        let Some((w, h, frames)) = bench_frames() else { return };
+        let qs: Vec<u8> = match std::env::var("OLO_BENCH_Q") {
+            Ok(v) => v.split(',').filter_map(|q| q.parse().ok()).collect(),
+            Err(_) => vec![40, 60, 72, 90, 110],
+        };
+        // The processor's H.264 on the same frames, to measure against.
+        {
+            let mut e = H264::new(w, h, 30).unwrap();
+            let file = std::path::PathBuf::from(format!("/var/tmp/olo-bench-{}.mp4", std::process::id()));
+            let mut mp4 = Mp4::create(&file, w, h, 1000).unwrap();
+            for f in &frames {
+                let (bits, key) = e.encode(f, w as usize * 4, Order::Bgra).unwrap();
+                mp4.add(&bits, key, 33).unwrap();
+            }
+            mp4.finish().unwrap();
+            let bytes = std::fs::metadata(&file).unwrap().len();
+            let (psnr, n) = mp4_psnr(&file, w, h, &frames);
+            eprintln!("H.264 (processor)    {bytes:9} bytes  PSNR {psnr:5.2} dB  ({n} decoded)");
+            let _ = std::fs::remove_file(&file);
+        }
+        for q in qs {
+            let mut e = vaapi::Av1::new(Some(&node), w, h, 30, q).unwrap();
+            let file = std::path::PathBuf::from(format!("/var/tmp/olo-bench-{}.mp4", std::process::id()));
+            let mut mp4 = Mp4::create_for(&file, w, h, 1000, Codec::Av1).unwrap();
+            let mut times = Vec::new();
+            for f in &frames {
+                let t = std::time::Instant::now();
+                let (bits, key) = e.encode(f, w as usize * 4, false).unwrap();
+                times.push(t.elapsed());
+                mp4.add(&bits, key, 33).unwrap();
+            }
+            mp4.finish().unwrap();
+            times.sort();
+            let bytes = std::fs::metadata(&file).unwrap().len();
+            let (psnr, n) = mp4_psnr(&file, w, h, &frames);
+            eprintln!("AV1 (VA-API) q {q:3} {bytes:9} bytes  PSNR {psnr:5.2} dB  ({n} decoded)  median {:?}, slowest {:?} a frame", times[times.len() / 2], times[times.len() - 1]);
+            let _ = std::fs::remove_file(&file);
         }
     }
 

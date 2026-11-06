@@ -1596,10 +1596,16 @@ of Finished; a new one goes where its priority puts it.
     couldn't be run here. What would run here is AV1 through VA-API,
     which needs its sequence and frame headers written by us (packed
     headers with the offsets the driver patches, as FFmpeg's
-    vaapi_encode_av1 does). *Left*: that, if recording on the Intel GPU
-    (the NVIDIA one left asleep on battery) is wanted; each encoder with
-    what it can encode in Preferences; the frames as dmabufs (CUDA's
-    external memory) rather than copied.
+    vaapi_encode_av1 does). *Done* (2026-11-05, HACKING "AV1 on Intel's
+    and AMD's GPUs"): AV1 through VA-API on the Intel GPU (`olo_vaapi`,
+    its headers written by us, constant quality 40: 47.6 dB on a
+    2560 × 1600 screen in about 8.5 ms a frame), `--encoder vaapi`, auto
+    falling back to it for AV1, and Preferences ▸ GPUs offering it where
+    the driver says it encodes AV1 (asked on the panel's thread, about
+    15 ms: no cache needed). *Left*: the frames as dmabufs (CUDA's
+    external memory; VA-API's DRM PRIME import with its video processor
+    making NV12) rather than copied; auto preferring the Intel GPU on
+    battery.
 
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a

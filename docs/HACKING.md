@@ -6366,7 +6366,7 @@ Screens' Export Video uses too).
 - **Encoded on a worker** as frames come; one that comes while the last
   is still being encoded waits in its place, a newer taking it, on the
   most powerful encoder there is unless told (`--encoder auto|cpu|
-  nvidia`; `olo_video::Encoder`, `Choice`): NVIDIA's GPU where its
+  nvidia|vaapi`; `olo_video::Encoder`, `Choice`): NVIDIA's GPU where its
   encoder opens (`olo_video::nvenc`: NVENC's API through vendor/
   nvenc-sys's declarations, `libnvidia-encode.so.1` and `libcuda.so.1`
   opened at run time, nothing linked, so a machine without them builds,
@@ -6387,6 +6387,36 @@ Screens' Export Video uses too).
   isn't one of its values set first, or filled by the driver). The JSON
   says which encoded it (`encoder`). A window that changes size is cut
   or shown on black at the size it began.
+- **AV1 on Intel's and AMD's GPUs** (`--encoder vaapi`, Preferences ▸
+  GPUs offering "Intel Graphics (AV1 only, VA-API)" where its driver
+  encodes AV1; `olo_vaapi`, crates/vaapi): Fedora's own VA-API drivers
+  (iHD, Mesa) leave out the patented codecs, so on the ThinkPad's Intel
+  GPU (xe) they encode AV1 profile 0 and VP9 but no H.264 or HEVC: a
+  recording through VA-API is AV1 (asked for anything else, an error;
+  `--encoder auto` takes it for AV1 when there's no NVIDIA encoder).
+  libva is opened at run time (`libva.so.2`, `libva-drm.so.2`; vendor/
+  va-sys holds bindgen's declarations from libva 2.24's headers), the
+  render node is the first whose driver offers `VAProfileAV1Profile0`
+  on an encode entrypoint (NVIDIA's skipped, and so left asleep; asking
+  every driver takes about 15 ms, which Preferences does on its reading
+  thread). As FFmpeg's `av1_vaapi`: constant quality (CQP, quantizer
+  `olo_vaapi::QUALITY`, 40), a key frame every two seconds then P
+  frames each from the one before, on two reconstructed surfaces taken
+  in turn; VA-API leaves AV1's headers to the program, so the sequence
+  header (profile 0, 8 bits, 4:2:0, BT.709 limited, order hints, no
+  CDEF, restoration or superres) and each frame header are written here
+  (`Writer`, `frame_header`, `Tiles` for the tile layout AV1 allows:
+  5K takes two columns) and handed over as packed headers, the driver
+  writing the tile groups after them; the loop filter at a level from
+  the quantizer, told to the driver as the header says it. Pictures go
+  in as NV12 (BT.709, limited range) converted on a few threads straight
+  into the input surface's memory (`vaDeriveImage`; else an image put
+  in). Measured (`vaapi_sizes`, a 2560 × 1600 screen typed into, 3 s,
+  luma PSNR of each picture decoded back by rav1d): quantizer 40, 515 KB
+  at 47.6 dB (the processor's H.264 on the same: 160 KB at 41.9); 72,
+  260 KB at 45.5; a frame in about 8.5 ms, conversion and upload
+  included, a key frame up to 25. `vaapi_frames_come_back` encodes eight
+  frames and decodes them back (each within 38 dB of what was sent).
 - **An encoder that fails mid-recording** is opened again once (its
   first picture a key frame), and the file goes on if the new one's
   parameter sets are the same (NVENC's and OpenH264's are, opened with

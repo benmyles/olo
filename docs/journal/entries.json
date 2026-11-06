@@ -3436,5 +3436,11 @@
   "title": "Remote control in Deskbar, with Stop Remote Control",
   "caption": "While a program controls the computer, Deskbar's sharing item says so (An app is controlling your keyboard and pointer) and Stop Remote Control ends the session: app_server closes its libei connection and lets go of keys left down.",
   "image": "2026-11-05/231637-remote-control-in-deskbar-with-stop-remote-contr.png"
+ },
+ {
+  "time": "2026-11-05T23:36:32",
+  "title": "Screen recordings on the Intel GPU: AV1 through VA-API",
+  "caption": "Preferences \u25b8 GPUs \u25b8 Screen Recordings offers the Intel GPU where its VA-API driver encodes AV1 (Fedora's drivers make no H.264 or HEVC): recordings are AV1 at constant quality, a 2560 \u00d7 1600 screen in about 9 ms a frame, the NVIDIA GPU left asleep.",
+  "image": "2026-11-05/233632-screen-recordings-on-the-intel-gpu-av1-through-v.png"
  }
 ]

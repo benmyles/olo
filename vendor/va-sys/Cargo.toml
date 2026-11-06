@@ -1,0 +1,9 @@
+[package]
+name = "va-sys"
+description = "libva's declarations for what olo-video's VA-API encoder uses (va.h, va_drm.h, va_enc_av1.h of libva 2.24, MIT), from bindgen, without linking the library"
+version = "2.24.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
