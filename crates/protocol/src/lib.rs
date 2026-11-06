@@ -515,9 +515,16 @@ pub enum SyntheticEvent {
         dy: i32,
     },
     /// What's on a touchpad, as a pad's report would say (a MacBook pad's
-    /// axes): sent on as [`Event::TouchContacts`] (headless sessions,
-    /// testing the palm trainer).
-    Contacts { contacts: Vec<touchpad::TouchContact> },
+    /// axes, or `pad`'s), with its button down or not: sent on as
+    /// [`Event::TouchContacts`] (headless sessions, testing the palm
+    /// trainer).
+    Contacts {
+        contacts: Vec<touchpad::TouchContact>,
+        #[serde(default)]
+        pad: Option<touchpad::PadAxes>,
+        #[serde(default)]
+        button: bool,
+    },
     /// A finger on a touch screen, at global logical coordinates: down,
     /// moved or lifted (`slot` tells fingers apart). As a real touch is:
     /// touch for an app that takes it, else the pointer with the left
@@ -893,6 +900,10 @@ pub enum Event {
         /// typing); u64::MAX if none was.
         #[serde(default = "no_key")]
         since_key_us: u64,
+        /// The pad's button is down (a ThinkPad's click: its pressure is
+        /// the click's force, not a press of its own).
+        #[serde(default)]
+        button: bool,
     },
 }
 

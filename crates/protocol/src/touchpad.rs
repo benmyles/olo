@@ -57,6 +57,10 @@ pub enum DeviceKind {
     AppleSpi,
     /// An external Magic Trackpad.
     MagicTrackpad,
+    /// A ThinkPad's haptic touchpad (the P1 Gen 9's Goodix GXTP5420,
+    /// 27C6:0F90): its firmware marks palms, it reports no contact size,
+    /// and its pressure is the click's force.
+    Thinkpad,
     /// Any other touchpad.
     Touchpad,
     Mouse,
@@ -72,6 +76,8 @@ impl DeviceKind {
             DeviceKind::AppleSpi
         } else if name.contains("Magic Trackpad") || (apple && matches!(product, 0x030e | 0x0265 | 0x0324)) {
             DeviceKind::MagicTrackpad
+        } else if touchpad && (name.contains("GXTP5420") || (vendor == 0x27c6 && product == 0x0f90)) {
+            DeviceKind::Thinkpad
         } else if touchpad {
             DeviceKind::Touchpad
         } else {
@@ -84,6 +90,7 @@ impl DeviceKind {
             DeviceKind::AppleMtp => "MacBook trackpad (Apple silicon)",
             DeviceKind::AppleSpi => "MacBook trackpad",
             DeviceKind::MagicTrackpad => "Magic Trackpad",
+            DeviceKind::Thinkpad => "ThinkPad touchpad (Goodix)",
             DeviceKind::Touchpad => "Touchpad",
             DeviceKind::Mouse => "Mouse",
         }
@@ -94,6 +101,7 @@ impl DeviceKind {
         match self {
             DeviceKind::AppleMtp | DeviceKind::AppleSpi => "macbook",
             DeviceKind::MagicTrackpad => "magic-trackpad",
+            DeviceKind::Thinkpad => "thinkpad",
             DeviceKind::Touchpad | DeviceKind::Mouse => "standard",
         }
     }
@@ -103,6 +111,7 @@ impl DeviceKind {
 pub const PROFILES: &[(&str, &str, &str)] = &[
     ("macbook", "MacBook", "Palm-proof clicks, hovering fingers ignored, Mac-like scrolling"),
     ("magic-trackpad", "Magic Trackpad", "Mac-like scrolling and momentum, libinput's palm rejection"),
+    ("thinkpad", "ThinkPad", "Palms stay palms (the touchpad's own word, kept until they lift), Olo's palm model for this touchpad"),
     ("standard", "Standard", "libinput's own behaviour, as on most Linux desktops"),
     ("custom", "Custom", "Your own tuning"),
 ];
@@ -145,6 +154,11 @@ pub struct TouchFilter {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct PalmModel {
+    /// The kind of touchpad it is for (`olo_palm::Kind`'s id: "macbook",
+    /// "thinkpad"), whose features it reads; "" is a MacBook's (a model
+    /// from before there were kinds). Its size is its own: as many
+    /// features as `mean` has, as many hidden units as `b1`.
+    pub kind: String,
     /// Each feature's mean and spread in what it was trained on: inputs
     /// are `(x - mean) / std`.
     pub mean: Vec<f32>,
@@ -217,9 +231,10 @@ pub struct PadAxes {
     pub pressure_max: i32,
     /// The largest orientation it reports (0: none).
     pub orientation_max: i32,
-    /// It reports no contact size (a Goodix pad's): each contact's size
-    /// is its pressure, which on a capacitive pad is mostly its area
-    /// (`size_max` is then the pressure's).
+    /// It reports no contact size (a ThinkPad's Goodix): each contact's
+    /// is 0, and `size_max` too. (Named when its pressure stood in for
+    /// one; it doesn't: on such a pad the pressure is the haptic click's
+    /// force, and a palm laid flat weighs 0.)
     pub size_from_pressure: bool,
 }
 
@@ -277,14 +292,16 @@ pub const CLICK_PRESSURES: &[(&str, u32, u32)] = &[("Light", 80, 50), ("Medium",
 impl super::TouchpadSettings {
     /// Set the tuning `profile` stands for (personal choices are kept).
     pub fn apply_profile(&mut self, profile: &str) {
-        let standard = profile == "standard";
+        let standard = matches!(profile, "standard" | "thinkpad");
         let mac = matches!(profile, "macbook" | "magic-trackpad");
         if !mac && !standard {
             self.profile = "custom".into();
             return;
         }
         self.profile = profile.into();
-        self.filter = TouchFilter { enabled: profile == "macbook", ..TouchFilter::default() };
+        // (The person's trained palm model is theirs, not the profile's.)
+        let (palm_model, use_palm_model) = (self.filter.palm_model.take(), self.filter.use_palm_model);
+        self.filter = TouchFilter { enabled: matches!(profile, "macbook" | "thinkpad"), palm_model, use_palm_model, ..TouchFilter::default() };
         self.accel_profile = "adaptive".into();
         self.scroll_speed = 1.0;
         self.momentum = mac;
@@ -320,6 +337,8 @@ mod tests {
         assert_eq!(DeviceKind::detect("SYNA2B46:00 06CB:CDE6 Touchpad", 0x06cb, 0xcde6, true), DeviceKind::Touchpad);
         assert_eq!(DeviceKind::detect("Razer Razer Viper V2 Pro", 0x1532, 0x00a6, false), DeviceKind::Mouse);
         assert_eq!(DeviceKind::AppleMtp.recommended(), "macbook");
+        assert_eq!(DeviceKind::detect("GXTP5420:00 27C6:0F90 Touchpad", 0x27c6, 0x0f90, true), DeviceKind::Thinkpad);
+        assert_eq!(DeviceKind::Thinkpad.recommended(), "thinkpad");
     }
 
     #[test]
@@ -333,5 +352,10 @@ mod tests {
         assert!(t.filter.enabled && t.momentum && t.matches_profile("macbook"));
         t.scroll_speed = 0.8;
         assert!(!t.matches_profile("macbook"));
+        // The ThinkPad's: the filter on (its palms), libinput's feel.
+        t.filter.palm_model = Some(PalmModel { trained: 9, ..Default::default() });
+        t.apply_profile("thinkpad");
+        assert!(t.filter.enabled && !t.momentum && t.matches_profile("thinkpad") && !t.matches_profile("standard"));
+        assert_eq!(t.filter.palm_model.as_ref().map(|m| m.trained), Some(9), "a profile keeps the person's model");
     }
 }

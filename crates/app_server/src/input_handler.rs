@@ -1579,13 +1579,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     }
                 }
             }
-            S::Contacts { contacts } => {
-                // As a MacBook pad's report would say (testing the palm
-                // trainer headless).
+            S::Contacts { contacts, pad, button } => {
+                // As a pad's report would say (a MacBook's unless it says:
+                // testing the palm trainer headless).
                 let _ = (pointer, time);
                 if self.ipc.wanted(olo_protocol::EventKind::TouchContacts) {
-                    let pad = olo_protocol::touchpad::PadAxes::macbook();
-                    self.ipc.broadcast(olo_protocol::Event::TouchContacts { pad, time_us: crate::contacts::now_us(), contacts, since_key_us: crate::contacts::since_key_us() });
+                    let pad = pad.unwrap_or_else(olo_protocol::touchpad::PadAxes::macbook);
+                    self.ipc.broadcast(olo_protocol::Event::TouchContacts { pad, time_us: crate::contacts::now_us(), contacts, since_key_us: crate::contacts::since_key_us(), button });
                 }
             }
             S::Scroll { dx, dy, at_us } => {

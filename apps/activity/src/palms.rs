@@ -34,14 +34,8 @@ pub struct PalmStats {
 }
 
 /// The model the filter uses (app_server's `touch_filter::model_in_use`).
-fn model_in_use(f: &TouchFilter) -> Option<PalmModel> {
-    if !f.use_palm_model {
-        return None;
-    }
-    match &f.palm_model {
-        Some(m) if m.w1.len() == olo_palm::HIDDEN * olo_palm::FEATURES && m.mean.len() == olo_palm::FEATURES => Some(m.clone()),
-        _ => Some(olo_palm::default_model()),
-    }
+fn model_in_use(f: &TouchFilter, kind: olo_palm::Kind) -> Option<PalmModel> {
+    f.use_palm_model.then(|| kind.model(f.palm_model.as_ref()))
 }
 
 /// Watching, while the Inputs section shows: the stream to shut to stop.
@@ -85,7 +79,8 @@ struct Judged {
 }
 
 fn follow(client: Client, filter: TouchFilter, send: impl Fn(PalmStats)) {
-    let model = model_in_use(&filter);
+    // (Each kind of pad its own model: known once the pad says what it is.)
+    let mut model: Option<(olo_palm::Kind, Option<PalmModel>)> = None;
     let Ok(events) = client.into_events_of(&[EventKind::TouchContacts]) else { return };
     let mut tracker = olo_palm::Tracker::default();
     // Each touch on the glass: whether it's been taken for a palm.
@@ -94,9 +89,14 @@ fn follow(client: Client, filter: TouchFilter, send: impl Fn(PalmStats)) {
     let mut times: VecDeque<(Instant, u64)> = VecDeque::new();
     let mut last_sent = Instant::now() - Duration::from_secs(2);
     for event in events {
-        let Ok(Event::TouchContacts { pad, time_us, contacts, since_key_us }) = event else { break };
+        let Ok(Event::TouchContacts { pad, time_us, contacts, since_key_us, .. }) = event else { break };
         let started = Instant::now();
         tracker.since_key_us = since_key_us;
+        let kind = olo_palm::Kind::of(&pad);
+        if model.as_ref().map(|(k, _)| *k) != Some(kind) {
+            model = Some((kind, model_in_use(&filter, kind)));
+        }
+        let model = model.as_ref().and_then(|(_, m)| m.as_ref());
         let frame = tracker.frame(&pad, time_us, &contacts);
         for (id, f, age_ms) in &frame {
             let e = touching.entry(*id).or_insert((false, false));
@@ -104,11 +104,11 @@ fn follow(client: Client, filter: TouchFilter, send: impl Fn(PalmStats)) {
                 continue;
             }
             let size = contacts.iter().find(|c| c.id == *id).map_or(0, |c| c.major.max(c.minor));
-            if filter.palm_size > 0 && size >= filter.palm_size as i32 {
+            if kind.sized() && filter.palm_size > 0 && size >= filter.palm_size as i32 {
                 *e = (true, true);
-            } else if let Some(m) = &model
-                && *age_ms >= olo_palm::MIN_AGE_MS
-                && *age_ms <= olo_palm::DECIDE_MS
+            } else if let Some(m) = model
+                && *age_ms >= m.min_age_ms
+                && *age_ms <= m.decide_ms
                 && olo_palm::score(m, f) > m.threshold
             {
                 *e = (true, false);

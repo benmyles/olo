@@ -282,9 +282,15 @@ fn watch_pad(state: &mut AnvilState<UdevData>, pad: crate::contacts::Pad) {
                     return Ok(PostAction::Remove);
                 }
                 if state.ipc.wanted(olo_protocol::EventKind::TouchContacts)
-                    && let Some(contacts) = watch.changed(fd)
+                    && let Some((contacts, button)) = watch.changed(fd)
                 {
-                    state.ipc.broadcast(olo_protocol::Event::TouchContacts { pad: watch.axes.clone(), time_us: crate::contacts::now_us(), contacts, since_key_us: crate::contacts::since_key_us() });
+                    state.ipc.broadcast(olo_protocol::Event::TouchContacts {
+                        pad: watch.axes.clone(),
+                        time_us: crate::contacts::now_us(),
+                        contacts,
+                        since_key_us: crate::contacts::since_key_us(),
+                        button,
+                    });
                 }
                 Ok(PostAction::Continue)
             });

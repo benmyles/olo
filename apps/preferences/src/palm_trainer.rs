@@ -26,7 +26,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_palm::{FEATURES, Labelled, PadAxes, PalmModel, Report, TouchContact, Tracker};
+use olo_palm::{FEATURES, Kind, Labelled, PadAxes, PalmModel, Report, TouchContact, Tracker};
 use olo_protocol::{Client, Event, EventKind, Reply, Request};
 use olo_sync::Mutex;
 use olo_ui::{
@@ -372,14 +372,22 @@ fn watch(live: Arc<Mutex<Live>>, model: Arc<Mutex<PalmModel>>, stop: Arc<AtomicB
                 if stop.load(Ordering::Relaxed) {
                     return;
                 }
-                let Ok(Event::TouchContacts { pad, time_us, contacts, since_key_us }) = e else {
+                let Ok(Event::TouchContacts { pad, time_us, contacts, since_key_us, button }) = e else {
                     break;
                 };
                 tracker.since_key_us = since_key_us;
                 let frames = tracker.frame(&pad, time_us, &contacts);
                 let width = (pad.x_max - pad.x_min).max(1) as f32;
                 let height = (pad.y_max - pad.y_min).max(1) as f32;
-                let model = model.lock().unwrap().clone();
+                // This kind of pad's own model (until one is kept: Olo's).
+                let kind = Kind::of(&pad);
+                let model = {
+                    let mut m = model.lock().unwrap();
+                    if Kind::of_model(&m) != kind {
+                        *m = kind.base_model();
+                    }
+                    m.clone()
+                };
                 let others = frames.len() > 1;
                 for (id, f, age) in &frames {
                     let Some(c) = contacts.iter().find(|c| c.id == *id) else { continue };
@@ -407,19 +415,32 @@ fn watch(live: Arc<Mutex<Live>>, model: Arc<Mutex<PalmModel>>, stop: Arc<AtomicB
                         );
                     }
                     let o = open.get_mut(id).unwrap();
-                    if (olo_palm::MIN_AGE_MS..=olo_palm::DECIDE_MS).contains(age) {
+                    if (model.min_age_ms..=model.decide_ms).contains(age) {
                         o.frames.push(*f);
                         // (As the filter does: a palm once a report in its
-                        // first DECIDE_MS says so; after, it stays.)
+                        // first `decide_ms` says so; after, it stays.)
                         if olo_palm::score(&model, f) > model.threshold {
                             o.call = Some(true);
                         }
                     }
-                    if *age > olo_palm::DECIDE_MS && o.call.is_none() {
+                    // (A ThinkPad's: a palm once its firmware says so, as
+                    // the filter keeps it.)
+                    if kind.firmware_palms() && c.tool == olo_palm::MT_TOOL_PALM {
+                        o.call = Some(true);
+                    }
+                    if *age > model.decide_ms && o.call.is_none() {
                         o.call = Some(false);
                     }
                     o.size = o.size.max(c.major.max(c.minor));
-                    o.pressed = o.pressed.max(c.pressure);
+                    // A press: the contacts' pressure where the click is made
+                    // of it (a MacBook's), else the pad's button.
+                    o.pressed = o.pressed.max(if kind.clicks_by_pressure() {
+                        c.pressure
+                    } else if button {
+                        i32::MAX
+                    } else {
+                        0
+                    });
                     o.with_others |= others;
                     let (dx, dy) = ((c.x - o.start.0) as f32 / width, (c.y - o.start.1) as f32 / width);
                     o.travel = o.travel.max((dx * dx + dy * dy).sqrt());
@@ -596,6 +617,11 @@ impl TrainerWindow {
         }
     }
 
+    /// The kind of pad being trained on (a MacBook's until it says).
+    fn kind(&self) -> Kind {
+        self.live.lock().unwrap().axes.as_ref().map_or(Kind::MacBook, Kind::of)
+    }
+
     fn go(&mut self, step: Step) {
         self.step = step;
         self.started = Instant::now();
@@ -672,7 +698,8 @@ impl TrainerWindow {
         if self.step.exercise().is_none() {
             return;
         }
-        let base = olo_palm::default_model();
+        let kind = self.kind();
+        let base = kind.base_model();
         for t in lifted {
             let place = (t.x, t.y);
             match judge(self.step, &t, self.palm_size, self.press, &base) {
@@ -774,17 +801,19 @@ impl TrainerWindow {
         let samples = self.samples.clone();
         let progress = self.progress.clone();
         *progress.lock().unwrap() = 0.0;
-        let (palm_size, proxy) = (self.palm_size, olo_ui::proxy(cx));
+        let kind = self.kind();
+        // (No size on the pad: the size rule says nothing.)
+        let (palm_size, proxy) = (if kind.sized() { self.palm_size } else { u32::MAX }, olo_ui::proxy(cx));
         // Kept on disk too (~/.local/state/olo/palm), for Olo's own model
-        // to be tuned on real hands later.
+        // for this kind of pad to be tuned on real hands later.
         let kept = samples.clone();
         // (state_dir is Olo's own already: it was olo/olo/palm.)
-        std::thread::spawn(move || match olo_palm::keep_samples(&olo_xdg::state_dir().join("palm"), &kept) {
+        std::thread::spawn(move || match olo_palm::keep_samples(&olo_xdg::state_dir().join("palm"), kind, &kept) {
             Ok(p) => tracing::info!("palm trainer: samples kept in {}", p.display()),
             Err(e) => tracing::warn!("palm trainer: samples not kept: {e}"),
         });
         let task = cx.background_spawn(async move {
-            olo_palm::train(&samples, palm_size, |p| {
+            olo_palm::train(kind, &samples, palm_size, |p| {
                 *progress.lock().unwrap() = p;
                 proxy.send(Msg::Redraw);
             })
@@ -870,13 +899,23 @@ fn draw_pad(window: &mut Window, r: Bounds<Pixels>, live: &Live, calling: bool, 
             let c = point(inner.left() + px(iw * x), inner.top() + px(ih * y));
             ring(window, c, 14.0 + age * 10.0, 14.0 + age * 10.0, style::c(ink).opacity(fade));
         }
+        let kind = Kind::of(a);
         for c in &live.contacts {
             let cx = inner.left() + px(iw * ((c.x - a.x_min) as f32 / w));
             let cy = inner.top() + px(ih * ((c.y - a.y_min) as f32 / h));
-            // Its size in the pad's units is a diameter in the pad's
-            // coordinate units (both 98/mm on a MacBook).
-            let rx = (c.major.max(c.minor) as f32 / w * iw / 2.0).max(3.0);
-            let ry = (c.major.min(c.minor) as f32 / h * ih / 2.0).max(3.0);
+            let (rx, ry) = if kind.sized() {
+                // Its size in the pad's units is a diameter in the pad's
+                // coordinate units (both 98/mm on a MacBook).
+                ((c.major.max(c.minor) as f32 / w * iw / 2.0).max(3.0), (c.major.min(c.minor) as f32 / h * ih / 2.0).max(3.0))
+            } else {
+                // A pad that says no size: as large as what it is, by the
+                // call (and its firmware's word): a palm's heel, else a
+                // fingertip (millimetres across and down).
+                let palm = live.calls.get(&c.id) == Some(&true) || (kind.firmware_palms() && c.tool == olo_palm::MT_TOOL_PALM);
+                let (mw, mh) = if palm { (34.0, 24.0) } else { (11.0, 11.0) };
+                let mm = |m: f32, res: i32, span: f32, across: f32| if res > 0 { m * res as f32 / span * across / 2.0 } else { m / 100.0 * across / 2.0 };
+                (mm(mw, a.x_res, w, iw).max(3.0), mm(mh, a.y_res, h, ih).max(3.0))
+            };
             // (Called, a contact is a finger until the model says palm, as
             // the filter has it.)
             let ink = match live.calls.get(&c.id) {
@@ -1285,7 +1324,7 @@ impl TrainerWindow {
         col = col.child(Banner::new(if good { Tone::Success } else { Tone::Failure }, title, short));
         col = col.child(StringView::new(text).size(style::LEAD_SIZE).wrap(true));
         if let Some(Outcome::Kept(r) | Outcome::Worse(r)) = &self.outcome {
-            col = col.child(results(r));
+            col = col.child(results(r, self.kind()));
         }
         col.into_any_element()
     }
@@ -1318,7 +1357,7 @@ fn tally(name: &'static str, got: usize, want: usize) -> AnyElement {
 }
 
 /// How each model did on the touches kept back: a little table.
-fn results(r: &Report) -> AnyElement {
+fn results(r: &Report, kind: Kind) -> AnyElement {
     let pct = |v: f32| format!("{:.0}%", v * 100.0);
     let row = |name: &str, caught: String, lost: String, bold: bool| {
         div()
@@ -1336,7 +1375,7 @@ fn results(r: &Report) -> AnyElement {
         .child(div().w(px(220.0)))
         .child(div().w(px(160.0)).child(StringView::new("Palms caught").dim(true)))
         .child(div().w(px(200.0)).child(StringView::new("Fingers taken for palms").dim(true)));
-    div()
+    let table = div()
         .flex()
         .flex_col()
         .child(
@@ -1346,9 +1385,9 @@ fn results(r: &Report) -> AnyElement {
         )
         .child(heads)
         .child(row("The new model", pct(r.palms_caught), pct(r.fingers_lost), true))
-        .child(row("Olo's own model", pct(r.baseline_palms_caught), pct(r.baseline_fingers_lost), false))
-        .child(row("Size alone", pct(r.size_rule_palms_caught), pct(r.size_rule_fingers_lost), false))
-        .into_any_element()
+        .child(row("Olo's own model", pct(r.baseline_palms_caught), pct(r.baseline_fingers_lost), false));
+    // (A pad that says no size: size says nothing.)
+    if kind.sized() { table.child(row("Size alone", pct(r.size_rule_palms_caught), pct(r.size_rule_fingers_lost), false)) } else { table }.into_any_element()
 }
 
 /// Each screen in each of its states, for the layout lint

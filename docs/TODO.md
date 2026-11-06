@@ -665,6 +665,24 @@ of Finished; a new one goes where its priority puts it.
   a contact by what's known (a pressure-sized ring, not a dot) and
   saying when a pad can't tell palms by size; and the built-in model
   for pads like this one.
+  *Built* (2026-11-05, docs/TOUCHPAD.md "The ThinkPad's touchpad"):
+  two recordings of Ben's hands showed it all: no size, the pressure
+  the click's force (a flat palm weighs 0: why palms were dots), the
+  firmware right on every palm and never on a finger, but a resting
+  palm called a finger again on up to 98% of its reports (libinput
+  follows it), and the kernel ending a palm and bringing it back under
+  a new id. Ben: "each touchpad type should have its own specific
+  custom model type and weights". Each kind of pad now has its own
+  model (`olo_palm::Kind`: features, size, base model, timing, training
+  and judging); the ThinkPad's is made from Ben's captures (100% of
+  palms, 0% of fingers, by the firmware's word, held). The filter runs
+  there (profile "ThinkPad", Preferences' recommended one for this pad):
+  a palm stays a palm until it lifts, as its tool type to libinput
+  (replayed: 315 flips held, no finger told a palm). The trainer draws a
+  palm as large as one and a fingertip as one, judges a click by the
+  pad's button, and trains this pad's kind. Left: Ben's try after the
+  upgrade (choose the ThinkPad profile in Preferences ▸ Touchpad if it
+  isn't already; type with palms down; the trainer).
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in

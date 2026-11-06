@@ -394,6 +394,257 @@ local function filter(state, frame, time)
     return out
 end
 
+-- ---- A ThinkPad's pad (CONFIG.thinkpads: the Goodix GXTP5420) ----
+--
+-- Its firmware marks palms itself (ABS_MT_TOOL_TYPE = MT_TOOL_PALM), from
+-- a palm's first report, but calls a resting palm a finger again on a
+-- fifth to two fifths of its reports, and libinput follows the flag both
+-- ways (a palm counts as a finger then); and the kernel ends a palm right
+-- after reporting it, which comes back at the same place under a new id,
+-- sometimes a finger from then on. So here a contact is a palm once the
+-- firmware calls it one (and stays one until it lifts, across the
+-- kernel's new ids), or once its palm model (`thinkpad_model`, made from
+-- real hands on this pad: crates/palm's `Kind::ThinkPad`, the same
+-- features as `olo_palm::Tracker` makes) says so in its first
+-- `decide_ms`; and libinput is told so by its tool type (it ignores a
+-- palm). The pad reports no size and no hover, and its click is its own
+-- button, so nothing else is changed. Room for a tool type the frame
+-- doesn't carry is made from what libinput doesn't read on such a pad
+-- (the single-touch ABS_X, ABS_Y and ABS_PRESSURE, and ABS_MT_PRESSURE,
+-- which app_server's quirk tells libinput not to use).
+
+local MT_TOOL_PALM = 2
+-- A palm that ends and a contact that lands this soon (microseconds) and
+-- this near (millimetres) are one contact (as `olo_palm::AGAIN_US`).
+local AGAIN_US = 40000
+local AGAIN_MM = 5
+
+local function thinkpad_wanted(device)
+    for _, part in ipairs(CONFIG.thinkpads or {}) do
+        if string.find(device:name(), part, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function tp_contact(state, n)
+    local c = state.slots[n]
+    if not c then
+        c = { id = -1, x = 0, y = 0, pressure = 0, tool = 0, palm = false, decided = false, track = nil }
+        state.slots[n] = c
+    end
+    return c
+end
+
+-- Contact `c`'s features at `time` (as `olo_palm::kind::thinkpad_features`):
+-- what the firmware says of it (now, ever, how often, at its first
+-- report), its speed, its force now and at most, and its age.
+local function tp_features(state, c, time)
+    local a = state.axes
+    local x = (c.x - a.x_min) / math.max(a.x_max - a.x_min, 1)
+    local y = (c.y - a.y_min) / math.max(a.y_max - a.y_min, 1)
+    local pressure = c.pressure / math.max(a.pressure_max, 1)
+    local palm = c.tool == MT_TOOL_PALM
+    local t = c.track
+    if not t then
+        t = { down = time, x = x, y = y, at = time, speed = 0, reports = 0, palms = 0, first = palm, peak = 0 }
+        c.track = t
+    end
+    local dt = (time - t.at) / 1e6
+    if dt > 0 then
+        local moved = math.sqrt((x - t.x) ^ 2 + (y - t.y) ^ 2) / dt
+        t.speed = 0.7 * t.speed + 0.3 * moved
+    end
+    t.x, t.y, t.at = x, y, time
+    if t.reports == 0 then
+        t.first = palm
+    end
+    t.reports = t.reports + 1
+    if palm then
+        t.palms = t.palms + 1
+    end
+    t.peak = math.max(t.peak, pressure)
+    local age_ms = (time - t.down) // 1000
+    return {
+        palm and 1 or 0,
+        t.palms > 0 and 1 or 0,
+        t.palms / t.reports,
+        t.first and 1 or 0,
+        math.min(t.speed, 5) / 5,
+        pressure,
+        t.peak,
+        math.min(age_ms / 1000, 1),
+    }, age_ms
+end
+
+local function filter_thinkpad(state, frame, time)
+    -- What the frame says, slot by slot, and which contacts start in it.
+    local slot = state.slot
+    local started = {}
+    for _, e in ipairs(frame) do
+        local u, v = e.usage, e.value
+        if u == evdev.ABS_MT_SLOT then
+            slot = v
+        elseif u == evdev.ABS_MT_TRACKING_ID then
+            local c = tp_contact(state, slot)
+            if v < 0 and c.id >= 0 and c.track and c.track.palms > 0 then
+                -- A palm ending: kept a moment, for it to come back.
+                table.insert(state.ended, { at = time, x = c.x, y = c.y, track = c.track, palm = c.palm })
+            end
+            c.id = v
+            if v >= 0 then
+                c.palm, c.decided, c.track = false, false, nil
+                started[slot] = true
+            end
+        elseif u == evdev.ABS_MT_POSITION_X then
+            tp_contact(state, slot).x = v
+        elseif u == evdev.ABS_MT_POSITION_Y then
+            tp_contact(state, slot).y = v
+        elseif u == evdev.ABS_MT_PRESSURE then
+            tp_contact(state, slot).pressure = v
+        elseif u == evdev.ABS_MT_TOOL_TYPE then
+            tp_contact(state, slot).tool = v
+        end
+    end
+    local last_slot = slot
+
+    local kept = {}
+    for _, e in ipairs(state.ended) do
+        if time - e.at <= AGAIN_US then
+            table.insert(kept, e)
+        end
+    end
+    state.ended = kept
+    local a = state.axes
+    local model = CONFIG.thinkpad_model
+    local want = {}
+    for n, c in pairs(state.slots) do
+        if c.id >= 0 then
+            -- A palm the kernel ended a moment ago, back under a new id.
+            if started[n] and #state.ended > 0 then
+                for i, e in ipairs(state.ended) do
+                    local dx = (c.x - e.x) / math.max(a.x_res, 1)
+                    local dy = (c.y - e.y) / math.max(a.y_res, 1)
+                    if math.sqrt(dx * dx + dy * dy) <= AGAIN_MM then
+                        c.track, c.palm = e.track, e.palm
+                        table.remove(state.ended, i)
+                        break
+                    end
+                end
+            end
+            local f, age_ms = tp_features(state, c, time)
+            if c.tool == MT_TOOL_PALM or c.track.palms > 0 then
+                c.palm = true
+            elseif model and not c.palm and not c.decided then
+                if age_ms > model.decide_ms then
+                    c.decided = true
+                elseif age_ms >= (model.min_age_ms or 0) and palm_score(model, f) > model.threshold then
+                    c.palm = true
+                end
+            end
+            want[n] = c.palm and MT_TOOL_PALM or 0
+        end
+    end
+
+    -- libinput takes back no more events than it gave: the tool types
+    -- the frame carries are written as they should be where they stand;
+    -- one it doesn't carry takes the place of events libinput doesn't
+    -- read here, in its slot's part of the frame, or after it with a slot
+    -- event (and the slot put back after), else waits for a later frame.
+    local function idle(u)
+        return u == evdev.ABS_X or u == evdev.ABS_Y or u == evdev.ABS_PRESSURE or u == evdev.ABS_MT_PRESSURE
+    end
+    local room = 0
+    local present = { [state.slot] = true }
+    local carried = {}
+    local rewrite = false
+    local cur = state.slot
+    for _, e in ipairs(frame) do
+        if idle(e.usage) then
+            room = room + 1
+        elseif e.usage == evdev.ABS_MT_SLOT then
+            cur = e.value
+            present[cur] = true
+        elseif e.usage == evdev.ABS_MT_TOOL_TYPE then
+            carried[cur] = true
+            rewrite = rewrite or (want[cur] ~= nil and want[cur] ~= e.value)
+        end
+    end
+    local function needs(n)
+        return want[n] ~= nil and not carried[n] and (state.given[n] or 0) ~= want[n]
+    end
+    local missing = false
+    for n in pairs(want) do
+        missing = missing or needs(n)
+    end
+    if not rewrite and not (missing and room > 0) then
+        -- (Nothing to change: what libinput is told passes as it came.)
+        cur = state.slot
+        for _, e in ipairs(frame) do
+            if e.usage == evdev.ABS_MT_SLOT then
+                cur = e.value
+            elseif e.usage == evdev.ABS_MT_TOOL_TYPE then
+                state.given[cur] = e.value
+            end
+        end
+        state.slot = last_slot
+        return nil
+    end
+    local out = {}
+    local function fix(n)
+        if present[n] and needs(n) and room >= 1 then
+            room = room - 1
+            table.insert(out, { usage = evdev.ABS_MT_TOOL_TYPE, value = want[n] })
+            state.given[n] = want[n]
+        end
+    end
+    cur = state.slot
+    for _, e in ipairs(frame) do
+        local u, v = e.usage, e.value
+        if u == evdev.ABS_MT_SLOT then
+            fix(cur)
+            cur = v
+            table.insert(out, e)
+        elseif u == evdev.ABS_MT_TOOL_TYPE then
+            local value = want[cur] or v
+            state.given[cur] = value
+            table.insert(out, { usage = u, value = value })
+        elseif not idle(u) then
+            table.insert(out, e)
+        end
+    end
+    fix(cur)
+    -- Slots the frame doesn't touch: their slot, the tool, and once the
+    -- slot the next frame carries on in.
+    local slots = {}
+    for n in pairs(want) do
+        if not present[n] and needs(n) then
+            table.insert(slots, n)
+        end
+    end
+    table.sort(slots)
+    local back = false
+    for _, n in ipairs(slots) do
+        local cost = back and 2 or 3
+        if room >= cost then
+            room = room - 2
+            if not back then
+                room = room - 1
+                back = true
+            end
+            table.insert(out, { usage = evdev.ABS_MT_SLOT, value = n })
+            table.insert(out, { usage = evdev.ABS_MT_TOOL_TYPE, value = want[n] })
+            state.given[n] = want[n]
+        end
+    end
+    if back then
+        table.insert(out, { usage = evdev.ABS_MT_SLOT, value = last_slot })
+    end
+    state.slot = last_slot
+    return out
+end
+
 libinput:connect("new-evdev-device", function(device)
     local usages = device:usages()
     -- A keyboard: its key presses noted, nothing changed.
@@ -406,6 +657,23 @@ libinput:connect("new-evdev-device", function(device)
             end
             return nil
         end)
+    end
+    if thinkpad_wanted(device) and usages[evdev.ABS_MT_TOOL_TYPE] and usages[evdev.ABS_MT_POSITION_X] then
+        if usages[evdev.ABS_MT_PRESSURE] then
+            device:set_absinfo(evdev.ABS_MT_PRESSURE, { resolution = 0 })
+        end
+        local abs = device:absinfos()
+        local ax, ay, ap = abs[evdev.ABS_MT_POSITION_X], abs[evdev.ABS_MT_POSITION_Y], abs[evdev.ABS_MT_PRESSURE]
+        local state = {
+            slot = 0, slots = {}, given = {}, ended = {},
+            axes = { x_min = ax.minimum, x_max = ax.maximum, y_min = ay.minimum, y_max = ay.maximum,
+                     x_res = ax.resolution or 0, y_res = ay.resolution or 0, pressure_max = ap and ap.maximum or 0 },
+        }
+        libinput:log_info("olo: keeping palms palms on " .. device:name())
+        device:connect("evdev-frame", function(_, frame, time)
+            return filter_thinkpad(state, frame, time)
+        end)
+        return
     end
     if not wanted(device) then
         return

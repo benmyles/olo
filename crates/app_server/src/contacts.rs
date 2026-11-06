@@ -3,8 +3,9 @@
 //! Preferences' palm trainer, which shows them live and learns from
 //! them). Every touchpad libinput opens, not only those the touch filter
 //! filters: a pad that reports no contact size (a ThinkPad's Goodix)
-//! gives its pressure as the size, and what its firmware says each
-//! contact is (a palm, it may say).
+//! gives none (its pressure is its click's force: a palm laid flat
+//! weighs 0), and what its firmware says each contact is (a palm, it may
+//! say); and whether the pad's button is down (its click).
 //!
 //! libinput doesn't give them out (only pointer motion and gestures), and
 //! a resting palm, which the touch filter hides, gives nothing at all.
@@ -107,6 +108,15 @@ fn is_touchpad(fd: &OwnedFd) -> bool {
     n > 0 && pointer && !direct && abs(fd, ABS_MT_POSITION_X).is_some()
 }
 
+/// Whether the pad's button is down (`EVIOCGKEY`, BTN_LEFT).
+fn button(fd: &OwnedFd) -> bool {
+    const BTN_LEFT: usize = 0x110;
+    let mut keys = [0u8; 96];
+    // SAFETY: the kernel writes at most `keys.len()` bytes.
+    let n = unsafe { libc::ioctl(fd.as_raw_fd(), eviocg(0x18, keys.len()), keys.as_mut_ptr()) };
+    n > 0 && keys[BTN_LEFT / 8] & (1 << (BTN_LEFT % 8)) != 0
+}
+
 /// An axis's minimum, maximum and resolution (`EVIOCGABS`).
 fn abs(fd: &OwnedFd, code: u32) -> Option<(i32, i32, i32)> {
     let mut info = [0i32; 6];
@@ -120,7 +130,7 @@ fn abs(fd: &OwnedFd, code: u32) -> Option<(i32, i32, i32)> {
 pub struct Watch {
     pub axes: PadAxes,
     slots: usize,
-    last: Option<Vec<TouchContact>>,
+    last: Option<(Vec<TouchContact>, bool)>,
 }
 
 impl Watch {
@@ -128,11 +138,10 @@ impl Watch {
         let (x_min, x_max, x_res) = abs(fd, ABS_MT_POSITION_X)?;
         let (y_min, y_max, y_res) = abs(fd, ABS_MT_POSITION_Y)?;
         let (_, pressure_max, _) = abs(fd, ABS_MT_PRESSURE).unwrap_or((0, 0, 0));
-        // (No size: its pressure is, mostly its area on a capacitive pad.)
+        // (No size: none is said; `size_from_pressure` says so.)
         let (size_max, size_from_pressure) = match abs(fd, ABS_MT_TOUCH_MAJOR) {
             Some((_, max, _)) => (max, false),
-            None if pressure_max > 0 => (pressure_max, true),
-            None => return None,
+            None => (0, true),
         };
         let (_, slot_max, _) = abs(fd, ABS_MT_SLOT)?;
         let orientation_max = abs(fd, ABS_MT_ORIENTATION).map_or(0, |(_, max, _)| max);
@@ -140,9 +149,10 @@ impl Watch {
         Some(Watch { axes, slots: (slot_max + 1).clamp(1, 32) as usize, last: None })
     }
 
-    /// What's on the pad now, if it changed since last said.
-    pub fn changed(&mut self, fd: &OwnedFd) -> Option<Vec<TouchContact>> {
-        let now = self.read(fd)?;
+    /// What's on the pad now, and whether its button is down, if either
+    /// changed since last said.
+    pub fn changed(&mut self, fd: &OwnedFd) -> Option<(Vec<TouchContact>, bool)> {
+        let now = (self.read(fd)?, button(fd));
         if self.last.as_ref() == Some(&now) {
             return None;
         }
@@ -176,8 +186,8 @@ impl Watch {
                     id: ids[i],
                     x: x[i],
                     y: y[i],
-                    major: if sized { major[i] } else { pressure[i] },
-                    minor: if sized { minor[i] } else { pressure[i] },
+                    major: if sized { major[i] } else { 0 },
+                    minor: if sized { minor[i] } else { 0 },
                     pressure: pressure[i],
                     orientation: orientation[i],
                     width: width[i],

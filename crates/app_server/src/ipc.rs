@@ -766,7 +766,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::Frames => {
                 let mut touch = self.backend_data.touch_health();
                 crate::touch_health::scheduling(&mut touch);
-                if let (true, Some(m)) = (touch.model, crate::touch_filter::model_in_use(&self.settings.touchpad.filter)) {
+                let kind = crate::touch_filter::kind_among(&self.backend_data.input_devices());
+                if let (true, Some(m)) = (touch.model, crate::touch_filter::model_in_use(&self.settings.touchpad.filter, kind)) {
                     (touch.trained, touch.contacts, touch.palms_caught, touch.fingers_lost) = (m.trained, m.contacts, m.palms_caught, m.fingers_lost);
                 }
                 Reply::Frames {

@@ -6086,14 +6086,40 @@ subscribes to `EventKind::TouchContacts` (only by name), for every
 touchpad libinput opens (`INPUT_PROP_POINTER` without
 `INPUT_PROP_DIRECT`, with contacts' places), not only those the filter
 filters. A pad that reports no contact size (a ThinkPad P1 Gen 9's
-Goodix GXTP5420: position, pressure and the firmware's tool type)
-gives each contact's pressure as its size (`PadAxes::size_from_pressure`:
-on a capacitive pad it's mostly the contact's area), and each contact
-says what the firmware takes it for (`TouchContact::tool`: 2, a palm).
-The filter itself is still Apple's pads' (its touch and click
-thresholds are theirs); on others libinput's own palm detection, which
-follows the firmware's palm flag, stands.
-`SyntheticEvent::Contacts` stands in for the pad headless. Preferences'
+Goodix GXTP5420: position, pressure and the firmware's tool type) gives
+none (`PadAxes::size_from_pressure`; its pressure is the haptic click's
+force, not an area), each contact says what the firmware takes it for
+(`TouchContact::tool`: 2, a palm), and the event says whether the pad's
+button is down (`button`).
+**Each kind of touchpad has a palm model of its own** (`olo_palm::Kind`,
+crates/palm/src/kind.rs; Ben, 2026-11-05: "each touchpad type should
+have its own specific custom model type and weights and scoring/training
+should adapt"): its own features, network size, base model trained on
+real hands on that pad, decision timing, and training and judging rules
+(a palm by size only where the pad reports one; a press by pressure or
+by the pad's button). A model says its kind (`PalmModel::kind`; "" is a
+MacBook's), and a person's trained one runs only on its own kind
+(`Kind::model`); `score`, `train_from` and `lua` take a model's size from
+the model. The MacBook's (`Kind::MacBook`) is as above. The ThinkPad's
+(`Kind::ThinkPad`) goes by what its firmware says of a contact (now,
+ever, how often, at once), its speed and force, and its age (8
+features, 6 hidden units), judged from its first report; it is made by
+`make_thinkpad_model` from Ben's captures in `crates/palm/data` (each
+report as the kernel's slots stood, labelled by step; docs/TOUCHPAD.md
+"The ThinkPad's touchpad"). The tracker keeps a palm the kernel ends and
+brings back under a new id (within `AGAIN_US` and `AGAIN_MM`) one
+contact. On a ThinkPad the filter (`THINKPADS`, its "thinkpad" profile,
+`DeviceKind::Thinkpad`) keeps a palm a palm until it lifts: the
+firmware's word held (libinput follows it both ways), or the model's
+in its first `decide_ms`, told to libinput as the contact's tool type
+(rewritten where the frame carries one, else in the room of events
+libinput doesn't read there: the single-touch axes and the pressure);
+its quirk lets pressure through with libinput not counting touches or
+palms by it. Nothing else of the filter (hover, sizes, the click) runs
+there. `a_thinkpads_palms_stay_palms` replays the captures through the
+plugin as libinput would get them.
+`SyntheticEvent::Contacts` stands in for the pad headless (a MacBook's,
+or any `pad`, with its `button`). Preferences'
 "Train for Your Palm" (apps/preferences/src/palm_trainer.rs) personalizes
 the model: see docs/TOUCHPAD.md "The trainer".
 
