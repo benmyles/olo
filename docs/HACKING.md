@@ -6891,8 +6891,12 @@ Screens' Export Video uses too).
   they are wide), its menu offering Resume Recording for Pause
   Recording.
 - **Ends** on `olo-screenshot --stop` (SIGTERM to the recorder, which
-  finishes the file; `--stop` waits for it on a pidfd, then prints the
-  path), `--seconds N`, SIGINT, or the window closing. Written as
+  finishes the file; `--stop` waits for the recording's file in the
+  runtime folder to go, which the recorder removes once what it made is
+  whole, a GIF from it too, by inotify, or for the recorder to end,
+  whichever comes first: one started by the shortcut lives on a while
+  after to say where its file went, and `--stop` used to wait 30 s for
+  it; now 0.13 s; then it prints the path), `--seconds N`, SIGINT, or the window closing. Written as
   `.mp4.part` until whole, then into the Videos folder as "Screen
   Recording 2026-11-04 at 18.30.05.mp4" (or `--to PATH`); it prints what
   it made as JSON (`path`, `seconds`, `frames`, `width`, `height`). One
@@ -6904,12 +6908,37 @@ Screens' Export Video uses too).
   profiles; `Shortcut::ScreenRecording`, "Record the screen, or stop")
   runs `olo-screenshot --toggle-record`: a recording of the screen
   starts, or the one going finishes. While it records, Deskbar's tray
-  has a red record light (`status::draw_recording`, from the recording's
-  file in the runtime folder, by inotify:
+  has a red record light (the kit's `style::recording_light`, from the
+  recording's file in the runtime folder, by inotify:
   `olo_protocol::recording`), its tip and menu saying since when, with
-  Stop Recording (`olo-screenshot --stop`). Finished from the shortcut,
-  it tells in a notification ("Screen recording saved", its name, length
-  and size) with Show in Tracker, the file selected in its folder.
+  what the controls below have and Stop Recording
+  (`olo-screenshot --stop`). Finished from the shortcut, it tells in a
+  notification ("Screen recording saved", its name, length and size)
+  with Show in Tracker, the file selected in its folder.
+- **The controls on the screen** (`controls.rs`, `olo-screenshot
+  --controls`, which `--toggle-record` starts beside the recorder, and
+  reaps): a bar at the top of the screen, as CleanShot X's, with the
+  record light, how long it has recorded (pauses left out: the
+  recording's file carries its clock, `recorded_ms` as of `as_of`), and
+  Pause (Resume), Mark, Restart, Discard and Stop; while one is being
+  done, or during the countdown, what's happening takes the row. A layer
+  surface in `olo_protocol::recording::CONTROLS_NAMESPACE`, which
+  app_server leaves out of a capture session's pictures (a recording, a
+  screen share: `capture_elements`' `zoomable`, its `CAPTURING`), never a
+  screenshot's (an agent's look sees what the person does): on the
+  screen, never in the video. A floating bar with room round it for its
+  shadow (so its parts sit tool-bar tight in it); never takes the
+  keyboard. It follows the recording's file (watched; its clock ticks on
+  the second while it records, not at all while paused) and goes when
+  the recording does. Discard (`olo-screenshot --discard`: a flag beside
+  the recording's file, then SIGTERM; the recorder deletes what it made
+  and says nothing) and Restart (`--restart`: discarded, then the
+  recorder's own arguments started again, kept in the recording's file
+  as `args`, a region that was dragged out given as `--region X,Y,W,H
+  --display NAME` so it isn't asked for again). Checked headless at 1×,
+  1.5× and 2×, light and dark (`tsession review --all`: nothing found);
+  each button clicked; a frame of the video decoded where the bar was
+  shows the wallpaper.
 - **For agents**, on their screen: `olo-screen record-video NAME
   [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
   [--no-pointer] [--to PATH]` starts it on the screen's display and

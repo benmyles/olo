@@ -940,6 +940,9 @@ impl Deskbar {
             Some(("record", "stop")) => spawn("olo-screenshot --stop"),
             Some(("record", "pause")) => spawn("olo-screenshot --pause"),
             Some(("record", "resume")) => spawn("olo-screenshot --resume"),
+            Some(("record", "mark")) => spawn("olo-screenshot --mark"),
+            Some(("record", "restart")) => spawn("olo-screenshot --restart"),
+            Some(("record", "discard")) => spawn("olo-screenshot --discard"),
             Some(("share", "all")) => {
                 for s in &self.status.sharing {
                     spawn(&format!("olo-portal --stop {}", s.session));
@@ -2180,6 +2183,8 @@ impl Deskbar {
             let (m, v) = (model.clone(), view.clone());
             let menu = Menu::new("").item(said, "").enabled(false);
             let menu = if paused { menu.item("Resume Recording", "record:resume") } else { menu.item("Pause Recording", "record:pause") };
+            // (What the controls on the screen have.)
+            let menu = menu.item("Mark This Moment", "record:mark").item("Restart Recording", "record:restart").item("Discard Recording", "record:discard");
             let menu = menu.item("Stop Recording", "record:stop").separator().item("Open Screenshot", "run:olo-screenshot");
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {

@@ -13,6 +13,7 @@
 mod backdrop;
 mod bubble;
 mod capture;
+mod controls;
 mod inset;
 mod recording;
 mod region;
@@ -821,6 +822,15 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--pause") {
         std::process::exit(recording::pause(true));
+    }
+    if args.iter().any(|a| a == "--discard") {
+        std::process::exit(recording::discard());
+    }
+    if args.iter().any(|a| a == "--restart") {
+        std::process::exit(recording::restart());
+    }
+    if args.iter().any(|a| a == "--controls") {
+        return controls::run();
     }
     if args.iter().any(|a| a == "--resume") {
         std::process::exit(recording::pause(false));

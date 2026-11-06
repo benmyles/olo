@@ -293,10 +293,17 @@ where
     R::TextureId: Clone + Send + 'static,
 {
     let scale = output.current_scale().fractional_scale();
+    let capturing = CAPTURING.with(std::cell::Cell::get);
     let layers: Vec<(LayerSurface, Point<i32, Logical>)> = {
         let map = layer_map_for_output(output);
-        // (In Rescue, only Rescue's own.)
-        map.layers().rev().filter(|l| crate::rescue::shows_layer(l)).filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc))).collect()
+        // (In Rescue, only Rescue's own. In a recording or a share, never a
+        // recording's controls: on the screen, not in what's recorded.)
+        map.layers()
+            .rev()
+            .filter(|l| crate::rescue::shows_layer(l))
+            .filter(|l| !(capturing && l.namespace() == olo_protocol::recording::CONTROLS_NAMESPACE))
+            .filter_map(|l| map.layer_geometry(l).map(|g| (l.clone(), g.loc)))
+            .collect()
     };
     let mut out = Vec::new();
     // A layer surface with its menus, or (`tree`) a surface alone.
@@ -823,6 +830,31 @@ where
     offscreen(renderer, size, scale, &elements, clear_color)
 }
 
+thread_local! {
+    /// Set while a capture session's elements are gathered (a recording's,
+    /// a screen share's: `capture_elements`, `zoomable`): what's only for
+    /// the person's screen is left out (`space_elements`: a recording's
+    /// controls). A screenshot, an agent's look included, is the screen as
+    /// it is.
+    static CAPTURING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// While alive, the elements gathered are a capture session's (`on`).
+struct Capturing;
+
+impl Capturing {
+    fn new(on: bool) -> Capturing {
+        CAPTURING.with(|c| c.set(on));
+        Capturing
+    }
+}
+
+impl Drop for Capturing {
+    fn drop(&mut self) {
+        CAPTURING.with(|c| c.set(false));
+    }
+}
+
 /// What a picture of `output` shows (a mirror's is its source's, fitted),
 /// with the pointer over it when `pointer` gives where it is and what it
 /// shows; and the background. `zoomable`: a capture session's (a
@@ -844,6 +876,7 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
 {
+    let _capturing = Capturing::new(zoomable);
     let source = mirror_source(output);
     let fit = source.as_ref().map(|s| fit_outputs(output, s, space));
     let from = source.as_ref().unwrap_or(output);

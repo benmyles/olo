@@ -457,6 +457,8 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     // the display it was dragged on).
     let mut region: Option<[f64; 4]> = None;
     let mut crop: Option<[u32; 4]> = None;
+    // A region dragged out: kept for Restart (on which display).
+    let mut picked: Option<Option<String>> = None;
     if let Some(i) = args.iter().position(|a| a == "--region") {
         if matches!(source, Source::Window { .. }) {
             return Err("--region is part of a display, not of a window".into());
@@ -465,6 +467,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
             Some(v) => region = Some(rect(v).ok_or("--region takes X,Y,W,H (points from the display's top left), or nothing to drag one out")?),
             None => {
                 let Some((output, r)) = crate::region::pick_region() else { return Ok(None) };
+                picked = Some(output.clone());
                 source = Source::Output(output);
                 crop = Some(r);
             }
@@ -557,8 +560,21 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Source::Output(_) | Source::Display(_) => "display".into(),
     };
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false, recording: false };
+    let g = Going {
+        pid: std::process::id(),
+        path: path.clone(),
+        started: now_secs,
+        what,
+        paused: false,
+        recording: false,
+        recorded_ms: 0,
+        as_of: 0,
+        args: again(args, picked, crop, scale_of(capture.name())),
+    };
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
+    // The status says it goes until what it makes is whole (a GIF made
+    // from it too, or it deleted when discarded), however this ends.
+    let _status = Status;
     // Clicks and keys shown while it records, the pointer as asked, and
     // as before after.
     let zoom = if zoom_follow && matches!(source, Source::Output(_)) && crop.is_none() { ZOOM } else { 0.0 };
@@ -614,11 +630,17 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         set_showing(false, false, 1.0, false, 0.0);
     }
     drop(bubble);
-    let _ = std::fs::remove_file(going_path());
     WAKE.store(-1, Ordering::SeqCst);
     drop(waker);
     let mut made = result?;
     (made.camera, made.camera_note) = (camera, camera_note);
+    // Discarded (`--discard`: the controls' Discard or Restart): nothing kept.
+    let discard = olo_protocol::recording::discard_path_for(&olo_protocol::recording::this_display());
+    if discard.exists() {
+        let _ = std::fs::remove_file(&made.path);
+        let _ = std::fs::remove_file(&discard);
+        return Ok(None);
+    }
     if as_gif {
         // Made a GIF beside it, the video gone (a stop now stops this).
         STOP.store(false, Ordering::SeqCst);
@@ -630,6 +652,49 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         made.gif = Some(g);
     }
     Ok(Some(made))
+}
+
+/// The recording's status file, removed when this goes: `--stop` and the
+/// controls know the recording finished by its going (inotify).
+struct Status;
+
+impl Drop for Status {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(going_path());
+    }
+}
+
+/// Waits (half a minute at most) for the recording `g` to finish: its
+/// status gone (what it made is whole) or its process ended, whichever
+/// comes first; a recorder started by the desktop's shortcut lives on a
+/// while after, to say where its file went.
+fn wait_finished(g: &Going) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let watched = tx.clone();
+    let _watch = olo_ui::watch::watch([going_path()], move |_| {
+        let _ = watched.send(());
+    });
+    let pid = g.pid;
+    std::thread::spawn(move || {
+        // SAFETY: pidfd_open and poll on the recorder's process.
+        unsafe {
+            let pidfd = libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) as i32;
+            if pidfd >= 0 {
+                let mut p = libc::pollfd { fd: pidfd, events: libc::POLLIN, revents: 0 };
+                libc::poll(&mut p, 1, 30_000);
+                libc::close(pidfd);
+            }
+        }
+        let _ = tx.send(());
+    });
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let ended = || going().is_none_or(|now| now.pid != g.pid) || !Path::new(&format!("/proc/{}", g.pid)).exists();
+    while !ended() {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() || rx.recv_timeout(left).is_err() {
+            return;
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -706,7 +771,7 @@ fn record_into(
     }
     let start = Instant::now();
     // Said where Deskbar and agents look: recording from now.
-    let going = &Going { recording: true, ..going.clone() };
+    let going = &Going { recording: true, recorded_ms: 0, as_of: now_ms(), ..going.clone() };
     let _ = std::fs::write(going_path(), serde_json::to_vec(going).unwrap_or_default());
     // The sound from now, if any asked for and there's a way.
     let (sound, sound_note) = match which {
@@ -755,7 +820,7 @@ fn record_into(
                     }
                     None => paused_at = Some(Instant::now()),
                 }
-                let g = Going { paused, ..going.clone() };
+                let g = Going { paused, recorded_ms: recorded(paused_for, paused_at).as_millis() as u64, as_of: now_ms(), ..going.clone() };
                 let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
             }
             if paused {
@@ -1194,6 +1259,15 @@ pub fn toggle(args: &[String]) -> i32 {
         let n = olo_ui::settings::current().map_or(3, |s| s.screen_recording.countdown);
         args.extend(["--countdown".to_owned(), n.to_string()]);
     }
+    // The controls on the screen (never in the recording), for as long
+    // as it goes (`controls.rs`).
+    // (Waited for when they go, so they aren't left a zombie while the
+    // saved notification waits.)
+    if let Ok(mut controls) = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).arg("--controls").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).spawn()) {
+        std::thread::spawn(move || {
+            let _ = controls.wait();
+        });
+    }
     match record(&args) {
         Ok(Some(made)) => {
             tell(&made);
@@ -1255,25 +1329,94 @@ pub fn stop() -> i32 {
         eprintln!("olo-screenshot: nothing is being recorded on this display");
         return 1;
     };
-    // Its end waited for on a pidfd (nothing polled), half a minute at
-    // most: finishing writes the file's index.
-    // SAFETY: pidfd_open, kill and poll on the recorder's process.
-    unsafe {
-        let pidfd = libc::syscall(libc::SYS_pidfd_open, g.pid as libc::pid_t, 0) as i32;
-        libc::kill(g.pid as i32, libc::SIGTERM);
-        if pidfd >= 0 {
-            let mut p = libc::pollfd { fd: pidfd, events: libc::POLLIN, revents: 0 };
-            libc::poll(&mut p, 1, 30_000);
-            libc::close(pidfd);
-        }
-    }
-    if g.path.exists() {
-        println!("{}", serde_json::json!({ "path": g.path }));
+    // Its end waited for (nothing polled), half a minute at most:
+    // finishing writes the file's index (and a GIF from it, if asked).
+    // SAFETY: a signal to the recorder's process.
+    unsafe { libc::kill(g.pid as i32, libc::SIGTERM) };
+    wait_finished(&g);
+    let gif = g.path.with_extension("gif");
+    if let Some(path) = [&g.path, &gif].into_iter().find(|p| p.exists()) {
+        println!("{}", serde_json::json!({ "path": path }));
         0
     } else {
         eprintln!("olo-screenshot: the recording didn't finish ({})", g.path.display());
         1
     }
+}
+
+/// `--discard`: the recording on this display stopped and nothing kept
+/// (the controls' Discard; Restart, then started again).
+pub fn discard() -> i32 {
+    let Some(g) = going() else {
+        eprintln!("olo-screenshot: nothing is being recorded on this display");
+        return 1;
+    };
+    let flag = olo_protocol::recording::discard_path_for(&olo_protocol::recording::this_display());
+    if let Err(e) = std::fs::write(&flag, b"") {
+        eprintln!("olo-screenshot: {e}");
+        return 1;
+    }
+    // (Its end waited for, as `--stop` does; it deletes what it made.)
+    // SAFETY: a signal to the recorder's process.
+    unsafe { libc::kill(g.pid as i32, libc::SIGTERM) };
+    wait_finished(&g);
+    let _ = std::fs::remove_file(&g.path);
+    let _ = std::fs::remove_file(&flag);
+    println!("{}", serde_json::json!({ "discarded": g.path }));
+    0
+}
+
+/// What Restart runs again: `args`, a region that was dragged out (on
+/// `display`, `crop` in its pixels at `scale`) given as the one to
+/// record, so it isn't asked for again.
+fn again(args: &[String], picked: Option<Option<String>>, crop: Option<[u32; 4]>, scale: f64) -> Vec<String> {
+    let mut out = args.to_vec();
+    let (Some(display), Some([x, y, w, h])) = (picked, crop) else { return out };
+    let Some(i) = out.iter().position(|a| a == "--region") else { return out };
+    let points = |v: u32| {
+        let p = f64::from(v) / scale;
+        if p.fract() == 0.0 { format!("{p}") } else { format!("{p:.2}") }
+    };
+    out.insert(i + 1, [x, y, w, h].map(points).join(","));
+    if let Some(d) = display.filter(|_| option(args, "--display").is_none()) {
+        out.extend(["--display".to_owned(), d]);
+    }
+    out
+}
+
+/// `--restart` (the controls' Restart): the recording on this display
+/// discarded and the same one started again, with its own arguments (the
+/// region dragged out kept), its controls with it if it had them.
+pub fn restart() -> i32 {
+    let Some(g) = going() else {
+        eprintln!("olo-screenshot: nothing is being recorded on this display");
+        return 1;
+    };
+    if discard() != 0 {
+        return 1;
+    }
+    let exe = match std::env::current_exe() {
+        Ok(exe) => PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")),
+        Err(e) => {
+            eprintln!("olo-screenshot: {e}");
+            return 1;
+        }
+    };
+    match std::process::Command::new(exe).args(&g.args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).spawn() {
+        Ok(child) => {
+            println!("{}", serde_json::json!({ "restarted": g.path, "pid": child.id() }));
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: {e}");
+            1
+        }
+    }
+}
+
+/// Milliseconds since the epoch.
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 /// `--pause` (`on`) or `--resume`: the recording on this display paused
@@ -1359,4 +1502,27 @@ pub fn zoom_to(args: &[String]) -> i32 {
 pub fn status() -> i32 {
     println!("{}", serde_json::to_string_pretty(&going()).unwrap_or_default());
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Restart records the region that was dragged out, in points, on its
+    /// display, without asking for it again.
+    #[test]
+    fn restart_keeps_the_region_dragged_out() {
+        let args = strings(&["--toggle-record", "--region", "--countdown", "3"]);
+        let got = again(&args, Some(Some("eDP-1".into())), Some([200, 100, 1001, 600]), 2.0);
+        assert_eq!(got, strings(&["--toggle-record", "--region", "100,50,500.50,300", "--countdown", "3", "--display", "eDP-1"]));
+        // A region given, or none: as it was.
+        let given = strings(&["--toggle-record", "--region", "1,2,3,4"]);
+        assert_eq!(again(&given, None, Some([2, 4, 6, 8]), 2.0), given);
+        let screen = strings(&["--toggle-record"]);
+        assert_eq!(again(&screen, None, None, 1.0), screen);
+    }
 }

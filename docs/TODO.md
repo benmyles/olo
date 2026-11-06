@@ -13,8 +13,9 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Screen recording in Screenshot** (below, in Not started): the control
-  bar while recording first.
+- **Screen recording in Screenshot** (below, in Not started): the
+  control bar is done; next the thumbnail after, the export pipeline,
+  the editor and the library.
 
 ## Not started (highest priority first)
 
@@ -29,8 +30,12 @@ something nobody here has is in "Blocked", with what it waits for.
     and aspect ratios to snap to), and its options in one place: sound
     (computer, microphone), camera, clicks and keys shown, pointer size
     and smoothing, zoom on clicks, countdown, MP4 or GIF, quality.
-  - **While recording**: a small control bar on screen (never in the
-    recording): the time, pause and resume, stop, restart, discard, mark.
+  - ~~**While recording**: a small control bar on screen (never in the
+    recording): the time, pause and resume, stop, restart, discard,
+    mark.~~ Done (HACKING, "The controls on the screen"): the bar, left
+    out of recordings and shares but not screenshots; `--discard` and
+    `--restart` for agents, and in Deskbar's menu; `--stop` waits for
+    the recording to finish, not the recorder (0.13 s, was 30).
   - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
     Edit and Delete, dragged out as the file.
   - **Library**: every recording with its picture, length, size and date:

@@ -229,6 +229,28 @@ pub fn raised(window: &mut Window, b: Bounds<Pixels>, palette: &Palette) {
     bevel(window, b, c(palette.shine), tint(palette.panel_background, 1.3));
 }
 
+/// A recording going, as a camera's record light: a red dot in a ring;
+/// paused, a pause sign in the ring instead (two bars on device pixels,
+/// as far apart as they are wide). Deskbar's tray and the recording's
+/// controls on the screen.
+pub fn recording_light(window: &mut Window, r: Bounds<Pixels>, p: &Palette, paused: bool) {
+    let whole = |window: &Window, v: f32| (v * window.scale_factor()).round() / window.scale_factor();
+    let disc = |window: &mut Window, at: Point<Pixels>, radius: f32, color: Hsla| window.paint_sector(at, px(0.0), px(radius), 0.0, std::f32::consts::TAU, color);
+    let centre = snap_centred(window, r.center(), 2.0, 2.0).center();
+    let size = f32::from(r.size.width.min(r.size.height));
+    disc(window, centre, size * 0.42, c(p.failure));
+    disc(window, centre, size * 0.34, c(p.panel_background));
+    if !paused {
+        disc(window, centre, size * 0.26, c(p.failure));
+        return;
+    }
+    let bar = whole(window, size * 0.11).max(1.0 / window.scale_factor());
+    let sign = snap_centred(window, centre, bar * 3.0, whole(window, size * 0.34));
+    for x in [sign.left(), sign.left() + px(bar * 2.0)] {
+        fill_rect(window, Bounds { origin: point(x, sign.top()), size: gpui::size(px(bar), sign.size.height) }, c(p.failure));
+    }
+}
+
 /// A vertical gradient filling `b`, `top` to `bottom`.
 pub fn vgradient(window: &mut Window, b: Bounds<Pixels>, top: Hsla, bottom: Hsla) {
     let d = snap(window, b);
