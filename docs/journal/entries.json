@@ -3484,5 +3484,11 @@
   "title": "StyledEdit: Markdown pictures",
   "caption": "![alt](file) shows as the picture it names (a file beside the document), off the caret's line.",
   "image": "2026-11-06/022520-stylededit-markdown-pictures.png"
+ },
+ {
+  "time": "2026-11-06T04:14:58",
+  "title": "StyledEdit: Markdown table columns aligned",
+  "caption": "A Markdown table's columns align as its delimiter row says (:--- left, :---: centre, ---: right): the editor's rows take each column's own alignment (Row::aligns).",
+  "image": "2026-11-06/041458-stylededit-markdown-table-columns-aligned.png"
  }
 ]

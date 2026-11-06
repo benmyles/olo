@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### StyledEdit: Markdown table columns aligned
+
+*04:14* — A Markdown table's columns align as its delimiter row says (:--- left, :---: centre, ---: right): the editor's rows take each column's own alignment (Row::aligns).
+
+![StyledEdit: Markdown table columns aligned](2026-11-06/041458-stylededit-markdown-table-columns-aligned.png)
+
 ### StyledEdit: Markdown pictures
 
 *02:25* — ![alt](file) shows as the picture it names (a file beside the document), off the caret's line.

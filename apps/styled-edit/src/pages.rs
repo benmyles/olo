@@ -39,6 +39,9 @@ pub struct Input {
     pub align: Align,
     pub page: Option<Margins>,
     pub text_system: Arc<TextSystem>,
+    /// Shown as Markdown or source code: set as it looks first
+    /// (`convert::styled_copy`).
+    pub source: Option<crate::convert::Source>,
 }
 
 /// Bytes `range`'s spans and their styles, in order (one at least).
@@ -56,7 +59,11 @@ fn spans_of(doc: &Doc, range: std::ops::Range<usize>) -> (Vec<Span>, Vec<Style>)
 }
 
 /// The document on pages of `paper`.
-pub fn pages(input: Input, paper: Paper) -> Vec<Page> {
+pub fn pages(mut input: Input, paper: Paper) -> Vec<Page> {
+    if let Some(source) = input.source.take() {
+        (input.text, input.runs, input.paras) = crate::convert::styled_copy(&input.text, &source);
+        input.align = Align::Left;
+    }
     let sh: &dyn Shaper = &*input.text_system;
     let doc = Doc::with_paras(input.text.clone(), Some(input.runs.clone()), Some(input.paras.clone()));
     let width = paper.width - 2.0 * MARGIN;
@@ -284,6 +291,7 @@ mod tests {
             align: Align::Left,
             page: None,
             text_system: TextSystem::standalone(),
+            source: None,
         }
     }
 

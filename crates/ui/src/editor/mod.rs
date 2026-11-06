@@ -208,6 +208,9 @@ pub struct Row {
     /// from its start (a Markdown row's, between its pipes, the pipes
     /// themselves in none); None: a tab between each ([`cells`]).
     pub cells: Option<Vec<(usize, usize)>>,
+    /// Each column's own alignment (a Markdown table's `:---:`); else
+    /// the paragraph's.
+    pub aligns: Vec<Option<Align>>,
 }
 
 /// Between a cell's rules and its text, in points.
@@ -961,6 +964,7 @@ impl Editor {
             r.columns.iter().for_each(|c| c.to_bits().hash(&mut h));
             r.header.hash(&mut h);
             r.cells.hash(&mut h);
+            r.aligns.hash(&mut h);
             h.finish()
         });
         // (A table's rows meet: no space between them.)
@@ -1039,7 +1043,8 @@ impl Editor {
                 let halign = f.align.unwrap_or(Align::Left);
                 let mut parts = Vec::with_capacity(cs.len());
                 let mut all = std::collections::hash_map::DefaultHasher::new();
-                for ((start, len), (x, w)) in cs.into_iter().zip(columns) {
+                for (k, ((start, len), (x, w))) in cs.into_iter().zip(columns).enumerate() {
+                    let halign = row.aligns.get(k).copied().flatten().unwrap_or(halign);
                     let inner = (w - 2.0 * CELL_INSET.0).max(1.0);
                     spans.clear();
                     doc.spans(p.start + start..p.start + start + len, &mut spans);
@@ -3072,7 +3077,7 @@ mod tests {
         assert_eq!(cells("a\tbc\t"), [(0, 1), (2, 2), (5, 0)]);
         assert_eq!(cells(""), [(0, 0)]);
         // Equal shares unless there is one a cell; whole points that add up.
-        let row = Row { columns: vec![1.0, 3.0], header: false, cells: None };
+        let row = Row { columns: vec![1.0, 3.0], header: false, cells: None, aligns: Vec::new() };
         assert_eq!(cell_columns(&row, 2, 400.0), [(0.0, 100.0), (100.0, 300.0)]);
         assert_eq!(cell_columns(&row, 3, 100.0), [(0.0, 33.0), (33.0, 34.0), (67.0, 33.0)]);
         assert_eq!(cells_of("x\na\tb", 2, 3), [2..3, 4..5]);

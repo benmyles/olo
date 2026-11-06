@@ -1254,7 +1254,8 @@ each column's share of the width, and whether it is a header): its text
 is its cells, a tab between each (`editor::cells`), or where its
 document says they are (`Row::cells`: a Markdown row's, between its
 pipes, the pipes in no cell; Tab goes cell to cell, and the document
-adds a row on Return, `Document::types`), each laid out in its
+adds a row on Return, `Document::types`; `Row::aligns` a column's own
+alignment, a Markdown `:---:`), each laid out in its
 column, `CELL_INSET` in from the rules, rows meeting with no space
 between; a table is rows one after another. Hit-testing, the caret, ↑/↓
 (into the cell under the same x in the row above or below), Home/End,
@@ -1363,13 +1364,18 @@ strong, struck, `code` on its ground, links in the link colour; and
 the marks that make them hidden, except on the lines the selection is
 on, where they show dimmed, as typed (`Look::set_reveal`). A table is
 a ruled grid (the editor's rows, `Row::cells` its cells between the
-pipes, columns as wide as their longest cell, its `|---|` line hidden
-off the caret): typed in cell by cell, Tab to the next, Return a new
+pipes, columns as wide as their longest cell and aligned as the
+`|:---:|` line says, that line hidden off the caret): typed in cell by cell, Tab to the next, Return a new
 row. HTML and link definitions show as typed in the monospaced face. Pictures (`![alt](file)`, a file beside the document) show as
 the picture off the caret's line. As source: the same text in the
 monospaced face, headings, links, code and marks each coloured, with
 line numbers; the place (caret, selection, view) is the same across
-the switch, as the text is. Up to 256 KB a document is parsed again at
+the switch, as the text is. Printed, or exported other than as
+Markdown, a Markdown document is set as it looks (`convert::
+styled_copy`: `from_markdown_in`, its pictures from its folder) and
+code in the monospaced face coloured by its syntax (the light look's
+colours, parsed on the print's worker); exported as Markdown it's its
+own text. Up to 256 KB a document is parsed again at
 each change (about 9 ms a megabyte); a bigger one on a worker
 (`markdown::parse`, once typing pauses for `code::PAUSE`), its lines
 following each edit meanwhile (`Look::shift`: a typed byte styled as

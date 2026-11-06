@@ -795,6 +795,16 @@ impl DocView {
         self.changed(change, to);
     }
 
+    /// What it's printed and exported as, if not its own styles
+    /// (Markdown as it looks, code coloured).
+    fn source(&self) -> Option<convert::Source> {
+        match &self.mode {
+            Mode::Styled => None,
+            Mode::Markdown(_) => Some(convert::Source::Markdown(self.path.as_deref().and_then(Path::parent).map(Path::to_path_buf))),
+            Mode::Code { code, .. } => Some(convert::Source::Code(code.language())),
+        }
+    }
+
     /// Select bytes `r` of the text.
     fn select_bytes(&mut self, r: Range<usize>) {
         self.editor.select(self.doc.text(), r);
@@ -1953,6 +1963,7 @@ impl StyledEdit {
             align: d.doc.align,
             page: d.doc.page.clone(),
             text_system: cx.text_system().clone(),
+            source: d.source(),
         };
         (input, d.title())
     }
@@ -1987,11 +1998,19 @@ impl StyledEdit {
             return;
         }
         let d = doc.read(cx);
-        let (text, runs, paras, align, title) = (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.title());
+        let (mut text, mut runs, mut paras, mut align, title) = (d.doc.text().to_owned(), d.doc.runs().to_vec(), d.doc.paras().to_vec(), d.doc.align, d.title());
         let page = d.doc.page.clone();
+        let source = d.source();
         std::thread::spawn(move || {
+            // Markdown as Markdown is its own text, as written.
+            let own = matches!(source, Some(convert::Source::Markdown(_))) && format == Format::Markdown;
+            if let Some(source) = source.as_ref().filter(|_| !own) {
+                (text, runs, paras) = convert::styled_copy(&text, source);
+                align = Align::Left;
+            }
             let rich = || convert::with_page(convert::to_rich(&text, &runs, &paras, align), page.as_ref());
             let out = match format {
+                Format::Markdown if own => Ok(text.clone().into_bytes()),
                 Format::Markdown => Ok(convert::to_markdown(&text, &runs, &paras).into_bytes()),
                 Format::Html => Ok(convert::to_html(&text, &runs, &paras, &title, align).into_bytes()),
                 Format::Word => olo_richtext::write_docx(&rich()),

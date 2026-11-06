@@ -563,7 +563,7 @@ impl Doc {
                 left: p.level as f32 * INDENT,
                 align: halign,
                 justify: Some(a == Align::Justify),
-                row: Some(editor::Row { columns: r.columns.clone(), header: r.header, cells: None }),
+                row: Some(editor::Row { columns: r.columns.clone(), header: r.header, cells: None, aligns: Vec::new() }),
                 ..Default::default()
             };
         }

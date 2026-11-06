@@ -379,10 +379,13 @@ any other item; making fast things faster waits here.
   Since: a link's menu opens it (Open Link: a file from the document's
   folder, a URL by what opens it); Tab and ⇧Tab over code's selected
   lines indent and outdent them.
-  *Left* (Ben): try it on his own Markdown and code. Not done: a
-  table column's own alignment (`:---:`) isn't shown; pictures on the
-  web aren't fetched; ⌘-click on a link; printing a Markdown document
-  prints its text as typed.
+  Then: a table's columns aligned as its `:---:` line says; printed
+  or exported (PDF, Word, OpenDocument, RTF, HTML) a Markdown document
+  is set as it looks and code coloured by its syntax (as Markdown,
+  Markdown is its own text).
+  *Left* (Ben): try it on his own Markdown and code. Not done:
+  pictures on the web aren't fetched; ⌘-click on a link (its menu's
+  Open Link does it).
 
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable
