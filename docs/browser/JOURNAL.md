@@ -4168,7 +4168,8 @@ required the new error to be handled by color's existing generic context-error
 mapping; that failed build is not accepted coverage. Final source/checks are
 stable. The owned live window's PID/executable hash and full diagnostic are
 recorded, then it was quit and its screen stopped. Stripe is still0/30, no
-useful content. Origin/main remainsc753797c, already merged.
+useful content. The following fetch completed with new main5e9df2d2; its
+integration is recorded below.
 
 CSS Conditional5 (2026-11-02 draft) requires nearest eligible ancestor selection
 per relevant axis, with small-viewport fallback only when none is eligible:
@@ -4180,3 +4181,17 @@ contexts remain explicit errors until their computation path is implemented.
 This diagnostic is not container-unit support, pixels or performance acceptance.
 Evidence:2026-11-06-stripe-container-diagnostic.json. Prior performance nonpasses
 remain open; goal active and corpus0/100,0/3000.
+
+### 2026-11-06 — Merge the new Terminal title service
+
+Merged origin/main5e9df2d2 as5b07a3df after the precise Stripe Cqi diagnostic.
+The fetch completed while the preceding journal entry was being written; main
+had advanced fromc753797c. The merge carries the loopback HTTP title service,
+Terminal context/title changes, shared restore/session plumbing and documentation.
+Read the changed HACKING instructions; no personal install or reload was run.
+Workspace release build2m09s, kit-base restore2, session upgrade9 and Terminal
+loopback title-service integration1 pass. The latter exercises concurrent calls
+through repeated exec upgrades. Main sync is pushed with this journal checkpoint;
+Stripe's active next task remains query-container box-length resolution. Frozen
+parent benchmark examples use this merged web core before container changes.
+No site/configuration was accepted and prior performance failures remain open.
