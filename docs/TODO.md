@@ -7,6 +7,28 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
+- **Terminal: "please continue" for a coding agent that stopped** (Ben,
+  2026-11-06): "when in olo terminal in a tab that has claude code or
+  codex running, make an extra option available when right clicking the
+  tab to enable a feature where olo will say "please continue" in the
+  claude/codex session if they stop for more than 60s with no activity
+  at all (any change should count as activity we just want to do this
+  when they are not doing anything or processing anything or thinking
+  about anything). limit it to sending up to one "please continue" per
+  hour. when this mode is enabled it should add some kind of visual
+  indicator in the tab too". So: the tab's context menu, on a tab whose
+  shell runs Claude Code or Codex (Terminal knows: `agent_context`'s
+  `own_agent`, the tab title hook), offers a check item (say "Keep It
+  Going"); on, Terminal watches the tab for 60 s with nothing at all
+  happening (no output, no screen change, no spinner or timer ticking,
+  no input typed: any change restarts the count) and then types
+  "please continue" and Return into it, at most once an hour per tab;
+  the tab shows that it's on (a small mark beside its title, in the
+  palette's colours, at every scale and in light, dark and night). For
+  agents too: the setting readable and settable over Terminal's
+  commands socket, and the tab's state in its tree. Kept with the tab
+  across an upgrade (`restored_state`); off for a new tab.
+
 - **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
   screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
   incorrectly showing up as a keyboard"): "Yubico YubiKey OTP+FIDO+CCID"
