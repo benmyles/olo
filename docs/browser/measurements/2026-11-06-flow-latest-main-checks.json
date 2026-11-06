@@ -1,0 +1,25 @@
+[
+  {
+    "name": "latest-main-web-tests",
+    "args": [
+      "cargo",
+      "test",
+      "--release",
+      "-p",
+      "olo-web"
+    ],
+    "exit": 0,
+    "wall_seconds": 4.390772997998283
+  },
+  {
+    "name": "latest-main-workspace-build",
+    "args": [
+      "cargo",
+      "build",
+      "--release",
+      "--workspace"
+    ],
+    "exit": 0,
+    "wall_seconds": 41.504034958001284
+  }
+]

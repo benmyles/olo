@@ -2858,3 +2858,12 @@ the remaining inline/box integration, followed by the native shell and runtime.
 Networking/V8, isolation, universal dark/night and structured browser/Olo/
 password/passkey integrations remain substantial required work. Goal remains
 active: **0/100 websites and 0/3,000 website combinations accepted**.
+
+Checkpoint follow-up: flow is committed as **318237bb**. Fetched main again
+before pushing and merged the five newer commits through **c61acc5d** in
+**15ad99bf**. No web/Cargo runtime source changed in that merge; the 104
+measurement source hashes still match. All 209 default web release tests pass
+again (**4.391 s wall**), and the full workspace release build passes again
+(**41.504 s wall**, cargo 41.24 s). Commands/times are preserved in
+`measurements/2026-11-06-flow-latest-main-checks.json`. Main integration is part
+of the regular checkpoint workflow, not a one-off catch-up.
