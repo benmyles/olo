@@ -1,9 +1,10 @@
 //! Locking: Passwords opens locked and locks again when idle. Touch ID
 //! (fprintd) unlocks it, a touch of a security key set up (`olo_fido`:
-//! the password it keeps, checked as one typed), or the account password
-//! (PAM), each on a thread. The sensor and the key are waited on only
-//! while the locked window has the keyboard, so neither is held from
-//! sudo or the lock screen.
+//! the password it keeps, checked as one typed), a look (face unlock,
+//! `olo_system::face`: olo-faced looks, once each time the window takes
+//! the keyboard), or the account password (PAM), each on a thread. The
+//! sensor, the key and the camera are waited on only while the locked
+//! window has the keyboard, so none is held from sudo or the lock screen.
 
 use olo_system::{auth, fingerprint};
 use olo_ui::Proxy;
@@ -18,6 +19,8 @@ pub enum LockMsg {
     KeyWaiting,
     /// The key's password, or why not.
     Key(Result<Zeroizing<String>, String>),
+    /// How a look went.
+    Face(olo_system::face::Look),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -40,6 +43,8 @@ pub struct Lock {
     /// A touch of a security key waited for, and what to say of it.
     key: Option<olo_fido::Touch>,
     pub key_note: Option<String>,
+    /// A look asked for since the window last took the keyboard.
+    looked: bool,
     user: String,
     proxy: Proxy,
 }
@@ -47,7 +52,7 @@ pub struct Lock {
 impl Lock {
     pub fn new(proxy: Proxy, locked: bool) -> Lock {
         let finger = if std::env::var_os("OLO_NO_FINGERPRINT").is_some() { Finger::Off } else { Finger::Idle };
-        Lock { locked, password: String::new(), checking: false, error: None, finger, stop: None, key: None, key_note: None, user: auth::current_user().unwrap_or_default(), proxy }
+        Lock { locked, password: String::new(), checking: false, error: None, finger, stop: None, key: None, key_note: None, looked: false, user: auth::current_user().unwrap_or_default(), proxy }
     }
 
     pub fn user(&self) -> &str {
@@ -76,6 +81,15 @@ impl Lock {
                 self.key_note = None;
             }
             _ => {}
+        }
+        // A look, once each time it takes the keyboard (the camera's
+        // light isn't on and off as the window is).
+        if focused && self.locked && !self.looked {
+            self.looked = true;
+            let proxy = self.proxy.clone();
+            std::thread::Builder::new().name("face".into()).spawn(move || proxy.send(LockMsg::Face(olo_system::face::verify(3000)))).expect("thread");
+        } else if !focused {
+            self.looked = false;
         }
     }
 
@@ -166,6 +180,9 @@ impl Lock {
                 self.key = None;
                 self.key_note = Some(format!("{why} Type your password."));
             }
+            LockMsg::Face(olo_system::face::Look::Match) => return self.unlock(),
+            LockMsg::Face(olo_system::face::Look::NotYou) => self.key_note = Some("Your face wasn’t recognised. Type your password.".into()),
+            LockMsg::Face(_) => {}
         }
         false
     }

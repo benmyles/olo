@@ -121,6 +121,20 @@ of Finished; a new one goes where its priority puts it.
   its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
   which control lights the emitter, and what the HID interface reports
   (the shutter, perhaps).
+  *Built* 2026-11-05 (HACKING's "Face unlock"): `olo-face` (V4L2, the
+  emitter's UVC control found by trying, YuNet and SFace in process,
+  infrared-only looks with a relief check), `olo-faced` (root, the system
+  bus, the faces root's only, no password kept), `pam_olo_face.so` (sudo
+  and polkit), Passwords and the lock screen asking it, and Preferences ▸
+  Security ▸ Face Unlock (Install…, Set Up…, Forget…, Remove). Tried end
+  to end without root or a camera (a private bus, portraits for frames, a
+  stand-in PAM stack). *Left*, needing Ben at the machine: Install… (his
+  administrator password), then Set Up… in front of the camera (the
+  emitter found then: the read-only look found its units 10, 13 and 14,
+  unit 14's control 6 the likeliest); sudo, polkit (under SELinux), the
+  lock screen and Passwords tried with his face; the relief and match
+  thresholds tuned on his real looks; what the camera's HID interface
+  says (the shutter).
 
 - **A USB 2 device in a Thunderbolt 5 port isn't seen** (found
   2026-11-04 with Ben's YubiKey): in the USB-C port on the Barlow Ridge

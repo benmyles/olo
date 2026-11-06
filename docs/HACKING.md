@@ -384,6 +384,8 @@ socket.
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
 | `crates/camera` | `olo-camera`: cameras in process: listed from sysfs (nothing opened till one is asked for), a V4L2 stream (MJPEG decoded by zune-jpeg, or YUYV converted) as BGRA frames; `OLO_CAMERA_FAKE=1` puts a stand-in first ("Test Camera", a moving pattern at 30 frames a second) for tests and headless sessions, which never open a real camera. For a recording's camera bubble (Screenshot's `bubble.rs`), later face sign-in. |
+| `crates/face` | `olo-face`: face unlock natively: the infrared camera over V4L2, its emitter through its UVC extension unit, YuNet and SFace run in process (tract), and `olo-faced`, the root service on the system bus. See "Face unlock". |
+| `crates/pam-face` | `pam_olo_face.so`: face unlock in sudo's and polkit's PAM stacks (asks `olo-faced`). See "Face unlock". |
 | `crates/fido` | `olo-fido`: FIDO2 security keys (a YubiKey) natively: CTAPHID over hidraw, the CTAP2 Olo uses, and the account password sealed by a key's `hmac-secret`, so a touch can stand for typing it. See "Security keys". |
 | `crates/eld` | `olo-eld`: an AAC-ELD decoder in Rust (AirPods' microphone stream: mono, 480 samples a frame, no SBR). Huffman tables vendored from Symphonia (MPL-2.0), the standard's band, TNS and window tables transcribed (`tables.rs`); checked against libfdk-aac's decode of a libfdk-made stream (`tests/fdk.rs`: 85 dB) and, with `--ignored`, of a real capture. |
 | `crates/voice` | `olo-voice`: what Olo does to every microphone, 10 ms at a time: echo cancellation (its own fullband Kalman filter), noise suppression (DeepFilterNet3, vendored in `vendor/deep_filter`), level normalization (WebRTC's AGC2, vendored in `vendor/sonora`). See "Voice processing". |
@@ -5721,6 +5723,96 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   `/etc/udev/rules.d/74-olo-security-keys.rules` (systemd's `fido_id`
   and `uaccess`, for systems whose own rules don't), applied to the keys
   there with a `change`; one that is, a fine line.
+
+## Face unlock (olo-face, olo-faced, pam_olo_face; Preferences ▸ Security)
+
+A look at the infrared camera stands for the account password: sudo
+(Terminal's window, any terminal), polkit's requests, Passwords' unlock
+and the lock screen. Natively and in process: no howdy, no OpenCV
+binaries, no linux-enable-ir-emitter.
+
+* **Only infrared counts.** The camera is the one whose node gives only
+  grey (`camera::infrared`: the ThinkPad's "Integrated IR Camera",
+  640×360 GREY at 15 frames a second), read over V4L2 by raw ioctls
+  (`camera::Camera`: S_FMT, memory-mapped buffers, poll and DQBUF). A
+  face on a screen isn't there at all in infrared, displays giving off
+  none. A face must be near (80 pixels wide), lit by the flood, and its
+  relief (the middle of the face against its sides, which turn away from
+  the light) like the one enrolled, since a print is lit evenly; two
+  frames must match (`look::verify`). With no face at all for 2 s the
+  look ends.
+* **The emitter** (`emitter.rs`): a camera that waits to be told to
+  light it (Chicony's, as Windows Hello's driver does) is told through a
+  vendor control in one of its UVC extension units (`UVCIOC_CTRL_QUERY`).
+  Olo finds it once, at the first enrolment, as Windows' setup would:
+  each control of the infrared interface's units (read from the USB
+  descriptors; on the ThinkPad units 10, 13 and 14) that can be both
+  read and set, each value its range suggests, set while the frames are
+  watched for the flood. The one that lights it is kept per camera (by
+  its USB id, in `emitters.json`) and set each time the camera opens;
+  everything else tried is put back as it was.
+* **The models** (`model.rs`, `data/face`, Git LFS): YuNet (OpenCV
+  Zoo's detector, MIT) finds each face and its five landmarks in a
+  640×640 letterbox (its three strides decoded and overlaps dropped, as
+  OpenCV does); SFace (OpenCV Zoo's recogniser, Apache 2.0) turns the
+  face, aligned to its template by those landmarks (a least-squares
+  similarity), into 128 numbers, compared by cosine similarity (a match
+  at 0.42, above SFace's own 0.363, for the margin infrared and a lock
+  want). The grey goes into all three channels. On the public-domain
+  NASA portraits (`OLO_FACE_SAMPLES=DIR cargo test -p olo-face
+  recognises -- --ignored`): two photographs of Armstrong five years
+  apart 0.59, other men 0.09 to 0.26; 25 ms to find a face, 28 to
+  recognise it.
+* **olo-faced** (root, the system bus's `org.olo.Face1`, started by
+  systemd when first asked) alone opens the camera, runs the models and
+  keeps each person's enrolled looks (`/var/lib/olo-face/UID.json`,
+  root's only), so nothing running as the person can read the faces or
+  skip the look. Who asks is known from the bus
+  (`GetConnectionUnixUser`): a person may ask about themselves, root
+  about anyone. `Status`, `Verify(user, ms)`, `Enroll(user, password)`
+  (with `Progress` signals) and `Forget(user, password)`; enrolling and
+  forgetting check the password through PAM first, so something running
+  as the person can't put its own face in. No password is kept anywhere:
+  a look doesn't unseal one, it answers PAM. The camera is opened for a
+  look and closed after it.
+* **The PAM module** (`pam_olo_face.so`, `auth sufficient` first in
+  `/etc/pam.d/sudo` and `/etc/pam.d/polkit-1`): asks the service (on the
+  system bus, as fprintd is reached: polkit's helper runs as
+  `policykit_auth_t` under SELinux), says "Looking for your face…"
+  through the conversation, and succeeds on a match. Anything else (no
+  service, nobody enrolled, no camera, not them, a remote login) goes on
+  to the password: it never fails a login, it only spares the typing.
+  It links libpam by file name (`+verbatim`), so it builds without
+  pam-devel.
+* **Passwords and the lock screen** ask the service themselves
+  (`olo_system::face::verify`): Passwords once each time its locked
+  window takes the keyboard, the lock screen when someone is there (a
+  key, the pointer) at most every 5 s, so the camera's light isn't left
+  on.
+* **Installing** (Preferences ▸ Security ▸ Face Unlock ▸ Install…):
+  `pkexec olo-faced install --models DIR --pam FILE` (Olo's polkit agent
+  asks) copies the service to /usr/local/libexec, the models to
+  /usr/local/share/olo/face and the module to /usr/lib64/security,
+  writes its systemd unit, D-Bus activation and bus policy, puts the
+  module's line in sudo's and polkit's stacks (polkit's from
+  /usr/lib/pam.d copied to /etc/pam.d, which wins), and has systemd and
+  the bus read theirs again; `uninstall` (Remove) takes it all out. The
+  service and module come from beside Preferences or the tree it was
+  built in (`share/olo/build-dir`). Set Up… takes the password and five
+  looks (each a little turned), Set Up Again replaces them, Forget… drops
+  them.
+* **Testing**, without root, a camera or anyone's face: a private bus
+  (busd), a debug `olo-faced serve --bus A --root DIR --models DIR
+  --camera-dir FRAMES` (pictures for frames: only on its command line,
+  never from its environment; a debug build takes the PAM stand-in,
+  `OLO_PAM_CONFDIR`), and `cargo run -p olo-face --example client
+  status|enroll|verify|forget|pam` with `OLO_FACE_BUS`; `pam` runs PAM's
+  check with the module first in a stand-in stack. Tried so: a wrong
+  password refused; five looks enrolled from crops of one portrait in
+  1 s; another photo of him matched in 0.7 s, another man "not you",
+  empty frames "no face"; through PAM, his face let in a wrong password,
+  the other man's didn't, and the right password still did after the
+  look.
 
 ## Each display on its own GPU (app_server udev.rs; Preferences ▸ Display ▸ Graphics)
 

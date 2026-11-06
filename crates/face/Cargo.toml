@@ -1,0 +1,23 @@
+[package]
+name = "olo-face"
+description = "Face unlock natively: the infrared camera over V4L2, its emitter through UVC, faces found and recognised by small models run in process (tract), and liveness from infrared"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tract-onnx = "0.23"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+libc = "0.2"
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+olo-system.workspace = true
+olo-crash.workspace = true
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
+async-channel = "2"
+tracing-subscriber.workspace = true
+
+[[bin]]
+name = "olo-faced"
+path = "src/bin/faced.rs"

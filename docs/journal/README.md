@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Preferences ▸ Security: Face Unlock
+
+*16:48* — A look at the infrared camera can stand for the password: sudo, administrator requests, Passwords and the lock screen. Olo reads the IR camera over V4L2, lights its emitter through its UVC control, finds and recognises faces with two small models in process, and keeps the faces with a root service no app can read. Install… sets it up as root through Olo's polkit agent; Set Up… takes the password and five looks.
+
+![Preferences ▸ Security: Face Unlock](2026-11-05/164804-preferences-security-face-unlock.png)
+
 ### Viewer: text and formatted documents selected, copied and found
 
 *16:22* — Texts and formatted documents (Markdown, Word, OpenDocument) select as anywhere in Olo: a drag, a word with a double-click, a line with a triple, drawn behind the text in the kit's selection. Copy and Select All are in the Edit menu, and Find uses the kit's find bar, the same as PDFs': every match marked, even in a code block, with the one shown selected. Here Olo's README, looking for 'olo'.

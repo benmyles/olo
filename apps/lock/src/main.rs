@@ -32,7 +32,13 @@ enum Msg {
     KeyWaiting,
     /// The key's password (checked as one typed), or why not.
     Key(olo_fido::Result<zeroize::Zeroizing<String>>),
+    /// How a look at the camera went (face unlock).
+    Face(olo_system::face::Look),
 }
+
+/// A look at the camera at most this often (someone being there, again
+/// and again, doesn't keep its light on).
+const FACE_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Waits for a key that end with nobody touching it, in a row, before
 /// the lock screen stops asking it till someone is there (a key pressed,
@@ -60,6 +66,9 @@ struct Lock {
     key: Option<olo_fido::Touch>,
     key_note: Option<String>,
     key_tries: u32,
+    /// A look going, and when the last began.
+    face_looking: bool,
+    face_last: Option<Instant>,
     unlocking: bool,
     /// A wrong answer just came (the panel shakes).
     shake: Option<Instant>,
@@ -165,10 +174,23 @@ impl Lock {
         self.key = Some(olo_fido::touch(self.user.clone(), move || p.send(Msg::KeyWaiting), move |r| proxy.send(Msg::Key(r))));
     }
 
-    /// Someone is there (a key, the pointer): the key is asked again.
+    /// Someone is there (a key, the pointer): the key is asked again,
+    /// and the camera looks (not more often than `FACE_EVERY`).
     fn activity(&mut self, cx: &App) {
         self.key_tries = 0;
         self.wait_for_key(cx);
+        self.look(cx);
+    }
+
+    /// Look for this user's face (olo-faced), on a thread.
+    fn look(&mut self, cx: &App) {
+        if self.face_looking || self.unlocking || self.face_last.is_some_and(|t| t.elapsed() < FACE_EVERY) {
+            return;
+        }
+        self.face_looking = true;
+        self.face_last = Some(Instant::now());
+        let proxy = olo_ui::proxy(cx);
+        std::thread::Builder::new().name("face".into()).spawn(move || proxy.send(Msg::Face(olo_system::face::verify(3000)))).expect("thread");
     }
 
     fn submit(&mut self, cx: &mut Context<Self>) {
@@ -249,6 +271,14 @@ impl Lock {
                     self.wait_for_key(cx);
                 } else if !untouched {
                     tracing::info!("security key: {e}");
+                }
+            }
+            Msg::Face(look) => {
+                self.face_looking = false;
+                match look {
+                    olo_system::face::Look::Match => self.unlock(cx),
+                    olo_system::face::Look::NotYou => self.key_note = Some("Your face wasn’t recognised.".into()),
+                    _ => {}
                 }
             }
         }
@@ -400,6 +430,8 @@ fn main() {
                 key: None,
                 key_note: None,
                 key_tries: 0,
+                face_looking: false,
+                face_last: None,
                 unlocking: false,
                 shake: None,
                 desktop,

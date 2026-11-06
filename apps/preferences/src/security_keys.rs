@@ -196,6 +196,8 @@ fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, device: &Dev
 }
 
 pub struct State {
+    /// Face unlock's box, beside the keys'.
+    pub face: crate::face_unlock::State,
     link: &'static Link,
     /// The key being set up (its password being typed).
     setting_up: Option<Device>,
@@ -214,7 +216,7 @@ impl State {
             }
         })
         .detach();
-        State { link: link(olo_ui::proxy(cx)), setting_up: None, password }
+        State { face: crate::face_unlock::State::new(cx), link: link(olo_ui::proxy(cx)), setting_up: None, password }
     }
 
     /// Set the key chosen up with the password typed.

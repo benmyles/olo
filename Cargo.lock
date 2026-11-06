@@ -7201,6 +7201,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-face"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "image",
+ "libc",
+ "olo-crash",
+ "olo-system",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+ "tract-onnx",
+ "zbus",
+]
+
+[[package]]
 name = "olo-fido"
 version = "0.1.0"
 dependencies = [
@@ -7401,6 +7418,13 @@ dependencies = [
  "olo-protocol",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "olo-pam-face"
+version = "0.1.0"
+dependencies = [
+ "zbus",
 ]
 
 [[package]]

@@ -16,6 +16,7 @@ pub mod dconf;
 pub mod disks;
 pub mod edid;
 pub mod env;
+pub mod face;
 pub mod fingerprint;
 pub mod github;
 pub mod gpu_tuning;

@@ -18,6 +18,7 @@ mod complete;
 mod datetime;
 mod default_apps;
 mod display;
+mod face_unlock;
 mod form;
 mod gpus;
 mod integrations;

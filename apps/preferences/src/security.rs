@@ -11,7 +11,10 @@ use crate::{
 };
 
 pub fn ui(ui: &mut Ui, keys: &mut security_keys::State) {
-    ui.columns(passwords, |ui| security_keys::ui(ui, keys));
+    ui.columns(passwords, |ui| {
+        security_keys::ui(ui, keys);
+        crate::face_unlock::ui(ui, &mut keys.face);
+    });
 }
 
 fn passwords(ui: &mut Ui) {

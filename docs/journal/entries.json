@@ -3334,5 +3334,11 @@
   "title": "Viewer: text and formatted documents selected, copied and found",
   "caption": "Texts and formatted documents (Markdown, Word, OpenDocument) select as anywhere in Olo: a drag, a word with a double-click, a line with a triple, drawn behind the text in the kit's selection. Copy and Select All are in the Edit menu, and Find uses the kit's find bar, the same as PDFs': every match marked, even in a code block, with the one shown selected. Here Olo's README, looking for 'olo'.",
   "image": "2026-11-05/162256-viewer-text-and-formatted-documents-selected-cop.png"
+ },
+ {
+  "time": "2026-11-05T16:48:04",
+  "title": "Preferences \u25b8 Security: Face Unlock",
+  "caption": "A look at the infrared camera can stand for the password: sudo, administrator requests, Passwords and the lock screen. Olo reads the IR camera over V4L2, lights its emitter through its UVC control, finds and recognises faces with two small models in process, and keeps the faces with a root service no app can read. Install\u2026 sets it up as root through Olo's polkit agent; Set Up\u2026 takes the password and five looks.",
+  "image": "2026-11-05/164804-preferences-security-face-unlock.png"
  }
 ]
