@@ -3963,8 +3963,8 @@ not compositor presentation or optical latency.
 A fresh two-display private session, real PID/binary/drawn-image identity and
 seed4107 **fails at step14/24**: arrange x12 produces a **78.8ms app frame**
 (23.4ms average over four), above the stock50ms budget. Worst loop27.9ms,
-ping11.7ms, compositor8.2ms, answer179.3ms. FD48→46, threads15→15,
-RSS126→128MiB. Heavy foreign workspace compilation was active; that alone does
+ping11.7ms, compositor8.2ms, answer179.3ms. app_server FD48→46,
+threads15→15, RSS126→128MiB. Heavy foreign workspace compilation was active; that alone does
 not establish the cause. This is retained as an actual nonpass and needs
 profiling/control comparison. Two earlier preflight failures never ran the
 fuzzer: a frozen executable outside the tree, in a fresh fake home, lacked
@@ -3978,3 +3978,22 @@ before/after global screenshot entries; all604 earlier entries are preserved.
 Only owned screens/test sessions were used; no personal upgrade or install.
 Website acceptance remains **0/100, 0/3000**. Full JS, layout, security, universal
 dark mode and desktop integrations remain substantial unfinished work.
+
+### 2026-11-06 — Main sync and real-page priority
+
+Minification checkpoint0106c55c is pushed. Merged main through574d8ddb in
+5b2f9103, including Secret Service/gh repair, card autofill and recording
+fallback work. Browser/web release270 tests and strict clippy pass; workspace
+release build4m22s. Browser SHA is unchanged; app_server SHA changes from
+cdb588bb… to91b8aa46…. Existing native cost evidence retains its original
+server scope. Combined native evaluation follows with real-page testing. No
+personal upgrade/install or secrets access was performed.
+
+The user asked about reaching real pages. HTTP/HTTPS already works, so initial
+live-page diagnosis starts now rather than waiting for every component to be
+polished. First public probes: Wikipedia article, GitHub public repository and
+Hacker News; initial observations/captures are diagnostics, not complete corpus
+journeys or acceptance. A frame diagnostic recorder was drafted in disk scratch
+but not committed or counted as verified; investigating the retained79ms frame
+remains queued while real-page testing takes priority. Website acceptance
+remains0/100 and0/3000. Evidence:2026-11-06-minification-main-sync.json.
