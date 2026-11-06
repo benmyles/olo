@@ -4427,3 +4427,17 @@ counterpart exists until integration; no website, GPU or presentation claim.
 Prior ordinary-path/image/environment/state/fuzz nonpasses remain open.
 Evidence:stripe-flex-line-{checks,cost,cost-initial}.json and original fixtures.
 **Stripe0/30, corpus0/100 and0/3000; goal active.**
+
+### 2026-11-06 — Follow region/quiet-recording main after flex line sizing
+
+Pushed07e3e85c, then fetched and merged origin/main4ee0ae67 asa130076a.
+Read changed HACKING/skill and notification/protocol/xdg source: region shapes/
+sizes and countdown, quiet notifications while recording, updated agent setting
+label; the protocol edit is documentation only. No web/Browser formatter change
+is imported. Release workspace2m50s passes; Browser13 pass/1 ignored and protocol
+35 pass. No new Browser/shared drawing change or active page flex caller, so no
+new GUI run is claimed. The previous15 native reviews remain evidence of that
+prior run. Owned screens stay stopped; no personal install/reload. Evidence:
+stripe-flex-line-main-sync.json. **Stripe0/30, corpus0/100 and0/3000; goal active.**
+Next formatting integration also needs the actual flex shorthand/alignment
+values used by Stripe; they must feed sizing rather than silently using defaults.

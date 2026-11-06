@@ -1,0 +1,25 @@
+{
+  "scope": "Integration upkeep after definite flex line stage; no website acceptance",
+  "merged_main": "4ee0ae670a13ca3f8850ece046ad7c2b02fc0b6b",
+  "merge_commit": "a130076a",
+  "changes": "Screenshot region shapes/sizes and countdown; notification quietness while recording. Protocol change is documentation only, xdg agent setting label updated. No web/browser layout code imported.",
+  "checks": {
+    "workspace_release": "pass;2m50s",
+    "browser": {
+      "passed": 13,
+      "ignored": 1
+    },
+    "protocol": {
+      "passed": 35,
+      "ignored": 0
+    }
+  },
+  "native_visuals": "No Browser/shared drawing change imported and new flex worker remains outside page layout; prior15 owned native reviews from a8151c2a remain scoped to that run, not repeated here.",
+  "personal_session": "No install/reload; both owned Stripe screens remain stopped",
+  "acceptance": {
+    "stripe_configurations": 0,
+    "websites": 0,
+    "corpus_configurations": 0
+  },
+  "prior_nonpasses": "Ordinary-path and earlier image/environment/state/fuzz performance nonpasses remain open."
+}
