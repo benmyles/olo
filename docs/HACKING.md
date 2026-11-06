@@ -2309,6 +2309,24 @@ event reaches it.
 Olo upgrades without logging out. `olo-session` (what the login
 screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
 hands both to app_server, so clients never see the sockets disappear.
+
+While a restarted app_server brings the windows back, every display shows
+the **upgrade's veil** (app_server's `veil.rs`), an homage to BeOS's boot
+screen: Olo's wordmark on dark and a row of icons from the set, dim until
+their part is done and lit in turn (the upgrade, the displays, windows
+coming back, all of them), with a line saying which. It starts only
+after a restart with windows to bring back (`layout::load` found places
+saved moments ago; not in Rescue, not while locked, `OLO_NO_VEIL` to
+skip it), shows at least 0.9 s (so it's seen, not flashed: windows can be
+back in a third of a second), lifts once as many windows are back as
+were saved (or after 6 s) and fades over 0.4 s. A solid background and,
+centred, a picture drawn once per display, scale and stage with
+tiny-skia: the wordmark pre-scaled offline to each scale's width
+(`data/brand/sizes`, 256 points: 256 to 512 pixels) and the icons at 64
+points from the set's sizes, both pixel for pixel (between-scales take
+the next size down, centred: never resampled); a frame only as a stage
+is reached and through the fade. `OLO_VEIL_SHEET=/var/tmp/veil.png cargo
+test -p app_server --lib veil_sheet` draws its stages at 1, 1.5 and 2×.
 Their connections do end when app_server restarts in place, and each
 kind of client has its way back: an Olo app re-executes itself with
 its state saved, as for an upgrade, and reconnects (olo-ui

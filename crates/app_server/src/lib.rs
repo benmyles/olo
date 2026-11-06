@@ -65,6 +65,7 @@ pub mod timings;
 pub mod toolkits;
 pub mod touch_filter;
 pub mod twitcher;
+pub mod veil;
 pub mod wallpaper;
 pub mod window_drop;
 pub mod xcursor;

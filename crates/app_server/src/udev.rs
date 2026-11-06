@@ -2539,12 +2539,25 @@ impl AnvilState<UdevData> {
             });
         }
         let overlays: Vec<CustomRenderElements<_>> = if locked {
+            // (Never the veil over the lock screen, nor after it.)
+            self.veil = None;
             crate::lock::elements(&self.lock, &mut renderer, &output)
         } else {
             let scale = output.current_scale().fractional_scale();
             let mut overlays: Vec<CustomRenderElements<_>> = self.hints.elements(&mut renderer, output_geo, scale).into_iter().map(CustomRenderElements::Overlay).collect();
             overlays.extend(twitcher.into_iter().flat_map(|shown| self.twitcher.elements(&mut renderer, &shown, &output.name(), output_size, scale)).map(CustomRenderElements::Overlay));
             overlays.extend(crate::private::shared_rings(&output, &self.space, &self.shared_windows).into_iter().map(CustomRenderElements::Warm));
+            // "Upgrading Olo", in front of all, while a restart's windows
+            // come back.
+            let (displays, back) = (self.space.outputs().filter(|o| o.current_mode().is_some()).count(), self.space.elements().count());
+            let (veiled, again) = crate::veil::frame(&mut self.veil, false, displays, back, &mut renderer, &output);
+            overlays.splice(0..0, veiled);
+            if again {
+                let _ = self.handle.insert_source(smithay::reexports::calloop::timer::Timer::immediate(), |_, _, state| {
+                    state.backend_data.wake(None);
+                    smithay::reexports::calloop::timer::TimeoutAction::Drop
+                });
+            }
             overlays
         };
 

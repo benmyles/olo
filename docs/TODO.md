@@ -1354,7 +1354,9 @@ of Finished; a new one goes where its priority puts it.
   to BeOS's boot screen, drawn with sunburst-made graphics
   (docs/ICONS.md), with a really nice startup sound. Related: an
   "Upgrading Olo" veil on every display while app_server restarts
-  and the displays settle, in the same style.
+  and the displays settle, in the same style. *Done* (2026-11-05,
+  HACKING "The session and in-place reload"): the upgrade's veil, the
+  wordmark and the icon set's art lit stage by stage.
 
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything

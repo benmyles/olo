@@ -313,6 +313,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub last_window_infos: Vec<olo_protocol::WindowInfo>,
     /// Remembered window places (see `layout`).
     pub layout: Vec<crate::layout::Placement>,
+    /// "Upgrading Olo" over every display while a restart brings the
+    /// windows back (`veil.rs`).
+    pub veil: Option<crate::veil::Veil>,
     /// The stacking (window ids, bottom first) as a client's windows began
     /// to go, its id and when (`layout::remember_placement`).
     pub closing_stack: Option<(Vec<u64>, smithay::reexports::wayland_server::backend::ClientId, std::time::Instant)>,
@@ -1241,6 +1244,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             timings: Default::default(),
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),
+            veil: None,
             closing_stack: None,
             launch_grant: None,
             waiting_for_display: Vec::new(),
@@ -1262,6 +1266,18 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         state.showing = crate::layout::showing(&state.layout, state.settings.workspace_count);
         let trees = crate::layout::load_trees();
         if !state.layout.is_empty() {
+            // Veiled till the windows are back (not in Rescue).
+            if !crate::rescue::active() && std::env::var_os("OLO_NO_VEIL").is_none() {
+                let veil = crate::veil::Veil::new(state.layout.len());
+                let looks = [veil.soonest(), veil.deadline()];
+                state.veil = Some(veil);
+                for after in looks {
+                    let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(after), |_, _, state| {
+                        state.backend_data.wake(None);
+                        smithay::reexports::calloop::timer::TimeoutAction::Drop
+                    });
+                }
+            }
             state.auto.restore(trees);
             // Windows coming back wait a while for their displays; then
             // what came back is checked against what was saved.

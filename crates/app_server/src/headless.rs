@@ -533,11 +533,22 @@ pub fn run_headless(size_arg: Option<&str>) {
 /// (or, while locked, the lock screen).
 fn twitcher_overlay(state: &mut AnvilState<HeadlessData>, output: &Output) -> Vec<crate::render::CustomRenderElements<GlesRenderer>> {
     if state.lock.locked() {
+        // (Never the veil over the lock screen, nor after it.)
+        state.veil = None;
         return crate::lock::elements(&state.lock, &mut state.backend_data.renderer, output);
     }
     let geo = state.space.output_geometry(output).unwrap_or_default();
     let scale = output.current_scale().fractional_scale();
-    let mut out: Vec<_> = state.hints.elements(&mut state.backend_data.renderer, geo, scale).into_iter().map(crate::render::CustomRenderElements::Overlay).collect();
+    // "Upgrading Olo", in front of all, while a restart's windows come back.
+    let (displays, back) = (state.space.outputs().filter(|o| o.current_mode().is_some()).count(), state.space.elements().count());
+    let (mut out, again) = crate::veil::frame(&mut state.veil, false, displays, back, &mut state.backend_data.renderer, output);
+    if again {
+        let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::immediate(), |_, _, state| {
+            state.backend_data.wake(None);
+            smithay::reexports::calloop::timer::TimeoutAction::Drop
+        });
+    }
+    out.extend(state.hints.elements(&mut state.backend_data.renderer, geo, scale).into_iter().map(crate::render::CustomRenderElements::Overlay));
     out.extend(crate::private::shared_rings(output, &state.space, &state.shared_windows).into_iter().map(crate::render::CustomRenderElements::Warm));
     let Some(shown) = state.twitcher_entries() else { return out };
     out.extend(state.twitcher.elements(&mut state.backend_data.renderer, &shown, &output.name(), geo.size, scale).into_iter().map(crate::render::CustomRenderElements::Overlay));

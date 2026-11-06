@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Upgrading Olo: the veil
+
+*19:35* — While a restarted app_server brings the windows back, every display shows Olo's wordmark and a row of icons lit stage by stage, after BeOS's boot screen; it lifts once the windows are back.
+
+![Upgrading Olo: the veil](2026-11-05/193521-upgrading-olo-the-veil.png)
+
 ### A window's recording with the camera
 
 *19:17* — Recording a window on a background with Show Camera: the camera (here the stand-in's pattern) drawn on the background's corner, ringed as the on-screen bubble is.
