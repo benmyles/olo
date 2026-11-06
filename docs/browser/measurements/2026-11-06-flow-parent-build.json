@@ -1,0 +1,9 @@
+{
+  "parent": "af8cbd5e1e225935eef6d40ebab9fb0b309fe01a",
+  "wall_seconds": 0.5769473990003462,
+  "source_hashes": {
+    "crates/web/src/lib.rs": "13ff6723833b1514d0d641f0a7a26588e6c0c410395747a95643a5becb87611c",
+    "crates/web/src/css/style/mod.rs": "4b3bd4297759051f49f23a2cb6469e4c7fc0e3380b5cdcc753c178045ba5d166",
+    "crates/web/src/css/style/job.rs": "0ff7c661d5f205c122642bdb937e6135a44d6fea9bf54cfb3b47350ec8e39d58"
+  }
+}

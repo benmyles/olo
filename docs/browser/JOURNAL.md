@@ -2748,3 +2748,113 @@ caret/hit testing and device/subpixel raster geometry. Next: original inline/
 block box layout and native drawing. Networking/V8, full CSS, isolation, shell,
 universal dark/night and agent/Olo/password/passkey integrations remain open.
 The full goal remains active: **0/100 websites, 0/3,000 website combinations**.
+
+## 2026-11-06 — DOM boxes and initial normal flow; integrate main
+
+Merged `origin/main` through a59422b1 in **af8cbd5e**, preserving the unfinished
+flow work and restoring it cleanly. The person's main checkout/session were
+not changed. The browser TODO now records the requested ongoing practice:
+fetch/merge main at regular working checkpoints, revalidate and push.
+
+Implemented original `layout::{BuildJob,PrepareJob,Job}` from static DOM and
+computed styles to normal-flow rectangles and retained text layouts. Compact
+box links preserve DOM/style identity; display:none is skipped, contents is
+flattened, and block-in-inline content splits into separate text groups.
+Source spans map prepared glyph/line positions back to the current DOM nodes.
+The used-value solver covers auto/percentage/min/max/content/border sizing,
+inline auto margins and direction-dependent overconstraints; flow covers
+positive/negative sibling, parent and empty-box margin collapse, barriers,
+percentage-height definiteness and relative block offsets. Geometry remains
+parent-relative; inspect `bounds` walks ancestors, while painting must carry
+origins through one traversal. Constructors/step/finish are worker-only.
+
+Independent Olo Chrome **157** observations on the owned `browser-flow-1`
+Agent Screen now pin **139 inputs × 3 scales = 417 DOM-rectangle observations**
+at 1×/1.5×/2×. Every observation matches at one/128-action native budgets.
+The screen and loopback fixture server are stopped. No personal browser,
+profile, display, accounts or session install/upgrade/reload were used.
+Fractional fixtures exposed rounding gaps: used values now follow a physical
+1/64-pixel grid and direction-aware automatic margin remainders. Computed
+borders already snap and must not snap again. Frozen styles retain their
+scale, and stale-scale layout is rejected. The CSSOM comparison models
+float32 physical rectangles multiplied by float32 reciprocal zoom, then uses
+1e-9 tolerance. A separate fixed-position ruler measures the iframe's actual
+initial containing block; it is independent of tested in-flow boxes.
+This is fixed-metric DOM geometry, not a pixel/theme, arbitrary-font, UA-sheet
+or website oracle. All raw observations, probe, server, inputs and provenance
+are in `tests/flow-fixtures`; no native output generated expectations.
+
+A bounded temporary paragraph registry shares immutable preparation/shaping/
+break/index data for identical font object, text and span schemas. It verifies
+source string/ranges/whitespace/base direction before reuse; each current DOM
+keeps separate node/style spans, including different colors. Zero entries
+disables lookup and insertion. Tests reject incompatible mixed typography and
+span schemas. Geometry payload counts shared native paragraphs once. Current
+sizes: box record **56 B**, geometry record **128 B**, BuildJob **248 B**,
+PrepareJob **288 B**, flow Job **424 B**. Compact geometry storage, complete
+incremental invalidation and selective subtree reuse remain optimization work.
+
+Release evidence: **42 alternating CPU0 processes**, three repeats, default
+features only. Parent **af8cbd5e** (including main) was rebuilt from its exact
+web source before restoring current edits and freezing binaries with reflinks.
+No concurrent owned builds/tests/GUI/source edits; no cargo/rustc activity was
+detected in the before/after process samples. Sources (104 hashes) stayed
+unchanged. All **24 geometry/glyph hashes** agree across retained, reprepare,
+no-paragraph-intern and combined controls. These are counterfactual library
+paths, not another browser. Raw JSON and replay/check/parent-build evidence:
+`measurements/2026-11-06-flow*`.
+
+For 1,000 generated groups, width 400 CSS px, median resize/drop µs:
+
+| Scene | Retained | Reprepare text | No interning | Both controls |
+| --- | ---: | ---: | ---: | ---: |
+| Empty blocks | 169.058 | 171.336 | 173.772 | 171.520 |
+| Repeated text | 656.310 | 820.054 | 629.471 | 5,037.058 |
+| Unique text | 644.258 | 5,679.965 | 649.970 | 5,622.248 |
+| Repeated nested text | 1,328.949 | 1,668.470 | 1,396.995 | 9,002.114 |
+
+Tree+prepare build/drop medians, sharing enabled/disabled (µs): empty
+**47.390/46.734**, repeated **307.779/4,626.925**, unique **5,186.677/5,057.163**,
+nested **650.603/8,064.160**. Unique text pays registry overhead; there is no
+universal speedup. Glyph/index payload repeated **1,416 vs 1,416,000 B**,
+nested **1,944 vs 1,944,000 B**, unique **1,619,160 B** in both. Tree payload
+empty/repeated/unique/nested **56,168/182,168/186,058/404,168 B**; width-400
+layout payload **128,384/352,384/352,384/832,384 B**. These payloads exclude
+shared DOM/styles/fonts, preparation maps, headers/capacity/hash and allocator
+overhead. Whole-process RSS retained **12,504–12,680 KiB**, reprepare
+**12,528–12,704**, no-intern **16,980–17,204**, both **17,032–17,288**. Process
+CPU respectively **.21/.21/.21 / .41/.41/.41 / .35/.36/.35 / .96/.98/.96 s**.
+These include harness/fonts/all scenes, not a browser footprint.
+
+Worst observed default constructor **124.750 µs**, 128-action tree slice
+**34.886 µs**, one-paragraph prepare slice **123.410 µs**, 64-action flow slice
+**615.362 µs** across all sizes/widths/scenes. Observed worker latency is not a
+hard bound, UI/frame/scroll result or GPU evidence. There is no painting yet.
+
+Common parent/current 10k style build medians (ms): **14.201→14.440 /
+20.898→20.336 / 28.314→29.642** (bare/uniform/varying). Accounted style-tree
+bytes increase **8 B total** for the shared scale snapshot. Max-slice medians
+(µs): **398.538→435.631 / 623.823→596.891 / 862.766→9,428.005**. Keep the
+varying-style wall outliers open; process CPU samples are similar and do not
+identify a cause. Cached ~4 KiB Latin/Arabic/Hebrew/Thai paragraph medians
+(µs): **268.408→269.436 / 310.095→319.349 / 314.298→313.679 /
+144.389→145.475**. Common width-400 inline resize Latin/Arabic/mixed (µs):
+**33.187→32.319 / 28.003→28.160 / 69.679→70.361**. No universal performance
+acceptance or causal regression fix is inferred.
+
+**209 default / 208 all-feature release tests pass**, including seven flow
+groups. Strict default/all-feature all-target clippy, formatting and diff
+checks pass. Full merged workspace release build passes: **174.861 s wall**
+(cargo reports 2m54s), with the existing proc-macro-error2 future notice.
+Owned scratch is removed after the working milestone is pushed.
+
+The stage explicitly refuses unsupported formatting/objects, mixed inline
+fonts/sizes/directions/line heights/whitespace, nonzero inline edges and
+positioned/vertically aligned inline boxes. Complete CSS, fractional device
+shaping/line metrics, arbitrary-font box references, ordinary mixed markup,
+full UA defaults, painting/clipping/scrolling, flex/grid/table, live
+invalidation and input/hit testing remain open. Next: native page painting and
+the remaining inline/box integration, followed by the native shell and runtime.
+Networking/V8, isolation, universal dark/night and structured browser/Olo/
+password/passkey integrations remain substantial required work. Goal remains
+active: **0/100 websites and 0/3,000 website combinations accepted**.

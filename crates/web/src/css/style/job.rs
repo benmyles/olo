@@ -95,6 +95,10 @@ impl StyleTree {
         let i = self.slots.get(node.slot() as usize)?.map(|v| v.get() as usize - 1)?;
         (self.styles[i].node == node).then_some(i)
     }
+    /// Internal access to a frozen snapshot, after its owner validates the document.
+    pub(crate) fn snapshot(&self, node: NodeId) -> Option<&Style> {
+        self.index(node).map(|i| &self.styles[i].style)
+    }
     pub fn generation(&self) -> u64 {
         self.generation
     }

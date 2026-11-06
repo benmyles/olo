@@ -3,6 +3,9 @@
 Keep this file and JOURNAL.md current with each milestone. A checked
 item means implemented and verified; a partial implementation stays open.
 
+While working, fetch and merge `origin/main` at regular working checkpoints,
+revalidate the merged workspace and push the integration with browser work.
+
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
 - [ ] Build a reproducible 100-site corpus with explicit provenance,
@@ -199,7 +202,19 @@ item means implemented and verified; a partial implementation stays open.
   process (.44/.46/.44 s), with more involuntary switches after; this does not
   establish the cause of individual wall-clock regressions. Preserve raw
   evidence in measurements/2026-11-05-whitespace.json; no universal speedup.
-- [ ] Implement block/inline, flex/grid/table layout,
+- [x] Initial DOM-to-flow boxes and block/inline-content geometry: source/style
+  identity, display:none/contents, block-in-inline text splits, width/min/max/
+  percentage/box-sizing/auto margins, margin collapse and relative blocks;
+  139 independent Chrome DOM-rectangle fixtures at three scales (417 observations),
+  source-safe shared paragraphs and cancellation/quotas. This is partial normal
+  flow, with explicit unsupported formatting and no painting/website passes.
+- [ ] Profile compact geometry and registry costs: current box/geometry records
+  are 56/128 B. Source-safe paragraph sharing reduces repeated glyph/index
+  payload by 1000× in repeated-text fixtures, but unique tree+prepare median
+  5,186.677 vs 5,057.163 µs without the registry. Common varying-style wall
+  build 28.314→29.642 ms and max-slice median 863→9,428 µs remain open with
+  similar process CPU. See 2026-11-06-flow raw measurements; no universal win.
+- [ ] Implement complete block/inline, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
   SVG, canvas, fonts, video and audio; measure each on release builds.
@@ -250,9 +265,10 @@ HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostic
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.
 
-Next: connect retained text geometry to original inline/block boxes and native
-drawing; complete mixed-style/visual-edge whitespace, other-Zs hanging, tab
-stops, CSS tailoring and line-box metrics. Initial native font/shaping
+Next: native page painting over the initial DOM flow boxes; complete mixed
+inline typography, fractional device shaping/line metrics, visual-edge
+whitespace/other-Zs hanging, tab stops, CSS tailoring, UA defaults, clipping,
+scrolling and incremental box reuse. Initial native font/shaping
 work is verified at glyph/Unicode/library scope; no website acceptance follows.
 Web fonts/sanitization, complete CSS/live invalidation, networking/V8, the native
 shell, universal dark mode and agent/Olo/password/passkey integration remain.

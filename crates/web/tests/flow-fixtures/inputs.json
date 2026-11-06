@@ -1,0 +1,975 @@
+[
+  {
+    "name": "width-ltr-auto-0",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:auto;margin:0;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-auto-auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:auto;margin:auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-auto-10px auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:auto;margin:10px auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-auto-auto 10px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:auto;margin:auto 10px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-auto-10px 20px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:auto;margin:10px 20px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-100px-0",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:100px;margin:0;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-100px-auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:100px;margin:auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-100px-10px auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:100px;margin:10px auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-100px-auto 10px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:100px;margin:auto 10px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-100px-10px 20px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:100px;margin:10px 20px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-500px-0",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:500px;margin:0;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-500px-auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:500px;margin:auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-500px-10px auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:500px;margin:10px auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-500px-auto 10px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:500px;margin:auto 10px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-500px-10px 20px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:500px;margin:10px 20px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-50%-0",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:50%;margin:0;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-50%-auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:50%;margin:auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-50%-10px auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:50%;margin:10px auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-50%-auto 10px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:50%;margin:auto 10px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-ltr-50%-10px 20px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:ltr}#a{height:20px;width:50%;margin:10px 20px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-auto-0",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:auto;margin:0;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-auto-auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:auto;margin:auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-auto-10px auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:auto;margin:10px auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-auto-auto 10px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:auto;margin:auto 10px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-auto-10px 20px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:auto;margin:10px 20px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-100px-0",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:100px;margin:0;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-100px-auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:100px;margin:auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-100px-10px auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:100px;margin:10px auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-100px-auto 10px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:100px;margin:auto 10px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-100px-10px 20px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:100px;margin:10px 20px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-500px-0",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:500px;margin:0;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-500px-auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:500px;margin:auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-500px-10px auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:500px;margin:10px auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-500px-auto 10px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:500px;margin:auto 10px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-500px-10px 20px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:500px;margin:10px 20px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-50%-0",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:50%;margin:0;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-50%-auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:50%;margin:auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-50%-10px auto",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:50%;margin:10px auto;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-50%-auto 10px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:50%;margin:auto 10px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "width-rtl-50%-10px 20px",
+    "body": "<div id=a></div>",
+    "css": "body{direction:rtl}#a{height:20px;width:50%;margin:10px 20px;padding:10px;border-width:2px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-content-box-width:100px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:content-box;height:20px;width:100px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-content-box-width:100px;max-width:50px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:content-box;height:20px;width:100px;max-width:50px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-content-box-width:10px;min-width:50px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:content-box;height:20px;width:10px;min-width:50px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-content-box-width:auto;max-width:100px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:content-box;height:20px;width:auto;max-width:100px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-content-box-width:100px;max-width:20px;min-width:50px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:content-box;height:20px;width:100px;max-width:20px;min-width:50px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-content-box-height:30px;min-height:50px;max-height:20px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:content-box;height:20px;height:30px;min-height:50px;max-height:20px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-border-box-width:100px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:border-box;height:20px;width:100px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-border-box-width:100px;max-width:50px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:border-box;height:20px;width:100px;max-width:50px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-border-box-width:10px;min-width:50px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:border-box;height:20px;width:10px;min-width:50px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-border-box-width:auto;max-width:100px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:border-box;height:20px;width:auto;max-width:100px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-border-box-width:100px;max-width:20px;min-width:50px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:border-box;height:20px;width:100px;max-width:20px;min-width:50px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "sizing-border-box-height:30px;min-height:50px;max-height:20px",
+    "body": "<div id=a></div>",
+    "css": "#a{box-sizing:border-box;height:20px;height:30px;min-height:50px;max-height:20px;padding:10px;border-width:2px;border-style:solid;margin-left:auto;margin-right:auto}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings--30--20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-30px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling--30--20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-30px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings--30-0",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-30px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling--30-0",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-30px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings--30-20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-30px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling--30-20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-30px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings--30-40",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-30px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling--30-40",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-30px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings--10--20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-10px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling--10--20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-10px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings--10-0",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-10px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling--10-0",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-10px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings--10-20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-10px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling--10-20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-10px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings--10-40",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-10px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling--10-40",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:-10px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-0--20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:0px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-0--20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:0px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-0-0",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:0px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-0-0",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:0px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-0-20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:0px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-0-20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:0px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-0-40",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:0px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-0-40",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:0px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-10--20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:10px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-10--20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:10px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-10-0",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:10px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-10-0",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:10px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-10-20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:10px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-10-20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:10px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-10-40",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:10px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-10-40",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:10px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-30--20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:30px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-30--20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:30px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:-20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-30-0",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:30px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-30-0",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:30px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:0px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-30-20",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:30px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-30-20",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:30px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "siblings-30-40",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:30px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "empty-sibling-30-40",
+    "body": "<div id=a></div><div id=e></div><div id=b></div>",
+    "css": "#a{height:20px;margin-bottom:30px}#e{margin-top:20px;margin-bottom:-10px}#b{height:20px;margin-top:40px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent--False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent--True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-display:flow-root-False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{display:flow-root;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-display:flow-root-True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{display:flow-root;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-padding-top:1px-False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{padding-top:1px;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-padding-top:1px-True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{padding-top:1px;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-padding-bottom:1px-False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{padding-bottom:1px;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-padding-bottom:1px-True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{padding-bottom:1px;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-border-top-width:1px;border-top-style:solid-False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{border-top-width:1px;border-top-style:solid;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-border-top-width:1px;border-top-style:solid-True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{border-top-width:1px;border-top-style:solid;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-height:100px-False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{height:100px;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-height:100px-True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{height:100px;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-min-height:100px-False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{min-height:100px;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-min-height:100px-True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{min-height:100px;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-height:0px-False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{height:0px;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-height:0px-True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{height:0px;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-overflow:hidden-False",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{overflow:hidden;margin-top:10px;margin-bottom:20px}#a{height:20px;margin-top:30px;margin-bottom:40px}#b{height:20px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "parent-overflow:hidden-True",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{overflow:hidden;margin-top:10px;margin-bottom:20px}#a{height:0px;margin-top:30px;margin-bottom:40px}#b{height:0px;margin-top:-10px;margin-bottom:15px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "percent-height-",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{}#a{height:50%;min-height:10px}#b{height:calc(50% + 10px)}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "percent-height-height:100px",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{height:100px}#a{height:50%;min-height:10px}#b{height:calc(50% + 10px)}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "percent-height-min-height:100px",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{min-height:100px}#a{height:50%;min-height:10px}#b{height:calc(50% + 10px)}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "percent-height-height:50%;min-height:40px",
+    "body": "<div id=p><div id=a></div><div id=b></div></div>",
+    "css": "#p{height:50%;min-height:40px}#a{height:50%;min-height:10px}#b{height:calc(50% + 10px)}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "relative-left:10px;top:15px",
+    "body": "<div id=p><div id=a></div></div><div id=b></div>",
+    "css": "#p{position:relative;left:10px;top:15px}#a{height:20px}#b{height:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "relative-left:10%;right:20px;top:10%;bottom:20px",
+    "body": "<div id=p><div id=a></div></div><div id=b></div>",
+    "css": "#p{position:relative;left:10%;right:20px;top:10%;bottom:20px}#a{height:20px}#b{height:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "relative-right:20px;bottom:10px",
+    "body": "<div id=p><div id=a></div></div><div id=b></div>",
+    "css": "#p{position:relative;right:20px;bottom:10px}#a{height:20px}#b{height:20px}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "percent-padding",
+    "body": "<div id=a></div>",
+    "css": "#a{width:50%;height:20px;padding:5%;margin:10% 5%}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "hidden-and-contents",
+    "body": "<div id=p>A<span style=\"display:none\"><img></span><span style=\"display:contents\"> B</span> C</div>",
+    "css": "",
+    "width": 50,
+    "height": 800
+  },
+  {
+    "name": "inline-splits",
+    "body": "<div id=p>A<span>B<div id=b>C</div>D</span>E</div>",
+    "css": "",
+    "width": 50,
+    "height": 800
+  },
+  {
+    "name": "wrapping-20",
+    "body": "<div id=p>A <span>B</span> C</div>",
+    "css": "",
+    "width": 20,
+    "height": 800
+  },
+  {
+    "name": "wrapping-50",
+    "body": "<div id=p>A <span>B</span> C</div>",
+    "css": "",
+    "width": 50,
+    "height": 800
+  },
+  {
+    "name": "wrapping-100",
+    "body": "<div id=p>A <span>B</span> C</div>",
+    "css": "",
+    "width": 100,
+    "height": 800
+  },
+  {
+    "name": "fraction-0.1px-ltr",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:ltr}#a{width:0.1px;height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-0.1px-rtl",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:rtl}#a{width:0.1px;height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-0.3px-ltr",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:ltr}#a{width:0.3px;height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-0.3px-rtl",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:rtl}#a{width:0.3px;height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-10.123px-ltr",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:ltr}#a{width:10.123px;height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-10.123px-rtl",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:rtl}#a{width:10.123px;height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-33.333%-ltr",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:ltr}#a{width:33.333%;height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-33.333%-rtl",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:rtl}#a{width:33.333%;height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-calc(33.333% + 0.2px)-ltr",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:ltr}#a{width:calc(33.333% + 0.2px);height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-calc(33.333% + 0.2px)-rtl",
+    "body": "<div id=a></div><div id=b></div>",
+    "css": "body{direction:rtl}#a{width:calc(33.333% + 0.2px);height:10.123px;padding:0.3px;margin:0.1px auto}#b{height:0.3px;margin-top:-0.3px;margin-left:-0.3px}",
+    "width": 401.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-border-0.1px",
+    "body": "<div id=a></div>",
+    "css": "#a{width:100px;height:20px;border-width:0.1px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "fraction-border-0.3px",
+    "body": "<div id=a></div>",
+    "css": "#a{width:100px;height:20px;border-width:0.3px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "fraction-border-0.8px",
+    "body": "<div id=a></div>",
+    "css": "#a{width:100px;height:20px;border-width:0.8px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "fraction-border-1.3px",
+    "body": "<div id=a></div>",
+    "css": "#a{width:100px;height:20px;border-width:1.3px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "fraction-border-1.8px",
+    "body": "<div id=a></div>",
+    "css": "#a{width:100px;height:20px;border-width:1.8px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  },
+  {
+    "name": "fraction-border-2.3px",
+    "body": "<div id=a></div>",
+    "css": "#a{width:100px;height:20px;border-width:2.3px;border-style:solid}",
+    "width": 400,
+    "height": 800
+  }
+]

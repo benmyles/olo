@@ -1,0 +1,40 @@
+{
+  "kind": "authored inputs, independent Chrome DOM-rectangle observations",
+  "capture": "Olo Chrome on owned browser-flow-1 Agent Screen, stopped after capture. 1280x800 at 1x/1.5x/2x; localhost fixture server only. No personal session or profile.",
+  "references": [
+    "https://www.w3.org/TR/CSS22/visudet.html#blockwidth",
+    "https://www.w3.org/TR/CSS22/box.html#collapsing-margins",
+    "https://www.w3.org/TR/css-display-3/"
+  ],
+  "font": {
+    "path": "crates/web/tests/inline-fixtures/plain.ttf",
+    "sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb"
+  },
+  "inputs": {
+    "inputs.json": "91ce69213147f0a4da191ee79e252653f85150784da00434ba8dbba70433b1a9",
+    "base.css": "d3224fc302c7d78153a09cea76b2406366fa5d60033c5673f0a68a86c8a9a35d",
+    "generate.py": "4276ac8044101c454c074de7bb8d676358c1cc71b476c1984608dea155249ecf",
+    "probe.html": "2af43eea3f4beed8928f50aa383df1aac81da2ec0abc0dfd3dcb7a620bb1da48"
+  },
+  "reports": {
+    "1": {
+      "file": "chrome-1.json",
+      "sha256": "433a3edaffee9489808b5ed41896449c4f695ee98767b75448e126ceb8149893",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "cases": 139
+    },
+    "1.5": {
+      "file": "chrome-1.5.json",
+      "sha256": "930eff095cd875e72f099d199b1743ea8be47d70d1922a28555a712216cb32dd",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "cases": 139
+    },
+    "2": {
+      "file": "chrome-2.json",
+      "sha256": "ed72af5179005111f72a5a56f2374246fe8aa35b42582e91f2eb4aa5aedd21b1",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "cases": 139
+    }
+  },
+  "scope": "139 fixed-metric normal-flow inputs at three device scales (417 observations), DOM boxes only. No pixels, mixed typography, replaced content, flex/grid/table or websites. A fixed inset-zero ruler measures the frame actual initial containing block, independently from tested in-flow boxes. Rectangle export comparison uses physical float32 coordinates times float32 reciprocal zoom; native geometry remains f64 on the physical 1/64 layout grid."
+}

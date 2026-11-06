@@ -1756,3 +1756,84 @@ RSS is separately recorded. No page, idle/frame, GPU or Chrome speed claim.
 References: [CSS Text phase II](https://www.w3.org/TR/css-text-3/#white-space-phase-2),
 [shaping across breaks](https://www.w3.org/TR/css-text-3/#shaping-line-breaking),
 [CSS Inline line layout](https://drafts.csswg.org/css-inline-3/#line-layout).
+
+## DOM boxes and initial normal flow
+
+`layout::BuildJob` traverses a frozen connected light DOM and StyleTree on a
+worker. It records compact parent/child/sibling box links, skips display:none,
+flattens display:contents and groups text across inline elements between block
+children. A block inside an inline splits those text groups without discarding
+the continuing inline's source/style identity. `BoxKind::InlineContent` is an
+internal formatting group; it is not a DOM element. TextSource spans preserve
+DOM text nodes, style nodes and raw UTF-8 ranges. Prepared text mappings project
+back through those spans. A Tree owns the style snapshot and its document
+identity/revision; validate it against the current document before installing
+results, and also check the caller's desired style generation. It does not
+perform live DOM/style invalidation itself.
+
+`PrepareJob` joins those groups to original text preparation, shaping, Unicode
+breaks and retained inline geometry. Identical typography/source/span schemas
+can share the whole immutable prepared paragraph. The temporary registry is
+bounded to 4,096 entries by default and dropped at completion. Font object
+identity scopes keys; source string equality, span ranges, whitespace and base
+direction are checked before reuse. DOM/style mappings remain in each current
+TextSource, so differently colored or separately located DOM nodes keep their
+identity. A changed span schema cannot borrow another group's source map.
+`cached_texts=0` disables both lookup and insertion. Cache glyph/index payload
+counts shared paragraphs once, excluding shared fonts and non-glyph overhead.
+
+`layout::Job` reuses that Cache at a width to compute original normal-flow box
+geometry and retained text line/fragment layouts. It solves auto widths,
+percentage dimensions/padding/margins, min/max constraints, content-/border-box
+sizing, automatic inline margins, direction-dependent overconstraints,
+definite/indefinite percentage heights, parent/sibling/empty-block positive and
+negative margin collapse, root/flow-root/hidden-overflow barriers and relative
+block offsets. It retains parent-relative rectangles; a painter should traverse
+once carrying the content origin rather than independently walk ancestors for
+every glyph. `bounds` is an inspection convenience with O(depth) work. Geometry
+is not yet incremental across changed DOM/style generations or unchanged-size
+subtrees.
+
+Used lengths are quantized on a 1/64-device-pixel layout grid. Automatic margin
+remainders preserve the direction's final unit. Borders already snap in
+computed style and are not snapped again here. Styles expose their frozen
+device scale; a layout viewport with another scale is stale and requires a
+coherent new style snapshot. Typography remains at the previous unscaled
+font-unit shaping scope: arbitrary device/subpixel glyph positioning and line
+metrics are still open. The rectangle oracle uses a fixed-metric font and
+explicit display/reset rules, not HTML UA defaults or arbitrary fonts.
+
+Build defaults cap visited DOM nodes at 2,000,000, boxes at 1,000,000, depth at
+1,024, visited text at 16 MiB, each raw text group at 64 KiB and source spans at
+262,144. Preparation/flow also cap boxes/depth/retained source and work, and
+inherit text-worker quotas. Build steps count traversal actions, prepare steps
+count whole bounded text groups, and flow steps count traversal actions plus
+nested text candidate work. A single prepare/fit action runs a bounded text
+worker to completion, checking cancellation between its internal slices;
+these are cooperative work budgets, not strict elapsed-time slices. Everything
+including constructors/finish is worker-only. Immutable Tree/Cache/Layout are
+Send + Sync; failures poison publication. Allocation is not fallible, quotas
+are not a sandbox, and there is no whole-process memory guarantee.
+
+The stage explicitly rejects flex/grid/table/ruby/list formatting, replaced
+objects/controls/br/wbr, floating/absolute/fixed/clearance and vertical layout,
+scrollbar-dependent overflow, intrinsic/fit-content sizes, nonzero inline
+edges/borders and positioned/vertically aligned inline boxes. Mixed inline
+font requests, sizes, directions, line heights or whitespace are rejected at
+preparation. Colors/source identity survive grouping, but there is no painting,
+inline background/decorations, clipping, scrolling, caret/selection, Web IDL or
+complete CSS Inline/Block acceptance yet. Full HTML UA defaults, ordinary mixed
+markup and actual raster/website integration remain required.
+
+`tests/flow-fixtures` pins 139 authored inputs and independent Chrome DOM
+rectangles at 1×/1.5×/2×: 417 observations, each checked with one- and
+128-action native budgets. The fixture README explains the measured iframe
+viewport and float32 physical-rectangle/reciprocal-zoom export projection.
+Seven regression groups also check literal flow/text behavior, source mapping
+under paragraph sharing, stale generations/scales, cancellation, quotas and
+poisoning. No pixel/theme/site acceptance follows. The native engine never
+invokes Chrome; the local fixture server is development-only.
+
+References: [normal block widths](https://www.w3.org/TR/CSS22/visudet.html#blockwidth),
+[collapsing margins](https://www.w3.org/TR/CSS22/box.html#collapsing-margins),
+[CSS Display](https://www.w3.org/TR/css-display-3/).

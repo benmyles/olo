@@ -1,0 +1,122 @@
+[
+  {
+    "name": "default-tests",
+    "args": [
+      "cargo",
+      "test",
+      "--release",
+      "-p",
+      "olo-web"
+    ],
+    "exit": 0,
+    "wall_seconds": 67.43239822999749
+  },
+  {
+    "name": "default-clippy",
+    "args": [
+      "cargo",
+      "clippy",
+      "--release",
+      "-p",
+      "olo-web",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit": 0,
+    "wall_seconds": 0.527002987000742
+  },
+  {
+    "name": "all-feature-tests",
+    "args": [
+      "cargo",
+      "test",
+      "--release",
+      "-p",
+      "olo-web",
+      "--all-features"
+    ],
+    "exit": 0,
+    "wall_seconds": 55.40112818600028
+  },
+  {
+    "name": "all-feature-clippy",
+    "args": [
+      "cargo",
+      "clippy",
+      "--release",
+      "-p",
+      "olo-web",
+      "--all-targets",
+      "--all-features",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit": 0,
+    "wall_seconds": 2.8585807390045375
+  },
+  {
+    "name": "default-examples",
+    "args": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "olo-web",
+      "--example",
+      "flow_bench",
+      "--example",
+      "style_bench",
+      "--example",
+      "shaping_bench",
+      "--example",
+      "inline_bench"
+    ],
+    "exit": 0,
+    "wall_seconds": 0.16713524700026028
+  },
+  {
+    "name": "workspace-build",
+    "args": [
+      "cargo",
+      "build",
+      "--release",
+      "--workspace"
+    ],
+    "exit": 0,
+    "wall_seconds": 174.86068358500052
+  },
+  {
+    "name": "format",
+    "args": [
+      "cargo",
+      "fmt",
+      "-p",
+      "olo-web",
+      "--",
+      "--check"
+    ],
+    "exit": 0,
+    "wall_seconds": 0.6447557420033263
+  },
+  {
+    "name": "diff",
+    "args": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit": 0,
+    "wall_seconds": 0.03330363200075226
+  },
+  {
+    "name": "source-and-parent-hashes",
+    "exit": 0,
+    "source_files": 104,
+    "parent": "af8cbd5e1e225935eef6d40ebab9fb0b309fe01a",
+    "processes": 42,
+    "all_control_geometry_glyph_hashes_equal": true
+  }
+]

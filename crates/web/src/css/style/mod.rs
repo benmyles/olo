@@ -269,6 +269,7 @@ pub struct Defaults {
     values: Box<[Entry]>,
     positions: [u8; Property::ALL.len()],
     initial_font: Arc<Font>,
+    device_scale: f64,
     revision: u64,
     empty: Arc<[Entry]>,
     empty_customs: Arc<Dictionary>,
@@ -301,6 +302,7 @@ impl Defaults {
             values: Box::new([]),
             positions: [u8::MAX; Property::ALL.len()],
             initial_font,
+            device_scale: host.device_scale(),
             revision,
             empty: Arc::from([]),
             empty_customs: Arc::new(Dictionary { values: Box::new([]), bytes: 0 }),
@@ -311,7 +313,7 @@ impl Defaults {
         for (i, entry) in defaults.values.iter().enumerate() {
             defaults.positions[entry.property as usize] = i as u8;
         }
-        if host.revision() != revision || host.font_context() != font_context {
+        if host.revision() != revision || host.font_context() != font_context || host.device_scale() != defaults.device_scale {
             return Err(Error::Stale);
         }
         check(cancelled)?;
@@ -360,6 +362,10 @@ pub struct Style {
     root: bool,
 }
 impl Style {
+    /// Scale at which computed device-dependent values (such as borders) froze.
+    pub fn device_scale(&self) -> f64 {
+        self.defaults.device_scale
+    }
     pub fn axes(&self) -> Axes {
         self.axes
     }
@@ -403,7 +409,11 @@ impl Style {
         if options.root && font_context != defaults.initial_font.context {
             return Err(Error::Stale);
         }
-        if host.revision() != defaults.revision || parent.is_some_and(|p| !Arc::ptr_eq(&p.defaults, &defaults)) || root.is_some_and(|r| !r.root || !Arc::ptr_eq(&r.defaults, &defaults)) {
+        if host.revision() != defaults.revision
+            || host.device_scale() != defaults.device_scale
+            || parent.is_some_and(|p| !Arc::ptr_eq(&p.defaults, &defaults))
+            || root.is_some_and(|r| !r.root || !Arc::ptr_eq(&r.defaults, &defaults))
+        {
             return Err(Error::Stale);
         }
         if cascade.has_parent() != parent.is_some() || options.root && parent.is_some() {
