@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### A shared window, ringed
+
+*18:52* — While an app shares a window, it has a red ring round its body on screen (never in what's shared), flush outside its border at every scale.
+
+![A shared window, ringed](2026-11-05/185204-a-shared-window-ringed.png)
+
+### Private windows kept out of shares
+
+*18:52* — Left: the screen as the person sees it (and a screenshot). Right: the same moment as a screen share or recording gets it, Passwords blacked out; the polkit prompt, Terminal's sudo prompt and the lock screen likewise.
+
+![Private windows kept out of shares](2026-11-05/185203-private-windows-kept-out-of-shares.png)
+
 ### A Terminal window moved to an agent screen
 
 *18:04* — The same shell (its pid) on the screen, typed into there.

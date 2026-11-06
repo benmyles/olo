@@ -1076,75 +1076,6 @@ of Finished; a new one goes where its priority puts it.
   a window's content scrolling when the window is shorter than it
   (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
 
-- **Notifications, robust and everywhere** (Ben): after Haiku's
-  notification_server and `BNotification`, better where we can. ~~Done~~:
-  grouped by app, the four kinds (information, important, error,
-  progress), body markup with links, `value` progress, replace-by-tag,
-  inline reply (`NotificationReplied`), `transient`, `category`, sound
-  hints read, `ActivationToken` before an action, a click bringing the
-  app's window forward; sounds played natively (the freedesktop theme
-  for important notes and errors); a history kept across a restart
-  (History window, Deskbar's bell with the unread count); Do Not Disturb
-  by hand, for a while or on a daily schedule; per-app banner, sound and
-  history choices (Preferences ▸ Notifications); agent-readable
-  (`com.olodesktop.Notifications1`, `olo-notifications --list --json`,
-  `--invoke`, `--dismiss`, `--clear`, `--dnd`); GLib's
-  `org.gtk.Notifications` (GApplication apps, their actions run on the
-  app) and Flatpak apps through the GTK portal; a kit API for Olo's
-  own apps (`olo_kit::notify`: Tracker's long
-  copies); Do Not Disturb while sharing the screen (2026-10-30: from
-  olo-portal's sharing state, errors held too, banners already up taken
-  down; "While sharing the screen" in Preferences, on by default).
-
-- **Google Chrome works great in Olo** (Ben; Olo's web browser):
-  many sites really need Chrome. When stock Google Chrome is downloaded and run, Olo
-  recognises it: Olo window chrome (server-side decorations, or
-  whatever it takes: flags, policies, runtime patches), light/dark
-  following the desktop, and Olo Passwords filling and saving logins
-  in it seamlessly (e.g. a native-messaging host plus an extension
-  installed by policy, speaking the keychain protocol), including the
-  verification code (TOTP) from a field's context menu beside the
-  username and password. Drag and drop, the clipboard, notifications,
-  file pickers, downloads into Tracker, default browser, Deskbar entry:
-  all of it as well as Olo can make it. Ugly hacks are fine as long
-  as it is reliable.
-  ~~**Downloads and the default browser**~~ (done 2026-10-30: Chrome's
-  downloads in Deskbar, Olo's notifications and Tracker; Olo's Chrome
-  offered as the default browser; see "Other programs feel like Olo's
-  own").
-  ~~**Olo's look**~~ (done: the portals now start in a real session,
-  so it follows light/dark; each profile starts with Olo's title bar
-  and frame instead of Chrome's own buttons and with the GTK theme's
-  colours; HACKING, "Other toolkits' programs").
-  ~~**Passwords in Chrome**~~ (done: the Olo Passwords extension,
-  packed and signed per user, listed in Chrome's `extensions` folder,
-  with `olo-chrome` as its native messaging host; a field's context
-  menu offers each login's username, password, one-time code or the
-  whole login, the toolbar button lists the page's logins, and a login
-  sent with a form is offered for saving or updating; HACKING, "Google
-  Chrome").
-  ~~**Notifications**~~ (done: Chrome sends sites' and extensions'
-  notifications to Olo's notifications app over
-  `org.freedesktop.Notifications`; tested headless: shown with Chrome's
-  name and icon, a click reaching the page's `onclick`, Chrome's Settings
-  button opening its notification settings. Test buses need
-  `tools/dev/busd-lenient`; HACKING, "Notifications").
-  ~~**Installed on first use**~~ (done: `apps/chrome`, `olo-chrome`;
-  tested headless end to end, the real 139 MB download into a fixture
-  home, then Chrome running on Wayland in Olo; kept up to date: once
-  a day a start fetches a newer version in the background for the next
-  start, tested from a stand-in old version. Left: Chromium where Google
-  has no build) (Ben): Google Chrome is always listed in
-  Deskbar's apps; the first launch downloads it (Google ships arm64
-  Linux packages now: dl.google.com/linux/chrome/rpm/stable/aarch64,
-  checked against the repo's sha256), unpacks it in process (rpm cpio
-  payload, natively) into `~/.local/share/olo/chrome/<version>` with
-  a `current` link, with live progress, and keeps it updated from the
-  same repo. Chromium if Google's isn't there for the machine. Ben's
-  machine has 156.0.8078.47 there now (installed by hand the same way,
-  with `~/.local/share/applications/google-chrome.desktop`); it runs on
-  Wayland under Olo.
-
 - **Screen sharing: an Olo portal backend** (Ben, 2026-10-29; the
   design researched by another agent, session 05de188d, kept here).
   Apps never capture the screen themselves on Wayland: Chrome, Slack,
@@ -1233,6 +1164,16 @@ of Finished; a new one goes where its priority puts it.
       process; Zoom in Chrome just works;
     - sharing a Chrome tab never reaches us, and Chrome can only share a
       tab's audio, not the whole system's: audio is out of scope.
+  - **Done since** (2026-11-05, HACKING "Kept out, and shown as
+    shared"): Passwords, the polkit prompt, Terminal's sudo prompt,
+    Deskbar's approve prompt (`WindowOptions::private`) and the lock
+    screen blacked out of shares and recordings; a shared window ringed
+    on screen while it is. Agent screens run their own portal (HACKING
+    "A screen's own bus"). **Left**: the cursor sent as metadata (the
+    third cursor mode; hidden and drawn in are done), an agent screen as
+    a source in the person's picker (to share an agent's screen into a
+    call), Zoom's launcher quirk, and RemoteDesktop over libei (the
+    design's open question).
   - **The Olo touches**: the picker, a kit dialog with Screens and
     Windows, live thumbnails and app icons, opened over the window that
     asked (agents read and drive it through the widget tree for free);
@@ -1697,6 +1638,81 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Notifications, robust and everywhere**~~ (finished 2026-11-05:
+  every part below done, nothing more asked; on agent screens each
+  screen's own centre since its own bus) (Ben): after Haiku's
+  notification_server and `BNotification`, better where we can. ~~Done~~:
+  grouped by app, the four kinds (information, important, error,
+  progress), body markup with links, `value` progress, replace-by-tag,
+  inline reply (`NotificationReplied`), `transient`, `category`, sound
+  hints read, `ActivationToken` before an action, a click bringing the
+  app's window forward; sounds played natively (the freedesktop theme
+  for important notes and errors); a history kept across a restart
+  (History window, Deskbar's bell with the unread count); Do Not Disturb
+  by hand, for a while or on a daily schedule; per-app banner, sound and
+  history choices (Preferences ▸ Notifications); agent-readable
+  (`com.olodesktop.Notifications1`, `olo-notifications --list --json`,
+  `--invoke`, `--dismiss`, `--clear`, `--dnd`); GLib's
+  `org.gtk.Notifications` (GApplication apps, their actions run on the
+  app) and Flatpak apps through the GTK portal; a kit API for Olo's
+  own apps (`olo_kit::notify`: Tracker's long
+  copies); Do Not Disturb while sharing the screen (2026-10-30: from
+  olo-portal's sharing state, errors held too, banners already up taken
+  down; "While sharing the screen" in Preferences, on by default).
+
+- ~~**Google Chrome works great in Olo**~~ (finished 2026-11-05: every
+  part done; drag and drop, the clipboard and file pickers with "Other
+  programs feel like Olo's own". Not done: Chromium where Google has no
+  build, which no machine Olo runs on needs, x86_64 and arm64 both
+  having Google's) (Ben; Olo's web browser):
+  many sites really need Chrome. When stock Google Chrome is downloaded and run, Olo
+  recognises it: Olo window chrome (server-side decorations, or
+  whatever it takes: flags, policies, runtime patches), light/dark
+  following the desktop, and Olo Passwords filling and saving logins
+  in it seamlessly (e.g. a native-messaging host plus an extension
+  installed by policy, speaking the keychain protocol), including the
+  verification code (TOTP) from a field's context menu beside the
+  username and password. Drag and drop, the clipboard, notifications,
+  file pickers, downloads into Tracker, default browser, Deskbar entry:
+  all of it as well as Olo can make it. Ugly hacks are fine as long
+  as it is reliable.
+  ~~**Downloads and the default browser**~~ (done 2026-10-30: Chrome's
+  downloads in Deskbar, Olo's notifications and Tracker; Olo's Chrome
+  offered as the default browser; see "Other programs feel like Olo's
+  own").
+  ~~**Olo's look**~~ (done: the portals now start in a real session,
+  so it follows light/dark; each profile starts with Olo's title bar
+  and frame instead of Chrome's own buttons and with the GTK theme's
+  colours; HACKING, "Other toolkits' programs").
+  ~~**Passwords in Chrome**~~ (done: the Olo Passwords extension,
+  packed and signed per user, listed in Chrome's `extensions` folder,
+  with `olo-chrome` as its native messaging host; a field's context
+  menu offers each login's username, password, one-time code or the
+  whole login, the toolbar button lists the page's logins, and a login
+  sent with a form is offered for saving or updating; HACKING, "Google
+  Chrome").
+  ~~**Notifications**~~ (done: Chrome sends sites' and extensions'
+  notifications to Olo's notifications app over
+  `org.freedesktop.Notifications`; tested headless: shown with Chrome's
+  name and icon, a click reaching the page's `onclick`, Chrome's Settings
+  button opening its notification settings. Test buses need
+  `tools/dev/busd-lenient`; HACKING, "Notifications").
+  ~~**Installed on first use**~~ (done: `apps/chrome`, `olo-chrome`;
+  tested headless end to end, the real 139 MB download into a fixture
+  home, then Chrome running on Wayland in Olo; kept up to date: once
+  a day a start fetches a newer version in the background for the next
+  start, tested from a stand-in old version. Left: Chromium where Google
+  has no build) (Ben): Google Chrome is always listed in
+  Deskbar's apps; the first launch downloads it (Google ships arm64
+  Linux packages now: dl.google.com/linux/chrome/rpm/stable/aarch64,
+  checked against the repo's sha256), unpacks it in process (rpm cpio
+  payload, natively) into `~/.local/share/olo/chrome/<version>` with
+  a `current` link, with live progress, and keeps it updated from the
+  same repo. Chromium if Google's isn't there for the machine. Ben's
+  machine has 156.0.8078.47 there now (installed by hand the same way,
+  with `~/.local/share/applications/google-chrome.desktop`); it runs on
+  Wayland under Olo.
 
 - ~~**Agent Screens: Chrome opened from a screen's Deskbar lands on the
   person's display**~~ (done 2026-11-05, HACKING's "A screen's own

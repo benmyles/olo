@@ -53,11 +53,13 @@ pub struct WindowOptions {
     /// What app_server knows the window by when Terminal comes back (the
     /// kit's `restore_key`).
     pub restore_key: Option<String>,
+    /// Kept out of screen shares (the kit's `private`: the sudo prompt).
+    pub private: bool,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<String>, w: u32, h: u32) -> WindowOptions {
-        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, restore_key: None }
+        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, restore_key: None, private: false }
     }
 
     /// An alert saying `message`: as tall as it needs, fixed, over the
@@ -73,6 +75,11 @@ impl WindowOptions {
 
     pub fn max_size(mut self, w: u32, h: u32) -> Self {
         self.max_size = Some((w, h));
+        self
+    }
+
+    pub fn private(mut self) -> Self {
+        self.private = true;
         self
     }
 }
@@ -145,6 +152,7 @@ impl WinOps for Context<'_, Terminal> {
         }
         options.under_pointer = o.under_pointer;
         options.restore_key = o.restore_key.clone();
+        options.private = o.private;
         let me = self.weak_entity();
         let made: Rc<std::cell::RefCell<Option<Entity<Shell>>>> = Rc::default();
         let keep = made.clone();

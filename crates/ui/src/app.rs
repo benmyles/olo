@@ -28,6 +28,11 @@ pub struct WindowOptions {
     /// auto-tiled windows rather than taking a tile (the xdg-toplevel-tag
     /// `floating`).
     pub floating: bool,
+    /// Shows secrets (a password prompt): blacked out of screen shares and
+    /// recordings (the xdg-toplevel-tag `private`; app_server's
+    /// `private.rs`, which keeps Passwords' and the polkit prompt's out
+    /// by their app ids too).
+    pub private: bool,
     /// A surface of the desktop's own (Deskbar, notifications, an
     /// overlay) rather than a window: where it sits.
     pub layer: Option<gpui::LayerShellOptions>,
@@ -79,6 +84,7 @@ impl WindowOptions {
             max_size: None,
             panel: true,
             floating: false,
+            private: false,
             layer: None,
             dialog: None,
             fixed: false,
@@ -163,6 +169,12 @@ impl WindowOptions {
     /// Floats over auto-tiled windows (see [`Self::floating`]).
     pub fn floating(mut self) -> Self {
         self.floating = true;
+        self
+    }
+
+    /// Kept out of screen shares and recordings (see [`Self::private`]).
+    pub fn private(mut self) -> Self {
+        self.private = true;
         self
     }
 
@@ -715,7 +727,8 @@ pub fn open_window<V: Render + 'static>(cx: &mut App, options: WindowOptions, bu
             window_max_size: options.max_size.map(|(w, h)| size(px(w), px(h))),
             toplevel_tag: {
                 let restore = options.restore_key.as_ref().map(|k| format!("restore:{}", k.split_whitespace().collect::<String>()));
-                let mut tags: Vec<&str> = [(options.floating, "floating"), (options.under_pointer, "under-pointer")].into_iter().filter_map(|(on, tag)| on.then_some(tag)).collect();
+                let mut tags: Vec<&str> =
+                    [(options.floating, "floating"), (options.under_pointer, "under-pointer"), (options.private, "private")].into_iter().filter_map(|(on, tag)| on.then_some(tag)).collect();
                 tags.extend(restore.as_deref());
                 (!tags.is_empty()).then(|| tags.join(" "))
             },

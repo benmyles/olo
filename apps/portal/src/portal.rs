@@ -77,6 +77,8 @@ struct Session {
     /// (for Deskbar: `olo_protocol::SharingState`).
     app_name: String,
     labels: Vec<String>,
+    /// Its windows' ids (app_server's), of those shared that are windows.
+    windows: Vec<u64>,
     since: u64,
     cursor: u32,
     persist: u32,
@@ -93,13 +95,38 @@ fn publish(sessions: &HashMap<OwnedObjectPath, Session>) {
     let mut shares: Vec<olo_protocol::sharing::Share> = sessions
         .iter()
         .filter(|(_, s)| !s.shares.is_empty())
-        .map(|(path, s)| olo_protocol::sharing::Share { session: path.to_string(), app: s.app_name.clone(), screens: s.labels.clone(), since: s.since })
+        .map(|(path, s)| olo_protocol::sharing::Share { session: path.to_string(), app: s.app_name.clone(), screens: s.labels.clone(), since: s.since, windows: s.windows.clone() })
         .collect();
     shares.sort_by_key(|s| s.since);
+    // app_server rings the windows shared, while they are.
+    let mut windows: Vec<u64> = shares.iter().flat_map(|s| s.windows.iter().copied()).collect();
+    windows.sort_unstable();
+    windows.dedup();
     let state = olo_protocol::SharingState { pid: std::process::id(), shares };
     if let Err(e) = state.save() {
         tracing::warn!("portal: can't say what is shared: {e}");
     }
+    tell_shared_windows(windows);
+}
+
+/// Tell app_server which windows are shared (the last told, kept: a
+/// session's change that leaves them as they were says nothing).
+fn tell_shared_windows(windows: Vec<u64>) {
+    static TOLD: std::sync::Mutex<Option<Vec<u64>>> = std::sync::Mutex::new(None);
+    {
+        let mut told = TOLD.lock().unwrap_or_else(|e| e.into_inner());
+        if told.as_ref() == Some(&windows) {
+            return;
+        }
+        *told = Some(windows.clone());
+    }
+    std::thread::spawn(move || {
+        if let Ok(mut c) = olo_protocol::Client::connect()
+            && let Err(e) = c.request(&olo_protocol::Request::SharedWindows { ids: windows })
+        {
+            tracing::warn!("portal: app_server wasn't told which windows are shared: {e}");
+        }
+    });
 }
 
 pub struct ScreenCast {
@@ -235,6 +262,7 @@ impl ScreenCast {
                 s.shares = shares;
                 s.app_name = crate::app_name(&s.app);
                 s.labels = picked.iter().map(|p| p.label.clone()).collect();
+                s.windows = picked.iter().filter(|p| p.window).filter_map(|p| p.key.strip_prefix("window:")?.parse().ok()).collect();
                 s.since = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
             }
             // Closed while the picker was up: the shares stop as they drop.

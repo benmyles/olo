@@ -253,6 +253,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// they've drawn the size it left them.
     pub tile_followers: Vec<crate::shell::tiling::Follower>,
     pub twitcher: crate::twitcher::Overlay,
+    /// Windows being shared (`Request::SharedWindows`): ringed on screen.
+    pub shared_windows: Vec<u64>,
     /// Keyboard hints (Control pressed twice), and their overlay.
     pub hints: crate::hints::Hints,
     pub wallpaper: crate::wallpaper::Loader,
@@ -1199,6 +1201,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             tab_drag: None,
             tile_followers: Vec::new(),
             twitcher: Default::default(),
+            shared_windows: Vec::new(),
             hints: Default::default(),
             wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),

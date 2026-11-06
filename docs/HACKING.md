@@ -6666,6 +6666,27 @@ its request, for the app's Cancel and for holding an upgrade off.
   them). A window share reconnects after a reload by its id, or one with
   the same app id and title (windows come back with new ids).
 
+- **Kept out, and shown as shared** (app_server's `private.rs`): a
+  share or recording never shows a private window, which the person
+  still sees: Passwords' windows and the polkit prompt (by app id) and
+  any window its app tags `private` (the kit's
+  `WindowOptions::private`: Terminal's sudo prompt, Deskbar's
+  approve-without-asking) are drawn as a dark grey in what a capture
+  session gets (`capture_elements`, a window share of one), and while
+  the screen is locked a screen share is that grey altogether, never
+  the lock screen (macOS's `NSWindowSharingNone` likewise). Screenshots
+  and agents' looks at their own screens show them. A window being
+  shared has a ring round its body on the person's screen (a
+  recording's red, two points, laid out in device pixels as the
+  decoration lays out its frame, so flush outside its border at every
+  scale), drawn with the display's frame and never into what's shared:
+  the portal tells app_server which windows its shares are of
+  (`Request::SharedWindows`, as it publishes `SharingState`, whose
+  shares carry `windows` too). Checked with `olo-portal capture-test`
+  against a screenshot (Passwords blacked out of one only, the locked
+  screen grey), the ring at 1, 1.25, 1.5, 1.75 and 2×, and end to end on
+  an agent screen: a window shared through its portal's picker ringed,
+  the ring gone with the share.
 - **Screenshots** (`shot.rs`): the Screenshot portal has Olo's
   Screenshot app take the picture (`olo-screenshot --silent --for-app`,
   or `--region` when the app wants the person to choose; `--for-app`

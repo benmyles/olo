@@ -26,6 +26,8 @@ pub struct Share {
     pub screens: Vec<String>,
     /// Since when, seconds since the epoch.
     pub since: u64,
+    /// The windows of it that are windows (app_server's ids).
+    pub windows: Vec<u64>,
 }
 
 impl SharingState {
@@ -74,7 +76,7 @@ mod tests {
 
     #[test]
     fn a_share_said() {
-        let s = Share { session: "/s".into(), app: "Google Chrome".into(), screens: vec!["Studio Display".into()], since: 0 };
+        let s = Share { session: "/s".into(), app: "Google Chrome".into(), screens: vec!["Studio Display".into()], since: 0, windows: Vec::new() };
         assert_eq!(SharingState::describe(&s), "Studio Display with Google Chrome");
         let s = Share { app: String::new(), screens: vec!["A".into(), "B".into()], ..s };
         assert_eq!(SharingState::describe(&s), "2 screens");

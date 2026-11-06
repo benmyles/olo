@@ -404,6 +404,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::SharedWindows { ids } => {
+                if self.shared_windows != ids {
+                    self.shared_windows = ids;
+                    self.backend_data.wake(None);
+                }
+                Reply::Ok
+            }
             Request::SendToBack { id } => match self.window_by_id(id) {
                 Some(w) => {
                     self.send_to_back(&w);

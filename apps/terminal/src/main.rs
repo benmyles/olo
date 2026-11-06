@@ -1751,7 +1751,7 @@ impl Terminal {
     fn sudo_ask(&mut self, cx: &mut Cx, mut r: sudo::Request, over: Option<WindowId>) {
         let size = (sudo::WIDTH, r.height(cx));
         let _ = over;
-        let id = cx.open_window(WindowOptions::new("sudo", size.0, size.1).min_size(size.0, size.1).max_size(size.0, size.1));
+        let id = cx.open_window(WindowOptions::new("sudo", size.0, size.1).min_size(size.0, size.1).max_size(size.0, size.1).private());
         r.focus_field(cx, id);
         r.wait_for_key(cx.proxy());
         self.windows.insert(id, Win::Sudo(Box::new(r)));

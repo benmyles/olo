@@ -84,7 +84,7 @@ impl Ask {
         });
         let h = height(cx);
         let view = ask.clone();
-        let window = olo_ui::open_window(cx, WindowOptions::alert(TITLE.to_owned(), WIDTH, h), move |window, cx| {
+        let window = olo_ui::open_window(cx, WindowOptions::alert(TITLE.to_owned(), WIDTH, h).private(), move |window, cx| {
             window.activate_window();
             let closing = view.clone();
             window.on_window_should_close(cx, move |_, cx| {

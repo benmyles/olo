@@ -98,6 +98,11 @@ pub enum Request {
     SendToBack {
         id: WindowId,
     },
+    /// The windows being shared now (olo-portal's window shares): each
+    /// ringed on screen while it is, so the person knows (none: none).
+    SharedWindows {
+        ids: Vec<WindowId>,
+    },
     /// Put a window in the group of window `with` (or a new group with
     /// it, if it is in none), whatever their apps, its tab at `index`
     /// among the group's (else last), as ⌘-dragging its tab onto that

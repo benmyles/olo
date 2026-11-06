@@ -36,6 +36,8 @@ smithay::backend::renderer::element::render_elements! {
     Pointer=PointerRenderElement<R>,
     Surface=WaylandSurfaceRenderElement<R>,
     Overlay=Exact<MemoryRenderBufferRenderElement<R>>,
+    /// A solid colour: the pixel that keeps the GPU's memory warm, and a
+    /// private window blacked out of a share (`private.rs`).
     Warm=smithay::backend::renderer::element::solid::SolidColorRenderElement,
     #[cfg(feature = "debug")]
     // Note: We would like to borrow this element instead, but that would introduce
@@ -863,13 +865,22 @@ where
             .map(|e| FrameElements::Normal(OutputRenderElements::Custom(CustomRenderElements::Overlay(e))))
             .collect()
     };
+    // A share or recording (not a screenshot) never shows a private
+    // window, nor the lock screen (`private.rs`).
+    let shaded = |(mut elements, clear): (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)| {
+        if zoomable {
+            let shades = crate::private::blackouts(from, space, locked).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Warm(e)));
+            elements.splice(0..0, shades);
+        }
+        (elements, clear)
+    };
     let Some((k, corner)) = zoom else {
-        let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked);
+        let (elements, clear_color) = shaded(output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked));
         let mut framed = frame(elements, fit);
         framed.splice(0..0, caption(renderer));
         return (framed, clear_color);
     };
-    let ((elements, clear_color), chord) = crate::showing::apart(renderer, from, geo.size, |renderer| output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked));
+    let ((elements, clear_color), chord) = crate::showing::apart(renderer, from, geo.size, |renderer| shaded(output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked)));
     let scale = from.current_scale().fractional_scale();
     let offset = Point::<f64, Logical>::from((-corner.x * k, -corner.y * k)).to_physical(scale).to_i32_round();
     let mut framed = frame(elements, Some(Fit { factor: k, offset }));

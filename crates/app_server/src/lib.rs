@@ -48,6 +48,7 @@ pub mod osd;
 pub mod overview;
 pub mod pace;
 pub mod power;
+pub mod private;
 pub mod rescue;
 pub mod saver;
 pub mod screenshot;
