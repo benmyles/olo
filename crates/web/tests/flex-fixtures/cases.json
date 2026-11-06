@@ -1,0 +1,4610 @@
+[
+  {
+    "id": "empty",
+    "available": 300,
+    "gap": 0,
+    "items": []
+  },
+  {
+    "id": "equal-grow-thirds",
+    "available": 301,
+    "gap": 0,
+    "items": [
+      {
+        "base": 100,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unequal-grow",
+    "available": 600,
+    "gap": 0,
+    "items": [
+      {
+        "base": 50,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 150,
+        "grow": 2,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 0,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "partial-grow",
+    "available": 500,
+    "gap": 0,
+    "items": [
+      {
+        "base": 80,
+        "grow": 0.125,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 40,
+        "grow": 0.25,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "weighted-shrink",
+    "available": 150,
+    "gap": 0,
+    "items": [
+      {
+        "base": 200,
+        "grow": 0,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 0,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "partial-shrink",
+    "available": 50,
+    "gap": 0,
+    "items": [
+      {
+        "base": 100,
+        "grow": 0,
+        "shrink": 0.125,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 0,
+        "shrink": 0.25,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "grow-max-freeze",
+    "available": 500,
+    "gap": 0,
+    "items": [
+      {
+        "base": 50,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": 70,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 80,
+        "grow": 2,
+        "shrink": 1,
+        "min": 0,
+        "max": 170,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 20,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "shrink-min-freeze",
+    "available": 150,
+    "gap": 0,
+    "items": [
+      {
+        "base": 200,
+        "grow": 0,
+        "shrink": 1,
+        "min": 100,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 0,
+        "shrink": 1,
+        "min": 40,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 0,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "opposite-clamps",
+    "available": 250,
+    "gap": 0,
+    "items": [
+      {
+        "base": 100,
+        "grow": 1,
+        "shrink": 1,
+        "min": 160,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": 30,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "conflicting-min-max",
+    "available": 180,
+    "gap": 0,
+    "items": [
+      {
+        "base": 100,
+        "grow": 1,
+        "shrink": 1,
+        "min": 90,
+        "max": 30,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 50,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "zero-bases",
+    "available": 200,
+    "gap": 10,
+    "items": [
+      {
+        "base": 0,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 0,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "zero-available",
+    "available": 0,
+    "gap": 5,
+    "items": [
+      {
+        "base": 100,
+        "grow": 0,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 20,
+        "grow": 0,
+        "shrink": 1,
+        "min": 10,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "fixed-and-negative-margins",
+    "available": 300,
+    "gap": 7,
+    "items": [
+      {
+        "base": 100,
+        "grow": 0,
+        "shrink": 0,
+        "min": 0,
+        "max": null,
+        "margin": [
+          -20,
+          5
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 200,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          3,
+          -8
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "padding-border",
+    "available": 240,
+    "gap": 9,
+    "items": [
+      {
+        "base": 100,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 100,
+        "grow": 2,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "fractional-grid",
+    "available": 83.3,
+    "gap": 1.3,
+    "items": [
+      {
+        "base": 13.7,
+        "grow": 0.2,
+        "shrink": 1,
+        "min": 3.1,
+        "max": 37.7,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 37.3,
+        "grow": 0.5,
+        "shrink": 1,
+        "min": 0,
+        "max": 55.2,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "near-zero-factor",
+    "available": 500,
+    "gap": 0,
+    "items": [
+      {
+        "base": 100,
+        "grow": 1e-05,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 200,
+        "grow": 0,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-0",
+    "available": 100,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 255,
+        "grow": 1,
+        "shrink": 1,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          4,
+          -8
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 2,
+        "shrink": 3,
+        "min": 99,
+        "max": 150,
+        "margin": [
+          11,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 77,
+        "margin": [
+          0,
+          -3
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 1,
+        "shrink": 3,
+        "min": 12,
+        "max": 0,
+        "margin": [
+          -8,
+          -8
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 3,
+        "grow": 0,
+        "shrink": 3,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 0.125,
+        "shrink": 3,
+        "min": 12,
+        "max": 77,
+        "margin": [
+          4,
+          0
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-1",
+    "available": 17,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 64,
+        "grow": 4,
+        "shrink": 0,
+        "min": 12,
+        "max": 20,
+        "margin": [
+          4,
+          4
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 4,
+        "shrink": 3,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          -8,
+          0
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 4,
+        "shrink": 3,
+        "min": 12,
+        "max": 300,
+        "margin": [
+          11,
+          11
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 2,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 64,
+        "shrink": 0,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          -3,
+          -8
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 1,
+        "shrink": 3,
+        "min": 99,
+        "max": 0,
+        "margin": [
+          0,
+          -3
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          0,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-2",
+    "available": 100,
+    "gap": 1,
+    "items": [
+      {
+        "base": 23,
+        "grow": 64,
+        "shrink": 3,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0.125,
+        "shrink": 0,
+        "min": 99,
+        "max": null,
+        "margin": [
+          11,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          -8,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-3",
+    "available": 607,
+    "gap": 0,
+    "items": [
+      {
+        "base": 255,
+        "grow": 1,
+        "shrink": 3,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          4,
+          4
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 2,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 20,
+        "margin": [
+          0,
+          4
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-4",
+    "available": 83.3,
+    "gap": 0,
+    "items": [
+      {
+        "base": 127,
+        "grow": 0.125,
+        "shrink": 1,
+        "min": 99,
+        "max": 150,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0.125,
+        "shrink": 0,
+        "min": 99,
+        "max": 0,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 4,
+        "shrink": 1,
+        "min": 37,
+        "max": 77,
+        "margin": [
+          0,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          0,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-5",
+    "available": 17,
+    "gap": 0,
+    "items": [
+      {
+        "base": 23,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": null,
+        "margin": [
+          -8,
+          -8
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0,
+        "shrink": 1,
+        "min": 99,
+        "max": 77,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          2,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-6",
+    "available": 607,
+    "gap": 0,
+    "items": [
+      {
+        "base": 3,
+        "grow": 64,
+        "shrink": 3,
+        "min": 99,
+        "max": 20,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0.125,
+        "shrink": 3,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          -8,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 4,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          0,
+          -3
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 64,
+        "shrink": 0,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0.5,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0,
+        "shrink": 0,
+        "min": 0,
+        "max": 300,
+        "margin": [
+          11,
+          11
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-7",
+    "available": 17,
+    "gap": 9,
+    "items": [
+      {
+        "base": 127,
+        "grow": 0.125,
+        "shrink": 0,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          4,
+          4
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 1,
+        "shrink": 0,
+        "min": 99,
+        "max": null,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 2,
+        "shrink": 3,
+        "min": 99,
+        "max": 0,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-8",
+    "available": 100,
+    "gap": 9,
+    "items": [
+      {
+        "base": 127,
+        "grow": 2,
+        "shrink": 1,
+        "min": 37,
+        "max": null,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 4,
+        "shrink": 3,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0.125,
+        "shrink": 0,
+        "min": 99,
+        "max": null,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 0.5,
+        "shrink": 0,
+        "min": 0,
+        "max": 300,
+        "margin": [
+          11,
+          4
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          -3,
+          11
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-9",
+    "available": 17,
+    "gap": 1,
+    "items": [
+      {
+        "base": 255,
+        "grow": 1,
+        "shrink": 1,
+        "min": 99,
+        "max": 300,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0.125,
+        "shrink": 0.2,
+        "min": 37,
+        "max": null,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 64,
+        "shrink": 1,
+        "min": 12,
+        "max": 300,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 3,
+        "grow": 0.5,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 77,
+        "margin": [
+          11,
+          11
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-10",
+    "available": 0,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 64,
+        "grow": 64,
+        "shrink": 0,
+        "min": 99,
+        "max": 0,
+        "margin": [
+          0,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 64,
+        "shrink": 0,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-11",
+    "available": 17,
+    "gap": 9,
+    "items": [
+      {
+        "base": 0,
+        "grow": 64,
+        "shrink": 1,
+        "min": 99,
+        "max": 300,
+        "margin": [
+          0,
+          -3
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 20,
+        "margin": [
+          11,
+          0
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0,
+        "shrink": 1,
+        "min": 12,
+        "max": 20,
+        "margin": [
+          0,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 0.5,
+        "shrink": 0,
+        "min": 12,
+        "max": 77,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0,
+        "shrink": 0,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          4,
+          -8
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0,
+        "shrink": 3,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          0,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-12",
+    "available": 0,
+    "gap": 0,
+    "items": [
+      {
+        "base": 127,
+        "grow": 4,
+        "shrink": 0,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          1,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-13",
+    "available": 100,
+    "gap": 9,
+    "items": [
+      {
+        "base": 64,
+        "grow": 2,
+        "shrink": 3,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 20,
+        "margin": [
+          11,
+          -3
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0,
+        "shrink": 1,
+        "min": 99,
+        "max": 300,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 64,
+        "shrink": 0,
+        "min": 0,
+        "max": 300,
+        "margin": [
+          -3,
+          -8
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 2,
+        "shrink": 0,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0,
+        "shrink": 1,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          -3,
+          11
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 4,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-14",
+    "available": 83.3,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 127,
+        "grow": 0.5,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          11,
+          -8
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 0.5,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 20,
+        "margin": [
+          11,
+          4
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0.125,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 150,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 3,
+        "grow": 0.125,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          4,
+          0
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 2,
+        "shrink": 1,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          4,
+          4
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-15",
+    "available": 0,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 3,
+        "grow": 2,
+        "shrink": 1,
+        "min": 12,
+        "max": 77,
+        "margin": [
+          11,
+          -8
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 1,
+        "min": 0,
+        "max": 300,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-16",
+    "available": 0,
+    "gap": 9,
+    "items": [
+      {
+        "base": 13.7,
+        "grow": 2,
+        "shrink": 0,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          0,
+          11
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0.5,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          0,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-17",
+    "available": 301,
+    "gap": 9,
+    "items": [
+      {
+        "base": 13.7,
+        "grow": 2,
+        "shrink": 1,
+        "min": 12,
+        "max": 77,
+        "margin": [
+          -3,
+          -8
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 4,
+        "shrink": 1,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          11,
+          0
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-18",
+    "available": 0,
+    "gap": 9,
+    "items": [
+      {
+        "base": 64,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 20,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-19",
+    "available": 0,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 23,
+        "grow": 0,
+        "shrink": 3,
+        "min": 12,
+        "max": 77,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0.5,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          4,
+          -8
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 0.5,
+        "shrink": 0,
+        "min": 12,
+        "max": 300,
+        "margin": [
+          -3,
+          11
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 1,
+        "min": 12,
+        "max": 0,
+        "margin": [
+          -3,
+          11
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          0,
+          11
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0.125,
+        "shrink": 3,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          11,
+          -3
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-20",
+    "available": 100,
+    "gap": 9,
+    "items": [
+      {
+        "base": 13.7,
+        "grow": 2,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 20,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 0.5,
+        "shrink": 1,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 4,
+        "shrink": 1,
+        "min": 12,
+        "max": null,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 64,
+        "shrink": 3,
+        "min": 0,
+        "max": 77,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 300,
+        "margin": [
+          4,
+          0
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0.5,
+        "shrink": 3,
+        "min": 99,
+        "max": 150,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 64,
+        "shrink": 1,
+        "min": 99,
+        "max": null,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-21",
+    "available": 301,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 23,
+        "grow": 0.125,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          4,
+          0
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 4,
+        "shrink": 0,
+        "min": 99,
+        "max": 150,
+        "margin": [
+          4,
+          4
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 64,
+        "shrink": 0,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          -3,
+          0
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 3,
+        "grow": 0,
+        "shrink": 3,
+        "min": 99,
+        "max": 77,
+        "margin": [
+          -8,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 64,
+        "shrink": 0,
+        "min": 99,
+        "max": 77,
+        "margin": [
+          -8,
+          -8
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 0.125,
+        "shrink": 1,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-22",
+    "available": 100,
+    "gap": 1,
+    "items": [
+      {
+        "base": 3,
+        "grow": 2,
+        "shrink": 1,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          -8,
+          0
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 4,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 77,
+        "margin": [
+          4,
+          -8
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0,
+        "shrink": 1,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          0,
+          -3
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 20,
+        "margin": [
+          11,
+          -3
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0,
+        "shrink": 3,
+        "min": 12,
+        "max": 300,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 64,
+        "shrink": 0,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          1,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-23",
+    "available": 0,
+    "gap": 0,
+    "items": [
+      {
+        "base": 255,
+        "grow": 1,
+        "shrink": 3,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          11,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 64,
+        "shrink": 1,
+        "min": 99,
+        "max": null,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 1,
+        "min": 37,
+        "max": 77,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 1,
+        "shrink": 1,
+        "min": 37,
+        "max": 77,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 1,
+        "min": 99,
+        "max": 77,
+        "margin": [
+          11,
+          -8
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 300,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 64,
+        "shrink": 0,
+        "min": 99,
+        "max": null,
+        "margin": [
+          0,
+          -3
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          0,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-24",
+    "available": 607,
+    "gap": 9,
+    "items": [
+      {
+        "base": 23,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 77,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-25",
+    "available": 301,
+    "gap": 0,
+    "items": [
+      {
+        "base": 0,
+        "grow": 0.5,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 300,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 2,
+        "shrink": 3,
+        "min": 37,
+        "max": null,
+        "margin": [
+          11,
+          0
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 64,
+        "shrink": 3,
+        "min": 0,
+        "max": null,
+        "margin": [
+          -3,
+          11
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 4,
+        "shrink": 3,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          -3,
+          0
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-26",
+    "available": 83.3,
+    "gap": 1,
+    "items": [
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 3,
+        "min": 0,
+        "max": 300,
+        "margin": [
+          11,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0.125,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          -8,
+          0
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 4,
+        "shrink": 3,
+        "min": 0,
+        "max": 300,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 0.125,
+        "shrink": 3,
+        "min": 99,
+        "max": 300,
+        "margin": [
+          -3,
+          -8
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 4,
+        "shrink": 0,
+        "min": 12,
+        "max": 20,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 2,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 150,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-27",
+    "available": 100,
+    "gap": 1,
+    "items": [
+      {
+        "base": 64,
+        "grow": 1,
+        "shrink": 3,
+        "min": 0,
+        "max": 20,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          0,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-28",
+    "available": 607,
+    "gap": 1,
+    "items": [
+      {
+        "base": 13.7,
+        "grow": 0.5,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 77,
+        "margin": [
+          0,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 4,
+        "shrink": 0,
+        "min": 37,
+        "max": 77,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 64,
+        "shrink": 3,
+        "min": 0,
+        "max": null,
+        "margin": [
+          -8,
+          -8
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 300,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-29",
+    "available": 301,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 3,
+        "grow": 0.125,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 77,
+        "margin": [
+          11,
+          4
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 3,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": 300,
+        "margin": [
+          -3,
+          11
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          1,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-30",
+    "available": 83.3,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 23,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 0,
+        "margin": [
+          -3,
+          0
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0.5,
+        "shrink": 0,
+        "min": 12,
+        "max": 300,
+        "margin": [
+          4,
+          0
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 2,
+        "shrink": 3,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          -3,
+          -8
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 3,
+        "grow": 1,
+        "shrink": 3,
+        "min": 12,
+        "max": 77,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 1,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-31",
+    "available": 301,
+    "gap": 9,
+    "items": [
+      {
+        "base": 64,
+        "grow": 0.125,
+        "shrink": 1,
+        "min": 37,
+        "max": null,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 0.5,
+        "shrink": 3,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-32",
+    "available": 301,
+    "gap": 9,
+    "items": [
+      {
+        "base": 127,
+        "grow": 0.125,
+        "shrink": 0,
+        "min": 12,
+        "max": 300,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-33",
+    "available": 607,
+    "gap": 1,
+    "items": [
+      {
+        "base": 23,
+        "grow": 2,
+        "shrink": 3,
+        "min": 99,
+        "max": 150,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0.125,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-34",
+    "available": 0,
+    "gap": 1,
+    "items": [
+      {
+        "base": 3,
+        "grow": 2,
+        "shrink": 1,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          11,
+          -3
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0.125,
+        "shrink": 0,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          11,
+          0
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 2,
+        "shrink": 0,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-35",
+    "available": 100,
+    "gap": 1,
+    "items": [
+      {
+        "base": 64,
+        "grow": 4,
+        "shrink": 3,
+        "min": 0,
+        "max": 20,
+        "margin": [
+          11,
+          4
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 3,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 0,
+        "max": null,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          4,
+          4
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 2,
+        "shrink": 3,
+        "min": 99,
+        "max": null,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 1,
+        "shrink": 1,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0.5,
+        "shrink": 1,
+        "min": 12,
+        "max": 300,
+        "margin": [
+          4,
+          0
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 4,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          11,
+          -3
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-36",
+    "available": 301,
+    "gap": 0,
+    "items": [
+      {
+        "base": 127,
+        "grow": 0,
+        "shrink": 0,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          -8,
+          -8
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 4,
+        "shrink": 0,
+        "min": 12,
+        "max": null,
+        "margin": [
+          4,
+          0
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 0,
+        "shrink": 0,
+        "min": 99,
+        "max": null,
+        "margin": [
+          11,
+          4
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-37",
+    "available": 100,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 3,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 150,
+        "margin": [
+          0,
+          0
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 0.5,
+        "shrink": 3,
+        "min": 37,
+        "max": null,
+        "margin": [
+          11,
+          -8
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-38",
+    "available": 607,
+    "gap": 0,
+    "items": [
+      {
+        "base": 0,
+        "grow": 1,
+        "shrink": 1,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 4,
+        "shrink": 3,
+        "min": 0,
+        "max": 77,
+        "margin": [
+          -3,
+          -8
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 20,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-39",
+    "available": 0,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 127,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 99,
+        "max": null,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-40",
+    "available": 0,
+    "gap": 1,
+    "items": [
+      {
+        "base": 3,
+        "grow": 4,
+        "shrink": 3,
+        "min": 12,
+        "max": 0,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-41",
+    "available": 607,
+    "gap": 14.2,
+    "items": [
+      {
+        "base": 13.7,
+        "grow": 0.5,
+        "shrink": 0,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          -8,
+          11
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          -8,
+          -3
+        ],
+        "padding": [
+          2,
+          2
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 1,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 20,
+        "margin": [
+          -8,
+          0
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 64,
+        "grow": 0,
+        "shrink": 0,
+        "min": 37,
+        "max": null,
+        "margin": [
+          -8,
+          11
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 64,
+        "shrink": 3,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          4,
+          -8
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 0.125,
+        "shrink": 0,
+        "min": 99,
+        "max": null,
+        "margin": [
+          11,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          1,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-42",
+    "available": 0,
+    "gap": 1,
+    "items": [
+      {
+        "base": 13.7,
+        "grow": 2,
+        "shrink": 3,
+        "min": 37,
+        "max": 77,
+        "margin": [
+          -8,
+          11
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          1,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-43",
+    "available": 17,
+    "gap": 0,
+    "items": [
+      {
+        "base": 255,
+        "grow": 0,
+        "shrink": 0,
+        "min": 99,
+        "max": 150,
+        "margin": [
+          11,
+          -8
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 2,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 77,
+        "margin": [
+          4,
+          0
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          0,
+          0
+        ]
+      },
+      {
+        "base": 3,
+        "grow": 0,
+        "shrink": 0,
+        "min": 0,
+        "max": null,
+        "margin": [
+          11,
+          0
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 64,
+        "shrink": 0,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          -8,
+          11
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 0.125,
+        "shrink": 3,
+        "min": 0,
+        "max": 77,
+        "margin": [
+          -3,
+          4
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 0,
+        "max": 0,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          1,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 64,
+        "shrink": 1,
+        "min": 37,
+        "max": 150,
+        "margin": [
+          -8,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-44",
+    "available": 607,
+    "gap": 9,
+    "items": [
+      {
+        "base": 0,
+        "grow": 64,
+        "shrink": 1,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          4,
+          -3
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0.5,
+        "shrink": 1,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          11,
+          0
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          0,
+          1
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 0.5,
+        "shrink": 1,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          11,
+          -8
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          0,
+          2
+        ]
+      },
+      {
+        "base": 127,
+        "grow": 0.125,
+        "shrink": 0,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          -8,
+          0
+        ],
+        "padding": [
+          5,
+          2
+        ],
+        "border": [
+          2,
+          2
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-45",
+    "available": 17,
+    "gap": 1,
+    "items": [
+      {
+        "base": 64,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 20,
+        "margin": [
+          4,
+          -8
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          1,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-46",
+    "available": 607,
+    "gap": 0,
+    "items": [
+      {
+        "base": 64,
+        "grow": 1,
+        "shrink": 0,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          -3,
+          11
+        ],
+        "padding": [
+          0,
+          2
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 300,
+        "margin": [
+          11,
+          -3
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          1,
+          2
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 2,
+        "shrink": 3,
+        "min": 99,
+        "max": 300,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 0,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 37,
+        "max": 0,
+        "margin": [
+          4,
+          11
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0,
+        "shrink": 0,
+        "min": 0,
+        "max": 20,
+        "margin": [
+          0,
+          11
+        ],
+        "padding": [
+          2,
+          0
+        ],
+        "border": [
+          2,
+          0
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0,
+        "shrink": 0.2,
+        "min": 12,
+        "max": 150,
+        "margin": [
+          -3,
+          -3
+        ],
+        "padding": [
+          0,
+          0
+        ],
+        "border": [
+          1,
+          1
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 0.125,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 0,
+        "margin": [
+          0,
+          4
+        ],
+        "padding": [
+          5,
+          5
+        ],
+        "border": [
+          2,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "id": "seeded-47",
+    "available": 0,
+    "gap": 9,
+    "items": [
+      {
+        "base": 127,
+        "grow": 64,
+        "shrink": 0.2,
+        "min": 99,
+        "max": 300,
+        "margin": [
+          0,
+          -8
+        ],
+        "padding": [
+          0,
+          5
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 255,
+        "grow": 1,
+        "shrink": 1,
+        "min": 12,
+        "max": 20,
+        "margin": [
+          4,
+          4
+        ],
+        "padding": [
+          2,
+          5
+        ],
+        "border": [
+          2,
+          2
+        ]
+      },
+      {
+        "base": 23,
+        "grow": 64,
+        "shrink": 1,
+        "min": 37,
+        "max": 20,
+        "margin": [
+          -8,
+          4
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          2,
+          1
+        ]
+      },
+      {
+        "base": 13.7,
+        "grow": 0,
+        "shrink": 1,
+        "min": 12,
+        "max": null,
+        "margin": [
+          11,
+          0
+        ],
+        "padding": [
+          5,
+          0
+        ],
+        "border": [
+          0,
+          2
+        ]
+      }
+    ]
+  }
+]

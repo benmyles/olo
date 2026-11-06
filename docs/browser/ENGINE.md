@@ -1916,6 +1916,36 @@ References: [normal block widths](https://www.w3.org/TR/CSS22/visudet.html#block
 [collapsing margins](https://www.w3.org/TR/CSS22/box.html#collapsing-margins),
 [CSS Display](https://www.w3.org/TR/css-display-3/).
 
+`layout::flex::Job` is now a separate original worker stage for definite
+single-line content-size distribution. It consumes used nonnegative content
+bases/min/max, non-content extents and grow/shrink factors; it does not yet
+construct or lay out flex boxes. It reconstructs checked device-grid quanta,
+normalizes factors to float32, rebuilds ordered cumulative weights after each
+constraint freeze, and distributes from the end with rounded remaining-space
+updates. Partial factors preserve leftover alignment space; min/max violations
+select which items freeze. A zero total violation ends distribution directly,
+including opposing adjustments that cancel, avoiding two terminal item passes.
+
+Every budget visit handles at most one item. Item/work quotas, cancellation,
+poisoned publication and bounded exact length accumulators protect the worker.
+Input/prefix/status scratch is released; final output retains eight bytes per
+item plus a remaining-space scalar. Payload accounting excludes capacity,
+headers and allocator overhead. Negative inner bases (possible with border-box
+basis/decorations), intrinsic/auto bases, percentage resolution, line breaking,
+order/alignment, item/cross-size construction and complete flex formatting
+remain outside this stage. The normal page formatter still rejects flex.
+
+Original independent `tests/flex-fixtures`:64 numeric content-box cases ×5
+verified native DPRs =320 lines /1,095 content widths, all within0.0001 CSS px.
+Unequal/partial/zero factors, weighted shrink, coupled/conflicting min/max,
+negative margins, decorations and fractional lengths/gaps are covered. Chrome
+geometry was captured before writing the solver; its computed widths are not
+native inputs. The tests prepare ordinary used numeric lengths from authored
+numbers; they do not validate the CSS/style pipeline or website pixels.
+`examples/flex_bench` separately measures new worker preparation/measure/drop,
+constructor/128-visit latency and payload with deterministic size/remaining
+hashes. There is no existing page-layout counterpart until it is connected.
+
 ### Initial static page paint and native shell
 
 `page::load` runs the current HTML→styles→boxes→prepared text→flow→paint

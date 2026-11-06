@@ -13,8 +13,9 @@ nonpass: CSS disabled state and environment substitution are implemented;
 horizontal box query-container lengths are implemented and the actual live page
 now reaches layout, where it stops at Unsupported("flex box formatting").
 Initial retained LTR text intrinsic widths now match300 independent Chrome
-min/max pairs; they are not wired into page sizing yet. Implement the required
-original flex layout next. Stripe's own container
+min/max pairs. Initial definite single-line size distribution also matches320
+Chrome lines (1,095 widths). Neither stage is wired into page flex sizing yet.
+Implement the required original flex item construction/layout next. Stripe's own container
 geometry remains unobserved until its formatting tree can be built.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.

@@ -1,0 +1,965 @@
+{
+  "scope": "New single-line flex worker, no prior page-layout counterpart. Seven frozen release processes; preparation-inclusive total and128-visit slice/constructor latency, scalar payload and process RSS. Not site, GPU or presentation acceptance.",
+  "cpu": 0,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "binary_sha256": "23f6edc689d43fdfe53d7c2c84010e27f6964001bd9bcece432faf0759de36cc",
+  "script": "#!/usr/bin/python3\n\"\"\"Release worker cost: same-binary materialized-line control vs intrinsic widths.\nOrdinary Latin design-unit measures only, excluding preparation and UI/GPU.\nBoth variants warm and validate both paths, so process peak RSS is not an\nisolated allocation comparison. Numeric/line payloads exclude capacities,\nshared text/fonts, allocator overhead and control shaping caches.\n\"\"\"\nimport hashlib,json,os,select,statistics,subprocess\nfrom pathlib import Path\nroot=Path('/var/tmp/olo-browser-stripe/flex/cost')\nbinary=root/'flex-after'\nallowed=sorted(os.sched_getaffinity(0))\ndef frequency(cpu):\n p=Path(f'/sys/devices/system/cpu/cpu{cpu}/cpufreq/cpuinfo_max_freq')\n return int(p.read_text())if p.exists()else 0\ncpu=max(allowed,key=frequency);os.sched_setaffinity(0,{cpu})\ndef context():\n procs={}\n for p in Path('/proc').iterdir():\n  if p.name.isdigit():\n   try:\n    name=(p/'comm').read_text().strip()\n    if name in ('cargo','rustc'):procs[p.name]=name\n   except OSError:pass\n return dict(loadavg=os.getloadavg(),build_processes=procs)\nrows,discarded,waits=[],[],[]\nfor repeat in range(7):\n while True:\n  before=context();compilers=[p for p,n in before['build_processes'].items()if n=='rustc']\n  if compilers:\n   waits.append(before);fds=[]\n   try:\n    for pid in compilers:\n     try:fds.append(os.pidfd_open(int(pid)))\n     except ProcessLookupError:pass\n    if fds:select.select(fds,[],[],20)\n   finally:\n    for fd in fds:os.close(fd)\n   continue\n  rss=root/'flex.rss'\n  data=json.loads(subprocess.check_output(['/usr/bin/time','-f','%M','-o',str(rss),str(binary),'200'],text=True))\n  observation=dict(repeat=repeat,before_context=before,after_context=context(),rss_kib=int(rss.read_text()),**data)\n  if 'rustc'in observation['after_context']['build_processes'].values():discarded.append(observation);continue\n  rows.append(observation);print(repeat,flush=True);break\nreference={(c['items'],c['growing']):c['digest']for c in rows[0]['rows']}\nassert all(c['digest']==reference[c['items'],c['growing']]for r in rows for c in r['rows'])\nsummary=[]\nfor count,growing in reference:\n group=[c for r in rows for c in r['rows']if c['items']==count and c['growing']==growing]\n summary.append(dict(items=count,growing=growing,**{k:statistics.median(c[k]for c in group)for k in ['prepare_measure_drop_us','max_ctor_us','max_128_visit_step_us','input_and_scratch_payload_bytes','published_size_bytes']},worst_step_us=max(c['max_128_visit_step_us']for c in group)))\nsource=Path(__file__).read_text()\nPath('docs/browser/measurements/2026-11-06-stripe-flex-line-cost.json').write_text(json.dumps(dict(scope='New single-line flex worker, no prior page-layout counterpart. Seven frozen release processes; preparation-inclusive total and128-visit slice/constructor latency, scalar payload and process RSS. Not site, GPU or presentation acceptance.',cpu=cpu,allowed_cpus=allowed,binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),script=source,observations=rows,discarded=discarded,build_waits=waits,summary=summary),indent=2)+'\\n')\nprint(json.dumps(summary),flush=True)\n",
+  "observations": [
+    {
+      "repeat": 0,
+      "before_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 2788,
+      "item_bytes": 48,
+      "job_bytes": 352,
+      "rounds": 200,
+      "rows": [
+        {
+          "digest": "f7eff9435f6a69f5495dfb528ede22955bfab507303837bfc6f585fdc79ab71c",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 1.846,
+          "max_ctor_us": 0.052000000000000005,
+          "prepare_measure_drop_us": 0.381135,
+          "published_size_bytes": 32,
+          "work": 45
+        },
+        {
+          "digest": "b1592d53b85868561b0250c5234291f2878337869ec26e4c37f936d8914562b9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 0.317,
+          "max_ctor_us": 0.045,
+          "prepare_measure_drop_us": 0.29425500000000004,
+          "published_size_bytes": 32,
+          "work": 30
+        },
+        {
+          "digest": "92f7eb155babe24b3ac7101afcca5f3c6b2e372f5c23ca104fcc8db6e30e7d22",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 6.234,
+          "max_ctor_us": 0.043000000000000003,
+          "prepare_measure_drop_us": 1.874355,
+          "published_size_bytes": 256,
+          "work": 297
+        },
+        {
+          "digest": "d3d2c3474c8e80f69df73d8decf3b7494e1c1c97e8ad85aae8de3fc32e3c12b8",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 2.3,
+          "max_ctor_us": 0.045,
+          "prepare_measure_drop_us": 1.406995,
+          "published_size_bytes": 256,
+          "work": 198
+        },
+        {
+          "digest": "f018bfc327a151fc2766e3305a927ecaed0e787004e3e40a11810b730dac5dd6",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 5.643999999999999,
+          "max_ctor_us": 0.041999999999999996,
+          "prepare_measure_drop_us": 12.465665,
+          "published_size_bytes": 2048,
+          "work": 2313
+        },
+        {
+          "digest": "9e0e70e88361918ce23b07fc5df6146470533dbdd8a7a54c4a0b83dbb8ac0373",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 2.2110000000000003,
+          "max_ctor_us": 0.043000000000000003,
+          "prepare_measure_drop_us": 8.924695,
+          "published_size_bytes": 2048,
+          "work": 1542
+        },
+        {
+          "digest": "c041db6e0e13d13e555ce4657951d917e59c0cb8e5a84c520752f1e345bdec56",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 14.831000000000001,
+          "max_ctor_us": 0.049999999999999996,
+          "prepare_measure_drop_us": 194.36514,
+          "published_size_bytes": 32768,
+          "work": 36873
+        },
+        {
+          "digest": "891544750c7edc117341f24b4616da7f29f424b81a59dec5688527f3865896d9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 23.997,
+          "max_ctor_us": 0.083,
+          "prepare_measure_drop_us": 135.35172999999998,
+          "published_size_bytes": 32768,
+          "work": 24582
+        }
+      ],
+      "scope": "new definite single-line worker stage; no parent page-layout counterpart. Total includes scalar-input clone and result drop; ctor/steps exclude clone. Payload excludes capacities/headers/allocator overhead and the benchmark input template. No DOM, text sizing, GPU or presentation."
+    },
+    {
+      "repeat": 1,
+      "before_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 2900,
+      "item_bytes": 48,
+      "job_bytes": 352,
+      "rounds": 200,
+      "rows": [
+        {
+          "digest": "f7eff9435f6a69f5495dfb528ede22955bfab507303837bfc6f585fdc79ab71c",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 1.5430000000000001,
+          "max_ctor_us": 0.06,
+          "prepare_measure_drop_us": 0.349645,
+          "published_size_bytes": 32,
+          "work": 45
+        },
+        {
+          "digest": "b1592d53b85868561b0250c5234291f2878337869ec26e4c37f936d8914562b9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 0.309,
+          "max_ctor_us": 0.031,
+          "prepare_measure_drop_us": 0.279455,
+          "published_size_bytes": 32,
+          "work": 30
+        },
+        {
+          "digest": "92f7eb155babe24b3ac7101afcca5f3c6b2e372f5c23ca104fcc8db6e30e7d22",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 5.433000000000001,
+          "max_ctor_us": 0.056,
+          "prepare_measure_drop_us": 1.8857050000000002,
+          "published_size_bytes": 256,
+          "work": 297
+        },
+        {
+          "digest": "d3d2c3474c8e80f69df73d8decf3b7494e1c1c97e8ad85aae8de3fc32e3c12b8",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 2.602,
+          "max_ctor_us": 0.035,
+          "prepare_measure_drop_us": 1.368025,
+          "published_size_bytes": 256,
+          "work": 198
+        },
+        {
+          "digest": "f018bfc327a151fc2766e3305a927ecaed0e787004e3e40a11810b730dac5dd6",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 35.415,
+          "max_ctor_us": 0.039,
+          "prepare_measure_drop_us": 12.68567,
+          "published_size_bytes": 2048,
+          "work": 2313
+        },
+        {
+          "digest": "9e0e70e88361918ce23b07fc5df6146470533dbdd8a7a54c4a0b83dbb8ac0373",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 5.013999999999999,
+          "max_ctor_us": 0.032,
+          "prepare_measure_drop_us": 8.851284999999999,
+          "published_size_bytes": 2048,
+          "work": 1542
+        },
+        {
+          "digest": "c041db6e0e13d13e555ce4657951d917e59c0cb8e5a84c520752f1e345bdec56",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 15.659,
+          "max_ctor_us": 0.041999999999999996,
+          "prepare_measure_drop_us": 191.61185,
+          "published_size_bytes": 32768,
+          "work": 36873
+        },
+        {
+          "digest": "891544750c7edc117341f24b4616da7f29f424b81a59dec5688527f3865896d9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 6.733,
+          "max_ctor_us": 0.039,
+          "prepare_measure_drop_us": 133.94092999999998,
+          "published_size_bytes": 32768,
+          "work": 24582
+        }
+      ],
+      "scope": "new definite single-line worker stage; no parent page-layout counterpart. Total includes scalar-input clone and result drop; ctor/steps exclude clone. Payload excludes capacities/headers/allocator overhead and the benchmark input template. No DOM, text sizing, GPU or presentation."
+    },
+    {
+      "repeat": 2,
+      "before_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 3024,
+      "item_bytes": 48,
+      "job_bytes": 352,
+      "rounds": 200,
+      "rows": [
+        {
+          "digest": "f7eff9435f6a69f5495dfb528ede22955bfab507303837bfc6f585fdc79ab71c",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 1.68,
+          "max_ctor_us": 0.041999999999999996,
+          "prepare_measure_drop_us": 0.38854500000000003,
+          "published_size_bytes": 32,
+          "work": 45
+        },
+        {
+          "digest": "b1592d53b85868561b0250c5234291f2878337869ec26e4c37f936d8914562b9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 0.374,
+          "max_ctor_us": 0.032999999999999995,
+          "prepare_measure_drop_us": 0.29560000000000003,
+          "published_size_bytes": 32,
+          "work": 30
+        },
+        {
+          "digest": "92f7eb155babe24b3ac7101afcca5f3c6b2e372f5c23ca104fcc8db6e30e7d22",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 4.467,
+          "max_ctor_us": 0.035,
+          "prepare_measure_drop_us": 1.8826349999999998,
+          "published_size_bytes": 256,
+          "work": 297
+        },
+        {
+          "digest": "d3d2c3474c8e80f69df73d8decf3b7494e1c1c97e8ad85aae8de3fc32e3c12b8",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 2.342,
+          "max_ctor_us": 0.032999999999999995,
+          "prepare_measure_drop_us": 1.385345,
+          "published_size_bytes": 256,
+          "work": 198
+        },
+        {
+          "digest": "f018bfc327a151fc2766e3305a927ecaed0e787004e3e40a11810b730dac5dd6",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 29.95,
+          "max_ctor_us": 0.038000000000000006,
+          "prepare_measure_drop_us": 12.789015,
+          "published_size_bytes": 2048,
+          "work": 2313
+        },
+        {
+          "digest": "9e0e70e88361918ce23b07fc5df6146470533dbdd8a7a54c4a0b83dbb8ac0373",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 3.438,
+          "max_ctor_us": 0.032,
+          "prepare_measure_drop_us": 8.92946,
+          "published_size_bytes": 2048,
+          "work": 1542
+        },
+        {
+          "digest": "c041db6e0e13d13e555ce4657951d917e59c0cb8e5a84c520752f1e345bdec56",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 326.002,
+          "max_ctor_us": 0.038000000000000006,
+          "prepare_measure_drop_us": 206.573425,
+          "published_size_bytes": 32768,
+          "work": 36873
+        },
+        {
+          "digest": "891544750c7edc117341f24b4616da7f29f424b81a59dec5688527f3865896d9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 338.789,
+          "max_ctor_us": 0.039,
+          "prepare_measure_drop_us": 196.70912,
+          "published_size_bytes": 32768,
+          "work": 24582
+        }
+      ],
+      "scope": "new definite single-line worker stage; no parent page-layout counterpart. Total includes scalar-input clone and result drop; ctor/steps exclude clone. Payload excludes capacities/headers/allocator overhead and the benchmark input template. No DOM, text sizing, GPU or presentation."
+    },
+    {
+      "repeat": 3,
+      "before_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 2980,
+      "item_bytes": 48,
+      "job_bytes": 352,
+      "rounds": 200,
+      "rows": [
+        {
+          "digest": "f7eff9435f6a69f5495dfb528ede22955bfab507303837bfc6f585fdc79ab71c",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 1.604,
+          "max_ctor_us": 0.04,
+          "prepare_measure_drop_us": 0.38388,
+          "published_size_bytes": 32,
+          "work": 45
+        },
+        {
+          "digest": "b1592d53b85868561b0250c5234291f2878337869ec26e4c37f936d8914562b9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 0.34400000000000003,
+          "max_ctor_us": 0.054,
+          "prepare_measure_drop_us": 0.2932,
+          "published_size_bytes": 32,
+          "work": 30
+        },
+        {
+          "digest": "92f7eb155babe24b3ac7101afcca5f3c6b2e372f5c23ca104fcc8db6e30e7d22",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 16.580000000000002,
+          "max_ctor_us": 0.055,
+          "prepare_measure_drop_us": 1.97992,
+          "published_size_bytes": 256,
+          "work": 297
+        },
+        {
+          "digest": "d3d2c3474c8e80f69df73d8decf3b7494e1c1c97e8ad85aae8de3fc32e3c12b8",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 2.342,
+          "max_ctor_us": 0.032999999999999995,
+          "prepare_measure_drop_us": 1.3775199999999999,
+          "published_size_bytes": 256,
+          "work": 198
+        },
+        {
+          "digest": "f018bfc327a151fc2766e3305a927ecaed0e787004e3e40a11810b730dac5dd6",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 30.618,
+          "max_ctor_us": 0.032,
+          "prepare_measure_drop_us": 12.71961,
+          "published_size_bytes": 2048,
+          "work": 2313
+        },
+        {
+          "digest": "9e0e70e88361918ce23b07fc5df6146470533dbdd8a7a54c4a0b83dbb8ac0373",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 2.3209999999999997,
+          "max_ctor_us": 0.048,
+          "prepare_measure_drop_us": 9.174905,
+          "published_size_bytes": 2048,
+          "work": 1542
+        },
+        {
+          "digest": "c041db6e0e13d13e555ce4657951d917e59c0cb8e5a84c520752f1e345bdec56",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 18.916,
+          "max_ctor_us": 0.053,
+          "prepare_measure_drop_us": 192.728045,
+          "published_size_bytes": 32768,
+          "work": 36873
+        },
+        {
+          "digest": "891544750c7edc117341f24b4616da7f29f424b81a59dec5688527f3865896d9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 16.773999999999997,
+          "max_ctor_us": 0.083,
+          "prepare_measure_drop_us": 135.90042499999998,
+          "published_size_bytes": 32768,
+          "work": 24582
+        }
+      ],
+      "scope": "new definite single-line worker stage; no parent page-layout counterpart. Total includes scalar-input clone and result drop; ctor/steps exclude clone. Payload excludes capacities/headers/allocator overhead and the benchmark input template. No DOM, text sizing, GPU or presentation."
+    },
+    {
+      "repeat": 4,
+      "before_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 2896,
+      "item_bytes": 48,
+      "job_bytes": 352,
+      "rounds": 200,
+      "rows": [
+        {
+          "digest": "f7eff9435f6a69f5495dfb528ede22955bfab507303837bfc6f585fdc79ab71c",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 1.5,
+          "max_ctor_us": 0.06599999999999999,
+          "prepare_measure_drop_us": 0.368125,
+          "published_size_bytes": 32,
+          "work": 45
+        },
+        {
+          "digest": "b1592d53b85868561b0250c5234291f2878337869ec26e4c37f936d8914562b9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 0.315,
+          "max_ctor_us": 0.034,
+          "prepare_measure_drop_us": 0.29136,
+          "published_size_bytes": 32,
+          "work": 30
+        },
+        {
+          "digest": "92f7eb155babe24b3ac7101afcca5f3c6b2e372f5c23ca104fcc8db6e30e7d22",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 1.836,
+          "max_ctor_us": 0.034,
+          "prepare_measure_drop_us": 1.809395,
+          "published_size_bytes": 256,
+          "work": 297
+        },
+        {
+          "digest": "d3d2c3474c8e80f69df73d8decf3b7494e1c1c97e8ad85aae8de3fc32e3c12b8",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 2.214,
+          "max_ctor_us": 0.034,
+          "prepare_measure_drop_us": 1.3396350000000001,
+          "published_size_bytes": 256,
+          "work": 198
+        },
+        {
+          "digest": "f018bfc327a151fc2766e3305a927ecaed0e787004e3e40a11810b730dac5dd6",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 28.797,
+          "max_ctor_us": 0.054,
+          "prepare_measure_drop_us": 12.890785000000001,
+          "published_size_bytes": 2048,
+          "work": 2313
+        },
+        {
+          "digest": "9e0e70e88361918ce23b07fc5df6146470533dbdd8a7a54c4a0b83dbb8ac0373",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 3.474,
+          "max_ctor_us": 0.032,
+          "prepare_measure_drop_us": 8.927330000000001,
+          "published_size_bytes": 2048,
+          "work": 1542
+        },
+        {
+          "digest": "c041db6e0e13d13e555ce4657951d917e59c0cb8e5a84c520752f1e345bdec56",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 14.816,
+          "max_ctor_us": 0.047,
+          "prepare_measure_drop_us": 193.213135,
+          "published_size_bytes": 32768,
+          "work": 36873
+        },
+        {
+          "digest": "891544750c7edc117341f24b4616da7f29f424b81a59dec5688527f3865896d9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 24.772,
+          "max_ctor_us": 0.047,
+          "prepare_measure_drop_us": 134.609675,
+          "published_size_bytes": 32768,
+          "work": 24582
+        }
+      ],
+      "scope": "new definite single-line worker stage; no parent page-layout counterpart. Total includes scalar-input clone and result drop; ctor/steps exclude clone. Payload excludes capacities/headers/allocator overhead and the benchmark input template. No DOM, text sizing, GPU or presentation."
+    },
+    {
+      "repeat": 5,
+      "before_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 2780,
+      "item_bytes": 48,
+      "job_bytes": 352,
+      "rounds": 200,
+      "rows": [
+        {
+          "digest": "f7eff9435f6a69f5495dfb528ede22955bfab507303837bfc6f585fdc79ab71c",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 1.558,
+          "max_ctor_us": 0.053,
+          "prepare_measure_drop_us": 0.389075,
+          "published_size_bytes": 32,
+          "work": 45
+        },
+        {
+          "digest": "b1592d53b85868561b0250c5234291f2878337869ec26e4c37f936d8914562b9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 0.3,
+          "max_ctor_us": 0.056,
+          "prepare_measure_drop_us": 0.29766,
+          "published_size_bytes": 32,
+          "work": 30
+        },
+        {
+          "digest": "92f7eb155babe24b3ac7101afcca5f3c6b2e372f5c23ca104fcc8db6e30e7d22",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 1.932,
+          "max_ctor_us": 0.153,
+          "prepare_measure_drop_us": 1.82988,
+          "published_size_bytes": 256,
+          "work": 297
+        },
+        {
+          "digest": "d3d2c3474c8e80f69df73d8decf3b7494e1c1c97e8ad85aae8de3fc32e3c12b8",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 4.999,
+          "max_ctor_us": 0.032999999999999995,
+          "prepare_measure_drop_us": 1.3961750000000002,
+          "published_size_bytes": 256,
+          "work": 198
+        },
+        {
+          "digest": "f018bfc327a151fc2766e3305a927ecaed0e787004e3e40a11810b730dac5dd6",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 29.587,
+          "max_ctor_us": 0.041,
+          "prepare_measure_drop_us": 12.52619,
+          "published_size_bytes": 2048,
+          "work": 2313
+        },
+        {
+          "digest": "9e0e70e88361918ce23b07fc5df6146470533dbdd8a7a54c4a0b83dbb8ac0373",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 3.9949999999999997,
+          "max_ctor_us": 0.041999999999999996,
+          "prepare_measure_drop_us": 8.836095,
+          "published_size_bytes": 2048,
+          "work": 1542
+        },
+        {
+          "digest": "c041db6e0e13d13e555ce4657951d917e59c0cb8e5a84c520752f1e345bdec56",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 14.259,
+          "max_ctor_us": 0.038000000000000006,
+          "prepare_measure_drop_us": 192.17682499999998,
+          "published_size_bytes": 32768,
+          "work": 36873
+        },
+        {
+          "digest": "891544750c7edc117341f24b4616da7f29f424b81a59dec5688527f3865896d9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 6.722,
+          "max_ctor_us": 0.047,
+          "prepare_measure_drop_us": 134.639105,
+          "published_size_bytes": 32768,
+          "work": 24582
+        }
+      ],
+      "scope": "new definite single-line worker stage; no parent page-layout counterpart. Total includes scalar-input clone and result drop; ctor/steps exclude clone. Payload excludes capacities/headers/allocator overhead and the benchmark input template. No DOM, text sizing, GPU or presentation."
+    },
+    {
+      "repeat": 6,
+      "before_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          4.12890625,
+          6.0107421875,
+          9.228515625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 2924,
+      "item_bytes": 48,
+      "job_bytes": 352,
+      "rounds": 200,
+      "rows": [
+        {
+          "digest": "f7eff9435f6a69f5495dfb528ede22955bfab507303837bfc6f585fdc79ab71c",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 1.72,
+          "max_ctor_us": 0.058,
+          "prepare_measure_drop_us": 0.418905,
+          "published_size_bytes": 32,
+          "work": 45
+        },
+        {
+          "digest": "b1592d53b85868561b0250c5234291f2878337869ec26e4c37f936d8914562b9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 260,
+          "items": 4,
+          "max_128_visit_step_us": 0.256,
+          "max_ctor_us": 0.032,
+          "prepare_measure_drop_us": 0.29547500000000004,
+          "published_size_bytes": 32,
+          "work": 30
+        },
+        {
+          "digest": "92f7eb155babe24b3ac7101afcca5f3c6b2e372f5c23ca104fcc8db6e30e7d22",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 1.8250000000000002,
+          "max_ctor_us": 0.034,
+          "prepare_measure_drop_us": 1.79211,
+          "published_size_bytes": 256,
+          "work": 297
+        },
+        {
+          "digest": "d3d2c3474c8e80f69df73d8decf3b7494e1c1c97e8ad85aae8de3fc32e3c12b8",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 2080,
+          "items": 32,
+          "max_128_visit_step_us": 15.664000000000001,
+          "max_ctor_us": 0.041,
+          "prepare_measure_drop_us": 1.47213,
+          "published_size_bytes": 256,
+          "work": 198
+        },
+        {
+          "digest": "f018bfc327a151fc2766e3305a927ecaed0e787004e3e40a11810b730dac5dd6",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 31.992,
+          "max_ctor_us": 0.039,
+          "prepare_measure_drop_us": 12.847529999999999,
+          "published_size_bytes": 2048,
+          "work": 2313
+        },
+        {
+          "digest": "9e0e70e88361918ce23b07fc5df6146470533dbdd8a7a54c4a0b83dbb8ac0373",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 16640,
+          "items": 256,
+          "max_128_visit_step_us": 4.553,
+          "max_ctor_us": 0.032999999999999995,
+          "prepare_measure_drop_us": 9.07677,
+          "published_size_bytes": 2048,
+          "work": 1542
+        },
+        {
+          "digest": "c041db6e0e13d13e555ce4657951d917e59c0cb8e5a84c520752f1e345bdec56",
+          "freeze_rounds": 2,
+          "growing": true,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 14.116,
+          "max_ctor_us": 0.041,
+          "prepare_measure_drop_us": 194.53699,
+          "published_size_bytes": 32768,
+          "work": 36873
+        },
+        {
+          "digest": "891544750c7edc117341f24b4616da7f29f424b81a59dec5688527f3865896d9",
+          "freeze_rounds": 1,
+          "growing": false,
+          "input_and_scratch_payload_bytes": 266240,
+          "items": 4096,
+          "max_128_visit_step_us": 8.477,
+          "max_ctor_us": 0.041,
+          "prepare_measure_drop_us": 135.99317,
+          "published_size_bytes": 32768,
+          "work": 24582
+        }
+      ],
+      "scope": "new definite single-line worker stage; no parent page-layout counterpart. Total includes scalar-input clone and result drop; ctor/steps exclude clone. Payload excludes capacities/headers/allocator overhead and the benchmark input template. No DOM, text sizing, GPU or presentation."
+    }
+  ],
+  "discarded": [],
+  "build_waits": [],
+  "summary": [
+    {
+      "items": 4,
+      "growing": true,
+      "prepare_measure_drop_us": 0.38388,
+      "max_ctor_us": 0.053,
+      "max_128_visit_step_us": 1.604,
+      "input_and_scratch_payload_bytes": 260,
+      "published_size_bytes": 32,
+      "worst_step_us": 1.846
+    },
+    {
+      "items": 4,
+      "growing": false,
+      "prepare_measure_drop_us": 0.29425500000000004,
+      "max_ctor_us": 0.034,
+      "max_128_visit_step_us": 0.315,
+      "input_and_scratch_payload_bytes": 260,
+      "published_size_bytes": 32,
+      "worst_step_us": 0.374
+    },
+    {
+      "items": 32,
+      "growing": true,
+      "prepare_measure_drop_us": 1.874355,
+      "max_ctor_us": 0.043000000000000003,
+      "max_128_visit_step_us": 4.467,
+      "input_and_scratch_payload_bytes": 2080,
+      "published_size_bytes": 256,
+      "worst_step_us": 16.580000000000002
+    },
+    {
+      "items": 32,
+      "growing": false,
+      "prepare_measure_drop_us": 1.385345,
+      "max_ctor_us": 0.034,
+      "max_128_visit_step_us": 2.342,
+      "input_and_scratch_payload_bytes": 2080,
+      "published_size_bytes": 256,
+      "worst_step_us": 15.664000000000001
+    },
+    {
+      "items": 256,
+      "growing": true,
+      "prepare_measure_drop_us": 12.71961,
+      "max_ctor_us": 0.039,
+      "max_128_visit_step_us": 29.95,
+      "input_and_scratch_payload_bytes": 16640,
+      "published_size_bytes": 2048,
+      "worst_step_us": 35.415
+    },
+    {
+      "items": 256,
+      "growing": false,
+      "prepare_measure_drop_us": 8.927330000000001,
+      "max_ctor_us": 0.032999999999999995,
+      "max_128_visit_step_us": 3.474,
+      "input_and_scratch_payload_bytes": 16640,
+      "published_size_bytes": 2048,
+      "worst_step_us": 5.013999999999999
+    },
+    {
+      "items": 4096,
+      "growing": true,
+      "prepare_measure_drop_us": 193.213135,
+      "max_ctor_us": 0.041999999999999996,
+      "max_128_visit_step_us": 14.831000000000001,
+      "input_and_scratch_payload_bytes": 266240,
+      "published_size_bytes": 32768,
+      "worst_step_us": 326.002
+    },
+    {
+      "items": 4096,
+      "growing": false,
+      "prepare_measure_drop_us": 135.35172999999998,
+      "max_ctor_us": 0.047,
+      "max_128_visit_step_us": 16.773999999999997,
+      "input_and_scratch_payload_bytes": 266240,
+      "published_size_bytes": 32768,
+      "worst_step_us": 338.789
+    }
+  ],
+  "script_header_erratum": "The embedded replay script retains the earlier text-measurement docstring it was copied from. Its actual flex_bench commands and this file's scope/observations are authoritative; neither a text intrinsic/materialized control nor its warmup policy is measured here."
+}

@@ -73,8 +73,10 @@ Do not suppress selector/value failures or replace the site with authored HTML.
   Initial retained LTR intrinsic text widths now match300 independent Chrome
   min/max pairs at five native scales. They remain outside page sizing, with
   bidi/multi-run items, inline objects/decorations and soft hyphens explicit
-  unsupported contexts. Next: flex item sizing/wrapping/alignment and anonymous
-  item construction using these measurements; no guessed text widths.
+  unsupported contexts. Definite single-line size distribution now matches320
+  original Chrome lines (1,095 widths); it remains outside page layout. Next:
+  item construction/intrinsic bases and formatting integration, then wrapping/
+  alignment using measured content; no guessed text widths.
 - [ ] Complete container semantics: early/inherited contexts, query conditions,
   vertical modes, replaced containment and additional type/name grammars.
 - [ ] Pin a complete replay, locale/region/cohort, assets, fonts and dynamic clock

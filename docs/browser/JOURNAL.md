@@ -4378,3 +4378,52 @@ The ordinary-path cost nonpasses from the intrinsic checkpoint are now also
 explicit in TODO. **Stripe0/30, corpus0/100,0/3000; goal active.** Continue with
 flex item sizing/construction against independent Chrome geometry, then wire
 the measured content into the formatter and retry Stripe.
+
+### 2026-11-06 — Original definite flex line size distribution
+
+Added original `layout::flex::Job` for used nonnegative content bases/min/max,
+non-content extents and finite float32 grow/shrink factors. It distributes exact
+layout quanta using ordered cumulative weights and reverse remaining-space
+updates, then freezes the appropriate min/max violations and rebuilds scalar
+sums. Partial factors preserve remaining alignment space. Every budget visit
+handles at most one item; quotas, cancellation, failed-result poisoning and
+bounded exact length arithmetic are explicit. The352-byte job consumes scalar
+item scratch; only eight bytes per item survive publication, plus remaining
+space. There is no shaping, timer, UI or page-layout call yet.
+
+Before writing the solver, captured64 original numeric cases at five verified
+native DPRs:320 lines /1,095 content widths. All match within0.0001 CSS px on
+the first native pass and after optimization. Inputs come from authored numbers
+and ordinary used-length/border snapping, not Chrome computed widths. Cases
+cover weighted/partial/zero factors, coupled/conflicting min/max, zero bases/
+available space, negative margins, decorations and fractional sizes/gaps. Also
+check remaining space on the independent partial-grow case, malformed/overflow
+inputs, item/work limits, cancellation, poisoning and budget invariance. Reference
+Chrome processes quit and exit was awaited; owned screen stopped.
+
+This is an initial sizing stage, not complete Flexbox. Item construction, auto/
+intrinsic/percentage bases and automatic minimum policy, negative border-box
+inner bases, wrapping, order, cross sizes and alignment remain. The actual page
+formatter still rejects flex; no Stripe startup advancement or site acceptance
+is claimed. Next connect item/intrinsic construction and this stage to layout.
+
+Release287 default Browser/web pass,2 ignored; final focused3 pass; all-feature
+web273 pass,1 ignored. Strict all-target clippy, format/AST/diff and workspace
+44.67s including build-directory wait pass. No personal session install/reload;
+no visible UI path was changed or newly invoked, so no new screenshot journal.
+
+Initial release measurement retained. It exposed two redundant terminal passes
+once total clamp adjustment is zero; removed them, including the opposing-
+adjustment cancellation case, without changing any reference/benchmark size or
+remaining-space hash. Final CPU0/seven rotated200-round processes per variant:
+14 accepted,0 discards/waits/compiler/Cargo contexts, load7.27. Growing/shrinking
+4-item total0.370/0.286→0.335/0.270µs;4,096-item195.61/135.98→166.60/109.49µs.
+Total includes scalar input cloning and result drop; constructor/slices exclude
+that clone. Worst final constructor0.267µs and128-visit slice33.696µs. Scalar
+input/scratch65B per item (266,240B at4,096), final sizes32,768B; excludes
+capacity/headers/allocator overhead and the benchmark input template. Process
+RSS median2,900→2,912KiB is separate from payload. No existing page-layout
+counterpart exists until integration; no website, GPU or presentation claim.
+Prior ordinary-path/image/environment/state/fuzz nonpasses remain open.
+Evidence:stripe-flex-line-{checks,cost,cost-initial}.json and original fixtures.
+**Stripe0/30, corpus0/100 and0/3000; goal active.**

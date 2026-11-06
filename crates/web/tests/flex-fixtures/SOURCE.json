@@ -1,0 +1,30 @@
+{
+  "scope": "Original authored definite single-line content-box flex geometry; no full CSS pipeline or website acceptance",
+  "date": "2026-11-06",
+  "reference": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "hashes": {
+    "cases.json": "e8b15428af6a46ad33b76a29d31677380dd2e8dba77f6c9895f13806a36fafa1",
+    "chrome.json": "aa113175ab1b1cd4d92ac0ae33b917c6a3f2bf5d2244f0befcd14e5a26b4bc43",
+    "capture.py": "bf9512d672a5c5f6efb3a541105b8fd65874b0f8482c1ea08eabb367d81d7e0e",
+    "README.md": "4dcbecaa20baa1b799d3d647a80dd96b297dd0bf0e25bcf73d29ef1462c45936"
+  },
+  "observations": {
+    "cases": 64,
+    "native_dprs": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "lines": 320,
+    "content_widths": 1095
+  },
+  "inputs": "Native used numeric lengths derived only from authored case numbers, not reference computed widths"
+}
