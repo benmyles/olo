@@ -183,6 +183,15 @@ impl Capture {
         Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, filled: false, frame: None, into_own: false })
     }
 
+    /// Frames into shared memory, never dmabufs (asked before the first
+    /// frame): for a picture read on the CPU in a process that has a GPU
+    /// context of its own (the share picker's thumbnails, in olo-portal's
+    /// window), where a dmabuf mapped for reading came back black.
+    pub fn in_memory(mut self) -> Capture {
+        self.gbm = None;
+        self
+    }
+
     /// Whether frames come through the GPU (dmabufs).
     pub fn on_gpu(&self) -> bool {
         matches!(self.buffer, Some((_, Target::Dma(_), _)))

@@ -6592,7 +6592,11 @@ its request, for the app's Cancel and for holding an upgrade off.
   screen's shape (192×108 for 16:9), windows' are 160×100, all whole
   device pixels at every quarter scale; a worker keeps a capture of each,
   asks for a frame now and then (a screen twice a second, a window every
-  two; app_server answers when it changed), and shrinks it to the well's
+  two; app_server answers when it changed), into shared memory
+  (`Capture::in_memory`: a dmabuf mapped for reading in the portal's own
+  GPU-drawing process came back black, every thumbnail an empty well;
+  app_server reads a frame back for it, 1.0% of a core while the picker
+  is open at 1280×800), and shrinks it to the well's
   size in device pixels for the scale it is drawn at, only ever from a
   whole frame (`Capture::frame_size`: not a buffer allocated for a new
   size that waits for its first, which is uninitialised memory), read

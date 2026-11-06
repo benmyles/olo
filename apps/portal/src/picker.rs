@@ -248,7 +248,8 @@ impl Picker {
             let mut captures: Vec<(String, bool, Option<Capture>, Instant)> = items
                 .into_iter()
                 .map(|(key, source, screen)| {
-                    let mut c = Capture::new(&source, false).ok();
+                    // (In memory: dmabufs read back here came back black.)
+                    let mut c = Capture::new(&source, false).ok().map(Capture::in_memory);
                     if let Some(cap) = c.as_mut()
                         && cap.request().is_err()
                     {
