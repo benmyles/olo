@@ -169,6 +169,8 @@ pub struct Fuzz {
     pub home: HashMap<String, ((i32, i32), f64)>,
     /// Every state seen while settling, a few milliseconds apart.
     pub trail: Vec<Wins>,
+    /// Crash reports seen in the session's home (`check_crashes`).
+    pub crashes_seen: HashSet<std::ffi::OsString>,
     pub step_trail: Vec<(f64, Wins)>,
     pub step_t0: Instant,
     log_at: Option<u64>,
@@ -193,6 +195,7 @@ impl Fuzz {
             history: Vec::new(),
             failures: Vec::new(),
             step: 0,
+            crashes_seen: HashSet::new(),
             out,
             by_hand: BTreeSet::new(),
             alone: BTreeSet::new(),
@@ -420,7 +423,42 @@ impl Fuzz {
         }
     }
 
+    /// A program of the session's crashed (a crash report new in its
+    /// home's `olo/crashes`, `olo_crash::dir`): a failure, saying what and
+    /// where, the report kept with the session's logs. (A crashed app is
+    /// often only seen as a window gone, or one coming back late, opened
+    /// again with a crash's alert.)
+    pub fn check_crashes(&mut self) -> Step {
+        let Some(home) = self.session.env.get("HOME").cloned() else { return Ok(()) };
+        let dir = std::path::Path::new(&home).join(".local/state/olo/crashes");
+        let Ok(entries) = std::fs::read_dir(&dir) else { return Ok(()) };
+        let mut new = Vec::new();
+        for e in entries.flatten() {
+            let name = e.file_name();
+            if name.to_string_lossy().starts_with('.') || !name.to_string_lossy().ends_with(".json") || !self.crashes_seen.insert(name.clone()) {
+                continue;
+            }
+            new.push(e.path());
+        }
+        for path in new {
+            let kept = self.session.dir.join("crashes");
+            let _ = std::fs::create_dir_all(&kept);
+            if let Some(n) = path.file_name() {
+                let _ = std::fs::copy(&path, kept.join(n));
+            }
+            let report: serde_json::Value = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+            let field = |k: &str| report.get(k).and_then(|v| v.as_str().map(str::to_owned).or_else(|| (!v.is_null()).then(|| v.to_string()))).unwrap_or_default();
+            let what = match field("message") {
+                m if !m.is_empty() => format!("{m} at {}", field("place")),
+                _ => format!("signal {}", field("signal")),
+            };
+            self.fail(&format!("{} crashed: {what}", field("program")))?;
+        }
+        Ok(())
+    }
+
     pub fn check_sane(&mut self, wins: &Wins) -> Step {
+        self.check_crashes()?;
         let t = Instant::now();
         self.req(Request::Ping)?;
         if t.elapsed() > Duration::from_secs(1) {

@@ -1786,6 +1786,11 @@ impl StyledEdit {
             activate(d, cx);
             return;
         }
+        // A folder (dropped, named): said so, no window opened for it
+        // first (one flashed open and shut, its alert after it).
+        if path.is_dir() {
+            return self.show_error(format!("“{}” is a folder: StyledEdit opens files.", file_name(&path)), cx);
+        }
         let doc = self.add_window(Some(path.clone()), 0, |d| d.loading = true, cx);
         self.load(&doc, path, cx);
     }

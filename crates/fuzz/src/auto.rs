@@ -334,14 +334,35 @@ fn op_drag(f: &mut Fuzz, wins: &Wins, _: &[u64]) -> Step {
     }
     let (_, area) = f.area()?;
     let Some(area) = area else { return Ok(()) };
-    let (a, right, (lo, hi)) = *f.rng.choice(&seams);
-    let r = fr(&wins[&a]).expect("a tile");
-    let along = f.rng.uniform(lo as f64 + 20.0, hi as f64 - 20.0);
-    let (start, end) = if right {
-        ((r.x as f64 + r.w as f64 - 1.0, along), (f.rng.uniform(area.x as f64 + 60.0, (area.x + area.w) as f64 - 60.0), along))
-    } else {
-        ((along, r.y as f64 + r.h as f64 - 1.0), (along, f.rng.uniform(area.y as f64 + 60.0, (area.y + area.h) as f64 - 60.0)))
+    // An edge's point no other window is over (a float over the tiles:
+    // pressed there, the press was the float's, a folder dragged out of a
+    // Tracker into StyledEdit, a window and an alert opening mid-drag:
+    // seed 16's step 54). A few tries, else no drag this step.
+    let ws_now = f.workspace()?;
+    let tiles_here = tiles(f, wins)?;
+    let over = |x: f64, y: f64, a: u64| {
+        wins.iter().any(|(&id, w)| {
+            id != a
+                && w.workspace == ws_now
+                && !w.minimized
+                && !w.behind
+                && !tiles_here.contains(&id)
+                && fr(w).is_some_and(|r| x >= r.x as f64 && x < (r.x + r.w) as f64 && y >= r.y as f64 && y < (r.y + r.h) as f64)
+        })
     };
+    let mut pick = None;
+    for _ in 0..12 {
+        let (a, right, (lo, hi)) = *f.rng.choice(&seams);
+        let r = fr(&wins[&a]).expect("a tile");
+        let along = f.rng.uniform(lo as f64 + 20.0, hi as f64 - 20.0);
+        let start = if right { (r.x as f64 + r.w as f64 - 1.0, along) } else { (along, r.y as f64 + r.h as f64 - 1.0) };
+        if !over(start.0, start.1, a) {
+            pick = Some((a, right, along, r, start));
+            break;
+        }
+    }
+    let Some((a, right, along, _r, start)) = pick else { return Ok(()) };
+    let end = if right { (f.rng.uniform(area.x as f64 + 60.0, (area.x + area.w) as f64 - 60.0), along) } else { (along, f.rng.uniform(area.y as f64 + 60.0, (area.y + area.h) as f64 - 60.0)) };
     // Past where it is let go, and back, now and then.
     let over = if f.rng.random() < 0.35 {
         let d = f.rng.uniform(-160.0, 160.0);

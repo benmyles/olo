@@ -196,9 +196,23 @@ something nobody here has is in "Blocked", with what it waits for.
   group's front (window 2, both 290 px, then 533 after step 53's drag),
   was raised over it for 8 ms during step 54's drag (the tree read
   `[6 | 5]` then `[2 | 5]`: a group's tile is its top window, and 6
-  hadn't drawn the group's 533 yet). *Next*: what raised it (log
-  `raise_element` callers with a reason during a drag) and keep a
-  group's front over the window being sized mid-drag.
+  hadn't drawn the group's 533 yet). *Fixed* (2026-11-06): the window
+  wasn't the race's. The drag's press, on tile 3's right edge, was under
+  a floating Tracker over the tiles: the press was the float's, a folder
+  dragged out of it was let go over StyledEdit, which opened a window
+  for it, failed to read it, closed it and said so (window 6 and its
+  alert 7, mid-drag). The fuzzer now presses only where no other window
+  is over the edge (`op_drag`), fails when any program of its session
+  leaves a crash report (`check_crashes`, the report kept with the
+  logs), and StyledEdit says a folder can't be opened without opening a
+  window for it first. app_server logs at debug who brought a window
+  to the front (`focus_window`'s caller). Seed 16 with `--reloads`: 8
+  of 8; seeds 1–16 with `--reloads`, 8 at once: 15 pass, 13 fails only
+  under the load (passes alone), no faults.
+  *Left*: an app_server panic seen once at seed 16's step 13 (a
+  `Duration` subtracted below zero, no backtrace kept: before
+  `check_crashes`), not seen in 16 runs since; the fuzzer now keeps a
+  report if it happens again. Then sweeps of more seeds.
 
 ## Not started (highest priority first)
 
