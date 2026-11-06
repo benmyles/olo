@@ -2450,6 +2450,13 @@ Olo upgrades without logging out. `olo-session` (what the login
 screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
 hands both to app_server, so clients never see the sockets disappear.
 
+Headless session self-upgrade keeps the backend flags in argv as well as its
+Resume state. Agent Screens uses `--headless` to recognize its process; dropping
+that flag loses a live screen from the registry. Test a rebuild while the owned
+screen runs, then reload it. A replaced running executable has a legitimate
+` (deleted)` suffix in its `/proc/PID/exe` link; provenance checks must still
+validate the owned screen/socket/display and headless argv.
+
 **The displays' modes at a restart** (`display.keep_modes` in
 app_server.json, or `OLO_KEEP_MODES=1`; off unless set, until tried on
 the real displays). As ever, app_server opens each GPU with every

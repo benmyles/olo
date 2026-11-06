@@ -4066,3 +4066,37 @@ benchmarks, bounded CDP transport and site queue. There is still no useful nativ
 Stripe content or new site visual to accept. No global screenshot journal image
 was added for a CSS-state/diagnostic-only milestone. **Stripe0/30, corpus0/100
 and0/3000**; goal active, next task env substitution on the same real website.
+
+### 2026-11-06 — Follow main; preserve headless identity across self-upgrade
+
+Stripe state milestone85200762 is pushed. Merged main throughc753797c in
+c41a889b (Token Pool drain continuity, session upgrade handling, audio/Doctor
+and shared kit changes). Browser13 tests, kit-base restore2 and session upgrade9
+pass. An initial olo-ui upgrade filter matched0 tests and is not coverage.
+Workspace release build2m39s; complete session suite20 pass/1 ignored.
+
+The native restart check exposed a real session integration bug. Rebuilding
+replaced the test session executable, so Linux's /proc link had the legitimate
+“(deleted)” suffix; the old test rejected it before signaling. The guard now
+checks the owned screen name/socket/display, executable basename and headless
+argv explicitly. Then a real reload self-upgraded the session **without its
+backend arguments**. Agent Screens' liveness check lost --headless and removed
+the record although the private session/Browser were still running. No reload
+coverage was accepted from that failure.
+
+Session exec now carries its backend argv as well as Resume state. Only this
+rare exec path changes; no idle/frame work or timer is added. Cleaned the known
+private orphan with socket-peer/window-PID/executable/control ownership checks;
+no personal process was signaled. A proposed cross-filesystem staging rename
+failed before signaling and is not coverage. The accepted test starts a fresh
+owned screen, touches session source and **rebuilds normally**, verifies changed
+inode/deleted running executable, then reloads. The headless flag and registry
+record survive; **15 mode/scale navigation reviews, scroll/history restoration
+and re-exec pass**. End-to-end reload plus following history checks1.368s;
+this includes CLI observation and is not isolated restoration/presentation latency.
+Before the fix the flow failed because the registry disappeared, so no comparable
+success latency exists. Evidence:2026-11-06-stripe-main-session-sync.json.
+
+This is required integration upkeep, not another site milestone. Stripe remains
+active and0/30; corpus0/100,0/3000. Return to CSS env substitution next. Existing
+rendering/performance nonpasses remain open; no personal install or reload.

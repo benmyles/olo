@@ -167,8 +167,14 @@ try:
     previous_y = node('Label', 'Section target')['y']
     meta = json.loads((Path(os.environ['XDG_RUNTIME_DIR']) / 'olo-screens' / (screen + '.json')).read_text())
     session_pid = meta['pid']
-    assert Path(f'/proc/{session_pid}/exe').resolve().name == 'olo-session'
+    assert meta['name'] == screen and meta['olo_socket'] == os.environ['OLO_SOCKET'] and meta['wayland_display'] == os.environ['WAYLAND_DISPLAY']
+    # A workspace rebuild can replace this owned screen's executable while
+    # it runs. Linux appends this suffix to /proc's link for that valid case.
+    executable = os.readlink(f'/proc/{session_pid}/exe').removesuffix(' (deleted)')
+    assert Path(executable).name == 'olo-session'
+    assert b'--headless' in Path(f'/proc/{session_pid}/cmdline').read_bytes().split(b'\0')
     run('wait', screen, '--free')
+    reload_started = time.monotonic()
     os.kill(session_pid, signal.SIGHUP)
     deadline = time.monotonic() + 25
     while True:
@@ -191,7 +197,8 @@ try:
     assert len(requests) == before
     (out / 'report.json').write_text(json.dumps({'scope': __doc__, 'rows': rows,
         'requests': requests, 'reload': {'before': previous, 'restored': current,
-        'section_y': previous_y, 'forward_then_back_without_requests': True},
+        'section_y': previous_y, 'forward_then_back_without_requests': True,
+        'reload_and_history_checks_seconds': time.monotonic() - reload_started},
         'accepted_websites': 0}, indent=2) + '\n')
     print(json.dumps({'reviews': len(rows), 'requests': len(requests), 'report': str(out / 'report.json')}))
 finally:

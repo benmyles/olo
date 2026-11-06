@@ -1002,7 +1002,11 @@ impl Session {
         }
         log("olo-session was upgraded; re-executing");
         // The signal mask is inherited across exec, which is what we want.
+        // Keep the backend visible in argv after exec as well as in Resume:
+        // Agent Screens recognizes its session by --headless, and must keep
+        // following the same process when its binary is replaced.
         let mut cmd = Command::new(exe());
+        cmd.args(&self.backend);
         olo_xdg::upgrade_env(&mut cmd);
         let e = cmd.env(RESUME_ENV, state).exec();
         log(format!("re-exec failed ({e}); carrying on"));
