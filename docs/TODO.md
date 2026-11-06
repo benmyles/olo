@@ -90,6 +90,14 @@ of Finished; a new one goes where its priority puts it.
   in a text field; a key with a PIN that wants it (not asked for yet).
   Olo Doctor says when a key's FIDO node isn't the person's to open, and
   offers the rule (2026-11-05).
+  *Setting up, with Ben's key* (2026-11-05): his first try "just kept
+  flashing". With every CTAPHID message printed (olo-fido's `touch`
+  example), his YubiKey 5 took both touches and gave its secret ("i was
+  touching the wrong thing"). The box now says what to touch and when (its
+  gold contact, once its light blinks), what to do as each touch is
+  waited for, and asks again when the key stops waiting (three times).
+  Left: Ben's setup in Preferences with the new box, then a touch for
+  sudo, Passwords, polkit and the lock screen.
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the
