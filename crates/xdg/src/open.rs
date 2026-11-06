@@ -795,6 +795,7 @@ fn spawn_pid(argv: &[OsString]) -> io::Result<u32> {
     let (program, args) = argv.split_first().ok_or_else(|| io::Error::other("empty command"))?;
     let mut c = std::process::Command::new(program);
     c.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    crate::electron::on_screen(&mut c, program);
     // SAFETY: setsid is async-signal-safe.
     unsafe {
         c.pre_exec(|| {

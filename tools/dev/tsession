@@ -86,6 +86,22 @@ BUSD = os.environ.get("TSESSION_BUSD") or next(
 def private_bus(d):
     """Start the session's own session bus; its address."""
     global BUSD
+    # Olo's own (crates/bus: busd's broker on async-io, which answers a
+    # call to a name nobody has at once; busd let GTK programs wait 25 s
+    # for each), when built; else busd.
+    olo_bus = next((p for p in (os.path.join(TARGET, PROFILE, "olo-bus"), os.path.join(TARGET, "release", "olo-bus")) if os.path.exists(p)), None)
+    if olo_bus and not os.environ.get("TSESSION_BUSD"):
+        path = os.path.join(d, "bus")
+        if os.path.exists(path):
+            os.remove(path)
+        log = open(os.path.join(d, "busd.log"), "w")
+        p = subprocess.Popen(as_owner([olo_bus, f"unix:path={path}"]), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        open(os.path.join(d, f"busd.{p.pid}.pid"), "w").write(str(p.pid))
+        for _ in range(50):
+            if os.path.exists(path):
+                return f"unix:path={path}"
+            time.sleep(0.1)
+        sys.exit(f"tsession: olo-bus didn't start; see {d}/busd.log")
     if not BUSD:
         # A new machine: build it (tools/dev/busd-lenient, as the repo's
         # owner, into ~/.cache/olo-dev), once.

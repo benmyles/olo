@@ -133,6 +133,13 @@ Passwords, unlocked and read-only; nothing else of theirs is reachable
 from a screen, and what's shared can't be changed from one. If a login
 you need isn't there, ask the person to share it with your screen.
 
+A screen is a session of its own in other ways too: its own session bus,
+so the person's keyring isn't there (`secret-tool` and libsecret find
+nothing), notifications from programs on it show on the screen (its
+Deskbar's bell), and open and save panels show there. Electron apps
+(Slack, VS Code) run there as the screen's own copy, signed out, as
+Chrome does.
+
 Never `type` a password or code: `type` and `set` keep what they typed
 in the screen's history (and its videos). Fill it, or paste it, one of
 these ways:

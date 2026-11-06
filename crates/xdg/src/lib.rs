@@ -10,6 +10,7 @@ use std::{
 
 pub mod apps;
 pub mod desktop_entry;
+pub mod electron;
 pub mod legacy;
 pub mod mime;
 pub mod open;
@@ -327,6 +328,9 @@ fn spawn_detached_pid(cmd: &str) -> std::io::Result<u32> {
     use std::os::unix::process::CommandExt;
     let mut c = std::process::Command::new("/bin/sh");
     c.arg("-c").arg(cmd);
+    if let Some(program) = cmd.split_whitespace().next() {
+        electron::on_screen(&mut c, program.as_ref());
+    }
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.to_owned())) {
         let path = std::env::var_os("PATH").unwrap_or_default();
         if let Ok(path) = std::env::join_paths(std::iter::once(dir).chain(std::env::split_paths(&path))) {

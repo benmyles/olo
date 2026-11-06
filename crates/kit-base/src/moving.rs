@@ -198,18 +198,37 @@ pub struct RunningScreen {
     /// Its session's pid.
     pub pid: i32,
     pub sound: bool,
+    /// Its own session bus, and the accessibility bus (`bus_env`).
+    pub bus: Option<String>,
+    pub a11y: Option<String>,
 }
 
 impl RunningScreen {
     /// What a program on it has in its environment.
     pub fn env(&self) -> Vec<(String, String)> {
-        screen_env(&self.name, &self.wayland_display, &self.olo_socket, self.pid, self.sound)
+        let mut env = screen_env(&self.name, &self.wayland_display, &self.olo_socket, self.pid, self.sound);
+        env.extend(bus_env(self.bus.as_deref(), self.a11y.as_deref()));
+        env
     }
 }
 
 /// The folder agent screens are listed in.
 fn screens_dir() -> std::path::PathBuf {
     olo_xdg::legacy::runtime_file(&olo_xdg::runtime_dir(), "olo-screens")
+}
+
+/// A screen's own session bus and the accessibility bus its programs use,
+/// as their environment has them (a screen from before its own bus:
+/// nothing, so the person's).
+pub fn bus_env(bus: Option<&str>, a11y: Option<&str>) -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    if let Some(b) = bus {
+        env.push(("DBUS_SESSION_BUS_ADDRESS".to_owned(), b.to_owned()));
+        if let Some(a) = a11y {
+            env.push(("AT_SPI_BUS_ADDRESS".to_owned(), a.to_owned()));
+        }
+    }
+    env
 }
 
 /// The environment a program on agent screen `name` gets: its display and
@@ -264,6 +283,8 @@ pub fn screens() -> Vec<RunningScreen> {
                 olo_socket: v["olo_socket"].as_str().or(v["tabula_socket"].as_str())?.into(),
                 pid: v["pid"].as_i64()? as i32,
                 sound: v["sound"].as_bool().unwrap_or(false),
+                bus: v["bus"].as_str().map(str::to_owned),
+                a11y: v["a11y"].as_str().map(str::to_owned),
             })
         })
         .collect();

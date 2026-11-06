@@ -30,6 +30,7 @@ mod autostart;
 mod graphical;
 mod keyd;
 mod keyring;
+mod own_bus;
 mod skills;
 mod upgrade;
 mod watchdog;
@@ -292,6 +293,12 @@ impl Session {
             }
         }
         let no_shell = args.iter().any(|a| a == "--no-shell");
+        // An agent screen's: a session bus of its own (`own_bus`).
+        let own_bus = args.iter().position(|a| a == "--own-bus").and_then(|i| args.get(i + 1)).cloned();
+        let mut args = args;
+        if let Some(i) = args.iter().position(|a| a == "--own-bus") {
+            args.drain(i..(i + 2).min(args.len()));
+        }
         let mut backend: Vec<String> = args.into_iter().filter(|a| a != "--no-shell").collect();
         if backend.is_empty() {
             backend.push("--tty-udev".into());
@@ -309,6 +316,8 @@ impl Session {
             std::process::exit(1);
         });
         set_session_env(&display, &ipc_path);
+        // Before anything that might use it.
+        let bus = own_bus.as_deref().and_then(own_bus::start);
         let _ = std::fs::write(runtime_dir().join(format!("olo-session-{display}.pid")), std::process::id().to_string());
         // Machine-readable, for tools/dev/tsession.
         println!("session: WAYLAND_DISPLAY={display} OLO_SOCKET={}", ipc_path.display());
@@ -362,10 +371,21 @@ impl Session {
             skills::start();
         }
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        // The screen's bus, looked after with the shell (started again if
+        // it ends, ended with the session).
+        if let Some((argv, pid)) = bus.as_ref().map(|b| (b.argv.clone(), b.pid)) {
+            s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
+        }
         if !no_shell {
             let extra: &[&[&str]] = if real { REAL_SHELL } else { &[] };
-            for argv in SHELL.iter().chain(extra) {
-                let argv: Vec<String> = argv.iter().map(|a| a.to_string()).collect();
+            let mut argvs: Vec<Vec<String>> = SHELL.iter().chain(extra).map(|argv| argv.iter().map(|a| a.to_string()).collect()).collect();
+            // On a bus of its own, the services the person's session has
+            // on theirs, for the screen's programs: notifications shown on
+            // the screen, and the portal (open and save panels there).
+            if let Some(b) = &bus {
+                argvs.extend(own_bus::services(&b.address));
+            }
+            for argv in argvs {
                 let pid = spawn(&argv, &[]).unwrap_or(0);
                 s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
             }

@@ -54,7 +54,7 @@ impl Place {
         env.set.push(("OLO_SOCKET".into(), socket.display().to_string()));
         env.set.push(("OLO_SESSION".into(), "1".into()));
         // What a screen gives its programs, as the person has it (or not).
-        for key in ["OLO_SESSION_PID", "CHROME_CONFIG_HOME", "PULSE_SERVER"] {
+        for key in ["OLO_SESSION_PID", "CHROME_CONFIG_HOME", "PULSE_SERVER", "DBUS_SESSION_BUS_ADDRESS", "AT_SPI_BUS_ADDRESS"] {
             match std::env::var(key) {
                 Ok(v) => env.set.push((key.into(), v)),
                 Err(_) => env.unset.push(key.into()),

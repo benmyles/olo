@@ -948,34 +948,6 @@ of Finished; a new one goes where its priority puts it.
   modeset as now. It needs trying on the real displays (an upgrade
   the person agrees to try), so it isn't shipped blind.
 
-- **Agent Screens: Chrome opened from a screen's Deskbar lands on the
-  person's display** (Ben, 2026-10-31): "i was just using the "Take
-  Control" feature in an agent screen, and i used the deskpad to try open
-  a new chrome, but it actually opened it on my user screen instead of in
-  the agent screen". Anything launched on an agent screen (its Deskbar,
-  its Tracker, an agent's `olo-screen run`) must open there. Likely cause
-  (to confirm): Chrome's single-instance handoff, where the new process
-  finds the person's running Chrome by its profile and asks it for a
-  window, which that Chrome opens on its own Wayland connection; so a
-  screen's Chrome needs its own instance (its own profile dir, or a
-  Chrome running on that screen), and every launcher there passes the
-  screen's `WAYLAND_DISPLAY`/`OLO_SOCKET`. Check the other single-instance
-  apps (ours via D-Bus activation, Slack, GTK's GApplication) the same way.
-  *Status* (2026-11-02): Chrome done (bb4dbc4b, 2026-10-31: a profile
-  of the screen's own, `CHROME_CONFIG_HOME`); Olo's apps are fine (their
-  single-instance socket is the display's, `instance::socket_path`).
-  *Left*, all through the session bus a screen shares with the person
-  (on purpose: their keyring, notifications; a headless session never
-  takes its services over): a GTK app's GApplication finds the person's
-  copy by its bus name; an Electron app (Slack, VS Code) hands off to
-  the person's through the lock in their config; and a portal dialog
-  asked from a screen (Chrome's upload, Open With) shows on the
-  person's display (olo-portal is the person's). The fix: a bus of the
-  screen's own with its own portal (as test sessions have), reaching
-  the person's keyring only through Passwords' grants ("Passwords for
-  Agent Screens"); it changes what agents on existing screens reach, so
-  it goes with that item.
-
 - **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
   at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
   colours and the default text on bands programs draw read in light
@@ -1725,6 +1697,41 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Agent Screens: Chrome opened from a screen's Deskbar lands on the
+  person's display**~~ (done 2026-11-05, HACKING's "A screen's own
+  bus": each screen on a D-Bus bus of its own, `olo-bus` (busd's broker
+  on async-io, answering calls to absent names at once), with its own
+  notification centre and portal (xdg-desktop-portal in front of Olo's
+  and GTK's backends) and the person's accessibility bus; GTK apps and
+  portal dialogs stay on the screen; Electron apps get the screen's own
+  config folder; no keyring there, the person's secrets only through
+  Passwords' grants) (Ben, 2026-10-31): "i was just using the "Take
+  Control" feature in an agent screen, and i used the deskpad to try open
+  a new chrome, but it actually opened it on my user screen instead of in
+  the agent screen". Anything launched on an agent screen (its Deskbar,
+  its Tracker, an agent's `olo-screen run`) must open there. Likely cause
+  (to confirm): Chrome's single-instance handoff, where the new process
+  finds the person's running Chrome by its profile and asks it for a
+  window, which that Chrome opens on its own Wayland connection; so a
+  screen's Chrome needs its own instance (its own profile dir, or a
+  Chrome running on that screen), and every launcher there passes the
+  screen's `WAYLAND_DISPLAY`/`OLO_SOCKET`. Check the other single-instance
+  apps (ours via D-Bus activation, Slack, GTK's GApplication) the same way.
+  *Status* (2026-11-02): Chrome done (bb4dbc4b, 2026-10-31: a profile
+  of the screen's own, `CHROME_CONFIG_HOME`); Olo's apps are fine (their
+  single-instance socket is the display's, `instance::socket_path`).
+  *Left*, all through the session bus a screen shares with the person
+  (on purpose: their keyring, notifications; a headless session never
+  takes its services over): a GTK app's GApplication finds the person's
+  copy by its bus name; an Electron app (Slack, VS Code) hands off to
+  the person's through the lock in their config; and a portal dialog
+  asked from a screen (Chrome's upload, Open With) shows on the
+  person's display (olo-portal is the person's). The fix: a bus of the
+  screen's own with its own portal (as test sessions have), reaching
+  the person's keyring only through Passwords' grants ("Passwords for
+  Agent Screens"); it changes what agents on existing screens reach, so
+  it goes with that item.
 
 - ~~**Move windows to and from Agent Screens**~~ (done 2026-11-05,
   HACKING's "Moving windows to and from screens": `olo-screen take` and

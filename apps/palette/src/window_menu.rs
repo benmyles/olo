@@ -430,6 +430,8 @@ mod tests {
                 olo_socket: "/run/olo-wayland-3.sock".into(),
                 pid: 7,
                 sound: false,
+                bus: None,
+                a11y: None,
             }]),
         };
         fn commands(m: &Menu, out: &mut Vec<String>) {

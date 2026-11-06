@@ -2856,13 +2856,15 @@ every step within a few percent, no hitches and no still frames, at 60
 and 120 Hz and every scale. Run it after changing anything about input,
 frame timing or a scroll view.
 
-Every session gets its own D-Bus session bus (busd, at
-`/tmp/olo-dev/NAME/bus`, in `DBUS_SESSION_BUS_ADDRESS` for `run`): the
-runtime directory is the real one, so without it programs fall back to
-`$XDG_RUNTIME_DIR/bus`, the user's real session bus, and a test's
-notifications pop up on their screen. tsession won't start without busd
-(`TSESSION_BUSD`, or the build under `~/.cache/olo-dev`, which it makes
-with `tools/dev/busd-lenient` the first time on a new machine). To see a
+Every session gets its own D-Bus session bus (`olo-bus` from the build
+tree, as agent screens have, else busd; at `/tmp/olo-dev/NAME/bus`, in
+`DBUS_SESSION_BUS_ADDRESS` for `run`): the runtime directory is the real
+one, so without it programs fall back to `$XDG_RUNTIME_DIR/bus`, the
+user's real session bus, and a test's notifications pop up on their
+screen. tsession won't start without one (`TSESSION_BUSD` for a busd of
+your choosing, or, with no `olo-bus` built, the busd it builds under
+`~/.cache/olo-dev` with `tools/dev/busd-lenient` the first time on a new
+machine). To see a
 test's notifications, run its own centre:
 `$T run NAME olo-notifications --bus unix:path=/tmp/olo-dev/NAME/bus`.
 
@@ -9316,8 +9318,9 @@ there moves the person's pointer or takes their focus. It runs the
 person's programs and files (their HOME), but with app_server settings
 of its own (`OLO_APP_SERVER_SETTINGS`, a copy of the person's at 1×
 unless asked, with no lock, screen saver, display sleep or system
-sleep), silent unless `--sound` (`PULSE_SERVER` pointed at nothing), and
-without `DISPLAY` (X programs would show on the person's screen). Screens
+sleep), silent unless `--sound` (`PULSE_SERVER` pointed at nothing),
+without `DISPLAY` (X programs would show on the person's screen), and on
+a D-Bus session bus of its own (below, "A screen's own bus"). Screens
 are listed in `$XDG_RUNTIME_DIR/olo-screens/NAME.json` (the session's
 pid, its sockets, the size); `screens.rs` checks the pid is still that
 session before trusting an entry. The rest is the screen's own app_server
@@ -9655,6 +9658,70 @@ to the person outliving the screen (its stop 0.05 s with the forked
 proxy, 3 s before); a Tracker folder window and a Terminal window and
 tab moved by copies, the Terminal's shell the same process on the
 screen (`echo $$`), all of them back when the screen stopped.
+
+### A screen's own bus (crates/bus, crates/session/src/own_bus.rs)
+
+On the person's session bus, a program started on a screen found the
+person's copy of itself by its name (GTK's GApplication) and had it open
+the window on their display, a portal dialog it asked for (Chrome's
+upload, Open With) showed on their display, and its notifications popped
+up there. So each screen's session runs a bus of its own: `olo-screen
+start` passes `olo-session --own-bus unix:path=$XDG_RUNTIME_DIR/
+olo-screens/NAME.bus`, and the session starts `olo-bus` there before
+anything else (waiting for its "ready"), points its environment at it
+(`DBUS_SESSION_BUS_ADDRESS`), and looks after it with the shell (started
+again if it ends; ended with the session, and with `--with-parent`
+however the session ends). The listing has it (`Screen::bus`), so `run`
+and moves give programs the screen's bus (`moving::bus_env`), and a
+move back gives the person's back. A screen from before has none and
+stays on the person's.
+
+What the person's session has on their bus, the screen has on its own
+(`own_bus::services`, with the shell): its own notification centre
+(`olo-notifications --bus`, shown on the screen: agents see their
+programs' notifications, the person doesn't get them), Olo's portal
+backend (`olo-portal --bus`) and GTK's (Settings: the colour scheme),
+behind xdg-desktop-portal, so Open and Save panels and the rest show on
+the screen. Nothing on the screen's bus starts on demand, so `olo-bus`
+stands in for what the frontend needs (a permission store in memory, so
+the person's on-disk one is never written by two; the document portal's
+mount point, the person's: sandboxed programs' file sharing isn't
+offered on a screen) and waits for the backends the session is starting
+when they're asked for (`--expect`). The keyring isn't there: the
+person's secrets reach a screen only through Passwords' grants
+("Passwords for agent screens"). The accessibility bus stays the
+person's (`olo-screen` asks theirs for its address: `OLO_A11Y_BUS` to
+the session, `AT_SPI_BUS_ADDRESS` to programs, and `org.a11y.Bus` on
+the screen's bus answers it), so `tree` reads GTK and Qt programs there
+as before.
+
+`olo-bus` is busd 0.5.0's broker (MIT; `crates/bus/LICENSE-MIT`) on
+async-io and smol rather than tokio (zbus's `tokio` feature would have
+turned every Olo program's zbus to tokio: Cargo unifies features), Unix
+sockets only, lenient about match rules as dbus-daemon and dbus-broker
+are (spaces, `eavesdrop`: Chrome's, `fdo::dbus::lenient_rule`), and it
+answers a call to a name nobody has at once (`ServiceUnknown`;
+`Peers::answer_unknown`), where busd left the caller waiting out its own
+timeout (GLib's 25 s: GTK programs on test buses took that long to show).
+tsession's sessions use it too, when built.
+
+An Electron app (Slack, VS Code, Discord) finds its running copy through
+a lock in its config folder, not the bus, so one started on a screen
+gets a config folder of the screen's own (`XDG_CONFIG_HOME`, beside its
+history as Chrome's profile is: `olo_xdg::electron`, known by its
+`resources/app.asar` or a launcher script naming one), from `olo-screen
+run` and from anything a screen's own programs start (`olo_xdg`'s
+`spawn`, `spawn_app`, `spawn_detached`, which see `OLO_SCREEN`): signed
+out, its own. Tested with Slack running for a stand-in person and
+started on the screen: two Slacks, each on its display.
+
+Tested in a private world and on a real screen: the portal's Open panel
+asked on a screen shows there; GNOME Calculator runs on the person's
+display and on the screen at once (before, the screen's handed itself
+over); a notification sent on the screen is the screen's centre's; Olo's
+Chrome opens in half a second with no match rule refused; `tree` reads
+GNOME Calculator's buttons on a screen with its own bus; the bus ends
+with the screen.
 
 ### Passwords for agent screens (apps/screen/src/shares.rs)
 
