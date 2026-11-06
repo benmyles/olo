@@ -1,0 +1,841 @@
+{
+  "scope": "Original HTML/stylesheet/selector/cascade/computed-style document jobs against pinned literal WPT assertions. Native semantic values and selected resolved values, no CSSOM serializer or JavaScript. Missing container/other stylesheet contexts stay unsupported; no website, rendering, font selection or layout evidence.",
+  "total": 341,
+  "counts": {
+    "passed": 243,
+    "unsupported": 98
+  },
+  "files": {
+    "css-backgrounds/parsing/border-width-computed.html": {
+      "passed": 9,
+      "unsupported": 3
+    },
+    "css-display/parsing/display-computed.html": {
+      "passed": 176,
+      "unsupported": 1
+    },
+    "css-fonts/parsing/font-size-computed.html": {
+      "passed": 6,
+      "unsupported": 16
+    },
+    "css-fonts/parsing/font-weight-computed.html": {
+      "unsupported": 59
+    },
+    "css-inline/parsing/line-height-computed.html": {
+      "unsupported": 16
+    },
+    "css-overflow/parsing/overflow-computed.html": {
+      "passed": 34,
+      "unsupported": 1
+    },
+    "css-text/parsing/letter-spacing-computed.html": {
+      "passed": 9,
+      "unsupported": 1
+    },
+    "css-text/parsing/word-spacing-computed.html": {
+      "passed": 9,
+      "unsupported": 1
+    }
+  },
+  "unsupported": [
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 24,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "normal"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 25,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bold"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 26,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "1"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 27,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "100"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 28,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "200"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 29,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "300"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 30,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "400"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 31,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "500"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 32,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "600"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 33,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "700"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 34,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "800"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 35,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "900"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 36,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "1000"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 37,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "101"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 38,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "150.25"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 39,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100)"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 40,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(0)"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 41,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(-100)"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 42,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100 + 100)"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_computed_value",
+      "line": 43,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100 + (sign(20cqw - 10px) * 5))"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 55,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 56,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 57,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 58,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 59,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 60,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 61,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 62,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 63,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 64,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 65,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 66,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 67,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 68,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 69,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 70,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 71,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 72,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 73,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "bolder"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 75,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 76,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 77,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 78,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 79,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 80,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 81,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 82,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 83,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 84,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 85,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 86,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 87,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 88,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 89,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 90,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 91,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 92,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "kind": "test_relative",
+      "line": 93,
+      "outcome": "unsupported",
+      "property": "font-weight",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "lighter"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 24,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "normal"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 26,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "0"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 27,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "2"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 28,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "0px"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 29,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "10px"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 30,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "0%"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 31,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "0.5%"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 32,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "137.5%"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 33,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "200%"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 34,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(200% + 10px)"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 36,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(10px - 0.5em)"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 37,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(10px + 0.5em)"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 39,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(10 + (sign(2cqw - 10px) * 5))"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 40,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(10% + (sign(2cqw - 10px) * 5%))"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "kind": "test_computed_value",
+      "line": 41,
+      "outcome": "unsupported",
+      "property": "line-height",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(10px + (sign(2cqw - 10px) * 5px))"
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 40,
+      "outcome": "unsupported",
+      "reason": "dynamic/nonliteral expected-value driver"
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "outcome": "unsupported",
+      "reason": "dynamic CSSOM thin/medium/thick ordering driver"
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 34,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 35,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 36,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 37,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 38,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 39,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 41,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 44,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 45,
+      "outcome": "unsupported",
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 65,
+      "outcome": "unsupported",
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 66,
+      "outcome": "unsupported",
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 67,
+      "outcome": "unsupported",
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 68,
+      "outcome": "unsupported",
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 69,
+      "outcome": "unsupported",
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 70,
+      "outcome": "unsupported",
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    }
+  ],
+  "report_sha256": "133aa7159db7c8a8ed9147f2f1f63a8b31e3bc51b0edc78affd43a28e097a81d"
+}

@@ -19,6 +19,54 @@ struct Host {
     em: f64,
     width: f64,
 }
+#[test]
+fn computed_calculations_freeze_units_tree_counts_and_preserve_layout_percentages() {
+    let options = Options { percentage_hint: Some(D::Length), ..Default::default() };
+    let parent = Host { em: 16., width: 100. };
+    let child = Host { em: 40., width: 400. };
+    for source in ["calc(50% - 2em)", "clamp(10px, 2em + 10%, 100px)", "calc(1em / 1px * 20%)", "calc(sign(2em - 20px) * 50% + 1px)", "hypot(1em, 10%)", "calc(0% + 1em)"] {
+        let specified = parse(source, options).unwrap();
+        let computed = specified.computed(&parent, true, Default::default(), None).unwrap();
+        assert!(computed.dependencies().contains(U::Percentage), "{source}");
+        assert!(!computed.dependencies().contains(U::Em), "{source}");
+        let expected = specified.resolve_raw(&Host { em: 16., width: 400. }, Default::default(), None).unwrap().value;
+        assert_eq!(computed.resolve_raw(&child, Default::default(), None).unwrap().value, expected, "{source}");
+        let frozen = specified.computed(&parent, false, Default::default(), None).unwrap();
+        assert!(frozen.constant().is_some());
+        assert_eq!(frozen.resolve_raw(&math::NoContext, Default::default(), None).unwrap().value, specified.resolve_raw(&parent, Default::default(), None).unwrap().value);
+    }
+    for source in ["calc(2em + 3px)", "calc(2em / 1px)", "calc(1 + 2 * 3)", "calc(pow(2em / 1px, 2))"] {
+        let v = parse(source, options).unwrap();
+        let result = v.computed(&parent, true, Default::default(), None).unwrap();
+        assert!(result.constant().is_some(), "{source}");
+        assert!(result.dependencies().is_empty());
+        assert_eq!(result.resolve_raw(&math::NoContext, Default::default(), None).unwrap(), v.resolve_raw(&parent, Default::default(), None).unwrap());
+    }
+    struct Tree;
+    impl Context for Tree {
+        fn tree_count(&self, kind: math::TreeCount) -> math::Result<u32> {
+            Ok(if kind == math::TreeCount::SiblingIndex { 2 } else { 7 })
+        }
+    }
+    let v = parse("calc(sibling-index() / sibling-count())", Options::default()).unwrap();
+    let c = v.computed(&Tree, true, Default::default(), None).unwrap();
+    assert_eq!(c.constant().unwrap().value, 2. / 7.);
+}
+#[test]
+fn computed_numeric_failures_are_bounded_and_do_not_change_specified_programs() {
+    let v = parse("calc(50% - 2em)", Options { percentage_hint: Some(D::Length), ..Default::default() }).unwrap();
+    let instructions = v.memory().instructions;
+    assert_eq!(v.computed(&math::NoContext, true, Default::default(), None).unwrap_err(), Error::ContextUnavailable);
+    for limits in [Limits { work: 0, ..Default::default() }, Limits { instructions: 0, ..Default::default() }, Limits { stack: 0, ..Default::default() }] {
+        assert_eq!(v.computed(&Host { em: 16., width: 100. }, true, limits, None).unwrap_err(), Error::Limit);
+    }
+    assert_eq!(v.computed(&Host { em: 16., width: 100. }, true, Default::default(), Some(&AtomicBool::new(true))).unwrap_err(), Error::Cancelled);
+    assert_eq!(v.memory().instructions, instructions);
+    assert!(v.dependencies().contains(U::Em));
+    assert_eq!(v.resolve_raw(&Host { em: 20., width: 100. }, Default::default(), None).unwrap().value, 10.);
+    let nan = parse("calc(0em / 0px)", Options::default()).unwrap().computed(&Host { em: 16., width: 100. }, true, Default::default(), None).unwrap();
+    assert!(nan.constant().unwrap().value.is_nan());
+}
 impl Context for Host {
     fn factor(&self, unit: U) -> math::Result<f64> {
         match unit {

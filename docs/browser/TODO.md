@@ -60,7 +60,8 @@ item means implemented and verified; a partial implementation stays open.
   all over implemented resettable properties),
   dimensional/range rules, structured display values, shared pending shorthand
   substitution and invalid-at-computed-value unset; independent native ports
-  821/1,109 pass, 288 explicit non-passes. No actual style/layout execution.
+  821/1,109 pass, 288 explicit non-passes. Separate initial style jobs below;
+  no layout execution.
 - [x] Core frozen stylesheet sets/cascade over typed declarations: shared
   selector arenas and rule index, stylesheet-local namespaces, nested/anonymous/
   ordered layers, origin/importance/inline/specificity/proximity/source sorting,
@@ -68,15 +69,26 @@ item means implemented and verified; a partial implementation stays open.
   expansion. Native ports 128/136 pass; eight rendering drivers remain unported.
 - [ ] Complete cascade/style integration: media/supports/container/import/scope
   conditions, actual flattened
-  inheritance, UA defaults/presentational hints, computed font/color/size hosts,
+  inheritance, UA defaults/presentational hints, real font selection/size hosts,
   CSSOM, animations/transitions/registrations, live state and generation-aware
-  invalidation/style sharing. Frozen candidate snapshots are not computed styles.
+  invalidation/global style sharing. Frozen candidate snapshots are not computed
+  styles; the separate bounded stage below now computes supported values.
 - [x] Project the 40 implemented physical/logical box/overflow longhands into
   paired cascades after computed axes; preserve inheritance source across axes,
   shared pending substitution, physical precedence for all and paired rollback.
   Native logical ports: 5,726/5,757 pass; 31 CSSOM drivers remain unsupported.
+- [x] Initial computed-style worker jobs over the supported 89 longhands:
+  shared Defaults, parent-before-child connected light-tree traversal, frozen
+  font/viewport/tree arithmetic with deferred layout percentages, inherited
+  currentcolor/custom tokens, coupled overflow/border/display transforms,
+  sparse and adjacent shared values, diagnostics, cancellation/quotas and
+  document/style-epoch rejection. 243/341 pinned native assertions/drivers pass;
+  98 unsupported. All 22 selected local Chrome CSSOM observations match.
 - [ ] Complete logical border/corner properties and remaining property groups;
-  coupled overflow transforms, actual computed-value retention and layout hosts.
+  UA styles/presentational hints, flattened/shadow inheritance, conditional
+  contexts, font-family/selection and layout/used-value hosts.
+- [ ] Profile temporary per-element style vectors, nonadjacent sharing and
+  real mixed pages; initial full passes are not live incremental invalidation.
 - [ ] Complete property registry/grammars (fonts/families, backgrounds/images,
   border-image/radius, grid/alignment, transforms, animations/transitions,
   aliases/descriptors), CSSOM, computed/used-value contexts and style hosts.
@@ -122,9 +134,12 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Profile compound/common subject-key selectivity beyond the selective
   cascade benchmark; the necessary-key index is conservative, not universally
   optimal.
-- [ ] Isolate raw-margin query timing variation after logical projection: median
-  8.256 → 8.670 ns (+5.0%) with overlapping three-run ranges; no uniform
-  speedup claim. Retain short/long raw runs and compare in future style workloads.
+- [ ] Isolate raw-query/common-operation timing variation after logical/style
+  work: original margin median 8.256 → 8.670 ns (+5.0%); current three-way
+  repeat 8.589 / 8.605 / 8.978 ns (pre-logical / parent / style), overlapping
+  ranges. Other mixed changes include 2k cascade +8.4% and #target selector
+  +20.2% vs parent in this sample. Raw results retained; no universal speedup
+  or settled performance acceptance. See 2026-11-05-style.json and journal.
 - [ ] Profile ownership preflight costs, the template-milestone fostered-row
   regression and fragment-milestone foreign dispatch costs (raw release
   comparisons in JOURNAL.md); performance acceptance is still open.
@@ -135,7 +150,8 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: computed/inherited style and UA defaults, logical borders/corners;
+Next: UA defaults/presentational hints and actual font selection/metrics,
+logical borders/corners;
 conditional stylesheet contexts and actual live element/style invalidation;
 stylesheet contexts, property coverage and computed-value hosts,
 remaining selector integrations, descriptor-aware parsing and

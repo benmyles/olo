@@ -8,6 +8,7 @@ pub mod math;
 mod parser;
 pub mod properties;
 pub mod selectors;
+pub mod style;
 mod syntax;
 pub mod variables;
 pub use parser::{ParseError, Statement, StatementKind, SyntaxError};

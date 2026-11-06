@@ -97,6 +97,9 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
 fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     let grammar = property.grammar();
     match grammar {
+        Grammar::Keywords(_) if property == Property::TextAlign && parts.len() == 1 && parts[0].kind() == Kind::Ident && parts[0].text().unwrap().eq_ignore_ascii_case("-webkit-match-parent") => {
+            Ok(Value::Keyword(Keyword::MatchParent))
+        }
         Grammar::Display => {
             if parts.len() > 3 {
                 return Err(Error::Invalid);
@@ -118,6 +121,12 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
 fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     check(cancelled)?;
     match grammar {
+        Grammar::Overflow => {
+            if c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case("overlay") {
+                return Ok(Value::Keyword(Keyword::Auto));
+            }
+            keyword(c, &[Keyword::Visible, Keyword::Hidden, Keyword::Clip, Keyword::Scroll, Keyword::Auto]).map(Value::Keyword).ok_or(Error::Invalid)
+        }
         Grammar::Keywords(allowed) => keyword(c, allowed).map(Value::Keyword).ok_or(Error::Invalid),
         Grammar::Numeric(kind, range, allowed) => {
             if let Some(k) = keyword(c, allowed) {

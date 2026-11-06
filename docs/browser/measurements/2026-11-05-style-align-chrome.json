@@ -1,0 +1,39 @@
+{
+  "scope": "Four CSSOM text-alignment observations on owned Agent Screen at 1x in Olo Chrome. The legacy prefix is supported; unprefixed match-parent is unsupported in this reference build. Root behavior and parent computed direction under upright text; no website/rendering evidence.",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  "probe_sha256": "376bf728bc6fa599acde18791e86bdeae9f1ddc7617de89205710810a26f72e9",
+  "rows": [
+    {
+      "upright": false,
+      "textAlign": "right",
+      "support": false,
+      "prefixed": true,
+      "declared": "-webkit-match-parent",
+      "parentDirection": "rtl",
+      "parent": "writing-mode:vertical-rl;direction:rtl;text-align:start;",
+      "input": "writing-mode:horizontal-tb;text-align:-webkit-match-parent"
+    },
+    {
+      "upright": true,
+      "textAlign": "right",
+      "support": false,
+      "prefixed": true,
+      "declared": "-webkit-match-parent",
+      "parentDirection": "rtl",
+      "parent": "writing-mode:vertical-rl;direction:rtl;text-align:start;text-orientation:upright",
+      "input": "writing-mode:horizontal-tb;text-align:-webkit-match-parent"
+    },
+    {
+      "root": true,
+      "upright": false,
+      "textAlign": "start",
+      "input": "direction:rtl;text-align:-webkit-match-parent;"
+    },
+    {
+      "root": true,
+      "upright": true,
+      "textAlign": "start",
+      "input": "direction:rtl;text-align:-webkit-match-parent;writing-mode:vertical-rl;text-orientation:upright"
+    }
+  ]
+}

@@ -1,0 +1,3617 @@
+{
+  "scope": "Original HTML/stylesheet/selector/cascade/computed-style document jobs against pinned literal WPT assertions. Native semantic values and selected resolved values, no CSSOM serializer or JavaScript. Missing container/other stylesheet contexts stay unsupported; no website, rendering, font selection or layout evidence.",
+  "cases": [
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 34,
+      "offset": 1104,
+      "kind": "test_computed_value",
+      "property": "border-width",
+      "specified": "1px",
+      "expected": "1px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 35,
+      "offset": 1148,
+      "kind": "test_computed_value",
+      "property": "border-width",
+      "specified": "1px 2px",
+      "expected": "1px 2px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 36,
+      "offset": 1196,
+      "kind": "test_computed_value",
+      "property": "border-width",
+      "specified": "1px 2px 3px",
+      "expected": "1px 2px 3px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 37,
+      "offset": 1248,
+      "kind": "test_computed_value",
+      "property": "border-width",
+      "specified": "1px 2px 3px 4px",
+      "expected": "1px 2px 3px 4px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 39,
+      "offset": 1305,
+      "kind": "test_computed_value",
+      "property": "border-width",
+      "specified": "0.5em",
+      "expected": "20px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 42,
+      "offset": 1481,
+      "kind": "test_computed_value",
+      "property": "border-top-width",
+      "specified": "0px",
+      "expected": "0px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 43,
+      "offset": 1529,
+      "kind": "test_computed_value",
+      "property": "border-right-width",
+      "specified": "10px",
+      "expected": "10px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 44,
+      "offset": 1580,
+      "kind": "test_computed_value",
+      "property": "border-bottom-width",
+      "specified": "calc(-0.5em + 10px)",
+      "expected": "0px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 45,
+      "offset": 1654,
+      "kind": "test_computed_value",
+      "property": "border-left-width",
+      "specified": "calc(0.5em + 10px)",
+      "expected": "30px",
+      "styles": [
+        "\n  #box {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    border-top-width: thin;\n    border-right-width: medium;\n    border-bottom-width: thick;\n  }\n  #target {\n    border-style: dotted; /* Avoid border-*-width computed style 0 */\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 22,
+      "offset": 881,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "grid",
+      "expected": "grid",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 23,
+      "offset": 921,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline-grid",
+      "expected": "inline-grid",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 26,
+      "offset": 1028,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline",
+      "expected": "inline",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 27,
+      "offset": 1070,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block",
+      "expected": "block",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 28,
+      "offset": 1111,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 29,
+      "offset": 1156,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline-block",
+      "expected": "inline-block",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 30,
+      "offset": 1204,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table",
+      "expected": "table",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 31,
+      "offset": 1245,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline-table",
+      "expected": "inline-table",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 32,
+      "offset": 1293,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table-row-group",
+      "expected": "table-row-group",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 33,
+      "offset": 1344,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table-header-group",
+      "expected": "table-header-group",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 34,
+      "offset": 1398,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table-footer-group",
+      "expected": "table-footer-group",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 35,
+      "offset": 1452,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table-row",
+      "expected": "table-row",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 36,
+      "offset": 1497,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table-column-group",
+      "expected": "table-column-group",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 37,
+      "offset": 1551,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table-column",
+      "expected": "table-column",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 38,
+      "offset": 1599,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table-cell",
+      "expected": "table-cell",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 39,
+      "offset": 1645,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table-caption",
+      "expected": "table-caption",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 40,
+      "offset": 1694,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "none",
+      "expected": "none",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 43,
+      "offset": 1794,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flex",
+      "expected": "flex",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 44,
+      "offset": 1834,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline-flex",
+      "expected": "inline-flex",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 46,
+      "offset": 1882,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "contents",
+      "expected": "contents",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 48,
+      "offset": 1927,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in",
+      "expected": "run-in",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 49,
+      "offset": 1969,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow",
+      "expected": "block",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 50,
+      "offset": 2018,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root",
+      "expected": "flow-root",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 51,
+      "offset": 2063,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "ruby",
+      "expected": "ruby",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 52,
+      "offset": 2103,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "ruby-base",
+      "expected": "ruby-base",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 53,
+      "offset": 2148,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "ruby-text",
+      "expected": "ruby-text",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 55,
+      "offset": 2194,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow list-item",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 56,
+      "offset": 2257,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item flow",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 57,
+      "offset": 2320,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root list-item",
+      "expected": "flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 58,
+      "offset": 2398,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item flow-root",
+      "expected": "flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 60,
+      "offset": 2477,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block flow",
+      "expected": "block",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 61,
+      "offset": 2532,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow block",
+      "expected": "block",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 62,
+      "offset": 2587,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root block",
+      "expected": "flow-root",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 63,
+      "offset": 2651,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block flow-root",
+      "expected": "flow-root",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 64,
+      "offset": 2715,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flex block",
+      "expected": "flex",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 65,
+      "offset": 2769,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block flex",
+      "expected": "flex",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 66,
+      "offset": 2823,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "grid block",
+      "expected": "grid",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 67,
+      "offset": 2877,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block grid",
+      "expected": "grid",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 68,
+      "offset": 2931,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table block",
+      "expected": "table",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 69,
+      "offset": 2987,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block table",
+      "expected": "table",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 70,
+      "offset": 3043,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block ruby",
+      "expected": "block ruby",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 71,
+      "offset": 3103,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "ruby block",
+      "expected": "block ruby",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 72,
+      "offset": 3163,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block list-item",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 73,
+      "offset": 3227,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item block",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 74,
+      "offset": 3291,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow block list-item",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 75,
+      "offset": 3360,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block flow list-item",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 76,
+      "offset": 3429,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow list-item block",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 77,
+      "offset": 3498,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block list-item flow",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 78,
+      "offset": 3567,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item block flow",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 79,
+      "offset": 3636,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item flow block",
+      "expected": "list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 80,
+      "offset": 3705,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root block list-item",
+      "expected": "flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 81,
+      "offset": 3789,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block flow-root list-item",
+      "expected": "flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 82,
+      "offset": 3873,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root list-item block",
+      "expected": "flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 83,
+      "offset": 3957,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "block list-item flow-root",
+      "expected": "flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 84,
+      "offset": 4041,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item block flow-root",
+      "expected": "flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 85,
+      "offset": 4125,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item flow-root block",
+      "expected": "flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 87,
+      "offset": 4210,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline flow",
+      "expected": "inline",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 88,
+      "offset": 4267,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow inline",
+      "expected": "inline",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 89,
+      "offset": 4324,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root inline",
+      "expected": "inline-block",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 90,
+      "offset": 4392,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline flow-root",
+      "expected": "inline-block",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 91,
+      "offset": 4460,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flex inline",
+      "expected": "inline-flex",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 92,
+      "offset": 4522,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline flex",
+      "expected": "inline-flex",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 93,
+      "offset": 4584,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "grid inline",
+      "expected": "inline-grid",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 94,
+      "offset": 4646,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline grid",
+      "expected": "inline-grid",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 95,
+      "offset": 4708,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table inline",
+      "expected": "inline-table",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 96,
+      "offset": 4772,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline table",
+      "expected": "inline-table",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 97,
+      "offset": 4836,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline ruby",
+      "expected": "ruby",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 98,
+      "offset": 4891,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "ruby inline",
+      "expected": "ruby",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 99,
+      "offset": 4946,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline list-item",
+      "expected": "inline list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 100,
+      "offset": 5018,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item inline",
+      "expected": "inline list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 101,
+      "offset": 5090,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow inline list-item",
+      "expected": "inline list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 102,
+      "offset": 5167,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline flow list-item",
+      "expected": "inline list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 103,
+      "offset": 5244,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow list-item inline",
+      "expected": "inline list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 104,
+      "offset": 5321,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline list-item flow",
+      "expected": "inline list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 105,
+      "offset": 5398,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item inline flow",
+      "expected": "inline list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 106,
+      "offset": 5475,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item flow inline",
+      "expected": "inline list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 107,
+      "offset": 5552,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root inline list-item",
+      "expected": "inline flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 108,
+      "offset": 5644,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline flow-root list-item",
+      "expected": "inline flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 109,
+      "offset": 5736,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root list-item inline",
+      "expected": "inline flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 110,
+      "offset": 5828,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "inline list-item flow-root",
+      "expected": "inline flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 111,
+      "offset": 5920,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item inline flow-root",
+      "expected": "inline flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 112,
+      "offset": 6012,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item flow-root inline",
+      "expected": "inline flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 114,
+      "offset": 6105,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in flow",
+      "expected": "run-in",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 115,
+      "offset": 6162,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow run-in",
+      "expected": "run-in",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 116,
+      "offset": 6219,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root run-in",
+      "expected": "run-in flow-root",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 117,
+      "offset": 6291,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in flow-root",
+      "expected": "run-in flow-root",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 118,
+      "offset": 6363,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flex run-in",
+      "expected": "run-in flex",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 119,
+      "offset": 6425,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in flex",
+      "expected": "run-in flex",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 120,
+      "offset": 6487,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "grid run-in",
+      "expected": "run-in grid",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 121,
+      "offset": 6549,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in grid",
+      "expected": "run-in grid",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 122,
+      "offset": 6611,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "table run-in",
+      "expected": "run-in table",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 123,
+      "offset": 6675,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in table",
+      "expected": "run-in table",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 124,
+      "offset": 6739,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in ruby",
+      "expected": "run-in ruby",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 125,
+      "offset": 6801,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "ruby run-in",
+      "expected": "run-in ruby",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 126,
+      "offset": 6863,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in list-item",
+      "expected": "run-in list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 127,
+      "offset": 6935,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item run-in",
+      "expected": "run-in list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 128,
+      "offset": 7007,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow run-in list-item",
+      "expected": "run-in list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 129,
+      "offset": 7084,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in flow list-item",
+      "expected": "run-in list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 130,
+      "offset": 7161,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow list-item run-in",
+      "expected": "run-in list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 131,
+      "offset": 7238,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in list-item flow",
+      "expected": "run-in list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 132,
+      "offset": 7315,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item run-in flow",
+      "expected": "run-in list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 133,
+      "offset": 7392,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item flow run-in",
+      "expected": "run-in list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 134,
+      "offset": 7469,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root run-in list-item",
+      "expected": "run-in flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 135,
+      "offset": 7561,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in flow-root list-item",
+      "expected": "run-in flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 136,
+      "offset": 7653,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "flow-root list-item run-in",
+      "expected": "run-in flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 137,
+      "offset": 7745,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "run-in list-item flow-root",
+      "expected": "run-in flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 138,
+      "offset": 7837,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item run-in flow-root",
+      "expected": "run-in flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 139,
+      "offset": 7929,
+      "kind": "test_computed_value",
+      "property": "display",
+      "specified": "list-item flow-root run-in",
+      "expected": "run-in flow-root list-item",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-table",
+      "expected": "table",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-row-group",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-column",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-column-group",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-header-group",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-footer-group",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-row",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-cell",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-caption",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "ruby-base",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "ruby-text",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-block",
+      "expected": "block",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-flex",
+      "expected": "flex",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-grid",
+      "expected": "grid",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "list-item",
+      "expected": "list-item",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 187,
+      "offset": 9534,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "contents",
+      "expected": "contents",
+      "extra_inline": "position:absolute",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-table",
+      "expected": "table",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-row-group",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-column",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-column-group",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-header-group",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-footer-group",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-row",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-cell",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-caption",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "ruby-base",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "ruby-text",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-block",
+      "expected": "block",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-flex",
+      "expected": "flex",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-grid",
+      "expected": "grid",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "list-item",
+      "expected": "list-item",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 188,
+      "offset": 9581,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "contents",
+      "expected": "contents",
+      "extra_inline": "position:fixed",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-table",
+      "expected": "table",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-row-group",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-column",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-column-group",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-header-group",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-footer-group",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-row",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-cell",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-caption",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "ruby-base",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "ruby-text",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-block",
+      "expected": "block",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-flex",
+      "expected": "flex",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-grid",
+      "expected": "grid",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "list-item",
+      "expected": "list-item",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 189,
+      "offset": 9625,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "contents",
+      "expected": "contents",
+      "extra_inline": "float:left",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-table",
+      "expected": "table",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-row-group",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-column",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-column-group",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-header-group",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-footer-group",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-row",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-cell",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "table-caption",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "ruby-base",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "ruby-text",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-block",
+      "expected": "block",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-flex",
+      "expected": "flex",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "inline-grid",
+      "expected": "grid",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "list-item",
+      "expected": "list-item",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "line": 190,
+      "offset": 9665,
+      "kind": "test_display_affected",
+      "property": "display",
+      "specified": "contents",
+      "expected": "contents",
+      "extra_inline": "float:right",
+      "styles": []
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 48,
+      "offset": 1545,
+      "kind": "test_computed_value",
+      "property": "font-size",
+      "specified": "10px",
+      "expected": "10px",
+      "styles": [
+        "\n  #container {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 49,
+      "offset": 1587,
+      "kind": "test_computed_value",
+      "property": "font-size",
+      "specified": "20%",
+      "expected": "8px",
+      "styles": [
+        "\n  #container {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 50,
+      "offset": 1635,
+      "kind": "test_computed_value",
+      "property": "font-size",
+      "specified": "calc(30% - 40px)",
+      "expected": "0px",
+      "styles": [
+        "\n  #container {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 51,
+      "offset": 1696,
+      "kind": "test_computed_value",
+      "property": "font-size",
+      "specified": "calc(30% + 40px)",
+      "expected": "52px",
+      "styles": [
+        "\n  #container {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 52,
+      "offset": 1758,
+      "kind": "test_computed_value",
+      "property": "font-size",
+      "specified": "calc(10px - 0.5em)",
+      "expected": "0px",
+      "styles": [
+        "\n  #container {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 53,
+      "offset": 1821,
+      "kind": "test_computed_value",
+      "property": "font-size",
+      "specified": "calc(10px + 0.5em)",
+      "expected": "30px",
+      "styles": [
+        "\n  #container {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 24,
+      "offset": 616,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "normal",
+      "expected": "400",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 25,
+      "offset": 669,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "bold",
+      "expected": "700",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 26,
+      "offset": 720,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "1",
+      "expected": "1",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 27,
+      "offset": 761,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "100",
+      "expected": "100",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 28,
+      "offset": 804,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "200",
+      "expected": "200",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 29,
+      "offset": 847,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "300",
+      "expected": "300",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 30,
+      "offset": 890,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "400",
+      "expected": "400",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 31,
+      "offset": 933,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "500",
+      "expected": "500",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 32,
+      "offset": 976,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "600",
+      "expected": "600",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 33,
+      "offset": 1019,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "700",
+      "expected": "700",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 34,
+      "offset": 1062,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "800",
+      "expected": "800",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 35,
+      "offset": 1105,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "900",
+      "expected": "900",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 36,
+      "offset": 1148,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "1000",
+      "expected": "1000",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 37,
+      "offset": 1192,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "101",
+      "expected": "101",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 38,
+      "offset": 1235,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "150.25",
+      "expected": "150.25",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 39,
+      "offset": 1281,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "calc(100)",
+      "expected": "100",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 40,
+      "offset": 1337,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "calc(0)",
+      "expected": "1",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 41,
+      "offset": 1389,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "calc(-100)",
+      "expected": "1",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 42,
+      "offset": 1444,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "calc(100 + 100)",
+      "expected": "200",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 43,
+      "offset": 1506,
+      "kind": "test_computed_value",
+      "property": "font-weight",
+      "specified": "calc(100 + (sign(20cqw - 10px) * 5))",
+      "expected": "95",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 55,
+      "offset": 1998,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "400",
+      "parent_inline": "font-weight:1",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 56,
+      "offset": 2035,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "400",
+      "parent_inline": "font-weight:50",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 57,
+      "offset": 2073,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "400",
+      "parent_inline": "font-weight:100",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 58,
+      "offset": 2112,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "400",
+      "parent_inline": "font-weight:200",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 59,
+      "offset": 2151,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "400",
+      "parent_inline": "font-weight:300",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 60,
+      "offset": 2190,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "400",
+      "parent_inline": "font-weight:349",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 61,
+      "offset": 2229,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "700",
+      "parent_inline": "font-weight:350",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 62,
+      "offset": 2268,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "700",
+      "parent_inline": "font-weight:400",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 63,
+      "offset": 2307,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "700",
+      "parent_inline": "font-weight:500",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 64,
+      "offset": 2346,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "700",
+      "parent_inline": "font-weight:549",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 65,
+      "offset": 2385,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "900",
+      "parent_inline": "font-weight:550",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 66,
+      "offset": 2424,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "900",
+      "parent_inline": "font-weight:600",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 67,
+      "offset": 2463,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "900",
+      "parent_inline": "font-weight:700",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 68,
+      "offset": 2502,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "900",
+      "parent_inline": "font-weight:749",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 69,
+      "offset": 2541,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "900",
+      "parent_inline": "font-weight:750",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 70,
+      "offset": 2580,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "900",
+      "parent_inline": "font-weight:800",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 71,
+      "offset": 2619,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "900",
+      "parent_inline": "font-weight:900",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 72,
+      "offset": 2658,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "950",
+      "parent_inline": "font-weight:950",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 73,
+      "offset": 2697,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "bolder",
+      "expected": "1000",
+      "parent_inline": "font-weight:1000",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 75,
+      "offset": 2739,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "1",
+      "parent_inline": "font-weight:1",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 76,
+      "offset": 2775,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "50",
+      "parent_inline": "font-weight:50",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 77,
+      "offset": 2813,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "100",
+      "parent_inline": "font-weight:100",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 78,
+      "offset": 2853,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "100",
+      "parent_inline": "font-weight:200",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 79,
+      "offset": 2893,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "100",
+      "parent_inline": "font-weight:300",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 80,
+      "offset": 2933,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "100",
+      "parent_inline": "font-weight:349",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 81,
+      "offset": 2973,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "100",
+      "parent_inline": "font-weight:350",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 82,
+      "offset": 3013,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "100",
+      "parent_inline": "font-weight:400",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 83,
+      "offset": 3053,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "100",
+      "parent_inline": "font-weight:500",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 84,
+      "offset": 3093,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "100",
+      "parent_inline": "font-weight:549",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 85,
+      "offset": 3133,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "400",
+      "parent_inline": "font-weight:550",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 86,
+      "offset": 3173,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "400",
+      "parent_inline": "font-weight:600",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 87,
+      "offset": 3213,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "400",
+      "parent_inline": "font-weight:700",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 88,
+      "offset": 3253,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "400",
+      "parent_inline": "font-weight:749",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 89,
+      "offset": 3293,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "700",
+      "parent_inline": "font-weight:750",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 90,
+      "offset": 3333,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "700",
+      "parent_inline": "font-weight:800",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 91,
+      "offset": 3373,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "700",
+      "parent_inline": "font-weight:900",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 92,
+      "offset": 3413,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "700",
+      "parent_inline": "font-weight:950",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "line": 93,
+      "offset": 3453,
+      "kind": "test_relative",
+      "property": "font-weight",
+      "specified": "lighter",
+      "expected": "700",
+      "parent_inline": "font-weight:1000",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 24,
+      "offset": 635,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "normal",
+      "expected": "normal",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 26,
+      "offset": 682,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "0",
+      "expected": "0px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 27,
+      "offset": 730,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "2",
+      "expected": "80px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 28,
+      "offset": 779,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "0px",
+      "expected": "0px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 29,
+      "offset": 822,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "10px",
+      "expected": "10px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 30,
+      "offset": 866,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "0%",
+      "expected": "0px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 31,
+      "offset": 915,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "0.5%",
+      "expected": "0.2px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 32,
+      "offset": 968,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "137.5%",
+      "expected": "55px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 33,
+      "offset": 1022,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "200%",
+      "expected": "80px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 34,
+      "offset": 1074,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "calc(200% + 10px)",
+      "expected": "90px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 36,
+      "offset": 1140,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "calc(10px - 0.5em)",
+      "expected": "0px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 37,
+      "offset": 1205,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "calc(10px + 0.5em)",
+      "expected": "30px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 39,
+      "offset": 1272,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "calc(10 + (sign(2cqw - 10px) * 5))",
+      "expected": "200px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 40,
+      "offset": 1355,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "calc(10% + (sign(2cqw - 10px) * 5%))",
+      "expected": "2px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "line": 41,
+      "offset": 1438,
+      "kind": "test_computed_value",
+      "property": "line-height",
+      "specified": "calc(10px + (sign(2cqw - 10px) * 5px))",
+      "expected": "5px",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 100px;\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 15,
+      "offset": 525,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "visible",
+      "expected": "visible",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 16,
+      "offset": 569,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "hidden",
+      "expected": "hidden",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 17,
+      "offset": 612,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "clip",
+      "expected": "clip",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 18,
+      "offset": 653,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "scroll",
+      "expected": "scroll",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 19,
+      "offset": 696,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "auto",
+      "expected": "auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 21,
+      "offset": 738,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "auto auto",
+      "expected": "auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 22,
+      "offset": 792,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "auto clip",
+      "expected": "auto clip",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 23,
+      "offset": 838,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "auto visible",
+      "expected": "auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 24,
+      "offset": 895,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "clip auto",
+      "expected": "clip auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 25,
+      "offset": 941,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "clip clip",
+      "expected": "clip",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 26,
+      "offset": 995,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "clip hidden",
+      "expected": "clip hidden",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 27,
+      "offset": 1043,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "clip scroll",
+      "expected": "clip scroll",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 28,
+      "offset": 1091,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "clip visible",
+      "expected": "clip visible",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 29,
+      "offset": 1156,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "hidden clip",
+      "expected": "hidden clip",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 30,
+      "offset": 1204,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "hidden visible",
+      "expected": "hidden auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 31,
+      "offset": 1270,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "scroll auto",
+      "expected": "scroll auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 32,
+      "offset": 1318,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "scroll clip",
+      "expected": "scroll clip",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 33,
+      "offset": 1366,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "scroll visible",
+      "expected": "scroll auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 34,
+      "offset": 1432,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "visible auto",
+      "expected": "auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 35,
+      "offset": 1489,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "visible hidden",
+      "expected": "auto hidden",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 36,
+      "offset": 1555,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "visible scroll",
+      "expected": "auto scroll",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 37,
+      "offset": 1621,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "visible clip",
+      "expected": "visible clip",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 38,
+      "offset": 1686,
+      "kind": "test_computed_value",
+      "property": "overflow",
+      "specified": "visible visible",
+      "expected": "visible",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 41,
+      "offset": 1751,
+      "kind": "test_computed_value",
+      "property": "overflow-x",
+      "specified": "scroll",
+      "expected": "scroll",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 42,
+      "offset": 1796,
+      "kind": "test_computed_value",
+      "property": "overflow-x",
+      "specified": "hidden",
+      "expected": "hidden",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 43,
+      "offset": 1841,
+      "kind": "test_computed_value",
+      "property": "overflow-x",
+      "specified": "visible",
+      "expected": "visible",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 44,
+      "offset": 1887,
+      "kind": "test_computed_value",
+      "property": "overflow-y",
+      "specified": "clip",
+      "expected": "clip",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 45,
+      "offset": 1930,
+      "kind": "test_computed_value",
+      "property": "overflow-y",
+      "specified": "auto",
+      "expected": "auto",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 46,
+      "offset": 1973,
+      "kind": "test_computed_value",
+      "property": "overflow-y",
+      "specified": "visible",
+      "expected": "visible",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 47,
+      "offset": 2019,
+      "kind": "test_computed_value",
+      "property": "overflow-block",
+      "specified": "hidden",
+      "expected": "hidden",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 48,
+      "offset": 2068,
+      "kind": "test_computed_value",
+      "property": "overflow-block",
+      "specified": "clip",
+      "expected": "clip",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 49,
+      "offset": 2115,
+      "kind": "test_computed_value",
+      "property": "overflow-block",
+      "specified": "visible",
+      "expected": "visible",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 50,
+      "offset": 2165,
+      "kind": "test_computed_value",
+      "property": "overflow-inline",
+      "specified": "scroll",
+      "expected": "scroll",
+      "styles": []
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "line": 51,
+      "offset": 2215,
+      "kind": "test_computed_value",
+      "property": "overflow-inline",
+      "specified": "visible",
+      "expected": "visible",
+      "styles": []
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 21,
+      "offset": 702,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "normal",
+      "expected": "normal",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 22,
+      "offset": 751,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "0px",
+      "expected": "normal",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 24,
+      "offset": 808,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "10px",
+      "expected": "10px",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 25,
+      "offset": 855,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "-20px",
+      "expected": "-20px",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 26,
+      "offset": 903,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "calc(10px - 0.5em)",
+      "expected": "-10px",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 27,
+      "offset": 973,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "110%",
+      "expected": "110%",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 28,
+      "offset": 1020,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "-5%",
+      "expected": "-5%",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 29,
+      "offset": 1066,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "calc(10% - 20%)",
+      "expected": "-10%",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "line": 30,
+      "offset": 1132,
+      "kind": "test_computed_value",
+      "property": "letter-spacing",
+      "specified": "calc(10px - (5% + 10%)",
+      "expected": "calc(-15% + 10px)",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 21,
+      "offset": 615,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "normal",
+      "expected": "0px",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 22,
+      "offset": 669,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "0",
+      "expected": "0px",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 24,
+      "offset": 719,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "10px",
+      "expected": "10px",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 25,
+      "offset": 764,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "-20px",
+      "expected": "-20px",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 26,
+      "offset": 810,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "calc(10px - 0.5em)",
+      "expected": "-10px",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 27,
+      "offset": 878,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "110%",
+      "expected": "110%",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 28,
+      "offset": 923,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "-5%",
+      "expected": "-5%",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 29,
+      "offset": 967,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "calc(10% - 20%)",
+      "expected": "-10%",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "line": 30,
+      "offset": 1031,
+      "kind": "test_computed_value",
+      "property": "word-spacing",
+      "specified": "calc(10px - (5% + 10%)",
+      "expected": "calc(-15% + 10px)",
+      "styles": [
+        "\n  #target {\n    font-size: 40px;\n  }\n"
+      ]
+    }
+  ],
+  "unported": [
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "line": 40,
+      "offset": 1359,
+      "reason": "dynamic/nonliteral expected-value driver"
+    },
+    {
+      "file": "css-backgrounds/parsing/border-width-computed.html",
+      "reason": "dynamic CSSOM thin/medium/thick ordering driver"
+    },
+    {
+      "file": "css-display/parsing/display-computed.html",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 34,
+      "offset": 1054,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 35,
+      "offset": 1097,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 36,
+      "offset": 1137,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 37,
+      "offset": 1176,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 38,
+      "offset": 1215,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 39,
+      "offset": 1255,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 41,
+      "offset": 1373,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 44,
+      "offset": 1438,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 45,
+      "offset": 1479,
+      "reason": "test_relative_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 65,
+      "offset": 2306,
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 66,
+      "offset": 2336,
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 67,
+      "offset": 2367,
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 68,
+      "offset": 2397,
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 69,
+      "offset": 2429,
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-size-computed.html",
+      "line": 70,
+      "offset": 2462,
+      "reason": "test_font_size requires UA font policy/presentational hints and browser driver"
+    },
+    {
+      "file": "css-fonts/parsing/font-weight-computed.html",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-inline/parsing/line-height-computed.html",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-overflow/parsing/overflow-computed.html",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-text/parsing/letter-spacing-computed.html",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    },
+    {
+      "file": "css-text/parsing/word-spacing-computed.html",
+      "reason": "JavaScript/CSSOM support, serialization and round-trip driver"
+    }
+  ]
+}

@@ -33,6 +33,8 @@ baseline-math-sums = []
 
 # Full rule-scan measurement control, same match/cascade semantics.
 baseline-cascade-index = []
+# Same computed values with full per-element resolution/storage, no sparse sharing.
+baseline-style-dense = []
 
 [dependencies]
 memchr = "2"

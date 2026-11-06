@@ -9,6 +9,7 @@ pub(super) enum SizeKind {
 }
 #[derive(Clone, Copy)]
 pub(super) enum Grammar {
+    Overflow,
     Keywords(&'static [Keyword]),
     Numeric(NumericKind, Range, &'static [Keyword]),
     Color(&'static [Keyword]),
@@ -188,7 +189,7 @@ property_registry! {
     InsetInlineStart, "inset-inline-start", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
     Isolation, "isolation", Grammar::Keywords(&[Keyword::Auto,Keyword::Isolate]), "auto", false;
     Left, "left", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
-    LetterSpacing, "letter-spacing", Grammar::Numeric(NumericKind::Length, Range::All, &[Keyword::Normal]), "normal", true;
+    LetterSpacing, "letter-spacing", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Normal]), "normal", true;
     LineHeight, "line-height", Grammar::Numeric(NumericKind::LineHeight, Range::Nonnegative, &[Keyword::Normal]), "normal", true;
     MarginBlockEnd, "margin-block-end", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "0", false;
     MarginBlockStart, "margin-block-start", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "0", false;
@@ -209,11 +210,11 @@ property_registry! {
     ObjectFit, "object-fit", Grammar::Keywords(&[Keyword::Fill,Keyword::Contain,Keyword::Cover,Keyword::None,Keyword::ScaleDown]), "fill", false;
     Opacity, "opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", false;
     Order, "order", Grammar::Numeric(NumericKind::Integer, Range::All, &[]), "0", false;
-    OverflowBlock, "overflow-block", Grammar::Keywords(&[Keyword::Visible, Keyword::Hidden, Keyword::Clip, Keyword::Scroll, Keyword::Auto]), "visible", false;
-    OverflowInline, "overflow-inline", Grammar::Keywords(&[Keyword::Visible, Keyword::Hidden, Keyword::Clip, Keyword::Scroll, Keyword::Auto]), "visible", false;
+    OverflowBlock, "overflow-block", Grammar::Overflow, "visible", false;
+    OverflowInline, "overflow-inline", Grammar::Overflow, "visible", false;
     OverflowWrap, "overflow-wrap", Grammar::Keywords(&[Keyword::Normal,Keyword::BreakWord,Keyword::Anywhere]), "normal", true;
-    OverflowX, "overflow-x", Grammar::Keywords(&[Keyword::Visible,Keyword::Hidden,Keyword::Clip,Keyword::Scroll,Keyword::Auto]), "visible", false;
-    OverflowY, "overflow-y", Grammar::Keywords(&[Keyword::Visible,Keyword::Hidden,Keyword::Clip,Keyword::Scroll,Keyword::Auto]), "visible", false;
+    OverflowX, "overflow-x", Grammar::Overflow, "visible", false;
+    OverflowY, "overflow-y", Grammar::Overflow, "visible", false;
     PaddingBlockEnd, "padding-block-end", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[]), "0", false;
     PaddingBlockStart, "padding-block-start", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[]), "0", false;
     PaddingBottom, "padding-bottom", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[]), "0", false;
@@ -236,7 +237,7 @@ property_registry! {
     Visibility, "visibility", Grammar::Keywords(&[Keyword::Visible,Keyword::Hidden,Keyword::Collapse]), "visible", true;
     Width, "width", Grammar::Size(SizeKind::Preferred), "auto", false;
     WordBreak, "word-break", Grammar::Keywords(&[Keyword::Normal,Keyword::BreakAll,Keyword::KeepAll,Keyword::AutoPhrase,Keyword::BreakWord]), "normal", true;
-    WordSpacing, "word-spacing", Grammar::Numeric(NumericKind::Length, Range::All, &[Keyword::Normal]), "normal", true;
+    WordSpacing, "word-spacing", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Normal]), "normal", true;
     WritingMode, "writing-mode", Grammar::Keywords(&[Keyword::HorizontalTb,Keyword::VerticalRl,Keyword::VerticalLr,Keyword::SidewaysRl,Keyword::SidewaysLr]), "horizontal-tb", true;
     ZIndex, "z-index", Grammar::Numeric(NumericKind::Integer, Range::All, &[Keyword::Auto]), "auto", false;
 }

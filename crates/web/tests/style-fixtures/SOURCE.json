@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "d7bb5bb848fcd304c10669288a211dbafd106d90",
+  "resource_directory": "css",
+  "files": {
+    ".gitattributes": "c6a6c303cfda51673d39df3addb42834783bf6f675b033f963d7eff77600d8c0",
+    "LICENSE.md": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
+    "README.md": "268dcbd74afed672d649ba0bb6eb3c202773bfe9241b316cd7ce00fd85cce551",
+    "derived.json": "0c987f8efcad1ab735171819eb8eabdd0b8b271fdc16369f7f002e403361c633",
+    "extract.py": "15db8b9a79706a66ec0e00be9a44cd90f29b649a026ba6c276a9fe1ad2e5a472",
+    "wpt/css-backgrounds/parsing/border-width-computed.html": "fb8ab14984f94380e3063cd94b889df78b8c009881d5aa67aee93f68f438a370",
+    "wpt/css-display/parsing/display-computed.html": "5f9305cd116163dd9dc7c81063618ac3491f024e1d16e0373f039ce076555cf4",
+    "wpt/css-fonts/parsing/font-size-computed.html": "2ce7af30fe951e9aa266e76b50f6c00fcaece26911ddbab646eac3f7ba67ddd3",
+    "wpt/css-fonts/parsing/font-weight-computed.html": "2927a1e51cb57e36fb243e41af17cf4c39bd4b3c86e10a304bca19d2f7b18077",
+    "wpt/css-inline/parsing/line-height-computed.html": "ed77030b583900700fb3eb42710095655230e141c9403b8db5258acec5fb0336",
+    "wpt/css-overflow/parsing/overflow-computed.html": "09272fbc67b0c1d08be069878d2e4012463784c0f8a0f5543070c14a0ca68c21",
+    "wpt/css-text/parsing/letter-spacing-computed.html": "fd9102e761a10640c9fb176f307e71917a830be8b5ae45b086c958098176f8dd",
+    "wpt/css-text/parsing/word-spacing-computed.html": "5d2949edec3fb8f738e0cfb7945a0975261434371b0adae6487459f9b1b6b995",
+    "wpt/support/computed-testcommon.js": "20bd767e8a8bd9e4857a29aecfd52cad305ed4af1cf73a5064916a8a1d38ab01"
+  }
+}

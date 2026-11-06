@@ -1,0 +1,149 @@
+{
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  "rows": [
+    {
+      "name": "overflow-auto-clip",
+      "values": {
+        "overflow": "auto clip",
+        "overflow-x": "auto",
+        "overflow-y": "clip"
+      },
+      "input": {
+        "parent": "font-size:16px;",
+        "child": "overflow:auto clip",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "currentcolor-inherit",
+      "values": {
+        "color": "rgb(0, 0, 255)",
+        "background-color": "rgb(0, 0, 255)"
+      },
+      "input": {
+        "parent": "font-size:16px;color:red;background-color:currentcolor",
+        "child": "color:blue;background-color:inherit",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "border-width-inherit",
+      "values": {
+        "border-top-width": "5px"
+      },
+      "input": {
+        "parent": "font-size:16px;border-top-width:5px;border-top-style:none",
+        "child": "border-top-width:inherit;border-top-style:solid",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "font-affecting-parent-metrics",
+      "values": {
+        "font-size": "40px",
+        "font-weight": "40"
+      },
+      "input": {
+        "parent": "font-size:16px;font-size:20px",
+        "child": "font-size:40px;font-weight:calc(2em / 1px)",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "upright-sideways",
+      "values": {
+        "margin-top": "1px",
+        "margin-bottom": "0px",
+        "direction": "rtl"
+      },
+      "input": {
+        "parent": "font-size:16px;",
+        "child": "writing-mode:sideways-lr;direction:rtl;text-orientation:upright;margin-inline-start:1px",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "blockify-inline-block",
+      "values": {
+        "display": "block"
+      },
+      "input": {
+        "parent": "font-size:16px;",
+        "child": "display:inline-block;float:left",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "absolute-float",
+      "values": {
+        "float": "none",
+        "display": "block"
+      },
+      "input": {
+        "parent": "font-size:16px;",
+        "child": "position:absolute;float:left",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "lineheight-number",
+      "values": {
+        "line-height": "48px"
+      },
+      "input": {
+        "parent": "font-size:16px;line-height:1.5",
+        "child": "font-size:32px",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "lineheight-percentage",
+      "values": {
+        "line-height": "24px"
+      },
+      "input": {
+        "parent": "font-size:16px;line-height:150%",
+        "child": "font-size:32px",
+        "scheme": "light"
+      }
+    },
+    {
+      "name": "light-dark-inherit-light",
+      "values": {
+        "background-color": "rgb(0, 0, 255)"
+      },
+      "input": {
+        "parent": "font-size:16px;color:red;background-color:light-dark(currentcolor,green)",
+        "child": "color:blue;background-color:inherit",
+        "scheme": "light",
+        "source_parent": "font-size:16px;color-scheme:light;color:red;background-color:light-dark(currentcolor,green)"
+      }
+    },
+    {
+      "name": "light-dark-inherit-dark",
+      "values": {
+        "background-color": "rgb(0, 128, 0)"
+      },
+      "input": {
+        "parent": "font-size:16px;color:red;background-color:light-dark(currentcolor,green)",
+        "child": "color:blue;background-color:inherit",
+        "scheme": "dark",
+        "source_parent": "font-size:16px;color-scheme:dark;color:red;background-color:light-dark(currentcolor,green)"
+      }
+    }
+  ],
+  "scope": "18 CSSOM resolved-value observations from 11 local diagnostic cases in Olo Chrome on an owned Agent Screen. No website, renderer, pixel, layout or 99% compatibility evidence for Olo engine. Native comparison supplies explicit font-size, numeric line-height, palette and CSS-pixel scale contexts. Scheme is supplied by native Host; author color-scheme is not implemented.",
+  "screen": {
+    "name": "browser-style-check",
+    "size": [
+      1280,
+      800
+    ],
+    "scale": 1,
+    "wayland": true
+  },
+  "launch": "olo-screen run browser-style-check olo-chrome --user-data-dir=/var/tmp/olo-browser-research/style/chrome-profile http://127.0.0.1:36075/chrome-probe.html",
+  "probe_sha256": "1cdbbc5006d7e5c396a1a2dc21b17371ac476b4e6c141703df3937711f0cbef7",
+  "chrome_install_directory": "157.0.8103.38",
+  "chrome_binary_sha256": "fa67e06a5bcd0525739996fb8e3ecff449039e6165c15ea7968d3935e59e829e"
+}

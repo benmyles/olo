@@ -114,3 +114,10 @@ are unchanged WPT data at the revision in `tests/logical-fixtures/SOURCE.json`.
 The BSD license is reproduced there. Native ports retain literal mappings,
 values and assertion loops; CSSOM drivers remain explicit non-passes. No JS,
 live mutation, layout, text shaping or rasterization is executed by these ports.
+
+The nine computed-style documents/helpers in `tests/style-fixtures/wpt` are
+unchanged WPT resources at the revision in `tests/style-fixtures/SOURCE.json`,
+under the included BSD license. The original literal-only extractor and native
+adapter run Olo's document style job against selected semantic assertions.
+Unimplemented contexts and browser drivers remain explicit non-passes. No
+upstream JS, CSSOM serializer, layout or rasterization executes in these ports.

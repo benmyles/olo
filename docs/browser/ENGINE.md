@@ -2,9 +2,9 @@
 
 The engine crate is `olo-web`. It parses supported static HTML into its
 own compact document storage, constructs generic CSS syntax and compiles/matches
-selectors against a stable borrowed tree, and compiles/resolves typed colors.
-It has no
-network, style calculation/layout, JavaScript execution, browser shell or
+selectors against a stable borrowed tree, compiles/resolves typed colors and
+computes frozen styles over the supported property registry. It has no
+network, UA stylesheet, complete style coverage/live invalidation, layout, JavaScript execution, browser shell or
 demonstrated website compatibility.
 
 ## Parse API
@@ -674,7 +674,7 @@ is exhausted. Work, cancellation and cache quotas remain separate operational
 errors. Cache arena accounting includes shared input arenas once, and excludes
 hash-table/control metadata, allocator bookkeeping and transient stacks;
 property/guard counts bound that storage separately. Context callbacks must
-not perform long/blocking work. The future style job must run these APIs on
+not perform long/blocking work. The style job must run these APIs on
 workers, retain results, report progress and own cancellation.
 
 Whitespace scans for single names and CSS-wide keywords are metered too.
@@ -738,9 +738,9 @@ Typed values are CSS-wide keywords, registry keywords, original numeric/color
 values, structured display box types, fit-content numeric arguments or shared
 pending tokens. The compiler validates dimensional/range rules, accepts bare
 zero for lengths, preserves percent/font/viewport/tree dependencies and keeps
-logical longhands distinct from physical ones. Initial spellings are metadata
-for a future shared default-style table, not a computed default style. There
-is no property-to-element application yet.
+logical longhands distinct from physical ones. Initial spellings feed the shared
+computed default-style table described below. This declaration compiler itself
+does not apply properties to elements.
 
 Nonnegative literals are rejected when negative; numeric functions can be
 out of range and clamp at computation. Numeric resolution uses the supplied
@@ -761,8 +761,8 @@ accepts its direction/wrap keywords in either order and fills omitted initial
 values. Importance comes from the original declaration and applies to all
 assignments. CSS-wide keywords expand over every implemented member. Display
 retains outer/inner/list-item or internal table/ruby roles and recognizes
-legacy aliases. No box tree, blockification, coupled overflow computation,
-layout or CSSOM serializer is implemented; paired cascade projection is described below.
+legacy aliases. Blockification and coupled overflow computation belong to the
+style stage below; there is no box tree, layout or CSSOM serializer.
 
 The existing variable scanner validates generic contents and var() arguments
 without copying tokens on an ordinary declaration. A pending shorthand holds
@@ -783,8 +783,8 @@ one exact combined instruction counter or a whole-stylesheet memory budget.
 Default input is 1 MiB/65,536 nodes, work 1,000,000, nesting 64. The original
 math/color/variable hard caps also apply. Cancellation is checked while
 scanning/copying/evaluating. Worker ownership, batching/progress and lifecycle
-invalidation belong to the future style job; this module adds no threads,
-I/O, timers, polling or idle work.
+invalidation belong to the separate style job; this module adds no threads,
+I/O, timers, polling or idle work. The initial document style job is described below.
 
 `Value::dependencies()` reports numeric/color/substitution inputs, including
 pending values explicitly. Property-specific font, cascade, logical-axis and
@@ -862,7 +862,7 @@ and discard results when their document/style generation changes. This is
 not automatic event invalidation, a persistent computed-style cache or a
 complete live style job. No polling, threads, I/O, clocks or idle work are
 added. All long APIs, large drops and host integration belong on workers;
-progress/batching/lifecycle control belong to the future style job.
+progress/batching/lifecycle control belong to the separate style job.
 
 Priority records origin/importance, encapsulation, inline attachment, layer,
 actual matched specificity, supplied proximity, source/declaration order and
@@ -899,10 +899,11 @@ The all shorthand resets the implemented 88 resettable longhands, excluding
 direction and custom properties; it does not complete the property registry.
 
 Logical/physical declarations retain separate specified identities and are
-projected together by the explicit API below. Missing hosts still include
-computed fonts/percentages/line metrics, used sizing, coupled
-property transforms, UA defaults/presentational-hint generation, flattened
-inheritance, CSSOM, animation/transition execution or live invalidation. The
+projected together by the explicit API below. The separate style stage now
+supplies frozen fonts/percentages/line metrics and coupled property transforms
+over the supported registry. Missing hosts still include actual font selection,
+used sizing, UA defaults/presentational-hint generation, flattened
+inheritance, CSSOM, animation/transition execution and live invalidation. The
 API is a cascade/defaulting stage, not a complete computed style or a browser.
 These missing hosts remain acceptance work even when a native port passes.
 
@@ -974,7 +975,7 @@ combinations are represented. The current registry has 20 pairs covering 40
 longhands: preferred/minimum/maximum size, margins, padding, insets and
 overflow. Border/corner logical longhands remain unimplemented. `Axes::pair`
 returns physical then logical; `Axes::physical` provides the canonical name
-for future computed storage. Unpaired properties pass through unchanged.
+for canonical computed storage. Unpaired properties pass through unchanged.
 `Resolver::property` remains the raw declared-property query, useful for the
 prerequisites and diagnostics; it does not perform paired projection.
 
@@ -1026,3 +1027,140 @@ and [CSS Overflow 3](https://drafts.csswg.org/css-overflow-3/#overflow-propertie
 Pinned originals, literal extraction, scope and hashes are under
 `crates/web/tests/logical-fixtures`. Release measurements and coverage summary
 are in `measurements/2026-11-05-logical*.json`; journal records the outcomes.
+
+## Frozen initial computed styles
+
+`css::style` computes immutable values for the current **89 longhands and 16
+shorthands**, stored under **69 canonical physical/unpaired longhands**. This
+is a bounded worker stage, not complete CSS or a rendering engine. `Defaults`
+compiles typed initial spellings and their computed baseline once per immutable
+`Host::revision`, shared across styles. Initial values are not an HTML UA
+stylesheet: headings, body, controls, presentational hints and font-family
+selection still need that layer.
+
+`Host` supplies a coherent scheme/system palette, device scale including zoom,
+UA font-size keyword policy and already-selected `FontMetrics` for a
+`FontRequest { size, weight, axes }`. Optional viewport/container/tree callbacks
+are bound to the subject element; unavailable contexts return errors. No
+guessed font or viewport is substituted. The host must change its revision when
+any of these inputs change. This API does not select fonts, shape text, load
+font files or implement author `color-scheme`.
+
+`Style::compute(defaults, cascade, parent, root, host, options, limits, cancel)`
+requires consistent parent/default/root identities. It resolves axes and font
+prerequisites before ordinary properties, using parent font units for
+font-affecting properties and the initial font for root-relative units during
+root font computation. Inheritance copies computed values, not specified
+expressions. Unitless line heights retain their multiplier; percentages and
+lengths freeze against the subject's computed font. `normal` retains its marker
+and the supplied used line metric. Numeric partial evaluation freezes
+font/viewport/container/tree inputs while retaining layout percentages and the
+original arithmetic evaluation order. Final range/rounding/IEEE normalization
+happens at the property boundary, not inside partially folded expressions.
+
+Computed `color` becomes concrete; other `currentcolor` values retain that
+marker across inheritance and resolve against the subject through `used_color`.
+System and light-dark choices freeze in the supplied scheme/palette. Text
+spacing's computed `normal` is zero; percentages inherit intact and
+`used_text_spacing` requires the subject's used font size. Text-align
+`match-parent` uses the parent's computed direction, including under upright
+text; the legacy `-webkit-match-parent` alias is recognized too.
+
+Coupled transforms implement visible-to-auto overflow, absolute/fixed float
+suppression, root/float/position/flex/grid blockification and inner flow-root
+when the actual parent box has a different writing mode. `clip` remains `clip`
+alongside a scrollable axis under the current Overflow specification. Border
+keywords are 1/3/5 CSS px and computed widths snap to device pixels; none/hidden
+styles zero **used** width through `used_border_width`, preserving computed
+width for inheritance. `Options::layout_parent: Option<BoxParent>` carries the
+nearest box parent's display and axes separately from the inheritance parent.
+The document job skips `display:contents` for that context. This describes
+computed values only; no CSS box tree or used sizing is produced.
+
+Each Style owns an 80-byte header, shared Defaults/Font/custom dictionaries and
+sparse immutable overrides. It retains no parent, source DOM or cascade.
+Logical value queries project with its axes. Undeclared properties copy initial
+or inherited computed values without rerunning the cascade resolver. Unchanged
+fonts and inherited custom dictionaries share Arcs. Exact equal parent/adjacent
+override arrays share too, independently of their custom bindings; numeric
+program equality is conservative. Custom values are computed before inheritance
+and never rebound against a descendant's declarations. Empty dictionaries and
+default-only arrays share storage. This is not global interning or incremental
+invalidation; temporary per-element vectors and nonadjacent sharing remain
+profiling work. `Memory::for_styles` counts distinct input Style headers and
+deduplicates referenced defaults, fonts, arrays, names, token arenas and numeric
+programs, including Arc controls. Allocator/hash controls, DOM, stylesheets and
+caller containers are excluded; this measure is not RSS.
+
+`Job::new(&Document, &RuleSet, defaults, options, limits, cancel)` walks the
+immutable connected light tree parent-before-child. `step(node_budget,
+subject_host_callback)` computes a bounded prefix with progress; completed
+prefix values can be read while work proceeds. It excludes disconnected and
+template-content trees. Real selector matching/state snapshots, inline
+declaration parsing, cascade/defaulting, computed inheritance and nearest box
+parent context use production code. Invalid inline declarations are skipped
+with counts; unknown/unsupported inline and stylesheet diagnostics remain
+visible in `Report`. A resource, missing-context or cancellation error poisons
+the job; `finish` rejects incomplete/failed results. Defaults bound individual
+style properties/work/custom storage; job limits separately bound tree slots,
+nodes/elements/depth/work, inline parsing and aggregate retained payload.
+
+The finished `StyleTree` retains no document/stylesheet/state-source borrow.
+`get(document, node, expected_generation)` rejects document identity/revision,
+slot generation or style epoch mismatches. The caller must advance the style
+epoch on stylesheet/state/environment changes and check it before installing
+a worker result. This is an initial full pass, not automatic event-driven
+invalidation, flattened/shadow inheritance, UA styles or animation execution.
+There are no threads, timers, I/O or idle work inside the module; callers run
+and schedule the job on a worker.
+
+Independent ports in `tests/style-fixtures` pin nine unchanged WPT documents
+and helpers: **243/341 pass, 98 unsupported**, no unexpected mismatch/error or
+panic. There are 316 literal native assertions and 25 unported browser
+drivers. All 73 weight/line-height assertions requiring unimplemented
+`container-type` contexts remain unsupported, including assertions whose
+scalar alone could otherwise be accepted. The adapter applies ported mutations
+to original inert HTML and runs the production document job. Display tuples
+and numeric references are decoded independently. These are semantic ports,
+not 341 complete WPT browser tests or a CSSOM serializer. See the fixture README
+for supplied font/palette context and denominator. Earlier logical/cascade
+corpora still run through their original supplied-context adapters; their
+counts do not imply that this new document stage has executed those corpora.
+
+Owned Wayland Chrome 157.0.0.0 probes record **22 selected CSSOM observations in
+15 local cases** in `measurements/2026-11-05-style*-chrome.{json,html}`. Native
+tests match all observations. The reference supports prefixed match-parent,
+not the unprefixed standard value; both native aliases are tested, with that
+difference explicit. Effective schemes are supplied by the native host since
+author color-scheme is unimplemented. These probes are structured CSSOM
+comparisons at scale 1, with no screenshots or visual/website evidence. Native
+border arithmetic additionally checks 1, 1.25, 1.5, 1.75 and 2×; this is not a
+visual review at those scales.
+
+```sh
+cargo test --release -p olo-web --test style
+cargo test --release -p olo-web --test style --features baseline-style-dense
+/usr/bin/python3 crates/web/tests/style-fixtures/extract.py
+cargo run --release -p olo-web --example style_eval -- /var/tmp/style-report.json
+# The evaluator exits 1 until every inventoried assertion/driver passes.
+cargo build --release -p olo-web --example style_bench
+target/release/examples/style_bench 5
+```
+
+The `baseline-style-dense` feature disables sparse/default fast paths and
+parent/adjacent override sharing, providing a same-semantics counterfactual
+for the new stage. Measurements and their reproducible runner are in
+`measurements/2026-11-05-style.json` and `2026-11-05-style-measure.py`. They
+include first calls, maximum observed 128-node worker steps, lookup costs,
+retained payload and separate process RSS; neither a hard real-time guarantee
+nor Chrome/browser performance is established. No SIMD/GPU addition is
+claimed for this scalar dependency/priority stage.
+
+Normative rules consulted 2026-11-05: [CSS Cascade 5 defaulting](https://drafts.csswg.org/css-cascade-5/#defaulting),
+[CSS Values 4 computation](https://drafts.csswg.org/css-values-4/#calc-computed-value),
+[CSS Writing Modes 4](https://drafts.csswg.org/css-writing-modes-4/#propdef-writing-mode),
+[CSS Display 3 transformations](https://drafts.csswg.org/css-display-3/#transformations),
+[CSS Overflow 3](https://drafts.csswg.org/css-overflow-3/#overflow-properties),
+[CSS Backgrounds 3 border width](https://drafts.csswg.org/css-backgrounds-3/#border-width),
+[CSS Text 4 spacing](https://drafts.csswg.org/css-text-4/#letter-spacing-property) and
+[CSS Text 3 alignment](https://drafts.csswg.org/css-text-3/#text-align-property).

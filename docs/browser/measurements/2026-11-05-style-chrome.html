@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>Olo engine computed-style reference</title><h1>Computed-style reference</h1><pre id="result">Running</pre><script>
+const rows=[];
+function probe(name, parentCss, childCss, props) {
+ const parent=document.createElement('div'), child=parent.appendChild(document.createElement('div'));
+ parent.style.cssText='font-size:16px;'+parentCss;child.style.cssText=childCss;document.body.appendChild(parent);
+ const style=getComputedStyle(child);rows.push({name,parent:parentCss,child:childCss,values:Object.fromEntries(props.map(p=>[p,style.getPropertyValue(p)]))});parent.remove();
+}
+probe('overflow-auto-clip','','overflow:auto clip',['overflow','overflow-x','overflow-y']);
+probe('currentcolor-inherit','color:red;background-color:currentcolor','color:blue;background-color:inherit',['color','background-color']);
+probe('border-width-inherit','border-top-width:5px;border-top-style:none','border-top-width:inherit;border-top-style:solid',['border-top-width']);
+probe('font-affecting-parent-metrics','font-size:20px','font-size:40px;font-weight:calc(2em / 1px)',['font-size','font-weight']);
+probe('upright-sideways','','writing-mode:sideways-lr;direction:rtl;text-orientation:upright;margin-inline-start:1px',['margin-top','margin-bottom','direction']);
+probe('blockify-inline-block','','display:inline-block;float:left',['display']);
+probe('absolute-float','','position:absolute;float:left',['float','display']);
+probe('lineheight-number','line-height:1.5','font-size:32px',['line-height']);
+probe('lineheight-percentage','line-height:150%','font-size:32px',['line-height']);
+for (const scheme of ['light','dark']) probe('light-dark-inherit-'+scheme,'color-scheme:'+scheme+';color:red;background-color:light-dark(currentcolor,green)','color:blue;background-color:inherit',['background-color']);
+document.getElementById('result').remove(); for(const value of [{userAgent:navigator.userAgent},...rows.map(r=>({name:r.name,values:r.values}))]){const p=document.createElement('p');p.textContent=JSON.stringify(value);document.body.appendChild(p);}
+</script>

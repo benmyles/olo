@@ -1,6 +1,7 @@
 //! Original typed CSS numeric calculations. Compile once; resolve relative
 //! units against an explicit host context. No cascade, CSSOM or layout.
 //! Run long operations on workers; retain programs and reuse Scratch.
+mod compute;
 mod ops;
 mod parse;
 mod units;

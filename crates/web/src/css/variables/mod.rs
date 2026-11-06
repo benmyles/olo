@@ -107,6 +107,9 @@ impl Value {
     pub fn wide(&self) -> Option<Wide> {
         wide(self.components())
     }
+    pub(crate) fn arena_identity(&self) -> usize {
+        Arc::as_ptr(&self.syntax) as usize
+    }
     /// Whole shared allocation's accounted capacities/header. Count once per
     /// arena, not once per Value/clone in a batch; excludes allocator metadata.
     pub fn arena_reserved_bytes(&self) -> usize {

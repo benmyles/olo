@@ -1899,3 +1899,113 @@ font/color/used-value hosts, conditional stylesheet contexts and actual live
 invalidation/style sharing. CSSOM, shaping, bidi, layout, painting, networking,
 V8, native shell/agent control/Olo integrations and all website journeys remain
 required. Paired defaulting alone supplies none of that evidence.
+
+
+## 2026-11-05 — frozen computed styles and initial document jobs
+
+Implemented original Rust computed-style processing over the current 89
+longhands/16 shorthands (69 canonical physical/unpaired values). Styles share
+compiled contextual initial defaults, unchanged fonts/custom dictionaries and
+exact equal parent/adjacent override arrays, with sparse storage. They retain no
+parent, cascade or source DOM. Numeric partial evaluation freezes subject font,
+viewport/container/tree contexts and preserves layout percentages and inner
+IEEE behavior. Inheritance copies computed values; unitless line height stays a
+multiplier, currentcolor stays subject-relative outside color itself, custom
+bindings never rebind against descendant declarations. Actual font selection,
+UA stylesheet, presentational hints and author color-scheme remain unimplemented.
+
+Added worker-only bounded initial document jobs: connected light-tree preorder,
+real selector/state snapshots, inline parsing, cascade and computed inheritance,
+progress/completed prefixes, cancellation, failure poisoning, aggregate retained
+payload limits and document/revision/style-epoch guards. Nearest box-parent
+context skips display:contents independently of inheritance, carrying axes as
+well as display. Coupled computation handles overflow, border device snapping,
+absolute/fixed float, root/flex/grid/position blockification and writing-mode
+flow-root. This is a full initial pass; no box tree, layout or live invalidation.
+No threads, timers, polling or idle work added. Temporary per-element vectors,
+nonadjacent/global sharing and incremental work remain profiling/acceptance tasks.
+
+Used the [olo-screens skill](/home/ben/.agents/skills/olo-screens/SKILL.md) on
+owned browser-style-check, launching only olo-chrome with a fresh /var/tmp
+profile and localhost probes. Chrome 157.0.0.0 supplied 22 selected CSSOM
+observations in 15 local cases; native tests match every selected value.
+Current Overflow/Backgrounds rules and Chrome corrected outdated draft rules:
+clip stays clip beside scrolling; none/hidden zeros used border width, preserving
+computed width for inheritance. Match-parent uses computed parent direction,
+including upright text; this Chrome exposes the prefixed alias only. Native
+also tests the standard alias without claiming reference support. Effective
+schemes are supplied by our host, not computed from author color-scheme.
+Sources, observations and binary hashes retained in style*-chrome artifacts.
+The Agent Screen was stopped, servers stopped and owned Chrome profile removed.
+No personal display/session driven. Structured comparisons at scale 1, no
+screenshots or visual checks; native border arithmetic also tests 1/1.25/1.5/1.75/2.
+No visible product UI change to journal with tools/journal.py.
+
+Nine pinned unchanged WPT resources/helpers plus literal-only extraction produce
+316 native assertions and 25 unported browser drivers: **243/341 pass, 98
+unsupported, no unexpected mismatch/error/panic**. Original inert HTML/styles
+run through the production document job; independent display tuples/scalars
+supply references. All 73 native weight/line-height assertions requiring missing
+container-type context stay unsupported, even constant examples. Remaining
+non-passes include CSSOM/JS/UA font-policy/presentational-hint drivers. This is
+selected semantic coverage, not complete upstream browser tests. Evaluator exits
+1 while any case is unsupported. Coverage summary and report hash recorded;
+fixture regeneration is byte-identical and all manifest hashes verified.
+Earlier logical/cascade corpus counts retain their original supplied-context
+adapters, not newly claimed document-stage coverage.
+
+Release measurements on Intel Core Ultra 7 356H, Linux 7.2.15, rustc 1.99.1,
+CPU0 affinity: three alternating process runs, 5 full build/drop rounds each,
+retained three-property lookups, cold calls and maximum 128-node worker steps.
+Same-semantics baseline-style-dense recomputes/stores all canonical values and
+disables sparse/default/adjacent sharing. It is a counterfactual for this new
+stage, not an existing browser baseline. Prebuilt DOM/rules/defaults; supplied
+fixed metrics, no actual font selection, layout, UI, network, JS or Chrome timing.
+All generated scalar expectations checked outside timings. Raw observations,
+source/binary hashes, toolchain, commands and runner retained in
+measurements/2026-11-05-style.json and 2026-11-05-style-measure.py.
+
+Medians for 10,000 generated item elements (plus four document elements):
+
+| Scene | Dense build/drop | Sparse build/drop | Dense counted style/tree bytes | Sparse counted style/tree bytes | Dense / sparse process RSS KiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Bare | 39.419 ms | 13.889 ms | 29,546,496 | 1,775,464 | 61,860 / 7,640 |
+| Uniform | 46.838 ms | 19.988 ms | 29,546,584 | 1,775,904 | 61,732 / 8,084 |
+| Varying inline widths | 49.621 ms | 26.732 ms | 29,546,584 | 4,735,608 | 62,088 / 14,068 |
+
+Counted payload deduplicates shared allocations and includes Arc controls/tree
+capacities, excluding allocator/hash controls and borrowed DOM/rules; RSS is
+separate whole-process high water, including fixture/runtime/temporary memory.
+Style header is 80 B. Three-property lookup medians dense→sparse are
+120.51→9.65 ns, 197.61→16.69 ns and 132.25→19.02 ns. Cold initial build medians
+are 35.57→14.09 ms, 51.28→20.56 ms, 45.58→26.65 ms. Defaults compilation ranges
+37.89–56.10 µs dense and 39.15–61.99 µs sparse. Largest observed 128-node step
+across all runs/sizes is 12.94 ms dense, 6.54 ms sparse (outliers retained).
+This is no hard latency guarantee: adversarial matching/individual elements
+remain bounded by work quotas and run only on workers.
+
+Common-operation regression probes compare exact pre-logical acfd0d8e, parent
+4da00b03 and current sources using identical existing example sources. Three
+runs of 30M raw queries and 100 cascade rounds; math/properties/variables/color/
+selector probes also retained. Raw margin medians: **8.589 / 8.605 / 8.978 ns**,
+ranges 8.583–8.615 / 8.493–8.913 / 8.095–10.013. Previous +5% variation is not
+resolved. Parent→current indexed match/resolve medians for 1k/2k/4k elements:
+0.2818→0.2875 / 0.5797→0.6284 / 1.1419→1.1658 ms. 2k rises 8.4%, with overlapping
+ranges (0.575–0.665 vs 0.547–0.644). Unchanged #target matcher median rises
+44.23→53.15 ns (+20.2%), overlapping ranges 39.30–50.06 vs 40.01–59.51.
+Other math/property/variable probes are mixed as well. No universal speedup or
+settled performance acceptance claimed; preserve these costs on TODO. Raw
+cascade snapshot payload remains 416 B. No new SIMD/GPU path for this scalar
+stage; existing SIMD scans/color conversion unchanged.
+
+All **134 normal release tests**, **133 all-feature release tests** and all
+**19 dense-only style groups** pass. Strict default/all-feature all-target clippy,
+package formatting and diff checks pass. Full workspace release build passes:
+cargo 5.91 s, wall 6.16 s; existing GPUI warnings/proc-macro-error2 notice remain.
+
+Full browser goal remains active. No browser shell, networking, V8, shaping,
+layout/painting, native dark-page adaptation, agent/desktop/password/passkey
+integration or website journey is implemented by this milestone. Website
+evidence remains **0/3,000 combinations, 0/100 sites**. Next: UA/presentational
+styles, actual font selection, missing contexts/properties and live style
+invalidation, then layout/rendering and the remaining full-browser acceptance.

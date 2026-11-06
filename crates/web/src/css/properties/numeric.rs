@@ -33,6 +33,26 @@ pub struct Numeric {
     percentage_number: bool,
 }
 impl Numeric {
+    pub(crate) fn scalar(value: f64, dimension: math::Dimension, range: Range) -> Self {
+        Self { expression: math::Value::Constant(math::Quantity { value, ty: math::NumericType::dimension(dimension) }), range, integer: false, percentage_number: false }
+    }
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.range == other.range && self.integer == other.integer && self.percentage_number == other.percentage_number && self.expression.same(&other.expression)
+    }
+    /// Freeze this element's computed context while preserving percentages
+    /// that require layout. Inheritance copies this result, not the original
+    /// specified expression. Range/rounding applies once fully resolved.
+    pub fn computed(&self, context: &impl math::Context, defer_percentage: bool, limits: math::Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
+        let expression = self.expression.computed(context, defer_percentage, limits, cancelled).map_err(Error::Numeric)?;
+        let mut computed = Self { expression, range: self.range, integer: self.integer, percentage_number: self.percentage_number };
+        if computed.expression.constant().is_some() {
+            let value = computed.resolve(&math::NoContext, &mut math::Scratch::default(), limits, cancelled)?;
+            let ty = if self.percentage_number { math::NumericType::dimension(math::Dimension::Number) } else { computed.expression.ty() };
+            computed.expression = math::Value::Constant(math::Quantity { value, ty });
+            computed.percentage_number = false;
+        }
+        Ok(computed)
+    }
     pub fn expression(&self) -> &math::Value {
         &self.expression
     }

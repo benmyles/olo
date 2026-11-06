@@ -229,6 +229,12 @@ impl<'a> Cascade<'a> {
     pub fn candidate_count(&self) -> usize {
         self.entries.len()
     }
+    pub fn has_parent(&self) -> bool {
+        self.has_parent
+    }
+    pub fn declared_properties(&self) -> impl Iterator<Item = p::Property> + '_ {
+        self.known.iter().map(|r| r.property)
+    }
     /// Candidate/range payload capacities; borrowed typed programs and
     /// BTreeMap/control/allocator bookkeeping are excluded.
     pub fn reserved_payload_bytes(&self) -> usize {

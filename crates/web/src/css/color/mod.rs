@@ -1,5 +1,7 @@
 //! Original typed CSS color values. Parsing, contextual resolution and
 //! unclipped colorimetric conversion; not cascade, gamut mapping or painting.
+mod compute;
+pub use compute::Computed;
 mod convert;
 mod functional;
 mod matrices;
