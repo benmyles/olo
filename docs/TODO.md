@@ -1621,21 +1621,6 @@ of Finished; a new one goes where its priority puts it.
     what it can encode in Preferences; the frames as dmabufs (CUDA's
     external memory) rather than copied.
 
-- **Viewer: select and copy text in PDFs and other documents** (Ben,
-  2026-11-05, for later): "Viewer needs to support selecting and copying
-  text in PDFs and any other relevant document type". In a PDF (and
-  other documents Viewer shows with text in them: EPUB, a Markdown or
-  plain-text file, Office documents if shown, a picture's OCR later
-  perhaps), text is selected by dragging over it (by word with a
-  double-click, by line with a triple), Select All, and copied with ⌘C
-  and the right-click menu, as a selection anywhere in Olo is (the
-  selection's colour from the palette, drawn over the page at every
-  scale); the text read natively from the document (the PDF's text
-  layer, its glyphs' positions and Unicode mapping, in Rust), in reading
-  order, line breaks and hyphenation as a person would want them pasted.
-  Find (⌘F) finds in it too and shows each match. Agents read a page's
-  text from the widget tree and select it as a person does.
-
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a
   markdown file StyledEdit should natively support the Markdown and be
@@ -1725,6 +1710,25 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**Viewer: select and copy text in PDFs and other documents**~~ (done
+  2026-11-05, HACKING's Viewer and `crates/preview`: a PDF's text read
+  natively, selected, copied and found; texts' and formatted documents'
+  too, with the kit's find bar. A picture's OCR, and EPUBs (a book
+  Viewer doesn't show yet), not done: neither has text Viewer can show) (Ben,
+  2026-11-05, for later): "Viewer needs to support selecting and copying
+  text in PDFs and any other relevant document type". In a PDF (and
+  other documents Viewer shows with text in them: EPUB, a Markdown or
+  plain-text file, Office documents if shown, a picture's OCR later
+  perhaps), text is selected by dragging over it (by word with a
+  double-click, by line with a triple), Select All, and copied with ⌘C
+  and the right-click menu, as a selection anywhere in Olo is (the
+  selection's colour from the palette, drawn over the page at every
+  scale); the text read natively from the document (the PDF's text
+  layer, its glyphs' positions and Unicode mapping, in Rust), in reading
+  order, line breaks and hyphenation as a person would want them pasted.
+  Find (⌘F) finds in it too and shows each match. Agents read a page's
+  text from the widget tree and select it as a person does.
 
 - ~~**Ethernet beside Wi-Fi: Deskbar, and Preferences ▸ Network in full**~~
   (done 2026-11-05: HACKING's Deskbar tray and Preferences ▸ Network)

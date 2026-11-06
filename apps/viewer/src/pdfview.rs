@@ -20,10 +20,9 @@ use olo_ui::{
         MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render, RenderImage, ScrollDelta, ScrollHandle, ScrollWheelEvent, SharedString, Size, Styled as _, Subscription,
         Window, actions, canvas, div, point, px, size,
     },
-    metrics as m,
     style::{self, Align},
     theme,
-    widgets::{Button, SCROLL_BAR, ScrollView, StringView, TextField, TextFieldEvent, text_field},
+    widgets::{SCROLL_BAR, ScrollView, TextField, TextFieldEvent, text_field},
 };
 
 use crate::{
@@ -1604,51 +1603,11 @@ impl PdfView {
     /// Find's bar over the pages: the field, how many it found (or that
     /// it's still reading pages), Previous, Next and Close.
     fn find_bar(&self, f: &Find, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let n = f.matches.len();
         let reading = self.texts.len() < self.geoms.len();
-        let said = match (f.query.is_empty(), n, f.current) {
-            (true, ..) => String::new(),
-            (false, 0, _) if reading => format!("Looking… ({} of {} pages)", self.texts.len(), self.geoms.len()),
-            (false, 0, _) => "Not found".into(),
-            (false, n, Some(c)) => format!("{} of {n}{}", c + 1, if reading { "…" } else { "" }),
-            (false, n, None) => format!("{n} found"),
-        };
-        let me = cx.entity();
-        let (prev, next, done) = (me.clone(), me.clone(), me.clone());
-        // A band as the tool bar over it is: the panel's ground, a line
-        // under it.
-        let ground = canvas(
-            |_, _, _| {},
-            |b, _, window, cx| {
-                let p = theme::palette(cx);
-                window.paint_quad(gpui::fill(b, style::c(p.panel_background)));
-                style::hline_above(window, b.left(), b.right(), b.bottom(), style::shade(&p, p.panel_background, 1.3));
-            },
-        )
-        .absolute()
-        .size_full();
-        div()
-            .relative()
-            .h(px(m::TOOLBAR_HEIGHT))
-            .w_full()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(m::SPACING))
-            .px(px(m::SPACING))
-            .child(ground)
-            .on_key_down(cx.listener(|v, e: &gpui::KeyDownEvent, _, cx| {
-                if e.keystroke.key == "escape" {
-                    v.close_find(cx);
-                    cx.stop_propagation();
-                }
-            }))
-            .child(div().w(px(260.0)).child(olo_ui::widgets::TextControl::new(f.field.clone())))
-            .child(div().flex_1().child(StringView::new(said)))
-            .child(Button::new("Previous").enabled(n > 0).on_click(move |_, cx| prev.update(cx, |v, cx| v.find_step(true, cx))))
-            .child(Button::new("Next").enabled(n > 0).on_click(move |_, cx| next.update(cx, |v, cx| v.find_step(false, cx))))
-            .child(Button::new("Close").on_click(move |_, cx| done.update(cx, |v, cx| v.close_find(cx))))
-            .into_any_element()
+        let looking = reading.then(|| format!("{} of {} pages", self.texts.len(), self.geoms.len()));
+        let said = olo_ui::widgets::find_said(&f.query, f.matches.len(), f.current, looking);
+        let (step, close) = (cx.entity(), cx.entity());
+        olo_ui::widgets::find_bar(&f.field, said, !f.matches.is_empty(), move |back, _, cx| step.update(cx, |v, cx| v.find_step(back, cx)), move |_, cx| close.update(cx, |v, cx| v.close_find(cx)))
     }
 }
 

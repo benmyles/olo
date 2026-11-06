@@ -105,7 +105,22 @@ pub struct RichView {
     hover: Option<(usize, usize)>,
     /// Where the page was last drawn (its origin) and the view.
     origin: Point<Pixels>,
+    /// The text selected: where it began, where it goes (or the whole
+    /// document's, Select All).
+    sel: Option<(At, At)>,
+    all: bool,
+    dragging: bool,
+    /// Find: what's looked for (lower case), where it is in what's laid
+    /// out (found again as more is), which is shown.
+    query: String,
+    matches: Vec<(At, At)>,
+    current: Option<usize>,
+    found_upto: usize,
 }
+
+/// A place in the text: a block, one of its texts (`Draw::Text`), a
+/// line of that, a byte in it.
+type At = (usize, usize, usize, usize);
 
 #[derive(Clone, PartialEq)]
 struct Key {
@@ -353,6 +368,8 @@ impl RichView {
             self.generation = generation;
             self.base = base;
             self.key = None;
+            self.sel = None;
+            self.all = false;
             self.scroll.set_offset(point(px(0.0), px(0.0)));
             cx.notify();
         }
@@ -643,13 +660,34 @@ impl RichView {
         let s = window.scale_factor();
         let first = self.laid.partition_point(|l| l.bottom < top);
         let mut want = Vec::new();
+        let selected = style::selection_behind(&p, window.is_window_active());
+        if !self.query.is_empty() && self.found_upto != self.laid.len() {
+            self.refind();
+        }
+        let found = style::c(p.hue(Hue::Yellow)).opacity(0.45);
+        // (Nothing selected: nothing more a text.)
+        let marking = self.all || self.sel.is_some_and(|(a, b)| a != b);
         for (k, laid) in self.laid[first..].iter().enumerate() {
             if laid.top > bottom {
                 break;
             }
-            for d in &laid.draws {
+            for (di, d) in laid.draws.iter().enumerate() {
                 match d {
                     Draw::Text { at, lines, leading } => {
+                        // Behind it (over what's under it: a code
+                        // block's ground), what's found and selected.
+                        for (n, m) in self.matches.iter().enumerate().skip_while(|(_, m)| m.0.0 < first + k).take_while(|(_, m)| m.0.0 == first + k).filter(|(_, m)| m.0.1 == di) {
+                            if self.current != Some(n) {
+                                for r in self.range_rects_in(first + k, Some(di), m.0, m.1) {
+                                    window.paint_quad(gpui::fill(r.on(o), found));
+                                }
+                            }
+                        }
+                        if marking {
+                            for r in self.selection_rects(first + k, di) {
+                                window.paint_quad(gpui::fill(r.on(o), selected));
+                            }
+                        }
                         let mut y = o.y + px(at.1);
                         for line in lines {
                             let _ = line.paint(point(o.x + px(at.0), y), px(*leading), TextAlign::Left, None, window, cx);
@@ -731,6 +769,297 @@ impl RichView {
         self.making.insert((block, dev), task);
     }
 
+    // ---- selecting -----------------------------------------------------------
+
+    pub fn has_selection(&self) -> bool {
+        self.all || self.sel.is_some_and(|(a, b)| a != b)
+    }
+
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        self.all = true;
+        self.sel = None;
+        cx.notify();
+    }
+
+    /// The text selected, as it's copied: a document's whole (each
+    /// block's own text, laid out or not) or what's between the ends.
+    pub fn selected_text(&self) -> String {
+        if self.all {
+            let mut out = String::new();
+            let mut last_item = false;
+            for b in self.blocks.iter() {
+                let Some(t) = block_plain(b) else { continue };
+                let item = matches!(b, Block::Item(..));
+                if !out.is_empty() {
+                    out.push_str(if item && last_item { "\n" } else { "\n\n" });
+                }
+                out.push_str(&t);
+                last_item = item;
+            }
+            return out;
+        }
+        let Some(sel) = self.sel else { return String::new() };
+        let (a, z) = if sel.0 <= sel.1 { sel } else { (sel.1, sel.0) };
+        let mut out = String::new();
+        let mut prev: Option<(usize, f32, &'static str)> = None;
+        for bi in a.0..=z.0.min(self.laid.len().saturating_sub(1)) {
+            let laid = &self.laid[bi];
+            for (di, d) in laid.draws.iter().enumerate() {
+                let Draw::Text { at, lines, .. } = d else { continue };
+                if (bi, di) < (a.0, a.1) || (bi, di) > (z.0, z.1) {
+                    continue;
+                }
+                let mut piece = String::new();
+                for (li, line) in lines.iter().enumerate() {
+                    let here = (bi, di, li);
+                    if here < (a.0, a.1, a.2) || here > (z.0, z.1, z.2) {
+                        continue;
+                    }
+                    let from = if here == (a.0, a.1, a.2) { a.3 } else { 0 };
+                    let to = if here == (z.0, z.1, z.2) { z.3 } else { line.text.len() };
+                    if !piece.is_empty() {
+                        piece.push('\n');
+                    }
+                    piece.push_str(line.text.get(from.min(to)..to.min(line.text.len())).unwrap_or(""));
+                }
+                // Between: a paragraph, a list's next item, a table's
+                // next cell (a tab) or row (a line).
+                if let Some((pb, py, role)) = prev {
+                    out.push_str(if pb != bi {
+                        if role == "ListItem" && laid.role == "ListItem" { "\n" } else { "\n\n" }
+                    } else if at.1 > py {
+                        "\n"
+                    } else {
+                        "\t"
+                    });
+                }
+                out.push_str(&piece);
+                prev = Some((bi, at.1, laid.role));
+            }
+        }
+        out
+    }
+
+    /// The place in the text nearest page point `at`: in the block there
+    /// (or the nearest), the line of its texts nearest, the byte under it.
+    fn text_at(&self, at: (f32, f32)) -> Option<At> {
+        let n = self.laid.len();
+        if n == 0 {
+            return None;
+        }
+        let mut best: Option<(f32, At)> = None;
+        let first = self.laid.partition_point(|l| l.bottom < at.1).min(n - 1).saturating_sub(1);
+        for (bi, laid) in self.laid.iter().enumerate().skip(first).take(3) {
+            for (di, d) in laid.draws.iter().enumerate() {
+                let Draw::Text { at: o, lines, leading } = d else { continue };
+                let mut y = o.1;
+                for (li, line) in lines.iter().enumerate() {
+                    let size = line.size(px(*leading));
+                    let (h, w) = (f32::from(size.height), f32::from(size.width));
+                    let dy = if at.1 < y {
+                        y - at.1
+                    } else if at.1 > y + h {
+                        at.1 - (y + h)
+                    } else {
+                        0.0
+                    };
+                    let dx = if at.0 < o.0 {
+                        o.0 - at.0
+                    } else if at.0 > o.0 + w {
+                        at.0 - (o.0 + w)
+                    } else {
+                        0.0
+                    };
+                    let d = dy * 1000.0 + dx;
+                    if best.is_none_or(|(b, _)| d < b) {
+                        let p = point(px((at.0 - o.0).max(0.0)), px((at.1 - y).clamp(0.0, (h - 1.0).max(0.0))));
+                        let i = match line.closest_index_for_position(p, px(*leading)) {
+                            Ok(i) | Err(i) => i,
+                        };
+                        let i = if at.1 > y + h {
+                            line.text.len()
+                        } else if at.1 < y {
+                            0
+                        } else {
+                            i
+                        };
+                        best = Some((d, (bi, di, li, i)));
+                    }
+                    y += h;
+                }
+            }
+        }
+        best.map(|(_, a)| a)
+    }
+
+    fn press(&mut self, e: &MouseDownEvent, cx: &mut Context<Self>) {
+        let at = (f32::from(e.position.x - self.origin.x), f32::from(e.position.y - self.origin.y));
+        let Some(here) = self.text_at(at) else { return };
+        self.all = false;
+        let text = self.line_text(here);
+        match e.click_count {
+            2 => {
+                let word = |c: char| c.is_alphanumeric() || c == '_';
+                let i = here.3.min(text.len());
+                let a = text[..i].char_indices().rev().take_while(|(_, c)| word(*c)).last().map_or(i, |(k, _)| k);
+                let b = text[i..].char_indices().find(|(_, c)| !word(*c)).map_or(text.len(), |(k, _)| i + k);
+                self.sel = Some(((here.0, here.1, here.2, a), (here.0, here.1, here.2, b)));
+            }
+            n if n >= 3 => self.sel = Some(((here.0, here.1, here.2, 0), (here.0, here.1, here.2, text.len()))),
+            _ => {
+                self.sel = match self.sel {
+                    Some((anchor, _)) if e.modifiers.shift => Some((anchor, here)),
+                    _ => Some((here, here)),
+                };
+                self.dragging = true;
+            }
+        }
+        cx.notify();
+    }
+
+    fn line_text(&self, at: At) -> SharedString {
+        match self.laid.get(at.0).and_then(|l| l.draws.get(at.1)) {
+            Some(Draw::Text { lines, .. }) => lines.get(at.2).map(|l| l.text.clone()).unwrap_or_default(),
+            _ => SharedString::default(),
+        }
+    }
+
+    /// The selection's boxes over block `bi`'s text `di` (page points).
+    fn selection_rects(&self, bi: usize, di: usize) -> Vec<Rect> {
+        match (self.all, self.sel) {
+            (true, _) => self.range_rects_in(bi, Some(di), (0, 0, 0, 0), (usize::MAX, 0, 0, 0)),
+            (false, Some(s)) if s.0 != s.1 => {
+                let (a, z) = if s.0 <= s.1 { s } else { (s.1, s.0) };
+                self.range_rects_in(bi, Some(di), a, z)
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    // ---- find ----------------------------------------------------------------
+
+    /// Look for `query` (lower case) in what's laid out; the first match
+    /// shown.
+    pub fn set_query(&mut self, query: String, cx: &mut Context<Self>) {
+        self.query = query;
+        self.refind();
+        self.current = (!self.matches.is_empty()).then_some(0);
+        self.show_match();
+        cx.notify();
+    }
+
+    pub fn close_find(&mut self, cx: &mut Context<Self>) {
+        self.query.clear();
+        self.matches.clear();
+        self.current = None;
+        cx.notify();
+    }
+
+    /// How many are found, which is shown, and whether more may be (the
+    /// document is still being laid out).
+    pub fn found(&self) -> (usize, Option<usize>, bool) {
+        (self.matches.len(), self.current, self.at.next < self.blocks.len().min(MAX_BLOCKS))
+    }
+
+    pub fn step(&mut self, back: bool, cx: &mut Context<Self>) {
+        let n = self.matches.len();
+        if n == 0 {
+            return;
+        }
+        self.current = Some(match self.current {
+            Some(c) if back => (c + n - 1) % n,
+            Some(c) => (c + 1) % n,
+            None => 0,
+        });
+        self.show_match();
+        cx.notify();
+    }
+
+    fn refind(&mut self) {
+        self.found_upto = self.laid.len();
+        let keep = self.current.and_then(|c| self.matches.get(c)).copied();
+        self.matches.clear();
+        if self.query.is_empty() {
+            return;
+        }
+        for (bi, laid) in self.laid.iter().enumerate() {
+            for (di, d) in laid.draws.iter().enumerate() {
+                let Draw::Text { lines, .. } = d else { continue };
+                for (li, line) in lines.iter().enumerate() {
+                    let low = line.text.to_lowercase();
+                    // (Where lower case keeps every byte where it was.)
+                    if low.len() != line.text.len() {
+                        continue;
+                    }
+                    for (i, m) in low.match_indices(&self.query) {
+                        self.matches.push(((bi, di, li, i), (bi, di, li, i + m.len())));
+                    }
+                }
+            }
+        }
+        if let Some(k) = keep {
+            self.current = self.matches.iter().position(|m| *m == k);
+        }
+    }
+
+    /// The match shown: selected, and scrolled to the middle of the view.
+    fn show_match(&mut self) {
+        let Some(m) = self.current.and_then(|c| self.matches.get(c)).copied() else { return };
+        self.all = false;
+        self.sel = Some(m);
+        if let Some(r) = self.range_rects(m.0.0, m.0, m.1).first() {
+            let view = f32::from(self.scroll.bounds().size.height);
+            self.scroll.set_offset(point(px(0.0), px(-(r.y + r.h / 2.0 - view / 2.0).max(0.0))));
+        }
+    }
+
+    /// Boxes over block `bi`'s text from `a` to `z` (page points).
+    fn range_rects(&self, bi: usize, a: At, z: At) -> Vec<Rect> {
+        self.range_rects_in(bi, None, a, z)
+    }
+
+    /// The same, over one of its texts only (`only`: its draw).
+    fn range_rects_in(&self, bi: usize, only: Option<usize>, a: At, z: At) -> Vec<Rect> {
+        let mut out = Vec::new();
+        let Some(laid) = self.laid.get(bi) else { return out };
+        if bi < a.0 || bi > z.0 {
+            return out;
+        }
+        for (di, d) in laid.draws.iter().enumerate() {
+            let Draw::Text { at, lines, leading } = d else { continue };
+            if only.is_some_and(|o| o != di) {
+                continue;
+            }
+            let lh = px(*leading);
+            let mut y = at.1;
+            for (li, line) in lines.iter().enumerate() {
+                let here = (bi, di, li);
+                let h = f32::from(line.size(lh).height);
+                let w = f32::from(line.size(lh).width);
+                if here >= (a.0, a.1, a.2) && here <= (z.0, z.1, z.2) {
+                    let from = if here == (a.0, a.1, a.2) { a.3 } else { 0 };
+                    let to = if here == (z.0, z.1, z.2) { z.3 } else { line.text.len() };
+                    let p0 = line.position_for_index(from.min(line.text.len()), lh).unwrap_or(point(px(0.0), px(0.0)));
+                    let p1 = line.position_for_index(to.min(line.text.len()), lh).unwrap_or(point(px(w), px((h - *leading).max(0.0))));
+                    let (x0, y0, x1, y1) = (f32::from(p0.x), f32::from(p0.y), f32::from(p1.x), f32::from(p1.y));
+                    // Row by row of the wrapped line: the first from where
+                    // it starts, the last to where it ends.
+                    let mut row = y0;
+                    while row <= y1 + 0.5 {
+                        let left = if (row - y0).abs() < 0.5 { x0 } else { 0.0 };
+                        let right = if (row - y1).abs() < 0.5 { x1 } else { w };
+                        if right > left {
+                            out.push(Rect { x: at.0 + left, y: y + row, w: right - left, h: *leading });
+                        }
+                        row += *leading;
+                    }
+                }
+                y += h;
+            }
+        }
+        out
+    }
+
     fn content_height(&self) -> f32 {
         let n = self.blocks.len().min(MAX_BLOCKS);
         let rest = n.saturating_sub(self.at.next) as f32 * self.average.max(LEADING);
@@ -756,14 +1085,27 @@ impl Render for RichView {
             .w_full()
             .h(px(self.content_height()))
             .child(page)
+            .cursor(CursorStyle::IBeam)
             .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| {
                 let at = (f32::from(e.position.x - v.origin.x), f32::from(e.position.y - v.origin.y));
+                if v.dragging {
+                    if e.pressed_button != Some(MouseButton::Left) {
+                        v.dragging = false;
+                    } else if let (Some(here), Some((anchor, old))) = (v.text_at(at), v.sel)
+                        && here != old
+                    {
+                        v.sel = Some((anchor, here));
+                        cx.notify();
+                    }
+                    return;
+                }
                 let now = v.link_at(at).map(|(b, n)| (b, v.laid[b].links[n].group));
                 if now != v.hover {
                     v.hover = now;
                     cx.notify();
                 }
             }))
+            .on_mouse_up(MouseButton::Left, cx.listener(|v, _: &gpui::MouseUpEvent, _, _| v.dragging = false))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|v, e: &MouseDownEvent, _, cx| {
@@ -774,7 +1116,10 @@ impl Render for RichView {
                             v.scroll.set_offset(point(px(0.0), px(-(y - GAP).max(0.0))));
                             cx.notify();
                         }
+                        return;
                     }
+                    // Not on a link: the text, selected.
+                    v.press(e, cx);
                 }),
             );
         div().size_full().child(ScrollView::new("ql-rich", &self.scroll).border(false).background(p.document_background).child(content))
@@ -920,6 +1265,19 @@ fn callout_hue(k: Callout) -> Hue {
         Callout::Important => Hue::Purple,
         Callout::Warning => Hue::Orange,
         Callout::Caution => Hue::Red,
+    }
+}
+
+/// A block's own text, as the whole document's is copied (pictures,
+/// rules and quotes' edges say nothing).
+fn block_plain(b: &Block) -> Option<String> {
+    match b {
+        Block::Heading(_, sp) | Block::Para(sp) => Some(plain(sp)),
+        Block::Item(_, mark, sp) if mark.is_empty() => Some(plain(sp)),
+        Block::Item(_, mark, sp) => Some(format!("{mark} {}", plain(sp))),
+        Block::Code { lines, .. } => Some(lines.join("\n")),
+        Block::Table { rows, .. } => Some(rows.iter().map(|r| r.iter().map(|c| plain(c)).collect::<Vec<_>>().join("\t")).collect::<Vec<_>>().join("\n")),
+        _ => None,
     }
 }
 

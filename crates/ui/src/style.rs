@@ -57,6 +57,20 @@ pub fn shade(palette: &Palette, rgba: Rgba, tint: f32) -> Hsla {
 }
 
 /// Text that can't be used now.
+/// A text selection drawn behind its text (a text field's, a text
+/// preview's): the kit's highlight, see-through, fainter where the
+/// keyboard isn't.
+pub fn selection_behind(p: &Palette, focused: bool) -> Hsla {
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    c(p.control_highlight).opacity(if !focused {
+        0.3
+    } else if dark {
+        0.75
+    } else {
+        0.55
+    })
+}
+
 /// A text selection laid over what's already drawn (a PDF page's text
 /// is in its picture), not under it: the kit's highlight, lighter than a
 /// text field's (which goes behind its text), and fainter in a window

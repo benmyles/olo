@@ -3328,5 +3328,11 @@
   "title": "Viewer: a PDF's text selected, copied and found",
   "caption": "A PDF's text is read natively (hayro's interpreter with a device of Olo's own that keeps each glyph's Unicode and box), once a page, on the worker. It's selected by dragging (a word with a double-click, a line with a triple), copied with \u2318C or a right-click, Select All copies the whole document, and Find (\u2318F) marks every match, selecting the one shown in the middle of the view. Here the third of 90 'compression's in bzip2's manual, the next one marked.",
   "image": "2026-11-05/160514-viewer-a-pdf-s-text-selected-copied-and-found.png"
+ },
+ {
+  "time": "2026-11-05T16:22:56",
+  "title": "Viewer: text and formatted documents selected, copied and found",
+  "caption": "Texts and formatted documents (Markdown, Word, OpenDocument) select as anywhere in Olo: a drag, a word with a double-click, a line with a triple, drawn behind the text in the kit's selection. Copy and Select All are in the Edit menu, and Find uses the kit's find bar, the same as PDFs': every match marked, even in a code block, with the one shown selected. Here Olo's README, looking for 'olo'.",
+  "image": "2026-11-05/162256-viewer-text-and-formatted-documents-selected-cop.png"
  }
 ]

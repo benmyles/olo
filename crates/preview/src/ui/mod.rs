@@ -10,6 +10,7 @@ mod table;
 
 use std::{
     path::Path,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -28,7 +29,7 @@ use olo_ui::{
     icons,
     style::{self, Align},
     theme,
-    widgets::{Cell, Column, ColumnListView, ImageView, ListModel, ScrollView, image_view, image_view::Rgba},
+    widgets::{Cell, Column, ColumnListView, ImageView, ListModel, ScrollView, TextField, TextFieldEvent, image_view, image_view::Rgba, text_field},
 };
 
 use crate::{Bitmap, Body, Item, SLOW, Update, audio, input, load, media, video};
@@ -114,7 +115,23 @@ pub struct PreviewView {
     text: Option<Arc<TextRows>>,
     items: Option<Arc<Vec<crate::archive::Item>>>,
     loading: Option<Task<()>>,
+    /// The text selected (line, byte), where it began and where it goes.
+    text_sel: Option<(TextAt, TextAt)>,
+    text_drag: bool,
+    /// Where the text's rows were last drawn: their top left, and where
+    /// their text starts (past the line numbers).
+    text_place: Rc<std::cell::Cell<(gpui::Point<Pixels>, Pixels)>>,
+    /// Find (a text's, a formatted document's): its field, what's looked
+    /// for (lower case), and in a text where it is (line, bytes) and
+    /// which is shown (a document's are its own).
+    find: Option<(Entity<TextField>, gpui::Subscription)>,
+    query: String,
+    text_matches: Vec<(usize, usize, usize)>,
+    text_current: Option<usize>,
 }
+
+/// A place in a text: its line, a byte in it.
+type TextAt = (usize, usize);
 
 /// A text's lines (shared: drawn and told to agents each frame without
 /// a copy) and their token classes.
@@ -160,6 +177,13 @@ impl PreviewView {
             text: None,
             items: None,
             loading: None,
+            text_sel: None,
+            text_drag: false,
+            find: None,
+            query: String::new(),
+            text_matches: Vec::new(),
+            text_current: None,
+            text_place: Rc::new(std::cell::Cell::new((point(px(0.0), px(0.0)), px(0.0)))),
         };
         v.spawn(cx);
         v
@@ -219,7 +243,10 @@ impl PreviewView {
                 self.forget_pictures();
                 self.font = None;
                 match &mut b {
-                    Body::Text(t) => self.text = Some(text_rows(t)),
+                    Body::Text(t) => {
+                        self.text = Some(text_rows(t));
+                        self.text_sel = None;
+                    }
                     Body::Listing { items, .. } => self.items = Some(Arc::new(std::mem::take(items))),
                     Body::Rich { blocks, .. } => {
                         let (blocks, generation, base) = (Arc::new(std::mem::take(blocks)), self.generation, self.item.path.parent().map(Path::to_owned));
@@ -614,11 +641,20 @@ impl Render for PreviewView {
                 let item = self.item.clone();
                 canvas(|_, _, _| {}, move |b, _, window, cx| card(window, cx, b, &item, None, false)).size_full().into_any_element()
             }
-            (None, Some(Body::Text(_))) => self.text_view(cx),
+            (None, Some(Body::Text(_))) => {
+                let text = self.text_view(cx);
+                match self.find_bar(cx) {
+                    Some(bar) => div().size_full().flex().flex_col().child(bar).child(div().flex_1().min_h(px(0.0)).child(text)).into_any_element(),
+                    None => text,
+                }
+            }
             (None, Some(Body::Listing { .. })) => self.listing(cx),
             (None, Some(Body::Font { .. })) => self.font_view(window, cx),
             (None, Some(Body::Media(_))) => self.media_view(window, cx),
-            (None, Some(Body::Rich { .. })) => self.rich.clone().into_any_element(),
+            (None, Some(Body::Rich { .. })) => match self.find_bar(cx) {
+                Some(bar) => div().size_full().flex().flex_col().child(bar).child(div().flex_1().min_h(px(0.0)).child(self.rich.clone())).into_any_element(),
+                None => self.rich.clone().into_any_element(),
+            },
             (None, Some(Body::Table { .. })) => self.table_view(cx),
         };
         let dropped = std::mem::take(&mut self.dropped);
@@ -639,6 +675,225 @@ impl Render for PreviewView {
 }
 
 impl PreviewView {
+    // ---- the text's selection ----------------------------------------------
+
+    /// It shows text that can be selected (a text, a formatted document).
+    pub fn has_text(&self) -> bool {
+        matches!(self.body, Some(Body::Text(_) | Body::Rich { .. }))
+    }
+
+    pub fn has_text_selection(&self, cx: &App) -> bool {
+        match &self.body {
+            Some(Body::Rich { .. }) => self.rich.read(cx).has_selection(),
+            _ => self.text_sel.is_some_and(|(a, b)| a != b),
+        }
+    }
+
+    /// The text selected, as it's copied.
+    pub fn selected_text(&self, cx: &App) -> String {
+        if matches!(self.body, Some(Body::Rich { .. })) {
+            return self.rich.read(cx).selected_text();
+        }
+        let (Some(lines), Some(sel)) = (&self.text, self.text_sel) else { return String::new() };
+        let (a, b) = if sel.0 <= sel.1 { sel } else { (sel.1, sel.0) };
+        let mut out = String::new();
+        for i in a.0..=b.0.min(lines.0.len().saturating_sub(1)) {
+            let line = &lines.0[i];
+            let from = if i == a.0 { a.1.min(line.len()) } else { 0 };
+            let to = if i == b.0 { b.1.min(line.len()) } else { line.len() };
+            out.push_str(line.get(from..to.max(from)).unwrap_or(""));
+            if i < b.0 {
+                out.push('\n');
+            }
+        }
+        out
+    }
+
+    pub fn copy(&self, cx: &mut App) {
+        let text = self.selected_text(cx);
+        if !text.is_empty() {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+        }
+    }
+
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.body, Some(Body::Rich { .. })) {
+            self.rich.update(cx, |r, cx| r.select_all(cx));
+            return;
+        }
+        let Some(lines) = &self.text else { return };
+        let last = lines.0.len().saturating_sub(1);
+        self.text_sel = Some(((0, 0), (last, lines.0.get(last).map_or(0, |l| l.len()))));
+        cx.notify();
+    }
+
+    // ---- find ----------------------------------------------------------------
+
+    pub fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((f, _)) = &self.find {
+            f.update(cx, |f, cx| {
+                f.focus(window);
+                f.select_all_text(cx);
+            });
+            return;
+        }
+        let field = text_field(cx, |f| f.hint("Find"));
+        let sub = cx.subscribe_in(&field, window, |v: &mut PreviewView, field, e: &TextFieldEvent, window, cx| match e {
+            TextFieldEvent::Changed => {
+                let q = field.read(cx).text().to_lowercase();
+                v.set_query(q, cx);
+            }
+            TextFieldEvent::Entered => v.find_step(window.modifiers().shift, cx),
+            _ => {}
+        });
+        field.update(cx, |f, _| f.focus(window));
+        self.find = Some((field, sub));
+        cx.notify();
+    }
+
+    pub fn close_find(&mut self, cx: &mut Context<Self>) {
+        self.find = None;
+        self.query.clear();
+        self.text_matches.clear();
+        self.text_current = None;
+        self.rich.update(cx, |r, cx| r.close_find(cx));
+        cx.notify();
+    }
+
+    /// Something's found (Find Next can go to it).
+    pub fn finding(&self, cx: &App) -> bool {
+        match &self.body {
+            Some(Body::Rich { .. }) => self.find.is_some() && self.rich.read(cx).found().0 > 0,
+            _ => !self.text_matches.is_empty(),
+        }
+    }
+
+    fn set_query(&mut self, q: String, cx: &mut Context<Self>) {
+        self.query = q.clone();
+        if matches!(self.body, Some(Body::Rich { .. })) {
+            self.rich.update(cx, |r, cx| r.set_query(q, cx));
+            cx.notify();
+            return;
+        }
+        self.text_matches.clear();
+        if let Some(lines) = &self.text
+            && !q.is_empty()
+        {
+            for (i, line) in lines.0.iter().enumerate() {
+                let low = line.to_lowercase();
+                // (Where lower case keeps every byte where it was.)
+                if low.len() == line.len() {
+                    self.text_matches.extend(low.match_indices(&q).map(|(a, m)| (i, a, a + m.len())));
+                }
+            }
+        }
+        self.text_current = (!self.text_matches.is_empty()).then_some(0);
+        self.show_text_match();
+        cx.notify();
+    }
+
+    pub fn find_step(&mut self, back: bool, cx: &mut Context<Self>) {
+        if matches!(self.body, Some(Body::Rich { .. })) {
+            self.rich.update(cx, |r, cx| r.step(back, cx));
+            cx.notify();
+            return;
+        }
+        let n = self.text_matches.len();
+        if n == 0 {
+            return;
+        }
+        self.text_current = Some(match self.text_current {
+            Some(c) if back => (c + n - 1) % n,
+            Some(c) => (c + 1) % n,
+            None => 0,
+        });
+        self.show_text_match();
+        cx.notify();
+    }
+
+    /// A text's match shown: selected, its line in the middle of the view.
+    fn show_text_match(&mut self) {
+        let Some(&(line, a, b)) = self.text_current.and_then(|c| self.text_matches.get(c)) else { return };
+        self.text_sel = Some(((line, a), (line, b)));
+        let view = f32::from(self.text_scroll.bounds().size.height);
+        let x = self.text_scroll.offset().x;
+        self.text_scroll.set_offset(point(x, px(-((line as f32 + 0.5) * TEXT_ROW - view / 2.0).max(0.0))));
+    }
+
+    fn find_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (field, _) = self.find.as_ref()?;
+        let (n, current, more) = match &self.body {
+            Some(Body::Rich { .. }) => self.rich.read(cx).found(),
+            _ => (self.text_matches.len(), self.text_current, false),
+        };
+        let said = olo_ui::widgets::find_said(&self.query, n, current, more.then(|| "laying it out".to_owned()));
+        let (step, close) = (cx.entity(), cx.entity());
+        Some(olo_ui::widgets::find_bar(field, said, n > 0, move |back, _, cx| step.update(cx, |v, cx| v.find_step(back, cx)), move |_, cx| close.update(cx, |v, cx| v.close_find(cx))))
+    }
+
+    /// A line shaped as the text view draws it.
+    fn shape_text_line(window: &Window, text: &SharedString) -> gpui::ShapedLine {
+        let run = TextRun { len: text.len(), font: style::mono_font(FontWeight::NORMAL), color: gpui::black(), background_color: None, underline: None, strikethrough: None, size: None };
+        window.text_system().shape_line(text.clone(), px(style::MONO_SIZE), &[run], None)
+    }
+
+    /// The place in the text under window point `at`.
+    fn text_at(&self, window: &Window, at: gpui::Point<Pixels>) -> Option<TextAt> {
+        let lines = self.text.as_ref()?;
+        let n = lines.0.len();
+        if n == 0 {
+            return None;
+        }
+        let (origin, left) = self.text_place.get();
+        let row = f32::from(at.y - origin.y) / TEXT_ROW;
+        if row < 0.0 {
+            return Some((0, 0));
+        }
+        let row = row as usize;
+        if row >= n {
+            return Some((n - 1, lines.0[n - 1].len()));
+        }
+        let line = &lines.0[row];
+        Some((row, Self::shape_text_line(window, line).closest_index_for_x(at.x - left)))
+    }
+
+    fn text_press(&mut self, e: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(at) = self.text_at(window, e.position) else { return };
+        let Some(lines) = self.text.clone() else { return };
+        let line = &lines.0[at.0];
+        match e.click_count {
+            2 => {
+                // The word: letters, digits and underscores.
+                let word = |c: char| c.is_alphanumeric() || c == '_';
+                let a = line[..at.1].char_indices().rev().take_while(|(_, c)| word(*c)).last().map_or(at.1, |(i, _)| i);
+                let b = line[at.1..].char_indices().find(|(_, c)| !word(*c)).map_or(line.len(), |(i, _)| at.1 + i);
+                self.text_sel = Some(((at.0, a), (at.0, b)));
+            }
+            n if n >= 3 => self.text_sel = Some(((at.0, 0), (at.0, line.len()))),
+            _ => {
+                self.text_sel = match self.text_sel {
+                    Some((anchor, _)) if e.modifiers.shift => Some((anchor, at)),
+                    _ => Some((at, at)),
+                };
+                self.text_drag = true;
+            }
+        }
+        cx.notify();
+    }
+
+    fn text_moved(&mut self, e: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.text_drag || e.pressed_button != Some(MouseButton::Left) {
+            self.text_drag = false;
+            return;
+        }
+        if let (Some(at), Some((anchor, old))) = (self.text_at(window, e.position), self.text_sel)
+            && at != old
+        {
+            self.text_sel = Some((anchor, at));
+            cx.notify();
+        }
+    }
+
     fn text_view(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(lines) = self.text.clone() else { return div().into_any_element() };
         let p = theme::palette(cx);
@@ -649,6 +904,9 @@ impl PreviewView {
         let gutter = (digits as f32 * char_w + 2.0 * GUTTER_PAD).ceil();
         let content_w = gutter + longest as f32 * char_w + 2.0 * GUTTER_PAD;
         let rows = lines.0.len();
+        let (place, sel) = (self.text_place.clone(), self.text_sel.map(|s| if s.0 <= s.1 { s } else { (s.1, s.0) }));
+        // What Find found, but the one shown (it's the selection).
+        let found: Arc<Vec<(usize, usize, usize)>> = Arc::new(self.text_matches.iter().enumerate().filter(|(k, _)| Some(*k) != self.text_current).map(|(_, m)| *m).collect());
         let paint = canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
@@ -660,6 +918,35 @@ impl PreviewView {
                 window.paint_quad(gpui::fill(Bounds::new(b.origin, size(px(gutter), b.size.height)), gutter_bg));
                 let first = ((f32::from(view.top() - b.top()) / TEXT_ROW).floor().max(0.0)) as usize;
                 let last = (((f32::from(view.bottom() - b.top())) / TEXT_ROW).ceil().max(0.0) as usize).min(rows);
+                let left = b.left() + px(gutter + GUTTER_PAD);
+                place.set((b.origin, left));
+                // Found, in view, behind its text.
+                if !found.is_empty() {
+                    let ink = style::c(p.hue(olo_theme::Hue::Yellow)).opacity(0.45);
+                    let from = found.partition_point(|m| m.0 < first);
+                    for &(i, a, z) in found[from..].iter().take_while(|m| m.0 < last) {
+                        let shaped = Self::shape_text_line(window, &lines.0[i]);
+                        let top = b.top() + px(i as f32 * TEXT_ROW);
+                        style::fill_rect(window, Bounds::from_corners(point(left + shaped.x_for_index(a), top), point(left + shaped.x_for_index(z), top + px(TEXT_ROW))), ink);
+                    }
+                }
+                // The selection in view, behind its text (past a line's
+                // end, a character's width: the line break goes with it).
+                if let Some((a, z)) = sel {
+                    let ink = style::selection_behind(&p, window.is_window_active());
+                    for i in first.max(a.0)..last.min(z.0 + 1) {
+                        let line = &lines.0[i];
+                        let shaped = Self::shape_text_line(window, line);
+                        let from = if i == a.0 { a.1.min(line.len()) } else { 0 };
+                        let to = if i == z.0 { z.1.min(line.len()) } else { line.len() };
+                        let x0 = left + shaped.x_for_index(from);
+                        let x1 = left + shaped.x_for_index(to) + if i < z.0 { px(char_w) } else { px(0.0) };
+                        if x1 > x0 {
+                            let top = b.top() + px(i as f32 * TEXT_ROW);
+                            style::fill_rect(window, Bounds::from_corners(point(x0, top), point(x1, top + px(TEXT_ROW))), ink);
+                        }
+                    }
+                }
                 let (lines, spans) = &*lines;
                 // The rows' glyphs in one place in the scene's order, not a
                 // place found for each (half the time of drawing them).
@@ -680,7 +967,16 @@ impl PreviewView {
         )
         .w(px(content_w))
         .h(px(rows as f32 * TEXT_ROW));
-        let scroller = div().id("ql-text-rows").min_w_full().w(px(content_w)).h(px(rows as f32 * TEXT_ROW)).child(paint);
+        let scroller = div()
+            .id("ql-text-rows")
+            .min_w_full()
+            .w(px(content_w))
+            .h(px(rows as f32 * TEXT_ROW))
+            .cursor(gpui::CursorStyle::IBeam)
+            .on_mouse_down(MouseButton::Left, cx.listener(|v, e: &MouseDownEvent, window, cx| v.text_press(e, window, cx)))
+            .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, window, cx| v.text_moved(e, window, cx)))
+            .on_mouse_up(MouseButton::Left, cx.listener(|v, _: &gpui::MouseUpEvent, _, _| v.text_drag = false))
+            .child(paint);
         div().size_full().child(ScrollView::new("ql-text", &self.text_scroll).border(false).horizontal(true).background(p.document_background).child(scroller)).into_any_element()
     }
 

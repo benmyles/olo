@@ -851,6 +851,28 @@ impl Doc {
                     .enabled(trimming),
             );
         }
+        if let Content::Other(prev) = &self.content
+            && prev.read(cx).has_text()
+        {
+            let prev = prev.read(cx);
+            menus.push(
+                Menu::new("Edit")
+                    .item("Copy", "copy")
+                    .key("c")
+                    .enabled(prev.has_text_selection(cx))
+                    .item("Select All", "select-all")
+                    .key("a")
+                    .separator()
+                    .item("Find…", "find")
+                    .key("f")
+                    .item("Find Next", "find-next")
+                    .key("g")
+                    .enabled(prev.finding(cx))
+                    .item("Find Previous", "find-previous")
+                    .shift_key("g")
+                    .enabled(prev.finding(cx)),
+            );
+        }
         if picture {
             menus.push(Menu::new("Edit").item("Undo", "undo").key("z").enabled(editor.is_some_and(|e| e.can_undo())).item("Redo", "redo").shift_key("z").enabled(editor.is_some_and(|e| e.can_redo())));
         }
@@ -1065,6 +1087,22 @@ impl Doc {
         }
         if matches!(command, "rotate-left" | "rotate-right" | "flip-h" | "flip-v" | "crop" | "crop-cancel" | "resize" | "revert") || (self.edit.is_some() && matches!(command, "undo" | "redo")) {
             return self.picture_command(command, window, cx);
+        }
+        // A text or a formatted document: its text copied, all of it
+        // selected, found.
+        if let Content::Other(prev) = &self.content
+            && prev.read(cx).has_text()
+            && matches!(command, "copy" | "select-all" | "find" | "find-next" | "find-previous")
+        {
+            let prev = prev.clone();
+            prev.update(cx, |p, cx| match command {
+                "copy" => p.copy(cx),
+                "select-all" => p.select_all(cx),
+                "find" => p.open_find(window, cx),
+                "find-next" => p.find_step(false, cx),
+                _ => p.find_step(true, cx),
+            });
+            return;
         }
         if let Content::Other(prev) = &self.content {
             let image = prev.read(cx).image_view().clone();
