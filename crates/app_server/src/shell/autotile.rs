@@ -392,11 +392,28 @@ fn measure(node: &Node, min: &dyn Fn(u64) -> (f32, f32), out: &mut Vec<Measure>)
 
 /// `r` cut at `ratio` of it.
 fn divide(cut: Cut, ratio: f32, (x, y, w, h): Part) -> (Part, Part) {
+    // The edge between them on a grid of 2⁻²⁰ of the area, as every edge
+    // is (the area's are 0 and 1): sums and differences of such are exact
+    // in an f32, so a tile's far edge (its start plus its length) is
+    // exactly its neighbour's start, however deep each is in the tree.
+    // (A split nested in another gave one `w·r + w·(1−r)` and the other
+    // `w`, an ulp apart, now and then rounding to pixels a gap apart:
+    // auto-fuzz seed 38, two tiles 7 px apart where the gap is 6.)
+    let q = |v: f32| (v * GRID).round() / GRID;
     match cut {
-        Cut::Columns => ((x, y, w * ratio, h), (x + w * ratio, y, w * (1.0 - ratio), h)),
-        Cut::Rows => ((x, y, w, h * ratio), (x, y + h * ratio, w, h * (1.0 - ratio))),
+        Cut::Columns => {
+            let e = q(x + w * ratio).clamp(x, x + w);
+            ((x, y, e - x, h), (e, y, (x + w) - e, h))
+        }
+        Cut::Rows => {
+            let e = q(y + h * ratio).clamp(y, y + h);
+            ((x, y, w, e - y), (x, e, w, (y + h) - e))
+        }
     }
 }
+
+/// `divide`'s grid: edges are whole multiples of `1 / GRID` of the area.
+const GRID: f32 = 1_048_576.0;
 
 /// Where along `cut` a part starts, and how long it is.
 fn span((x, y, w, h): Part, cut: Cut) -> (f32, f32) {
@@ -1185,11 +1202,16 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// Each window's least size, in fractions of `area` (gap included).
     pub(super) fn auto_mins(&self, windows: &[WindowElement], area: Rectangle<i32, Logical>) -> HashMap<u64, (f32, f32)> {
         let gap = self.tile_gap();
+        // (And a pixel either side: each of a tile's edges rounds to a
+        // pixel, which took up to two from a tile at its least size. Laid
+        // out 288 wide, StyledEdit drew its 290 over the gap beside it:
+        // auto-fuzz seed 38.)
+        let edges = 2;
         windows
             .iter()
             .map(|w| {
                 let m = self.min_frame(w);
-                (w.id(), ((m.w + gap) as f32 / area.size.w.max(1) as f32, (m.h + gap) as f32 / area.size.h.max(1) as f32))
+                (w.id(), ((m.w + gap + edges) as f32 / area.size.w.max(1) as f32, (m.h + gap + edges) as f32 / area.size.h.max(1) as f32))
             })
             .collect()
     }
@@ -2213,6 +2235,28 @@ impl<B: Backend + 'static> AnvilState<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Tiles side by side share an edge exactly, however deep each is in
+    /// the tree: one's start plus its length is the next one's start.
+    #[test]
+    fn neighbours_share_their_edges_exactly() {
+        for k in 1..400 {
+            let r0 = 0.2 + k as f32 * 0.0015;
+            let r1 = 0.7 - k as f32 * 0.001;
+            let (left, right) = divide(Cut::Columns, r0, (0.0, 0.0, 1.0, 1.0));
+            let (a, b) = divide(Cut::Columns, r1, left);
+            assert_eq!(a.0 + a.2, b.0, "{k}");
+            assert_eq!(b.0 + b.2, right.0, "{k}: a nested split's far edge is its neighbour's start");
+            assert_eq!(right.0 + right.2, 1.0);
+            let (c, d) = divide(Cut::Rows, r1, right);
+            assert_eq!(c.1 + c.3, d.1);
+            assert_eq!(d.1 + d.3, 1.0);
+            // In pixels, the gap the same everywhere.
+            let area = Rectangle::<i32, Logical>::new((0, 0).into(), (2992, 1064).into());
+            let (pb, pr) = (crate::shell::tiling::part(area, b, 6), crate::shell::tiling::part(area, right, 6));
+            assert_eq!(pr.loc.x - (pb.loc.x + pb.size.w), 6, "{k}");
+        }
+    }
 
     /// A tree kept across a restart comes back the same shape and ratios,
     /// each tile held for the windows its saved places name (and a place
