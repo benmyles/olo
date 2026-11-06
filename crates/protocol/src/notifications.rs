@@ -22,9 +22,9 @@ pub struct NotificationSettings {
     /// Do Not Disturb every day between these times (minutes after
     /// midnight, local time; the end may be the next morning).
     pub schedule: Option<(u16, u16)>,
-    /// Do Not Disturb while the screen is shared (`SharingState`), and
-    /// stricter: errors wait in the history too, and banners on screen
-    /// when sharing starts go.
+    /// Do Not Disturb while the screen is shared (`SharingState`) or
+    /// recorded (a recording going on the display), and stricter: errors
+    /// wait in the history too, and banners on screen when it starts go.
     pub while_sharing: bool,
     /// How long a notification stays (seconds) when its app leaves it to us;
     /// 0: no banners at all but errors ("Never").

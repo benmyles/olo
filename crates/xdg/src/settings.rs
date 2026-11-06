@@ -153,7 +153,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "network", tab: "VPN", group: "", name: "Import WireGuard…", role: "Button" },
     Setting { panel: "notifications", tab: "", group: "Do Not Disturb", name: "Do Not Disturb", role: "CheckBox" },
     Setting { panel: "notifications", tab: "", group: "Do Not Disturb", name: "Every day at set times", role: "CheckBox" },
-    Setting { panel: "notifications", tab: "", group: "Do Not Disturb", name: "While sharing the screen (errors wait too)", role: "CheckBox" },
+    Setting { panel: "notifications", tab: "", group: "Do Not Disturb", name: "While sharing or recording the screen (errors wait too)", role: "CheckBox" },
     Setting { panel: "notifications", tab: "", group: "Banners", name: "Show banners for", role: "ComboBox" },
     Setting { panel: "notifications", tab: "", group: "History", name: "Fade notifications away over", role: "CheckBox" },
     Setting { panel: "notifications", tab: "", group: "History", name: "Only the latest of the same notification", role: "CheckBox" },

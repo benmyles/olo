@@ -13,45 +13,11 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Screen recording in Screenshot** (below, in Not started): the
-  control bar, the card after, the export, the editor and the library are
-  done; next Start's options (sizes and shapes for a region), Do Not
-  Disturb while recording, the skill.
+- **Viewer: 4K60 video plays smoothly, decoded in hardware** (below, in
+  Not started), with the decoding device chosen in the Viewer and its
+  default in Preferences.
 
 ## Not started (highest priority first)
-
-- **Screen recording in Screenshot, all of CleanShot X's** (Ben, 2026-11-04,
-  again 2026-11-06: "where is the screen recording app?"). The
-  recording itself is built (the "Screen recording, for people and
-  agents" entry below: `olo-screenshot --record` and Screenshot's
-  Record… menu), but not the app around it. In Screenshot (Ben,
-  2026-11-06: "it's fine for screen recording to be in screenshot as long
-  as all the functionality i asked for is in there"):
-  - **Start**: Screen, Window or Region (the region picker, with sizes
-    and aspect ratios to snap to), and its options in one place: sound
-    (computer, microphone), camera, clicks and keys shown, pointer size
-    and smoothing, zoom on clicks, countdown, MP4 or GIF, quality.
-  - ~~**While recording**: a small control bar on screen (never in the
-    recording): the time, pause and resume, stop, restart, discard,
-    mark.~~ Done (HACKING, "The controls on the screen"): the bar, left
-    out of recordings and shares but not screenshots; `--discard` and
-    `--restart` for agents, and in Deskbar's menu; `--stop` waits for
-    the recording to finish, not the recorder (0.13 s, was 30).
-  - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
-    Edit and Delete, dragged out as the file. Done (HACKING, "After"):
-    it's saved already (in Videos), so there's no Save.
-  - ~~**Library**: every recording with its picture, length, size and
-    date: play, edit, show, rename, delete, search.~~ Done (HACKING,
-    "Recordings").
-  - **Editor**: a timeline (pictures along it, the sound's waveform),
-    trim, cut out a stretch, crop, the zooms and marks edited, sound
-    muted, and Export (MP4 or GIF, size, frame rate, quality) on a worker
-    with progress and Cancel. Done (HACKING, "Editing" and "Exporting
-    with edits"): in the Viewer (Edit Video…, `--edit`, the card's
-    Edit), all but the zooms (a recording's zooms are drawn into its
-    pictures as it records: there's nothing to move afterwards).
-  - Agent-native throughout (the kit's tree, `--json`), and the skill
-    says how.
 
 - **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
   2026-11-06): "the viewer app can't even play 4k video at 60fps
@@ -97,6 +63,47 @@ something nobody here has is in "Blocked", with what it waits for.
   the StyledEdit entry: "Not done").
 
 ## Done, waiting for Ben to try or confirm
+
+- ~~**Screen recording in Screenshot, all of CleanShot X's**~~ (Ben, 2026-11-04,
+  again 2026-11-06: "where is the screen recording app?"). The
+  recording itself is built (the "Screen recording, for people and
+  agents" entry below: `olo-screenshot --record` and Screenshot's
+  Record… menu), but not the app around it. In Screenshot (Ben,
+  2026-11-06: "it's fine for screen recording to be in screenshot as long
+  as all the functionality i asked for is in there"):
+  - ~~**Start**: Screen, Window or Region (the region picker, with sizes
+    and aspect ratios to snap to), and its options in one place: sound
+    (computer, microphone), camera, clicks and keys shown, pointer size
+    and smoothing, zoom on clicks, countdown, MP4 or GIF, quality.~~
+    Done (HACKING, "A region's shape and size"): Record… has every
+    option (Countdown added); a recording is made at its encoder's own
+    quality, the export asks for less. Do Not Disturb while recording
+    too ("Quiet while recording").
+  - ~~**While recording**: a small control bar on screen (never in the
+    recording): the time, pause and resume, stop, restart, discard,
+    mark.~~ Done (HACKING, "The controls on the screen"): the bar, left
+    out of recordings and shares but not screenshots; `--discard` and
+    `--restart` for agents, and in Deskbar's menu; `--stop` waits for
+    the recording to finish, not the recorder (0.13 s, was 30).
+  - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
+    Edit and Delete, dragged out as the file. Done (HACKING, "After"):
+    it's saved already (in Videos), so there's no Save.
+  - ~~**Library**: every recording with its picture, length, size and
+    date: play, edit, show, rename, delete, search.~~ Done (HACKING,
+    "Recordings").
+  - **Editor**: a timeline (pictures along it, the sound's waveform),
+    trim, cut out a stretch, crop, the zooms and marks edited, sound
+    muted, and Export (MP4 or GIF, size, frame rate, quality) on a worker
+    with progress and Cancel. Done (HACKING, "Editing" and "Exporting
+    with edits"): in the Viewer (Edit Video…, `--edit`, the card's
+    Edit), all but the zooms (a recording's zooms are drawn into its
+    pictures as it records: there's nothing to move afterwards).
+  - ~~Agent-native throughout (the kit's tree, `--json`), and the skill
+    says how.~~ Done: `--export`, `--recordings`, `--discard`,
+    `--restart`, `--mark`, `--pause`; the editor's and library's parts
+    in the kit's tree; the olo-screens skill says how to edit.
+  Left for Ben: upgrade, then record with ⌘⇧6 (the bar at the top; the
+  card after, its Edit), and look at Record ▸ Recordings….
 
 - **Agents' tab title tool works by itself, always** (Ben, 2026-11-06,
   "i've asked you like 10 times to make the olo terminal set tab title

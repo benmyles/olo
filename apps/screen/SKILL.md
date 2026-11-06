@@ -88,6 +88,23 @@ video: `video-frame` at the moments that matter (its start, each step,
 its end), or play it (`olo-screen run demo olo-viewer PATH`, then
 `look`).
 
+To edit what you recorded (nothing is changed in the original; the
+edited copy goes beside it, or `--to PATH`):
+
+```sh
+olo-screenshot --export PATH --cut 12-15.5,40-41 --progress          # cut out stretches (seconds)
+olo-screenshot --export PATH --keep 2-58 --crop 0,0,1920,1080 --width 1280 --fps 30 --quality medium
+olo-screenshot --export PATH --keep 3-9 --format gif --width 640     # a short loop as a GIF
+olo-screenshot --recordings                                          # every recording, as JSON
+```
+
+`--keep` is what stays (a trim; stretches in seconds), `--cut` takes
+stretches out, `--crop X,Y,W,H` is in the video's pixels, `--width`
+shrinks it (its shape kept), `--mute` drops the sound; the marks stay
+where their moments are. It prints the file it made as JSON (with
+`--progress`, `{"progress": 0.42}` lines first). A person does the same
+in the Viewer's editor (Edit ▸ Edit Video…).
+
 ## A web browser: Olo's Chrome, only
 
 The browser is **Olo's Chrome, `olo-chrome`**, started on your screen:
