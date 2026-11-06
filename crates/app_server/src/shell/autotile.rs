@@ -327,7 +327,13 @@ impl SavedNode {
                 Some(slot) => kept(vec![slot], *holds),
                 None => SavedNode::Like { app_id: app_id.clone(), title: title.clone(), holds: *holds },
             },
-            Node::Kept(Kept { who: Who::Returning(s), holds, .. }) => kept(s.clone(), *holds),
+            // A place still kept from the restart before, for a window not
+            // back since: its slots were that save's numbering, which this
+            // one has given to other windows (seed 16 of auto --reloads:
+            // slot 4 kept twice, the second holding a fifth of the column
+            // for nobody until it timed out, 20 s on, and the tiles beside
+            // it then jumped). Its room goes to its neighbours.
+            Node::Kept(Kept { who: Who::Returning(_), .. }) => SavedNode::Room { holds: false },
             Node::Kept(Kept { who: Who::Nobody, holds, .. }) => SavedNode::Room { holds: *holds },
             Node::Split { cut, ratio, a, b } => {
                 SavedNode::Split { columns: *cut == Cut::Columns, ratio: *ratio, a: Box::new(SavedNode::of(a, slots, like)), b: Box::new(SavedNode::of(b, slots, like)) }
@@ -2340,6 +2346,23 @@ mod tests {
         assert!(one_size(420, 420));
         // A real largest size goes by the display's tiles.
         assert!(bounded(800));
+    }
+
+    /// A place kept from an earlier restart isn't saved under its old
+    /// slots, which this save numbers afresh: no slot is kept twice.
+    #[test]
+    fn an_old_kept_place_isnt_saved_by_its_old_slots() {
+        let old = Node::Kept(Kept { who: Who::Returning(vec![4]), holds: true, until: None });
+        let tree = Node::split(Cut::Rows, 0.8, Node::Window(9), old);
+        let saved = SavedNode::of(&tree, &|id| if id == 9 { vec![4] } else { Vec::new() }, &|_, _| None);
+        let restored = saved.node(Instant::now() + Duration::from_secs(20));
+        let mut fours = 0;
+        restored.each_leaf(&mut |n| {
+            if matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&4)) {
+                fours += 1;
+            }
+        });
+        assert_eq!(fours, 1, "{restored}");
     }
 
     #[test]

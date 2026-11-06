@@ -331,6 +331,18 @@ of Finished; a new one goes where its priority puts it.
   step 68 ("ungrouping 3: settled, then moved": the two tiles left grow
   from 211 to 1064 px tall after settling) or step 83 (tiles overlapping
   for 4 looks mid-drag): races around a reload, next to look at.
+  *Step 68 fixed* (2026-11-05): not a race. A place still kept from the
+  restart before (for a window not back since) was saved again under
+  its old slot number, which the new save had given to another window,
+  so slot 4 was kept twice; one window came back into one, and the
+  other held a fifth of the column for nobody until it timed out 20 s
+  after the restart, the tiles beside it then growing (`SavedNode::of`:
+  such a place is saved as room for its neighbours; unit-tested). Four
+  runs of seed 16 with `--reloads` since: 68 passes in all; two passed
+  outright, two failed at step 54 for one look of 193 (a StyledEdit
+  opened before the restart showing only then, mid-drag, joining tile
+  1's group and drawn at 290 px while its neighbour was where the drag
+  began: the newcomer case above, still racing).
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery
