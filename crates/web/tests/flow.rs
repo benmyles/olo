@@ -149,6 +149,179 @@ fn inline_sources_survive_wrap_block_splits_and_resize() {
     assert_eq!(l.cache().tree().iter().filter(|(_, b)| matches!(b.kind, BoxKind::InlineContent { .. })).count(), 3);
 }
 
+fn letters(l: &layout::Layout) -> Vec<(char, f64, f64)> {
+    let mut result = Vec::new();
+    for (id, _) in l.cache().tree().iter() {
+        let Some(text) = l.text_layout(id) else { continue };
+        let bounds = l.bounds(id).unwrap();
+        for (li, line) in text.lines().iter().enumerate() {
+            for fi in line.fragments.clone() {
+                let f = &text.fragments()[fi as usize];
+                let run = text.run(f).unwrap();
+                let unit = text.text().paragraph().font_size / f64::from(run.font.units_per_em());
+                let mut pen = 0i64;
+                for g in &run.glyphs[f.glyphs.start as usize..f.glyphs.end as usize] {
+                    let c = run.source[g.cluster as usize..].chars().next().unwrap();
+                    if c.is_ascii_alphabetic() {
+                        result.push((c, bounds.x + f.x + pen as f64 * unit, bounds.y + li as f64 * 20.));
+                    }
+                    pen += i64::from(g.x_advance);
+                }
+            }
+        }
+    }
+    result
+}
+#[test]
+fn inline_edges_fit_wrap_and_preserve_actual_box_ends() {
+    let s = scope();
+    let mut e = Engine::default();
+    let cases = [
+        ("<div id=p>A<span style='margin-left:3px;padding-left:7px;margin-right:5px;padding-right:11px'>B</span>C</div>", 200., vec![('A', 0., 0.), ('B', 30., 0.), ('C', 66., 0.)], 20.),
+        ("<div id=p>A <span style='margin-left:10px;margin-right:5px'>B C</span> D</div>", 70., vec![('A', 0., 0.), ('B', 40., 0.), ('C', 0., 20.), ('D', 35., 20.)], 40.),
+        ("<div id=p>A<span style='margin-left:10px;margin-right:5px'>B<div>C</div>D</span>E</div>", 200., vec![('A', 0., 0.), ('B', 30., 0.), ('C', 0., 20.), ('D', 0., 40.), ('E', 25., 40.)], 60.),
+        ("<div id=p>A<span style='padding-left:10px;padding-right:5px'></span>B</div>", 200., vec![('A', 0., 0.), ('B', 35., 0.)], 20.),
+        ("<div id=p>A<span style='margin:auto;margin-top:200px;margin-bottom:100px'>B</span>C</div>", 200., vec![('A', 0., 0.), ('B', 20., 0.), ('C', 40., 0.)], 20.),
+        ("<div id=p><span style='margin-left:10px;padding-right:5px'></span></div>", 200., Vec::new(), 20.),
+    ];
+    for (body, width, expected, height) in cases {
+        let (d, t) = tree(body, "", &s, 1);
+        let c = cache(&mut e, &s, t);
+        let l = fit(&mut e, &s, c, width, 1);
+        assert_eq!(letters(&l), expected, "{body}");
+        assert_eq!(rect(&d, &l, "p").height, height, "{body}");
+    }
+}
+
+#[test]
+fn used_zero_percentage_edges_restore_cross_span_shaping_without_mutating_cache() {
+    let mut builder = Builder::new(Default::default());
+    builder.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/ligature.ttf"), |_| {}, None).unwrap();
+    let s = FontSet::new(builder.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline ligature"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let mut e = Engine::default();
+    let (_, t) = tree("<div><span id=s>f</span>i</div>", "html{font-family:'Olo Inline ligature'}#s{padding-right:5%}", &s, 1);
+    let c = cache(&mut e, &s, t);
+    for (width, glyphs, advance) in [(0., 1, 18.), (100., 2, 45.), (0., 1, 18.)] {
+        let l = fit(&mut e, &s, c.clone(), width, 1);
+        let text = l.cache().tree().iter().find_map(|(id, _)| l.text_layout(id)).unwrap();
+        assert_eq!(text.text().paragraph().runs.iter().map(|r| r.glyphs.len()).sum::<usize>(), glyphs);
+        assert_eq!(text.lines()[0].advance, advance);
+        assert_eq!(c.text(0).unwrap().paragraph().shaping_breaks(), &[1]);
+        assert!(Arc::ptr_eq(text.text().prepared(), c.text(0).unwrap().prepared()));
+    }
+}
+
+#[test]
+fn completed_inline_edges_do_not_create_a_line_for_trailing_collapsed_space() {
+    let s = scope();
+    let mut e = Engine::default();
+    let (d, t) = tree("<div id=p>A<span id=s></span>\n </div>", "#p{white-space:pre-line}#s{margin-right:5px}", &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 200., 1);
+    assert_eq!(rect(&d, &l, "p").height, 20.);
+}
+
+#[test]
+fn inline_fragment_storage_is_bounded_even_across_block_interruptions() {
+    let s = scope();
+    let (d, tree) = tree("<div><span>A<div>B</div>C<div>D</div>E</span></div>", "", &s, 1);
+    for limit in [0, 1, 2] {
+        let mut job = layout::BuildJob::new(&d, tree.styles().clone(), layout::BuildLimits { inline_boxes: limit, ..Default::default() }, None).unwrap();
+        loop {
+            match job.step(1) {
+                Ok(p) => assert!(!p.finished),
+                Err(error) => {
+                    assert!(matches!(error, layout::Error::Limit));
+                    break;
+                }
+            }
+        }
+        assert!(matches!(job.step(1), Err(layout::Error::Failed)));
+        assert!(matches!(job.finish(), Err(layout::Error::Failed)));
+    }
+}
+
+#[test]
+fn independent_chrome_inline_spacing() {
+    use sha2::{Digest, Sha256};
+    let s = scope();
+    let mut e = Engine::default();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-box-fixtures");
+    let source: serde_json::Value = serde_json::from_str(include_str!("inline-box-fixtures/SOURCE.json")).unwrap();
+    for (name, hash) in source["inputs"].as_object().unwrap() {
+        assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join(name)).unwrap())), hash.as_str().unwrap());
+    }
+    for key in ["base", "font"] {
+        assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join(source[key]["path"].as_str().unwrap())).unwrap())), source[key]["sha256"].as_str().unwrap());
+    }
+    for (_, report) in source["reports"].as_object().unwrap() {
+        assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join(report["file"].as_str().unwrap())).unwrap())), report["sha256"].as_str().unwrap());
+    }
+    let mut failures = Vec::new();
+    let known: serde_json::Value = serde_json::from_str(include_str!("inline-box-fixtures/known-nonpasses.json")).unwrap();
+    let mut nonpasses = std::collections::BTreeMap::new();
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let report: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join(format!("chrome-{scale}.json"))).unwrap()).unwrap();
+        assert_eq!(report["devicePixelRatio"].as_f64().unwrap(), scale);
+        assert_eq!(report["base"].as_str().unwrap().trim(), BASE.trim());
+        for c in report["rows"].as_array().unwrap() {
+            for budget in [1, 128] {
+                let (d, t) = tree_scaled(c["body"].as_str().unwrap(), c["css"].as_str().unwrap(), &s, budget, scale);
+                let cache = cache(&mut e, &s, t);
+                let mut j = layout::Job::new(&mut e, &s, cache, layout::Viewport { width: c["layoutViewport"]["width"].as_f64().unwrap(), height: 800., scale }, Default::default(), None).unwrap();
+                while !j.step(budget).unwrap().finished {}
+                let l = j.finish().unwrap();
+                let actual = letters(&l);
+                let mut coordinates = Vec::new();
+                let expected = c["letters"].as_array().unwrap();
+                if actual.len() != expected.len() {
+                    failures.push(format!("DPR{scale} {}: {} letters != {}", c["name"], actual.len(), expected.len()));
+                    continue;
+                }
+                for ((letter, x, y), expected) in actual.iter().zip(expected) {
+                    assert_eq!(letter.to_string(), expected["letter"]);
+                    for (key, value) in [("x", *x), ("y", *y)] {
+                        let cssom = f64::from((value * scale) as f32 * (1f32 / scale as f32));
+                        // DOM Range rectangles enclose caret positions on Blink's
+                        // layout grid. They can start one layout unit before
+                        // an exact glyph origin, even with this integer font.
+                        let allowance = if key == "x" { 1. / (64. * scale) + 1e-5 } else { 1e-5 };
+                        if (cssom - expected[key].as_f64().unwrap()).abs() > allowance {
+                            if key == "x" {
+                                coordinates.push(serde_json::json!({"letter":letter.to_string(), "native":cssom,"chrome":expected[key]}));
+                            } else {
+                                failures.push(format!("DPR{scale} {} {letter}.{key}: {cssom} != {}", c["name"], expected[key]));
+                            }
+                        }
+                    }
+                }
+                if !coordinates.is_empty() {
+                    let key = format!("{scale}:{}", c["name"].as_str().unwrap());
+                    if let Some(previous) = nonpasses.insert(key, coordinates.clone()) {
+                        assert_eq!(previous, coordinates);
+                    }
+                }
+                let height = rect(&d, &l, "p").height;
+                if (height - c["boxes"]["p"]["height"].as_f64().unwrap()).abs() > 1e-5 {
+                    failures.push(format!("DPR{scale} {} height {height} != {}", c["name"], c["boxes"]["p"]["height"]));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} mismatches:\n{}", failures.len(), failures.join("\n"));
+    assert_eq!(nonpasses.keys().collect::<Vec<_>>(), known["expected_nonpasses"].as_object().unwrap().keys().collect::<Vec<_>>(), "Component non-pass cases changed");
+    for (case, coordinates) in nonpasses {
+        let baseline = known["expected_nonpasses"][&case].as_array().unwrap();
+        assert_eq!(coordinates.len(), baseline.len(), "{case}: mismatch count changed");
+        for (actual, expected) in coordinates.iter().zip(baseline) {
+            assert_eq!(actual["letter"], expected["letter"], "{case}");
+            for field in ["native", "chrome"] {
+                assert!((actual[field].as_f64().unwrap() - expected[field].as_f64().unwrap()).abs() < 1e-9, "{case}: pinned {field} coordinate changed: {actual} != {expected}");
+            }
+        }
+    }
+}
+
 #[test]
 fn independent_chrome_normal_flow_rectangles() {
     use sha2::{Digest, Sha256};

@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: inline spacing in night mode
+
+*06:30* — The same fixture at live 1.5× in night mode. Transparent vertical padding preserves line metrics; inline decoration and complete hit geometry remain open. All fifteen native mode/scale reviews pass; no website acceptance follows.
+
+![Browser: inline spacing in night mode](2026-11-06/063053-browser-inline-spacing-in-night-mode.png)
+
+### Browser: inline spacing and wrapping
+
+*06:30* — Retained inline boundaries now participate in fitting and glyph placement. Actual first/last edges survive wrapping; native and agent text links still work. Same authored fixture, light 2×. Independent component observations include 27 explicit fractional-font non-passes.
+
+![Browser: inline spacing and wrapping](2026-11-06/063051-browser-inline-spacing-and-wrapping.png)
+
+### Browser: inline spacing before
+
+*06:30* — The same authored inline margin/padding fixture is rejected by the prior browser engine. Frozen c420ae58, light 2×; this is a component regression illustration, not a website capture.
+
+![Browser: inline spacing before](2026-11-06/063049-browser-inline-spacing-before.png)
+
 ### Browser: fragment history in night mode
 
 *05:40* — The same native controls at 1.5× in night mode. All fifteen mode/scale navigation reviews pass; URL, scroll and forward history survive owned-session re-exec. Complete focus, event and browser semantics remain open.

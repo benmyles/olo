@@ -3538,5 +3538,23 @@
     "title": "Browser: fragment history in night mode",
     "caption": "The same native controls at 1.5\u00d7 in night mode. All fifteen mode/scale navigation reviews pass; URL, scroll and forward history survive owned-session re-exec. Complete focus, event and browser semantics remain open.",
     "image": "2026-11-06/054044-browser-fragment-history-in-night-mode.png"
+  },
+  {
+    "time": "2026-11-06T06:30:49",
+    "title": "Browser: inline spacing before",
+    "caption": "The same authored inline margin/padding fixture is rejected by the prior browser engine. Frozen c420ae58, light 2\u00d7; this is a component regression illustration, not a website capture.",
+    "image": "2026-11-06/063049-browser-inline-spacing-before.png"
+  },
+  {
+    "time": "2026-11-06T06:30:51",
+    "title": "Browser: inline spacing and wrapping",
+    "caption": "Retained inline boundaries now participate in fitting and glyph placement. Actual first/last edges survive wrapping; native and agent text links still work. Same authored fixture, light 2\u00d7. Independent component observations include 27 explicit fractional-font non-passes.",
+    "image": "2026-11-06/063051-browser-inline-spacing-and-wrapping.png"
+  },
+  {
+    "time": "2026-11-06T06:30:53",
+    "title": "Browser: inline spacing in night mode",
+    "caption": "The same fixture at live 1.5\u00d7 in night mode. Transparent vertical padding preserves line metrics; inline decoration and complete hit geometry remain open. All fifteen native mode/scale reviews pass; no website acceptance follows.",
+    "image": "2026-11-06/063053-browser-inline-spacing-in-night-mode.png"
   }
 ]

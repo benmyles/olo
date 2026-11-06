@@ -3351,3 +3351,84 @@ This integration uses the manually rerun `/var/tmp` lint paths and skips that
 duplicate hook. Its full-desktop failure is recorded, not silently called a
 pass. No personal session reload/install. Latest fetched main is included;
 website acceptance remains **0/100**, and the goal stays active.
+
+## 2026-11-06 — retained inline box spacing
+
+Non-replaced inline boxes now retain original source ranges and actual
+first/last edges through anonymous text runs and block interruptions. Sparse
+edge prefixes resolve horizontal margins/padding (including percentages and
+auto margins) and participate in fitting, alignment and glyph placement.
+Empty/collapsed boxes retain their edges; an edge-only box creates a line,
+while transparent vertical padding does not move glyphs or enlarge a line.
+Fragment storage has its own quota, including repeated block interruptions.
+
+Shaping is isolated at nonzero used inline edges without adding fictional
+characters or altering paragraph bidi analysis. Later reshaping respects the
+same context cuts. Width-dependent edges that become zero restore joining
+from shared prepared text, preserving the width-independent cache. Empty
+shaping-boundary sets use an optional thin pointer. Transient edge prefixes
+are discarded after placement; retained source ranges support later reflow.
+Additional source range/glyph payload is included in geometry accounting.
+
+Independent Chrome capture: **45 authored inputs × five live scales = 225
+observations**, each tested at one- and 128-action worker budgets. **198 match**
+the documented DOM Range export allowance; **27 remain non-passes**, with 32
+pinned X coordinates caused by fractional device-size font metrics at 1.25×
+and 1.75×. All block heights, wrapping and letter Y coordinates pass. The
+non-pass ledger pins wrong native and independent values; it is a regression
+guard, not an acceptance oracle. Inputs/font/probe/reports are SHA-256 pinned.
+The first capture assumed requested iframe width; the corrected probe measures
+its actual viewport independently. Empty-box break attachment and negative
+margin greedy fitting were corrected from the Chrome evidence.
+
+Native link snapshots/actions survive inline spacing and wrapped spans. The
+fixture now explicitly resizes to 1000×700 points after every live scale
+change and asserts that its wrapped text is visible, avoiding an earlier
+pilot with an undersized viewport. The final inline suite and original link
+suite each pass **15 mode/scale reviews and 36 requests**; an additional inline
+confirmation passes. The live Hacker News result now gets past inline spacing
+and padding but stops at **replaced/control/forced-break inline objects**.
+An early commentary incorrectly stated that next failure before reading the
+saved result; the actual intermediate vertical-padding guard and subsequent
+spec/Chrome verification were preserved during investigation.
+
+Inline backgrounds are still unimplemented. Their guard now checks retained
+boxes once, including empty padded and nested boxes, so a visible background
+cannot silently disappear just because no text glyph belongs to its owner.
+Bidi inline-edge distribution, borders/background painting, complete fragment
+and hit geometry, mixed typography, device-size glyph metrics and all website
+acceptance remain open. **0/100 sites / 0/3000 combinations accepted.**
+
+Release validation: **231 default / 230 all-feature web tests + twelve
+browser tests**, strict browser/web all-target clippy, workspace build,
+thirteen kit/Preferences lint tests and standalone Browser live lint pass.
+The component suite retains its explicit 27 non-passes; no website pass is
+inferred from a green regression ledger. Native confirmation completed
+normally after earlier long harness chains ended 143 after writing results.
+Visual journal includes the same fixture before/after at light 2× and the
+candidate at night 1.5×; all fifteen native mode/scale cases were captured.
+
+Frozen worker comparison, seven alternating samples, 60 rounds each, default
+features **[]**, identical common source/geometry hashes and unchanged
+**80-byte paint commands**: 100/1,000-div median pipeline
+**1035.713/8679.268→1043.494/8572.474 µs**; peak RSS ranges
+**8620–9072→8720–8976 KiB**. New inline-box path (different authored workload,
+no passing before counterpart): **1035.347/8506.456 µs**, RSS
+**10244–10656 KiB**. These exclude raster/GPU/presentation and establish no
+universal speedup. An earlier investigation sample is not the final comparison.
+
+Native common scroll, three replays per frozen build: RSS **85072→85460 KiB**;
+both **0 CPU / 0 wakeups / 0 frames** over three idle seconds. Median first
+report→moving client frame drag/flick/wheel
+**8.997/8.910/0.408→9.117/8.910/0.509 ms**, no hitches in either variant.
+Median slowest client draw **0.47/0.57/0.58→0.61/0.50/0.59 ms**. The unchanged
+1,001-link keyboard case measures **17.237 ms**, RSS **88376 KiB**, zero idle
+CPU/wakeups/frames; full restyle and the 8.3 ms target remain open. These client
+marks are not compositor presentation or optical latency. Own builds and active
+GUI tests were stopped before measurements; external desktop load is not fully
+controlled.
+
+Evidence: `2026-11-06-inline-box-{checks,native,links,pipeline-cost,ui-cost,keyboard-cost}.json`;
+`tools/browser/measure-inline.py`, the frozen native scroll runner and the
+`--inline` link fixture. Earlier `2026-11-06-inline-checks.json` is retained
+unchanged; this milestone uses the distinct `inline-box` prefix.

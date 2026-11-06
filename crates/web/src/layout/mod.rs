@@ -9,7 +9,7 @@ use crate::{
 };
 pub use flow::{Cache, Geometry, Job, Layout, PrepareJob, Progress};
 use std::sync::atomic::{AtomicBool, Ordering};
-pub use tree::{BoxId, BoxKind, BoxNode, BuildJob, BuildLimits, BuildProgress, SourceSpan, TextSource, Tree};
+pub use tree::{BoxId, BoxKind, BoxNode, BuildJob, BuildLimits, BuildProgress, InlineBox, SourceSpan, TextSource, Tree};
 #[derive(Debug)]
 pub enum Error {
     Invalid,

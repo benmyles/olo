@@ -223,6 +223,14 @@ revalidate the merged workspace and push the integration with browser work.
   similar process CPU. See 2026-11-06-flow raw measurements; no universal win.
 - [ ] Implement complete block/inline, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
+- [x] Initial horizontal inline margins/padding, percentage and auto contexts,
+  nested/empty spans, slice ends across wrapping/block interruptions, and
+  shaping isolation at actual used inline edges. Transparent vertical padding
+  leaves glyph placement and line height unchanged, including empty spans.
+- [ ] Complete inline fragment backgrounds/borders/hit geometry and bidi edge
+  distribution. Empty/nested inline backgrounds must fail explicitly until
+  painted. Independent spacing probes: 198/225 case/scale observations match
+  the documented DOM Range allowance; 27 fractional-font X non-passes remain.
 - [x] Initial retained static page scenes, outline cache, indexed tile queries,
   bounded pure-Rust CPU raster and native GPU tile composition. Ninety actual
   native-scale Chrome pixel observations are captured; 54 exact matches and
@@ -319,9 +327,9 @@ this is a harness correction, not a browser speedup.
   path as well as the normal visible path.
 
 - [ ] Public navigation smoke failures: Example Domain is visibly incomplete;
-  Hacker News gets past initial link/pointer state and now fails on inline box
-  edges. Complete inline edges/typography and table layout; preserve explicit
-  failures in evals.
+  Hacker News gets past inline spacing/padding and now fails on replaced/
+  control/forced-break inline objects. Complete those objects, inline
+  decorations/typography and table layout; preserve explicit failures in evals.
 - [x] Distinguish authored document records from native widget layout review.
   `agent::Node.document_content` keeps snapshots/actions while excluding native
   spacing/inset rules; the shared regression still catches native crowding.

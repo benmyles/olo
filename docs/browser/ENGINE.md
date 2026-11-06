@@ -443,7 +443,7 @@ space pairs, masks, mixed spaces and short/tail lengths exactly.
 
 Independent grammar/coordinate data accounts for **12,703 cases: 9,921
 direct passes, 2,760 reviewed current-spec passes, 22 explicit non-passes**.
-This includes 43 independent absolute conversion vectors, not just
+This includes 45 independent absolute conversion vectors, not just
 round-trip tests. The fixture README documents licenses, literal extraction,
 selection, numeric tolerances, current-spec changes and full non-pass
 reasons. The remaining cases include substitution, profiles, device
@@ -2037,3 +2037,36 @@ keyboard path separately from the common scroll comparison. Empty/image/box
 targets, caret geometry, focus starting points after fragments, all HTML focus
 semantics, events/JS and full browser history remain open. These authored
 fixtures and native reviews do not establish website fidelity.
+
+## Initial horizontal inline box spacing (2026-11-06)
+
+Text sources retain compact inline-box source ranges and actual first/last
+edges across block interruptions. A separate fragment quota bounds metadata
+even when one inline is split across many blocks. Empty and collapsed spans
+keep their original boundaries. Width-independent shaping breaks isolate
+nonzero inline-axis margins/padding without inserting text or changing bidi
+analysis; later edge reshaping respects those context boundaries. Empty
+boundary sets occupy one optional thin pointer per paragraph.
+
+The line worker resolves horizontal percentages against the block content
+width, treats inline auto margins as zero and ignores vertical margins.
+Sparse edge prefixes participate in greedy line fitting, alignment and glyph
+placement. Negative margins cannot hide a preceding overflowing candidate.
+Empty-box edges stay before a wrap; openings within trimmed whitespace follow
+the text onto the next line. Only actual element ends consume slice edges.
+An empty box with nonzero horizontal edges creates its required line box.
+
+Actual used edges can become zero on a resize (including percentage/calc
+values). If that changes shaping boundaries, the layout rebuilds the affected
+paragraph's glyph data from shared prepared source while preserving the
+width-independent cache. Its additional geometry is accounted separately.
+Ordinary zero-edge text keeps the existing shaping/line-layout path.
+
+`inline-box-fixtures` records 45 independent Chrome letter/box probes at five
+live scales and two native worker budgets. **198/225** match the documented
+DOM Range allowance; **27 fractional-font coordinate non-passes remain pinned**.
+Wrapping/heights and Y coordinates pass in all cases. This is not typography,
+pixel or website acceptance. Horizontal inline margins/padding now render in
+the native canvas and existing text-link control, but inline borders,
+backgrounds, decorated vertical padding, bidi edge distribution, full fragment/hit
+geometry and mixed typography remain explicit implementation work.

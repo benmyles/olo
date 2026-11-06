@@ -1,0 +1,710 @@
+{
+  "scope": "Owned-screen link input regression; production engine/network are Rust.\nStart one release olo-browser on a 1280x800 Agent Screen initially at 2x,\neval its environment, then: THIS_SCRIPT NAME /var/tmp/OWNED/output.\nAdd --inline to exercise horizontal inline margins/padding and wrapped spans.\nNo website journey acceptance follows from these authored fixtures.\n",
+  "inline_boxes": false,
+  "initial": {
+    "window": 1,
+    "app_id": "olo.browser",
+    "title": "Browser",
+    "focused": true,
+    "content": {
+      "x": 53,
+      "y": 66,
+      "width": 1000,
+      "height": 700
+    },
+    "nodes": [
+      {
+        "id": 1,
+        "role": "Window",
+        "name": "Browser",
+        "x": 53.0,
+        "y": 66.0,
+        "width": 1000.0,
+        "height": 700.0,
+        "enabled": true
+      },
+      {
+        "id": 2,
+        "parent": 1,
+        "role": "MenuBarItem",
+        "name": "File",
+        "x": 61.0,
+        "y": 67.0,
+        "width": 35.188,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true,
+        "selected": false
+      },
+      {
+        "id": 3,
+        "parent": 1,
+        "role": "MenuBarItem",
+        "name": "Navigate",
+        "x": 96.188,
+        "y": 67.0,
+        "width": 66.256,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true,
+        "selected": false
+      },
+      {
+        "id": 4,
+        "parent": 1,
+        "role": "Button",
+        "name": "Back",
+        "x": 65.0,
+        "y": 104.0,
+        "width": 80.0,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 5,
+        "parent": 1,
+        "role": "Button",
+        "name": "Forward",
+        "x": 157.0,
+        "y": 104.0,
+        "width": 80.0,
+        "height": 24.0,
+        "enabled": false
+      },
+      {
+        "id": 6,
+        "parent": 1,
+        "role": "TextInput",
+        "name": "Address",
+        "value": "http://127.0.0.1:42267/links",
+        "x": 249.0,
+        "y": 104.0,
+        "width": 608.0,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 7,
+        "parent": 1,
+        "role": "Button",
+        "name": "Go",
+        "x": 869.0,
+        "y": 104.0,
+        "width": 80.0,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 8,
+        "parent": 1,
+        "role": "Button",
+        "name": "Stop",
+        "x": 961.0,
+        "y": 104.0,
+        "width": 80.0,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 9,
+        "parent": 1,
+        "role": "Document",
+        "name": "Page",
+        "value": "{\"url\":\"http://127.0.0.1:42267/links\",\"navigation\":38,\"document\":38}",
+        "x": 53.0,
+        "y": 140.0,
+        "width": 1000.0,
+        "height": 577.5,
+        "enabled": true
+      },
+      {
+        "id": 10,
+        "parent": 1,
+        "role": "Label",
+        "name": "Link fixture",
+        "x": 75.38,
+        "y": 168.58,
+        "width": 157.584,
+        "height": 21.699997,
+        "enabled": true
+      },
+      {
+        "id": 11,
+        "parent": 1,
+        "role": "Link",
+        "name": "First link",
+        "value": "http://127.0.0.1:42267/dest/one",
+        "x": 74.552,
+        "y": 224.84,
+        "width": 61.631996,
+        "height": 12.320007,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 12,
+        "parent": 1,
+        "role": "Link",
+        "name": "Second link",
+        "value": "http://127.0.0.1:42267/dest/two",
+        "x": 141.304,
+        "y": 224.84,
+        "width": 84.784,
+        "height": 12.320007,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 13,
+        "parent": 1,
+        "role": "Link",
+        "name": "Download link",
+        "value": "http://127.0.0.1:42267/unrequested",
+        "x": 74.552,
+        "y": 268.84,
+        "width": 105.28,
+        "height": 12.320007,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 14,
+        "parent": 1,
+        "role": "Link",
+        "name": "Local file link",
+        "value": "file:///dev/null",
+        "x": 74.552,
+        "y": 312.76,
+        "width": 94.944,
+        "height": 12.400009,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 15,
+        "parent": 1,
+        "role": "Link",
+        "name": "New window link",
+        "value": "http://127.0.0.1:42267/unrequested",
+        "x": 74.552,
+        "y": 356.84,
+        "width": 125.119995,
+        "height": 12.320007,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 16,
+        "parent": 1,
+        "role": "Label",
+        "name": "Ordinary text after the links.",
+        "x": 73.976,
+        "y": 400.76,
+        "width": 208.832,
+        "height": 16.079987,
+        "enabled": true
+      },
+      {
+        "id": 17,
+        "parent": 1,
+        "role": "Label",
+        "name": "Link fixture",
+        "x": 69.0,
+        "y": 733.5,
+        "width": 968.0,
+        "height": 16.5,
+        "enabled": true
+      }
+    ]
+  },
+  "rows": [
+    {
+      "theme": "light",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 62
+    },
+    {
+      "theme": "light",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 148
+    },
+    {
+      "theme": "light",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 226
+    },
+    {
+      "theme": "light",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 382
+    },
+    {
+      "theme": "light",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 549
+    },
+    {
+      "theme": "dark",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 62
+    },
+    {
+      "theme": "dark",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 148
+    },
+    {
+      "theme": "dark",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 226
+    },
+    {
+      "theme": "dark",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 382
+    },
+    {
+      "theme": "dark",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 549
+    },
+    {
+      "theme": "night",
+      "scale": 1,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 62
+    },
+    {
+      "theme": "night",
+      "scale": 1.25,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 148
+    },
+    {
+      "theme": "night",
+      "scale": 1.5,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 226
+    },
+    {
+      "theme": "night",
+      "scale": 1.75,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 382
+    },
+    {
+      "theme": "night",
+      "scale": 2,
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "hover_green_pixels": 549
+    }
+  ],
+  "requests": [
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/two",
+    "/links",
+    "/dest/one",
+    "/links",
+    "/links",
+    "/links",
+    "/links"
+  ],
+  "final": {
+    "window": 1,
+    "app_id": "olo.browser",
+    "title": "Browser",
+    "focused": true,
+    "content": {
+      "x": 53,
+      "y": 66,
+      "width": 1000,
+      "height": 700
+    },
+    "nodes": [
+      {
+        "id": 1,
+        "role": "Window",
+        "name": "Browser",
+        "x": 53.0,
+        "y": 66.0,
+        "width": 1000.0,
+        "height": 700.0,
+        "enabled": true
+      },
+      {
+        "id": 2,
+        "parent": 1,
+        "role": "MenuBarItem",
+        "name": "File",
+        "x": 61.0,
+        "y": 67.0,
+        "width": 35.188,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true,
+        "selected": false
+      },
+      {
+        "id": 3,
+        "parent": 1,
+        "role": "MenuBarItem",
+        "name": "Navigate",
+        "x": 96.188,
+        "y": 67.0,
+        "width": 66.256,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true,
+        "selected": false
+      },
+      {
+        "id": 4,
+        "parent": 1,
+        "role": "Button",
+        "name": "Back",
+        "x": 65.0,
+        "y": 104.0,
+        "width": 80.0,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 5,
+        "parent": 1,
+        "role": "Button",
+        "name": "Forward",
+        "x": 157.0,
+        "y": 104.0,
+        "width": 80.0,
+        "height": 24.0,
+        "enabled": false
+      },
+      {
+        "id": 6,
+        "parent": 1,
+        "role": "TextInput",
+        "name": "Address",
+        "value": "http://127.0.0.1:42267/links",
+        "x": 249.0,
+        "y": 104.0,
+        "width": 608.0,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 7,
+        "parent": 1,
+        "role": "Button",
+        "name": "Go",
+        "x": 869.0,
+        "y": 104.0,
+        "width": 80.0,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 8,
+        "parent": 1,
+        "role": "Button",
+        "name": "Stop",
+        "x": 961.0,
+        "y": 104.0,
+        "width": 80.0,
+        "height": 24.0,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 9,
+        "parent": 1,
+        "role": "Document",
+        "name": "Page",
+        "value": "{\"url\":\"http://127.0.0.1:42267/links\",\"navigation\":73,\"document\":73}",
+        "x": 53.0,
+        "y": 140.0,
+        "width": 1000.0,
+        "height": 577.5,
+        "enabled": true
+      },
+      {
+        "id": 10,
+        "parent": 1,
+        "role": "Label",
+        "name": "Link fixture",
+        "x": 75.38,
+        "y": 168.58,
+        "width": 157.584,
+        "height": 21.699997,
+        "enabled": true
+      },
+      {
+        "id": 11,
+        "parent": 1,
+        "role": "Link",
+        "name": "First link",
+        "value": "http://127.0.0.1:42267/dest/one",
+        "x": 74.552,
+        "y": 224.84,
+        "width": 61.631996,
+        "height": 12.320007,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 12,
+        "parent": 1,
+        "role": "Link",
+        "name": "Second link",
+        "value": "http://127.0.0.1:42267/dest/two",
+        "x": 141.304,
+        "y": 224.84,
+        "width": 84.784,
+        "height": 12.320007,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 13,
+        "parent": 1,
+        "role": "Link",
+        "name": "Download link",
+        "value": "http://127.0.0.1:42267/unrequested",
+        "x": 74.552,
+        "y": 268.84,
+        "width": 105.28,
+        "height": 12.320007,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 14,
+        "parent": 1,
+        "role": "Link",
+        "name": "Local file link",
+        "value": "file:///dev/null",
+        "x": 74.552,
+        "y": 312.76,
+        "width": 94.944,
+        "height": 12.400009,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 15,
+        "parent": 1,
+        "role": "Link",
+        "name": "New window link",
+        "value": "http://127.0.0.1:42267/unrequested",
+        "x": 74.552,
+        "y": 356.84,
+        "width": 125.119995,
+        "height": 12.320007,
+        "enabled": true,
+        "clickable": true
+      },
+      {
+        "id": 16,
+        "parent": 1,
+        "role": "Label",
+        "name": "Ordinary text after the links.",
+        "x": 73.976,
+        "y": 400.76,
+        "width": 208.832,
+        "height": 16.079987,
+        "enabled": true
+      },
+      {
+        "id": 17,
+        "parent": 1,
+        "role": "Label",
+        "name": "Link fixture",
+        "x": 69.0,
+        "y": 733.5,
+        "width": 968.0,
+        "height": 16.5,
+        "enabled": true
+      }
+    ]
+  },
+  "accepted_websites": 0
+}

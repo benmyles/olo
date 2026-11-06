@@ -1,0 +1,219 @@
+{
+  "scope": "Explicit component non-passes: fractional glyph advances remain in font units. These coordinates exceed the one-layout-unit DOM Range export allowance. Whole-line wrapping/heights and every Y coordinate must still pass; each known X mismatch is pinned, so additional errors in the same case are regressions. Not website acceptance.",
+  "expected_nonpasses": {
+    "1.25:fraction-.1px": [
+      {
+        "letter": "D",
+        "native": 70.20000457763672,
+        "chrome": 70.2249984741211
+      }
+    ],
+    "1.25:fraction-.3px": [
+      {
+        "letter": "D",
+        "native": 70.5999984741211,
+        "chrome": 70.625
+      }
+    ],
+    "1.25:fraction-33.333%": [
+      {
+        "letter": "B",
+        "native": 53.85000228881836,
+        "chrome": 53.875
+      },
+      {
+        "letter": "D",
+        "native": 53.85000228881836,
+        "chrome": 53.875
+      }
+    ],
+    "1.25:fraction-calc(5% + .2px)": [
+      {
+        "letter": "D",
+        "native": 80.55000305175781,
+        "chrome": 80.57500457763672
+      }
+    ],
+    "1.25:negative-return": [
+      {
+        "letter": "D",
+        "native": 10.0,
+        "chrome": 10.02500057220459
+      }
+    ],
+    "1.25:nested": [
+      {
+        "letter": "C",
+        "native": 54.0,
+        "chrome": 54.025001525878906
+      },
+      {
+        "letter": "D",
+        "native": 69.0,
+        "chrome": 69.0374984741211
+      },
+      {
+        "letter": "E",
+        "native": 96.0,
+        "chrome": 96.0500030517578
+      }
+    ],
+    "1.25:vertical-margins-ignored": [
+      {
+        "letter": "C",
+        "native": 40.0,
+        "chrome": 40.025001525878906
+      }
+    ],
+    "1.25:vertical-padding": [
+      {
+        "letter": "C",
+        "native": 40.0,
+        "chrome": 40.025001525878906
+      }
+    ],
+    "1.25:wrap-200-margin-left:-15px;margin-right:5px": [
+      {
+        "letter": "E",
+        "native": 110.0,
+        "chrome": 110.0250015258789
+      }
+    ],
+    "1.25:wrap-200-margin-left:-7px;padding-left:7px": [
+      {
+        "letter": "E",
+        "native": 120.0,
+        "chrome": 120.0250015258789
+      }
+    ],
+    "1.25:wrap-200-margin-left:10px;margin-right:5px": [
+      {
+        "letter": "E",
+        "native": 135.0,
+        "chrome": 135.02500915527344
+      }
+    ],
+    "1.25:wrap-200-margin-left:auto;margin-right:auto": [
+      {
+        "letter": "E",
+        "native": 120.0,
+        "chrome": 120.0250015258789
+      }
+    ],
+    "1.25:wrap-200-padding-left:5%;padding-right:calc(5% + .3px)": [
+      {
+        "letter": "E",
+        "native": 140.3000030517578,
+        "chrome": 140.3249969482422
+      }
+    ],
+    "1.25:wrap-200-padding-left:7px;padding-right:11px": [
+      {
+        "letter": "E",
+        "native": 138.0,
+        "chrome": 138.02500915527344
+      }
+    ],
+    "1.75:fraction-.1px": [
+      {
+        "letter": "D",
+        "native": 70.1964340209961,
+        "chrome": 70.21428680419922
+      }
+    ],
+    "1.75:fraction-.3px": [
+      {
+        "letter": "D",
+        "native": 70.58928680419922,
+        "chrome": 70.60714721679688
+      }
+    ],
+    "1.75:fraction-calc(5% + .2px)": [
+      {
+        "letter": "D",
+        "native": 80.5,
+        "chrome": 80.51786041259766
+      }
+    ],
+    "1.75:negative-return": [
+      {
+        "letter": "D",
+        "native": 10.0,
+        "chrome": 10.017857551574709
+      }
+    ],
+    "1.75:nested": [
+      {
+        "letter": "C",
+        "native": 54.000003814697266,
+        "chrome": 54.017860412597656
+      },
+      {
+        "letter": "D",
+        "native": 69.0,
+        "chrome": 69.02678680419922
+      },
+      {
+        "letter": "E",
+        "native": 96.00000762939453,
+        "chrome": 96.03572082519533
+      }
+    ],
+    "1.75:vertical-margins-ignored": [
+      {
+        "letter": "C",
+        "native": 40.0,
+        "chrome": 40.017860412597656
+      }
+    ],
+    "1.75:vertical-padding": [
+      {
+        "letter": "C",
+        "native": 40.0,
+        "chrome": 40.017860412597656
+      }
+    ],
+    "1.75:wrap-200-margin-left:-15px;margin-right:5px": [
+      {
+        "letter": "E",
+        "native": 110.00000762939453,
+        "chrome": 110.01786041259766
+      }
+    ],
+    "1.75:wrap-200-margin-left:-7px;padding-left:7px": [
+      {
+        "letter": "E",
+        "native": 120.00000762939453,
+        "chrome": 120.01786041259766
+      }
+    ],
+    "1.75:wrap-200-margin-left:10px;margin-right:5px": [
+      {
+        "letter": "E",
+        "native": 135.0,
+        "chrome": 135.0178680419922
+      }
+    ],
+    "1.75:wrap-200-margin-left:auto;margin-right:auto": [
+      {
+        "letter": "E",
+        "native": 120.00000762939453,
+        "chrome": 120.01786041259766
+      }
+    ],
+    "1.75:wrap-200-padding-left:5%;padding-right:calc(5% + .3px)": [
+      {
+        "letter": "E",
+        "native": 140.29464721679688,
+        "chrome": 140.3125
+      }
+    ],
+    "1.75:wrap-200-padding-left:7px;padding-right:11px": [
+      {
+        "letter": "E",
+        "native": 138.0,
+        "chrome": 138.0178680419922
+      }
+    ]
+  }
+}

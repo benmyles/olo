@@ -1,0 +1,317 @@
+[
+  {
+    "name": "wrap-40-margin-left:10px;margin-right:5px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:10px;margin-right:5px}",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "wrap-40-padding-left:7px;padding-right:11px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{padding-left:7px;padding-right:11px}",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "wrap-40-margin-left:-15px;margin-right:5px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:-15px;margin-right:5px}",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "wrap-40-margin-left:auto;margin-right:auto",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:auto;margin-right:auto}",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "wrap-40-padding-left:5%;padding-right:calc(5% + .3px)",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{padding-left:5%;padding-right:calc(5% + .3px)}",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "wrap-40-margin-left:-7px;padding-left:7px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:-7px;padding-left:7px}",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "wrap-70-margin-left:10px;margin-right:5px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:10px;margin-right:5px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "wrap-70-padding-left:7px;padding-right:11px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{padding-left:7px;padding-right:11px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "wrap-70-margin-left:-15px;margin-right:5px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:-15px;margin-right:5px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "wrap-70-margin-left:auto;margin-right:auto",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:auto;margin-right:auto}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "wrap-70-padding-left:5%;padding-right:calc(5% + .3px)",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{padding-left:5%;padding-right:calc(5% + .3px)}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "wrap-70-margin-left:-7px;padding-left:7px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:-7px;padding-left:7px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "wrap-110-margin-left:10px;margin-right:5px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:10px;margin-right:5px}",
+    "width": 110,
+    "height": 800
+  },
+  {
+    "name": "wrap-110-padding-left:7px;padding-right:11px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{padding-left:7px;padding-right:11px}",
+    "width": 110,
+    "height": 800
+  },
+  {
+    "name": "wrap-110-margin-left:-15px;margin-right:5px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:-15px;margin-right:5px}",
+    "width": 110,
+    "height": 800
+  },
+  {
+    "name": "wrap-110-margin-left:auto;margin-right:auto",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:auto;margin-right:auto}",
+    "width": 110,
+    "height": 800
+  },
+  {
+    "name": "wrap-110-padding-left:5%;padding-right:calc(5% + .3px)",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{padding-left:5%;padding-right:calc(5% + .3px)}",
+    "width": 110,
+    "height": 800
+  },
+  {
+    "name": "wrap-110-margin-left:-7px;padding-left:7px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:-7px;padding-left:7px}",
+    "width": 110,
+    "height": 800
+  },
+  {
+    "name": "wrap-200-margin-left:10px;margin-right:5px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:10px;margin-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "wrap-200-padding-left:7px;padding-right:11px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{padding-left:7px;padding-right:11px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "wrap-200-margin-left:-15px;margin-right:5px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:-15px;margin-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "wrap-200-margin-left:auto;margin-right:auto",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:auto;margin-right:auto}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "wrap-200-padding-left:5%;padding-right:calc(5% + .3px)",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{padding-left:5%;padding-right:calc(5% + .3px)}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "wrap-200-margin-left:-7px;padding-left:7px",
+    "body": "<div id=p>A <span id=s>B C D</span> E</div>",
+    "css": "#s{margin-left:-7px;padding-left:7px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "nested",
+    "body": "<div id=p>A<span id=s>B<span id=t>C</span>D</span>E</div>",
+    "css": "#s{margin-left:3px;padding-right:7px}#t{padding-left:11px;margin-right:-5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "block-interruption",
+    "body": "<div id=p>A<span id=s>B<div id=b>C</div>D</span>E</div>",
+    "css": "#s{margin-left:10px;margin-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "empty-before-block",
+    "body": "<div id=p><span id=s><div id=b>C</div></span></div>",
+    "css": "#s{padding-left:10px;padding-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "empty",
+    "body": "<div id=p><span id=s></span></div>",
+    "css": "#s{margin-left:10px;padding-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "empty-middle",
+    "body": "<div id=p>A<span id=s></span>B</div>",
+    "css": "#s{padding-left:10px;padding-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "empty-end",
+    "body": "<div id=p>A<span id=s></span></div>",
+    "css": "#s{margin-left:10px;margin-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "empty-after-space",
+    "body": "<div id=p>A <span id=s></span>B</div>",
+    "css": "#s{padding-left:10px;padding-right:5px}",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "nested-empty",
+    "body": "<div id=p>A<span id=s><span id=t></span></span>B</div>",
+    "css": "#s{padding-left:5px;padding-right:7px}#t{margin-left:11px;margin-right:13px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "vertical-margins-ignored",
+    "body": "<div id=p>A<span id=s>B</span>C</div>",
+    "css": "#s{margin-top:400px;margin-bottom:200px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "vertical-padding",
+    "body": "<div id=p>A<span id=s>B</span>C</div>",
+    "css": "#s{padding-top:30px;padding-bottom:40px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "vertical-padding-empty",
+    "body": "<div id=p><span id=s></span></div>",
+    "css": "#s{padding-top:30px;padding-bottom:40px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "leading-space",
+    "body": "<div id=p><span id=s> B C </span></div>",
+    "css": "#s{padding-left:10px;padding-right:5px}",
+    "width": 50,
+    "height": 800
+  },
+  {
+    "name": "collapsed-span",
+    "body": "<div id=p>A <span id=s> </span> B</div>",
+    "css": "#s{margin-left:10px;margin-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "only-spaces",
+    "body": "<div id=p><span id=s>   </span></div>",
+    "css": "#s{padding-left:10px;padding-right:5px}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "zero-empty",
+    "body": "<div id=p><span id=s></span></div>",
+    "css": "#s{margin-left:auto;margin-right:auto}",
+    "width": 200,
+    "height": 800
+  },
+  {
+    "name": "negative-return",
+    "body": "<div id=p>A B<span id=s> C</span> D</div>",
+    "css": "#s{margin-left:-60px;margin-right:10px}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "fraction-.1px",
+    "body": "<div id=p>A<span id=s>B C</span>D</div>",
+    "css": "#s{padding-left:.1px;margin-right:.1px}",
+    "width": 101.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-.3px",
+    "body": "<div id=p>A<span id=s>B C</span>D</div>",
+    "css": "#s{padding-left:.3px;margin-right:.3px}",
+    "width": 101.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-10.123px",
+    "body": "<div id=p>A<span id=s>B C</span>D</div>",
+    "css": "#s{padding-left:10.123px;margin-right:10.123px}",
+    "width": 101.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-33.333%",
+    "body": "<div id=p>A<span id=s>B C</span>D</div>",
+    "css": "#s{padding-left:33.333%;margin-right:33.333%}",
+    "width": 101.25,
+    "height": 800
+  },
+  {
+    "name": "fraction-calc(5% + .2px)",
+    "body": "<div id=p>A<span id=s>B C</span>D</div>",
+    "css": "#s{padding-left:calc(5% + .2px);margin-right:calc(5% + .2px)}",
+    "width": 101.25,
+    "height": 800
+  }
+]

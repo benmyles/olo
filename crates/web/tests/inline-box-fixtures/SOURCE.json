@@ -1,0 +1,58 @@
+{
+  "kind": "Authored inputs; independent Chrome Range/DOM rectangles; explicit engine non-pass ledger is not an oracle or acceptance.",
+  "capture": "Owned browser-inline-ref Olo Agent Screen, Wayland olo-chrome, 1280x800, live scales 1/1.25/1.5/1.75/2, localhost only. No personal screen/profile/session.",
+  "references": [
+    "https://www.w3.org/TR/CSS22/visudet.html#inline-non-replaced",
+    "https://drafts.csswg.org/css-text-3/#boundary-shaping",
+    "https://drafts.csswg.org/css-break-3/#break-decoration"
+  ],
+  "font": {
+    "path": "../inline-fixtures/plain.ttf",
+    "sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb"
+  },
+  "inputs": {
+    "inputs.json": "fbcf19511869c83a8caabdce83689eec6a6b75ce3302437b8cf5f90e61d1d3cd",
+    "generate.py": "5d91c10ed8852edcdcd31077965acbeda81cac6fa4da57e10971ae09275b19db",
+    "probe.html": "bb8e9160752c0cd61be6be28e93a508439de0bca58b2f993b7a0fc9306075ff9",
+    "serve.py": "f93b10e433a21df9704b7c5bd1c4d72523f99ee28097f26acf6ac0a9decfff19",
+    "known-nonpasses.json": "edcae845c1370b84779b46b14150614447344fe6a7b13f24ec91d1046345db65"
+  },
+  "base": {
+    "path": "../flow-fixtures/base.css",
+    "sha256": "d3224fc302c7d78153a09cea76b2406366fa5d60033c5673f0a68a86c8a9a35d"
+  },
+  "reports": {
+    "1": {
+      "file": "chrome-1.json",
+      "sha256": "d8d58ccebd8c60ecf2cb5c9bb15861ae3375c9f86ab6aedc84a6351aee37ff45",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.25": {
+      "file": "chrome-1.25.json",
+      "sha256": "a503a592b2d5d8f06cfdc2c9a451b79b8763f3f0eebea12bfacee1c2f48e8bfa",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.5": {
+      "file": "chrome-1.5.json",
+      "sha256": "5f7a104dc91b57188b66f3814b71111131024c564de92c2ac2117eefeba8a402",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.75": {
+      "file": "chrome-1.75.json",
+      "sha256": "3511c9f9498f43601ffe0aba4b49c7174c6c44b8c814d0b9a3aff1bff85fbfb7",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "2": {
+      "file": "chrome-2.json",
+      "sha256": "4156ed425b0918b6dfc34b38f2726d998fd7b559d08713ee5571c3cccaa68188",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    }
+  },
+  "coverage": {
+    "total": 225,
+    "matching_within_dom_range_export_unit": 198,
+    "nonpasses": 27,
+    "website_passes": 0
+  },
+  "scope": "45 cases at five scales and two worker budgets. Every line height and letter Y must pass; X allows one device layout unit for outward DOM Range enclosure. 27 cases have pinned fractional-font X mismatches beyond that allowance. Full pixels, inline fragment rectangles/decorations, bidi inline edges, arbitrary typography, CSS completeness, scripting and websites are not verified."
+}

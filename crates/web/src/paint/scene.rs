@@ -206,6 +206,15 @@ impl<'a> BuildJob<'a> {
         // Layout is held outside self's mutable command builder borrow.
         let layout = self.layout.clone();
         let text = layout.text_layout(id).ok_or(Error::Invalid)?;
+        // Include empty/nested boxes: checking only glyph ownership misses
+        // a visible background on an empty padded span or an outer inline.
+        for b in layout.cache().tree().inline_boxes(source).ok_or(Error::Invalid)? {
+            check(self.cancel)?;
+            let s = layout.cache().tree().styles().snapshot(b.node).ok_or(Error::Stale)?;
+            if visible(s) && color(s, P::BackgroundColor)?[3] != 0 {
+                return Err(Error::Unsupported("inline backgrounds"));
+            }
+        }
         let source = layout.cache().tree().text_source(source).ok_or(Error::Invalid)?;
         let prepared = text.text().prepared();
         let size = text.text().paragraph().font_size;
@@ -238,9 +247,6 @@ impl<'a> BuildJob<'a> {
                     let mut c = color(s, P::Color)?;
                     if !visible(s) {
                         c[3] = 0
-                    }
-                    if span.style_node != layout.cache().tree().get(source.container).ok_or(Error::Invalid)?.style_node && color(s, P::BackgroundColor)?[3] != 0 {
-                        return Err(Error::Unsupported("inline backgrounds"));
                     }
                     // A cluster shared across different paint styles needs caret clipping.
                     // Never silently color the entire ligature from its first source span.

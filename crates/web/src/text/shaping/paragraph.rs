@@ -116,6 +116,14 @@ pub struct Progress {
     pub glyphs: usize,
     pub finished: bool,
 }
+#[derive(Default)]
+struct ShapingBreaks(Option<triomphe::ThinArc<(), u32>>);
+impl std::ops::Deref for ShapingBreaks {
+    type Target = [u32];
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().map_or(&[], |b| &b.slice)
+    }
+}
 pub struct Paragraph {
     pub analysis: Analysis,
     pub runs: Box<[Run]>,
@@ -124,6 +132,7 @@ pub struct Paragraph {
     pub language: Box<str>,
     request: FontRequest,
     font_context: u64,
+    shaping_breaks: ShapingBreaks,
 }
 impl Paragraph {
     pub fn request(&self) -> &FontRequest {
@@ -131,6 +140,9 @@ impl Paragraph {
     }
     pub fn font_context(&self) -> u64 {
         self.font_context
+    }
+    pub fn shaping_breaks(&self) -> &[u32] {
+        &self.shaping_breaks
     }
     /// Shaping context for a source interval; excludes its paragraph's LF.
     pub fn context_range(&self, range: Range<usize>) -> Result<Range<usize>> {
@@ -147,7 +159,7 @@ impl Paragraph {
         if range.end > end {
             return Err(Error::Invalid);
         }
-        Ok(p.range.start..end)
+        shaping_context(p.range.start..end, range, &self.shaping_breaks)
     }
     pub fn glyph_payload_bytes(&self) -> usize {
         self.runs.iter().map(Run::glyph_payload_bytes).sum()
@@ -155,6 +167,15 @@ impl Paragraph {
     pub fn advance(&self) -> (f64, f64) {
         self.runs.iter().map(|r| r.advance(self.font_size)).fold((0., 0.), |(x, y), (a, b)| (x + a, y + b))
     }
+}
+fn shaping_context(context: Range<usize>, range: Range<usize>, boundaries: &[u32]) -> Result<Range<usize>> {
+    let lo = boundaries.partition_point(|b| (*b as usize) <= range.start);
+    let start = if lo == 0 { context.start } else { context.start.max(boundaries[lo - 1] as usize) };
+    let end = boundaries.get(lo).map_or(context.end, |b| context.end.min(*b as usize));
+    if range.start < start || range.end > end {
+        return Err(Error::Invalid);
+    }
+    Ok(start..end)
 }
 struct Cluster {
     range: Range<usize>,
@@ -196,6 +217,7 @@ pub struct ParagraphJob<'a> {
     report: ParagraphReport,
     failed: bool,
     allow_lf: bool,
+    shaping_breaks: ShapingBreaks,
 }
 impl<'a> ParagraphJob<'a> {
     pub fn new(engine: &'a mut Engine, scope: &'a Scope, request: FontRequest, source: Arc<str>, base: BaseDirection, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
@@ -305,7 +327,49 @@ impl<'a> ParagraphJob<'a> {
             report: ParagraphReport::default(),
             failed: false,
             allow_lf,
+            shaping_breaks: ShapingBreaks::default(),
         })
+    }
+    /// Explicit inline box edges isolate shaping context without inserting
+    /// fictional characters into the text or changing its bidi analysis.
+    pub fn with_shaping_breaks(mut self, boundaries: Box<[u32]>) -> Result<Self> {
+        check(self.cancel)?;
+        if self.failed || self.progress.finished || self.next != 0 || self.pending.is_some() || !self.runs.is_empty() || !self.shaping_breaks.is_empty() {
+            return Err(Error::Invalid);
+        }
+        if boundaries.len() > self.limits.clusters {
+            return Err(Error::Limit);
+        }
+        let source = self.analysis.source();
+        if boundaries.windows(2).any(|p| p[0] >= p[1]) || boundaries.iter().any(|b| *b == 0 || *b as usize >= source.len() || !source.is_char_boundary(*b as usize)) {
+            return Err(Error::Invalid);
+        }
+        if !boundaries.is_empty() {
+            let mut clusters = Vec::new();
+            let mut boundary = 0;
+            for cluster in self.clusters {
+                check(self.cancel)?;
+                let mut start = cluster.range.start;
+                while boundaries.get(boundary).is_some_and(|b| (*b as usize) <= start) {
+                    boundary += 1;
+                }
+                while let Some(b) = boundaries.get(boundary).map(|b| *b as usize).filter(|b| *b < cluster.range.end) {
+                    if clusters.len() >= self.limits.clusters {
+                        return Err(Error::Limit);
+                    }
+                    clusters.push(Cluster { range: start..b, level: cluster.level, script: cluster.script, paragraph: cluster.paragraph });
+                    start = b;
+                    boundary += 1;
+                }
+                if clusters.len() >= self.limits.clusters {
+                    return Err(Error::Limit);
+                }
+                clusters.push(Cluster { range: start..cluster.range.end, level: cluster.level, script: cluster.script, paragraph: cluster.paragraph });
+            }
+            self.clusters = clusters;
+        }
+        self.shaping_breaks = ShapingBreaks((!boundaries.is_empty()).then(|| triomphe::ThinArc::from_header_and_iter((), boundaries.into_vec().into_iter())));
+        Ok(self)
     }
     pub fn for_style(engine: &'a mut Engine, scope: &'a Scope, style: &Style, source: Arc<str>, base: BaseDirection, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
         if style.font().context() != scope.context() {
@@ -353,6 +417,7 @@ impl<'a> ParagraphJob<'a> {
         }
         let para = self.analysis.paragraphs.get(p.paragraph).ok_or(Error::Invalid)?;
         let context_end = para.range.end - usize::from(self.allow_lf && self.analysis.source.as_bytes()[para.range.end - 1] == b'\n');
+        let context = shaping_context(para.range.start..context_end, p.range.clone(), &self.shaping_breaks)?;
         let run = self.engine.shape_run(
             p.font.selection(),
             self.analysis.source.clone(),
@@ -362,9 +427,9 @@ impl<'a> ParagraphJob<'a> {
                 script: p.script,
                 language: Some(self.scope.language()),
                 features: &[],
-                beginning_of_text: p.range.start == para.range.start,
-                end_of_text: p.range.end == context_end,
-                context: Some((para.range.start, context_end)),
+                beginning_of_text: p.range.start == context.start,
+                end_of_text: p.range.end == context.end,
+                context: Some((context.start, context.end)),
             },
             self.cancel,
         )?;
@@ -435,9 +500,13 @@ impl<'a> ParagraphJob<'a> {
             let choice = if covered { Choice { font: primary.clone(), missing: false, relaxed: false } } else { self.choice(text)? };
             self.report.missing_clusters += usize::from(choice.missing);
             self.report.variation_fallbacks += usize::from(choice.relaxed);
-            let same = self.pending.as_ref().is_some_and(|p| {
-                p.level == level && p.script == script && p.paragraph == paragraph && (Arc::ptr_eq(&p.font, &choice.font) || FontKey::new(p.font.selection()) == FontKey::new(choice.font.selection()))
-            });
+            let same = self.shaping_breaks.binary_search(&(range.start as u32)).is_err()
+                && self.pending.as_ref().is_some_and(|p| {
+                    p.level == level
+                        && p.script == script
+                        && p.paragraph == paragraph
+                        && (Arc::ptr_eq(&p.font, &choice.font) || FontKey::new(p.font.selection()) == FontKey::new(choice.font.selection()))
+                });
             if !same {
                 self.flush()?;
                 self.pending = Some(Pending { range: range.clone(), level, script, paragraph, font: choice.font });
@@ -474,6 +543,7 @@ impl<'a> ParagraphJob<'a> {
             language: Box::from(self.scope.language()),
             request: self.request,
             font_context: self.scope.context(),
+            shaping_breaks: self.shaping_breaks,
         })
     }
 }

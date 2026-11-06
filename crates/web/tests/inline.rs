@@ -105,6 +105,32 @@ fn wraps_real_glyphs_trims_edges_and_reuses_width_independent_text() {
     assert_eq!(visible(&overflowing), vec!["abc", "abc", "abc"]);
     assert!(overflowing.lines().iter().all(|l| l.overflow));
 }
+
+#[test]
+fn inline_edge_boundaries_isolate_ligatures_and_later_reshape_context() {
+    let scope = fixture_scope("ligature");
+    let mut e = Engine::default();
+    let t = fixture_text(&mut e, "ligature", "fi", WhiteSpace::default());
+    assert_eq!(t.paragraph().runs[0].glyphs.len(), 1);
+    let p = t.prepared().clone();
+    let mut job = shaping::ParagraphJob::for_layout(&mut e, &scope, t.paragraph().request().clone(), p.text().clone(), BaseDirection::Ltr, Default::default(), None)
+        .unwrap()
+        .with_shaping_breaks(vec![1].into_boxed_slice())
+        .unwrap();
+    while !job.step(1).unwrap().finished {}
+    let shaped = job.finish().unwrap();
+    assert_eq!(shaped.runs.len(), 2);
+    assert_eq!(shaped.runs.iter().map(|r| r.glyphs.len()).sum::<usize>(), 2);
+    assert_eq!(shaped.context_range(0..1).unwrap(), 0..1);
+    assert_eq!(shaped.context_range(1..2).unwrap(), 1..2);
+    assert!(shaped.context_range(0..2).is_err());
+    for boundaries in [vec![0], vec![2], vec![1, 1], vec![1, 0]] {
+        let job = shaping::ParagraphJob::for_layout(&mut e, &scope, t.paragraph().request().clone(), p.text().clone(), BaseDirection::Ltr, Default::default(), None).unwrap();
+        assert!(job.with_shaping_breaks(boundaries.into_boxed_slice()).is_err());
+    }
+    let job = shaping::ParagraphJob::for_layout(&mut e, &scope, t.paragraph().request().clone(), Arc::from("é"), BaseDirection::Ltr, Default::default(), None).unwrap();
+    assert!(job.with_shaping_breaks(vec![1].into_boxed_slice()).is_err());
+}
 #[test]
 fn preserved_lf_no_wrap_blank_lines_and_phantom_whitespace() {
     let scope = scope();

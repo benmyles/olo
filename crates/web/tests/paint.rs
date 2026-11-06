@@ -63,6 +63,36 @@ fn paints_background_canvas_borders_and_native_glyph_positions() {
     let s = scene("", "body{background-color:red}", &mut p);
     assert_eq!(pixel(&render(&mut p, &s), 50, 50), [255, 0, 0, 255]);
 }
+
+#[test]
+fn inline_spacing_moves_glyphs_without_block_axis_padding_moving_the_line() {
+    let mut p = paint::Engine::default();
+    let s = scene("<div>A<span>A</span>A</div>", "span{margin-left:10px;padding-left:5px;padding-right:7px;padding-top:30px;padding-bottom:40px}", &mut p);
+    let t = render(&mut p, &s);
+    for x in [1, 36, 63] {
+        assert_eq!(pixel(&t, x, 3), [0, 0, 0, 255]);
+    }
+    for x in [20, 30, 45, 60] {
+        assert_eq!(pixel(&t, x, 3), [255; 4]);
+    }
+    assert_eq!(pixel(&t, 36, 40), [255; 4]);
+}
+
+#[test]
+fn unimplemented_inline_backgrounds_cannot_disappear_on_empty_or_nested_boxes() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    for body in ["<span></span>", "<span><span style='background-color:transparent'>A</span></span>"] {
+        let source = format!("<!doctype html><style>{BASE}span{{padding-left:5px;background-color:red}}</style>{body}");
+        let error =
+            olo_web::page::load(source.into(), &host, &scope, &mut Shaper::default(), &mut paint::Engine::default(), layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {})
+                .err()
+                .unwrap();
+        assert!(error.to_string().contains("inline backgrounds"), "{error}");
+    }
+}
 #[test]
 fn colors_visibility_clipping_and_positioned_paint_order() {
     let mut p = paint::Engine::default();

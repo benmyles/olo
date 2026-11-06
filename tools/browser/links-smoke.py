@@ -2,12 +2,13 @@
 """Owned-screen link input regression; production engine/network are Rust.
 Start one release olo-browser on a 1280x800 Agent Screen initially at 2x,
 eval its environment, then: THIS_SCRIPT NAME /var/tmp/OWNED/output.
+Add --inline to exercise horizontal inline margins/padding and wrapped spans.
 No website journey acceptance follows from these authored fixtures.
 """
 import copy,http.server,json,os,socket,subprocess,sys,threading,time
 from pathlib import Path
 from PIL import Image
-screen, destination=sys.argv[1:];assert os.environ.get('OLO_SCREEN')==screen
+screen, destination=sys.argv[1:3];inline='--inline'in sys.argv[3:];assert os.environ.get('OLO_SCREEN')==screen
 out=Path(destination);out.mkdir(parents=True,exist_ok=True);requests=[]
 class Handler(http.server.BaseHTTPRequestHandler):
  def do_GET(self):
@@ -17,6 +18,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
    body=f'<title>{name}</title><h1>{name}</h1><a href=/links>Back to links</a>'
   else:
    body='''<title>Link fixture</title><a hidden href=ignored>hidden</a><base href=/dest/><style>a{color:red}a:focus{color:purple}a:hover{color:green}a:active{color:blue}p{line-height:28px}</style><h1>Link fixture</h1><p><a href=one>First link</a> <a href=two>Second link</a></p><p><a href=/unrequested download>Download link</a></p><p><a href=file:///dev/null>Local file link</a></p><p><a target=_blank href=/unrequested>New window link</a></p><p>Ordinary text after the links.</p><div style='height:2px;overflow:hidden'><p style='margin-top:100px'><a href=/unrequested>Clipped link</a></p></div>'''
+  if inline and not self.path.startswith('/dest/'):
+   body+='''<style>a{margin-left:3px;margin-right:5px;padding-left:4px;padding-right:7px}</style><p style='width:240px'><span style='padding-left:13px;padding-right:17px;margin-left:5px;margin-right:7px'>Wrapped inline text crosses several lines.</span> Tail.</p>'''
   data=('<!doctype html><meta charset=utf-8><style>body{margin:20px}h1{font-size:28px}</style>'+body).encode()
   self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
  def log_message(self,*args):pass
@@ -44,7 +47,9 @@ try:
    settings=copy.deepcopy(original);settings['appearance']['theme']='dark'if theme=='night'else theme;settings['appearance']['night_light']['mode']='on'if theme=='night'else'off';settings['appearance']['night_light']['temperature']=4500;settings['display']['scale']=scale
    for output in settings['display'].get('outputs',{}).values():output.pop('scale',None)
    assert ipc({'type':'set_settings','settings':settings})['type']=='ok'
+   run('resize',screen,'1000x700')
    loaded('Link fixture');target=link('First link');x=target['x']+target['width']/2;y=target['y']+target['height']/2
+   if inline:loaded('Wrapped inline text')
    run('move',screen,x,y);loaded('Link fixture');p=shot(f'{theme}-{scale}-hover');assert color(p,(0,128,0))>10
    review=json.loads(run('review',screen,'--window',tree()['window'],'--json'));assert all(not r['findings']for r in review),review
    n=len(requests);run('click',screen,'--role','Link','--name','Second link');loaded('Second destination');assert requests[n:]==['/dest/two']
@@ -59,6 +64,6 @@ try:
  for name,reason in [('Download link','Downloads are not supported'),('Local file link','cannot navigate to local files'),('New window link','another window')]:
   n=len(requests);run('click',screen,'--role','Link','--name',name);loaded(reason);assert len(requests)==n;go()
  assert '/unrequested'not in requests
- result={'scope':__doc__,'initial':initial,'rows':rows,'requests':requests,'final':tree(),'accepted_websites':0}
+ result={'scope':__doc__,'inline_boxes':inline,'initial':initial,'rows':rows,'requests':requests,'final':tree(),'accepted_websites':0}
  (out/'report.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps({'reviews':len(rows),'requests':len(requests),'report':str(out/'report.json')}))
 finally:ipc({'type':'set_settings','settings':original});server.shutdown();server.server_close()

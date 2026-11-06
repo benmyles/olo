@@ -10,6 +10,40 @@ use std::{
     hash::{Hash, Hasher},
     sync::{Arc, atomic::AtomicBool},
 };
+/// Project an original-source box boundary through whitespace preparation.
+fn boundary(prepared: &prepare::Prepared, at: u32) -> Result<u32> {
+    if at as usize == prepared.source().len() {
+        return Ok(prepared.text().len() as u32);
+    }
+    let m = prepared.mapping_at_source(at).ok_or(Error::Invalid)?;
+    Ok(if m.kind == prepare::MappingKind::Copy { m.output.start + at - m.input.start } else { m.output.start })
+}
+fn shaping_breaks(prepared: &prepare::Prepared, source: &[u32]) -> Result<Box<[u32]>> {
+    let mut out = source.iter().map(|at| boundary(prepared, *at)).collect::<Result<Vec<_>>>()?;
+    out.retain(|b| *b > 0 && (*b as usize) < prepared.text().len());
+    out.sort_unstable();
+    out.dedup();
+    Ok(out.into_boxed_slice())
+}
+fn shape_text(
+    engine: &mut shaping::Engine,
+    scope: &Scope,
+    style: &crate::css::style::Style,
+    prepared: Arc<prepare::Prepared>,
+    boundaries: Box<[u32]>,
+    limits: inline::Limits,
+    cancel: Option<&AtomicBool>,
+) -> Result<Arc<inline::Text>> {
+    let mut s = shaping::ParagraphJob::for_layout_style(engine, scope, style, prepared.text().clone(), Default::default(), cancel)?.with_shaping_breaks(boundaries)?;
+    while !s.step(128)?.finished {}
+    let s = Arc::new(s.finish()?);
+    let mut b = linebreak::Job::new(prepared.text().clone(), Default::default(), cancel)?;
+    while !b.step(4096)?.finished {}
+    let b = Arc::new(b.finish()?);
+    let mut t = inline::TextJob::new(engine, prepared, s, b, limits, cancel)?;
+    while !t.step(128)?.finished {}
+    Ok(t.finish()?)
+}
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Progress {
     pub boxes: usize,
@@ -63,6 +97,19 @@ impl<'a> PrepareJob<'a> {
         let container = source.container;
         let style = self.tree.style(container).ok_or(Error::Invalid)?;
         let whitespace = prepare::WhiteSpace::for_style(style)?;
+        let mut raw_breaks = Vec::new();
+        for b in self.tree.inline_boxes(index as u32).ok_or(Error::Invalid)? {
+            check(self.cancel)?;
+            let s = self.tree.styles.snapshot(b.node).ok_or(Error::Stale)?;
+            if b.first && used::has_inline_edge(s, true) {
+                raw_breaks.push(b.range.start);
+            }
+            if b.last && used::has_inline_edge(s, false) {
+                raw_breaks.push(b.range.end);
+            }
+        }
+        raw_breaks.sort_unstable();
+        raw_breaks.dedup();
         // The paragraph shaper currently owns one font request/size. Refuse to
         // flatten a differently styled inline into the surrounding typography.
         for span in &source.spans {
@@ -83,12 +130,14 @@ impl<'a> PrepareJob<'a> {
             for span in &source.spans {
                 span.range.hash(&mut hash)
             }
+            raw_breaks.hash(&mut hash);
             (Arc::as_ptr(style.font()) as usize, source.source.clone(), hash.finish())
         });
         if let Some(text) = key.as_ref().and_then(|key| self.shared.get(key))
             && text.prepared().spans().len() == source.spans.len()
             && text.prepared().spans().iter().zip(source.spans.iter()).all(|(a, b)| a.range == b.range && a.whitespace == whitespace)
             && text.paragraph().analysis.paragraphs().all(|(_, level)| (level % 2 != 0) == (style.axes().direction == crate::css::style::Direction::Rtl))
+            && text.paragraph().shaping_breaks() == shaping_breaks(text.prepared(), &raw_breaks)?.as_ref()
         {
             self.progress.reused_texts += 1;
             return Ok(text.clone());
@@ -97,15 +146,8 @@ impl<'a> PrepareJob<'a> {
         let mut p = prepare::Job::new(source.source.clone(), spans, prepare::Limits { text_bytes: self.limits.text.text_bytes, ..Default::default() }, self.cancel)?;
         while !p.step(4096)?.finished {}
         let p = Arc::new(p.finish()?);
-        let mut s = shaping::ParagraphJob::for_layout_style(self.engine, self.scope, style, p.text().clone(), Default::default(), self.cancel)?;
-        while !s.step(128)?.finished {}
-        let s = Arc::new(s.finish()?);
-        let mut b = linebreak::Job::new(p.text().clone(), Default::default(), self.cancel)?;
-        while !b.step(4096)?.finished {}
-        let b = Arc::new(b.finish()?);
-        let mut t = inline::TextJob::new(self.engine, p, s, b, self.limits.text, self.cancel)?;
-        while !t.step(128)?.finished {}
-        let text = t.finish()?;
+        let boundaries = shaping_breaks(&p, &raw_breaks)?;
+        let text = shape_text(self.engine, self.scope, style, p, boundaries, self.limits.text, self.cancel)?;
         self.glyph_geometry_bytes += text.geometry_payload_bytes() + text.paragraph().glyph_payload_bytes();
         if self.shared.len() < self.limits.cached_texts
             && let Some(key) = key
@@ -209,7 +251,14 @@ impl Layout {
         Some(r)
     }
     pub fn geometry_payload_bytes(&self) -> usize {
-        self.geometry.len() * size_of::<Geometry>() + self.texts.iter().flatten().map(|t| t.geometry_payload_bytes()).sum::<usize>()
+        self.geometry.len() * size_of::<Geometry>()
+            + self
+                .texts
+                .iter()
+                .enumerate()
+                .filter_map(|(i, t)| t.as_ref().map(|t| (i, t)))
+                .map(|(i, t)| t.geometry_payload_bytes() + if Arc::ptr_eq(t.text(), &self.cache.texts[i]) { 0 } else { t.text().geometry_payload_bytes() + t.text().paragraph().glyph_payload_bytes() })
+                .sum::<usize>()
     }
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -367,7 +416,48 @@ impl<'a> Job<'a> {
     fn text(&mut self, id: BoxId, source: u32) -> Result<Completed> {
         let parent = self.stack.last().ok_or(Error::Invalid)?;
         let style = self.cache.tree.style(parent.id).ok_or(Error::Invalid)?;
-        let mut j = inline::Job::for_style(self.engine, self.cache.texts[source as usize].clone(), style, self.scope, parent.used.width, self.limits.text, self.cancel)?;
+        let mut text = self.cache.texts[source as usize].clone();
+        let mut spacing = Vec::new();
+        let mut breaks = Vec::new();
+        for b in self.cache.tree.inline_boxes(source).ok_or(Error::Invalid)? {
+            check(self.cancel)?;
+            let s = self.cache.tree.styles.snapshot(b.node).ok_or(Error::Stale)?;
+            if !used::has_inline_edge(s, true) && !used::has_inline_edge(s, false) {
+                continue;
+            }
+            let ((left, left_break), (right, right_break)) = used::inline_edges(s, parent.used.width, &mut self.scratch, self.cancel, self.scale)?;
+            if !left_break && !right_break {
+                continue;
+            }
+            let start = boundary(text.prepared(), b.range.start)?;
+            let end = boundary(text.prepared(), b.range.end)?;
+            if b.first && left_break {
+                breaks.push(start);
+            }
+            if b.last && right_break {
+                breaks.push(end);
+            }
+            if start == end {
+                let advance = if b.first { left } else { 0. } + if b.last { right } else { 0. };
+                spacing.push(inline::Spacing { at: start, advance, side: if start == 0 { inline::Side::Start } else { inline::Side::End } });
+            } else {
+                if b.first && left_break {
+                    spacing.push(inline::Spacing { at: start, advance: left, side: inline::Side::Start });
+                }
+                if b.last && right_break {
+                    spacing.push(inline::Spacing { at: end, advance: right, side: inline::Side::End });
+                }
+            }
+        }
+        breaks.retain(|b| *b > 0 && (*b as usize) < text.prepared().text().len());
+        breaks.sort_unstable();
+        breaks.dedup();
+        if text.paragraph().shaping_breaks() != breaks.as_slice() {
+            // Percentage/calc edges can become zero at this width. Keep the
+            // width-independent cache, but shape the actual used boundaries.
+            text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), self.limits.text, self.cancel)?;
+        }
+        let mut j = inline::Job::for_style_with_spacing(self.engine, text, style, self.scope, parent.used.width, self.limits.text, self.cancel, spacing)?;
         while !j.step(64)?.finished {}
         let work = j.progress().work;
         let l = j.finish()?;
