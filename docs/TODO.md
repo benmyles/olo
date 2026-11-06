@@ -234,7 +234,12 @@ something nobody here has is in "Blocked", with what it waits for.
   neighbour. *Next*: find where a resize by hand (xdg `resizing`, the
   swapchain grown to its room, `update_drawable_size_within`) loses the
   pixel at a fractional scale, and keep ratios from the sizes asked,
-  not drawn.
+  not drawn. (Not app_server's sizes: `inner_size` and `outer_size` are
+  whole points either way, and GPUI's inset is none with Olo's frames,
+  so the configured size is the one kept; an app resizing itself
+  mid-drag is what's left to rule out.)
+  *Swept* seeds 41–64 with `--reloads`, 8 at once: 23 pass, 43 fails
+  only under the load (passes alone): no faults.
 
 ## Not started (highest priority first)
 
