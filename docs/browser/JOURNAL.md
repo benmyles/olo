@@ -1332,3 +1332,142 @@ Full browser goal remains active. Website evidence is still **0/3,000 cases,
 then cascade/rule indexing with actual contexts and invalidation. Networking,
 layout, GPU painting, V8, browser shell, Olo integrations and real website
 journeys remain required, along with the explicit CSS/HTML gaps.
+
+## 2026-11-05 — token-preserving custom properties
+
+Added original `css::variables` token compilation and unregistered-property
+resolution against explicit winning element snapshots. Values occupy **16
+bytes** and batch compilation shares a compact source/token arena. Input
+stylesheet Syntax/source is released; static values/aliases share retained
+arenas. A view retains its whole batch, so callers must choose sensible
+batch lifetimes. No recursively owned expression tree or third-party CSS
+engine is introduced. The existing Syntax node remains 24 bytes.
+
+A bounded assembler copies token structures, decoded names/units and raw
+number spellings directly. It rebuilds function/block ranges and makes
+implicit EOF closures explicit, without pasting variable strings or
+retokenizing the output. Boundary comments prevent token fusion. Native
+checks caught and fixed CDC formation from `--` followed by `>`; batch
+spelling excludes separators belonging between values. Size checks avoid
+scanning individual spellings when their whole shared arena fits the cap.
+The spelling accessor is not CSSOM/author serialization.
+
+var() handles current argument grammar, {} wrappers, case-sensitive names,
+dynamic names from nested var(), empty fallbacks and comma-containing
+fallbacks. Unused fallback dependencies are not evaluated. Empty values and
+guaranteed-invalid remain distinct. Direct/substituted CSS-wide keywords
+apply at custom-property boundaries; inherit/unset use supplied computed
+parent values, and revert-family keywords require a real cascade callback.
+Supplied animation taint follows dependency reads; non-animatable consumers
+can exclude tainted references and use fallbacks. There is no animation or
+property-registration engine behind these hooks yet.
+
+The resolver memoizes per-snapshot properties, checks revisions on requests,
+rejects mid-operation changes and discards partial caches on operational
+failure. No timers, polling, threads, idle work or I/O are added. Work,
+combined nesting, property count and cached arena reservation are bounded;
+hard nesting is 256. Output byte/node overflow produces guaranteed-invalid
+so enclosing var() fallbacks can recover. Remaining references are still
+visited after invalid/over-limit output to detect overlapping cycles.
+Cancellation/work/cache failures remain distinct errors. Context callbacks
+must provide cheap stable data; a future style worker owns progress/cancel.
+
+Review also found unmetered whitespace scans in cached substituted names
+and CSS-wide keyword checks. These now charge each visited component.
+Argument scans charge source spans, and spelling scans under smaller output
+limits charge the value node range. A native regression group verifies
+that repeated cached whitespace/name/size checks exhaust the work budget.
+
+Pinned 25 WPT resources before evaluation and ported literal grammar/name
+assertions and complete literal cycle groups, with independent expected
+numeric/ident decoding. **151 inventoried cases: 119 pass, 32 explicit
+non-passes**, no unexpected mismatch/error/panic. Four need other substitution
+functions, two registered-property hosts, and 26 JS/CSSOM/style/layout or
+reftest driver forms remain unported. A given native block honors duplicate
+order/importance; this does not test selectors or origin/layer cascade.
+The evaluator exits 1. Extraction reproduces exact bytes and every manifest
+hash matches; imported resources remain unchanged.
+
+Twelve native groups check typed color/math consumers, source lifetime,
+shared storage/private Debug, boundaries/escaping/EOF, current argument and
+fallback rules, CSS-wide/inheritance hooks, taint, revisions, cancellation,
+limits, expansion recovery and hostile input. **1,000 generated eight-node
+graphs** compare cyclic membership with an independent transitive-closure
+reference. This found a case outside the imported groups: cached merged
+cycle roots must be followed transitively while guards unwind. The fix and
+all generated graphs pass. Guards also retain invalid cyclic participants
+while allowing noncyclic callers to recover with fallbacks. There are
+10,000 malformed inputs and 10,000 nested inputs in the native checks.
+
+Measured release builds on Core Ultra 7 356H, CPU 0. Three sequential
+alternating cold/warm runs (reversed in the middle), 2,000 compiles per
+prebuilt value and 20,000 resolutions for ordinary cases, 40 for the two
+large cases. Figures are medians of three run means. The cold API control
+clears results before each request but retains worker capacities; both
+modes memoize within a request. Other load/clocks/thermals, hash seeds and
+allocator/code layout are uncontrolled. No concurrent checks were launched
+by this session during samples. This was a new API: no old-production
+variable resolver exists to compare with.
+
+- 1,000 separately compiled values → one shared batch: compilation/drop
+  **164.090 → 36.953 µs**, accounted reservation **408,000 → 69,488 bytes**.
+  Handles are 16 bytes in both modes; each unique arena is counted once.
+- Cold → warm resolution: simple reference **0.0872 → 0.0553 µs**, alias
+  chain **0.2394 → 0.0542 µs**, substituted name **0.1928 → 0.1219 µs**, fallback
+  RGB **0.3464 → 0.3028 µs**, numeric RGB **0.5192 → 0.4231 µs**, diamond
+  **0.9357 → 0.0603 µs**, cyclic fallback **0.4023 → 0.1334 µs**.
+- A 1,000-reference expansion: **85.2828 → 0.0669 µs**; the memoized output
+  arena is **69,872 bytes**. These savings require retaining the resolver;
+  the future style host should retain typed consumer results too.
+- A separate paired corrected suffix-scan control → final repeated-cycle
+  workload: **179.413 → 162.178 µs**. The final mark derives the earliest
+  root from its first guard and skips an already-marked suffix, rather than
+  scanning/writing the active suffix repeatedly. Same benchmark, same
+  limit/taint/cycle semantics; this is a control of the corrected module,
+  not a previous production revision. No uniform speedup claim.
+- Across the cold/warm dataset, first-compile medians **0.203–1.219 µs**,
+  largest sampled **2.187 µs**; resolver-construction medians **0.014–6.267 µs**,
+  largest sampled **6.758 µs**; first-resolve medians **0.720–170.822 µs**,
+  largest sampled **179.123 µs**. Synthetic CPU worker
+  latencies, not worst-case or UI guarantees.
+- Whole variables benchmark peak RSS: cold **3,832–4,064 KiB**, warm
+  **3,864–3,948 KiB**. Includes frozen inputs, retained first return,
+  synthetic pools and allocator retention. Shared arenas, including input
+  arenas, are reported once; hash/control/guard metadata and allocator
+  overhead are excluded from the arena accounting and separately bounded
+  by counts. This is not page/browser memory.
+
+Captured parent CSS/color binaries from exact `fe72fd58` module exports,
+with new unreferenced modules excluded, then restored working sources.
+Other reachable production and benchmark sources match that parent. Three
+sequential alternating parent → final runs, CPU 0: CSS stylesheet
+**8.0543 → 8.0836** ms, large declaration list **7.7194 → 7.7632** ms,
+mixed 8,000 rules **2.2409 → 2.2390** ms. Color parsing ns: hex
+**18.389 → 17.778**, keyword **107.907 → 106.766**, RGB **77.669 → 81.544**,
+OKLCH **78.694 → 81.689**, predefined color() **71.712 → 75.112**, nested
+conditional **187.458 → 189.295**. These unchanged paths have no intended
+algorithm change; code-layout/load differences are not an optimization
+claim. All raw common workloads, storage and cold latencies are retained.
+
+Exact commands, control/source/binary identities and raw samples:
+`measurements/2026-11-05-variables.json`; full per-file/native non-passes:
+`measurements/2026-11-05-variable-coverage.json`. No new SIMD/GPU here;
+source copies use native Rust memory primitives and the original token
+machinery. Node layout and existing conversion algorithms stay unchanged.
+
+All **88 engine release tests** pass; all twelve variable groups pass with
+all measurement features together. Default/all-feature strict release
+clippy, package formatting and diff checks pass. Full workspace release
+build passes (0.41 s; existing GPUI warnings and proc-macro-error2 future-
+compatibility notice). No GUI launched or personal session changed. There
+is no visible change to screenshot-journal yet.
+
+Full browser goal remains active: **0/3,000 website cases, 0/100 sites**,
+no usable browser. Next: typed property compilation and actual cascade/rule
+indexing/inheritance/invalidation hosts. Remaining variable work includes
+registrations, early invocation/spread, other arbitrary functions, attribute/
+URL taint, animation integration and CSSOM. Native taint/keyword hooks and
+provided snapshots do not prove these hosts. Networking, layout, GPU paint,
+V8, native browser shell, Olo integrations and executable site journeys
+remain substantial required work. Avoiding output materialization once a
+property guard is known cyclic is also a remaining profiling opportunity.

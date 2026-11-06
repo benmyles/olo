@@ -1,0 +1,1271 @@
+{
+  "scope": "Native ports of literal var argument/declaration grammar, provided winning custom-property snapshots and literal computed-token references; not WPT JS/CSSOM/cascade/layout/page execution",
+  "cases": [
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 64,
+      "offset": 2489,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "25%",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 65,
+      "offset": 2543,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "37",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 66,
+      "offset": 2592,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "12em",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 67,
+      "offset": 2643,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "75ms",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 68,
+      "offset": 2692,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "foo()",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 69,
+      "offset": 2746,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "foo(bar())",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 70,
+      "offset": 2812,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "( )",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 71,
+      "offset": 2867,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "{ }",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 72,
+      "offset": 2917,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "[ ]",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 73,
+      "offset": 2969,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "@foobar",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 74,
+      "offset": 3037,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "@media",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 75,
+      "offset": 3102,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "@foobar {}",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 76,
+      "offset": 3183,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "@media {}",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 77,
+      "offset": 3261,
+      "helper": "assert_disallowed_balanced_variable_value",
+      "mode": "parse",
+      "input": "]",
+      "valid": false
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 78,
+      "offset": 3351,
+      "helper": "assert_disallowed_balanced_variable_value",
+      "mode": "parse",
+      "input": ")",
+      "valid": false
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 79,
+      "offset": 3439,
+      "helper": "assert_disallowed_balanced_variable_value",
+      "mode": "parse",
+      "input": "(])",
+      "valid": false
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 80,
+      "offset": 3541,
+      "helper": "assert_disallowed_balanced_variable_value",
+      "mode": "parse",
+      "input": "[)]",
+      "valid": false
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 81,
+      "offset": 3641,
+      "helper": "assert_disallowed_balanced_variable_value",
+      "mode": "parse",
+      "input": "(})",
+      "valid": false
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 82,
+      "offset": 3741,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "<!--",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 83,
+      "offset": 3802,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "-->",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 84,
+      "offset": 3862,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "(;)",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 85,
+      "offset": 3950,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "(<!--)",
+      "valid": true
+    },
+    {
+      "file": "test_variable_legal_values.html",
+      "line": 86,
+      "offset": 4035,
+      "helper": "assert_allowed_variable_value",
+      "mode": "parse",
+      "input": "(-->)",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 11,
+      "offset": 332,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var(--x)",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 12,
+      "offset": 371,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var(--x,)",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 13,
+      "offset": 411,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var(--x, )",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 19,
+      "offset": 789,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var(--x ())",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 20,
+      "offset": 831,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var(--x () )",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 21,
+      "offset": 874,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var(--x() )",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 22,
+      "offset": 916,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var(--x (),)",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 23,
+      "offset": 959,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var(--x(),)",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 28,
+      "offset": 1213,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var({--x})",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 29,
+      "offset": 1254,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var({--x}, 10px)",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 30,
+      "offset": 1301,
+      "helper": "test_valid_value",
+      "mode": "parse",
+      "input": "var({--x, --y})",
+      "valid": true
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 34,
+      "offset": 1525,
+      "helper": "test_invalid_value",
+      "mode": "parse",
+      "input": "var(--x {--y})",
+      "valid": false
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 35,
+      "offset": 1572,
+      "helper": "test_invalid_value",
+      "mode": "parse",
+      "input": "var({--x} --y)",
+      "valid": false
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 36,
+      "offset": 1619,
+      "helper": "test_invalid_value",
+      "mode": "parse",
+      "input": "var(--x {--y}, 10px)",
+      "valid": false
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 40,
+      "offset": 1792,
+      "helper": "test_invalid_value",
+      "mode": "parse",
+      "input": "var()",
+      "valid": false
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 41,
+      "offset": 1830,
+      "helper": "test_invalid_value",
+      "mode": "parse",
+      "input": "var({})",
+      "valid": false
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 42,
+      "offset": 1870,
+      "helper": "test_invalid_value",
+      "mode": "parse",
+      "input": "var({}, 10px)",
+      "valid": false
+    },
+    {
+      "file": "var-parsing.html",
+      "line": 43,
+      "offset": 1916,
+      "helper": "test_invalid_value",
+      "mode": "parse",
+      "input": "var(, 10px)",
+      "valid": false
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 42,
+      "offset": 1463,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--myvar: --other; width: var(var(--myvar));",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 46,
+      "offset": 1616,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--myvar: --other; --indirect: --myvar; width: var(var(var(--indirect)));",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 52,
+      "offset": 1948,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--myvar: not-a-custom-prop; width: var(var(--myvar), 20px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "20px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 57,
+      "offset": 2219,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "width: var(var(--unset), 30px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "30px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 62,
+      "offset": 2420,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--myvar: --other; width: var( var(--myvar) );",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 68,
+      "offset": 2760,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--myvar: other; width: var(var(--myvar));",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": null,
+      "invalid": true,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 73,
+      "offset": 3052,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--empty: ; width: var(var(--empty), 40px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "40px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 78,
+      "offset": 3304,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--two: --other --other; width: var(var(--two), 50px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "50px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 82,
+      "offset": 3471,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--dimension: 10px; width: var(var(--dimension), 60px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "60px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 86,
+      "offset": 3643,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--string: \"--other\"; width: var(var(--string), 70px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "70px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 91,
+      "offset": 3856,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--dashes: --; width: var(var(--dashes), 80px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "80px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 98,
+      "offset": 4263,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "width: var({--other});",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 102,
+      "offset": 4392,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--myvar: --other; width: var({var(--myvar)});",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 106,
+      "offset": 4548,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "width: var( { --other } );",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 110,
+      "offset": 4689,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "width: var({--unset}, 90px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "90px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 115,
+      "offset": 4898,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "width: var(attr(data-name type(*)));",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 119,
+      "offset": 5037,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "width: var(attr(data-not-a-name type(*)), 100px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "100px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 123,
+      "offset": 5214,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "width: var(if(style(--other: 10px): --other; else: --unset));",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 127,
+      "offset": 5376,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "width: var(random-item(--key, --other, --other));",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "10px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 133,
+      "offset": 5732,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--self: var(var(--self)); width: var(--self, 110px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "110px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 137,
+      "offset": 5898,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--name: --cyclic; --cyclic: var(var(--name)); width: var(--cyclic, 120px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "120px",
+      "invalid": false,
+      "requires": []
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 142,
+      "offset": 6177,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--name: --registered-length; width: var(var(--name));",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "7px",
+      "invalid": false,
+      "requires": [
+        "registered_properties"
+      ]
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 147,
+      "offset": 6456,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--name: --registered-universal; width: var(var(--name), 130px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "130px",
+      "invalid": false,
+      "requires": [
+        "registered_properties"
+      ]
+    },
+    {
+      "file": "variable-reference-name-substitution.html",
+      "line": 154,
+      "offset": 6899,
+      "helper": "assert_equals",
+      "mode": "substitute",
+      "declarations": "--name: not-a-name; width: var(var(--name), 140px);",
+      "base": " --other: 10px; ",
+      "property": "width",
+      "expected": "140px",
+      "invalid": false,
+      "requires": []
+    }
+  ],
+  "cycles": [
+    {
+      "file": "variable-cycles.html",
+      "line": 44,
+      "offset": 1392,
+      "helper": "test_cycles",
+      "declarations": [
+        "--a:var(--a)",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Self-cycle"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 60,
+      "offset": 1591,
+      "helper": "test_cycles",
+      "declarations": [
+        "--a:var(--b)",
+        "--b:var(--a)",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Simple a/b cycle"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 85,
+      "offset": 1937,
+      "helper": "test_cycles",
+      "declarations": [
+        "--a:var(--b, cycle)",
+        "--b:var(--c, cycle)",
+        "--c:var(--a, cycle)",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--c",
+          "invalid": true
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Three-var cycle"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 123,
+      "offset": 2464,
+      "helper": "test_cycles",
+      "declarations": [
+        "--x:var(--y, valid)",
+        "--y:var(--a, valid)",
+        "--a:var(--b, cycle)",
+        "--b:var(--c, cycle)",
+        "--c:var(--a, cycle)",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--c",
+          "invalid": true
+        },
+        {
+          "property": "--x",
+          "invalid": false
+        },
+        {
+          "property": "--y",
+          "invalid": false
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Cycle that starts in the middle of a chain"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 163,
+      "offset": 3088,
+      "helper": "test_cycles",
+      "declarations": [
+        "--x:var(--a, valid)",
+        "--a:var(--b, cycle)",
+        "--b:var(--c, cycle)",
+        "--c:var(--a, cycle) var(--y)",
+        "--y:valid",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--c",
+          "invalid": true
+        },
+        {
+          "property": "--x",
+          "invalid": false
+        },
+        {
+          "property": "--y",
+          "invalid": false
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Cycle with extra edge"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 197,
+      "offset": 3833,
+      "helper": "test_cycles",
+      "declarations": [
+        "--x:var(--a, valid)",
+        "--a:var(--b, cycle)",
+        "--b:var(--c, cycle) var(--y)",
+        "--c:var(--a, cycle)",
+        "--y:valid",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--c",
+          "invalid": true
+        },
+        {
+          "property": "--x",
+          "invalid": false
+        },
+        {
+          "property": "--y",
+          "invalid": false
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Cycle with extra edge (2)"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 243,
+      "offset": 4504,
+      "helper": "test_cycles",
+      "declarations": [
+        "--x:var(--a, valid)",
+        "--a:var(--b, cycle)",
+        "--b:var(--c, cycle)",
+        "--c:var(--a, cycle) var(--y)",
+        "--y:var(--z)",
+        "--z:valid",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--c",
+          "invalid": true
+        },
+        {
+          "property": "--x",
+          "invalid": false
+        },
+        {
+          "property": "--y",
+          "invalid": false
+        },
+        {
+          "property": "--z",
+          "invalid": false
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Cycle with extra edge (3)"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 283,
+      "offset": 5194,
+      "helper": "test_cycles",
+      "declarations": [
+        "--x:var(--a, valid)",
+        "--a:var(--b, cycle)",
+        "--b:var(--c, cycle) var(--a, cycle)",
+        "--c:var(--d, cycle)",
+        "--d:var(--b, cycle)",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--c",
+          "invalid": true
+        },
+        {
+          "property": "--d",
+          "invalid": true
+        },
+        {
+          "property": "--x",
+          "invalid": false
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Cycle with secondary cycle"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 329,
+      "offset": 6049,
+      "helper": "test_cycles",
+      "declarations": [
+        "--x:var(--a, valid)",
+        "--a:var(--b, cycle)",
+        "--b:var(--c, cycle)",
+        "--c:var(--d, cycle) var(--a, cycle)",
+        "--d:var(--b, cycle) var(--y)",
+        "--y:valid",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--c",
+          "invalid": true
+        },
+        {
+          "property": "--d",
+          "invalid": true
+        },
+        {
+          "property": "--x",
+          "invalid": false
+        },
+        {
+          "property": "--y",
+          "invalid": false
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Cycle with overlapping secondary cycle"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 366,
+      "offset": 6976,
+      "helper": "test_cycles",
+      "declarations": [
+        "--x:var(--a, valid)",
+        "--a:var(--b, cycle) var(--y, valid) var(--c, cycle)",
+        "--b:var(--a, cycle) ",
+        "--c:var(--d, cycle)",
+        "--d:var(--a, cycle)",
+        "--y:valid",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": true
+        },
+        {
+          "property": "--b",
+          "invalid": true
+        },
+        {
+          "property": "--c",
+          "invalid": true
+        },
+        {
+          "property": "--d",
+          "invalid": true
+        },
+        {
+          "property": "--x",
+          "invalid": false
+        },
+        {
+          "property": "--y",
+          "invalid": false
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Cycle with deeper secondary cycle"
+    },
+    {
+      "file": "variable-cycles.html",
+      "line": 413,
+      "offset": 8173,
+      "helper": "test_cycles",
+      "declarations": [
+        "--x:var(--a, valid)",
+        "--a:var(--y, var(--b, cycle))",
+        "--b:var(--y, var(--c, cycle))",
+        "--c:var(--y, var(--a, cycle))",
+        "--y:valid",
+        "--sanity:valid"
+      ],
+      "queries": [
+        {
+          "property": "--a",
+          "invalid": false
+        },
+        {
+          "property": "--b",
+          "invalid": false
+        },
+        {
+          "property": "--c",
+          "invalid": false
+        },
+        {
+          "property": "--x",
+          "invalid": false
+        },
+        {
+          "property": "--y",
+          "invalid": false
+        },
+        {
+          "property": "--sanity",
+          "invalid": false
+        }
+      ],
+      "description": "Cycle in unused fallback"
+    }
+  ],
+  "unported": [
+    {
+      "file": "variable-css-wide-keywords-after-substitution.html",
+      "line": 72,
+      "offset": 2541,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-css-wide-keywords-after-substitution.html",
+      "line": 82,
+      "offset": 3122,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-css-wide-keywords.html",
+      "line": 330,
+      "offset": 9324,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-declaration-07.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-08.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-09.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-10.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-11.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-12.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-13.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-30.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-48.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-49.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-50.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-definition-keywords.html",
+      "line": 58,
+      "offset": 2350,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition-keywords.html",
+      "line": 66,
+      "offset": 2721,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition.html",
+      "line": 47,
+      "offset": 3708,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition.html",
+      "line": 58,
+      "offset": 4181,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition.html",
+      "line": 70,
+      "offset": 4741,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition.html",
+      "line": 91,
+      "offset": 6093,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-empty-name-reserved.html",
+      "line": 10,
+      "offset": 471,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-exponential-blowup.html",
+      "line": 24,
+      "offset": 789,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-reference-39.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-reference-without-whitespace.html",
+      "helper": "document",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-substitution-basic.html",
+      "line": 112,
+      "offset": 4449,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-substitution-variable-declaration.html",
+      "line": 147,
+      "offset": 5943,
+      "helper": "test",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    }
+  ]
+}

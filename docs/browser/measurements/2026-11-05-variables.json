@@ -1,0 +1,4811 @@
+{
+  "scope": "Original token compilation and custom-property substitution against supplied winning element snapshots. No actual cascade, CSSOM, layout, rendering, JS, network, GPU, UI or Chrome performance evidence.",
+  "base_commit": "fe72fd58b0d380ee8389a484a8670514a73b569b",
+  "method": "Three CPU-0 sequential alternating cold/warm runs, reversed in the middle. 2000 compiles per prebuilt value and 20000 resolutions for ordinary cases, 40 for large expansion/repeated-cycle cases. Cold control clears results before each request but retains worker capacities; warm retains property results. Both memoize within a request. Summaries are medians of three run means; first-call samples recorded separately, including resolver construction. Batch control separately compiles/drops 1000 values independently or in one arena, repeated 20 times per run.",
+  "cycle_method": "Three sequential alternating corrected suffix-scan control/default runs, cold mode. Only mark_cycle differs: earlier suffix min/mark scans versus root selection from first guard and already-marked suffix check. Same benchmark and limit/taint/cycle semantics; all supported fixtures/generated graphs pass with the corrected suffix-scan algorithm.",
+  "common_method": "Three sequential alternating parent/default runs for unchanged CSS and color benchmarks, reversed in the middle; CSS 5 rounds, color 20. Parent built from exact HEAD module exports with new modules excluded, restored in finally; all other reachable production files and benchmark sources match HEAD. These common paths have no intended algorithm change.",
+  "caveats": [
+    "No concurrent checks launched by this session during samples. Other machine load, clocks, thermals, hash seeds and allocator/code layout uncontrolled.",
+    "Prebuilt Syntax excludes lexical/source costs in variables_bench. Common CSS benchmark separately includes its original syntax workload.",
+    "Cold/warm are API usage controls of one implementation, not previous production revisions; the old engine had no variable resolver.",
+    "Compile timings across cache modes vary despite identical compilation code; do not attribute that variance to memoization.",
+    "Retained arena accounting includes unique shared inputs/program headers/source/node/dimension capacities; excludes allocator and hash-table/control/guard metadata. Count each shared arena once, not once per view/clone.",
+    "One view retains its whole batch. The benchmark freezes its entire input snapshot and retains the first returned value during its timing loop. RSS includes those inputs, outputs/pools and allocator retention; not browser/page memory.",
+    "No new SIMD or GPU implementation here; string copies use Rust/native memory primitives and the original bounded token machinery.",
+    "Common-path variation is not a uniform improvement or regression guarantee."
+  ],
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "uname": "Linux 7.2.15-300.fc45.x86_64 x86_64 GNU/Linux",
+  "cpu": {
+    "lscpu": [
+      {
+        "field": "Architecture:",
+        "data": "x86_64"
+      },
+      {
+        "field": "CPU op-mode(s):",
+        "data": "32-bit, 64-bit"
+      },
+      {
+        "field": "Address sizes:",
+        "data": "46 bits physical, 48 bits virtual"
+      },
+      {
+        "field": "Byte Order:",
+        "data": "Little Endian"
+      },
+      {
+        "field": "CPU(s):",
+        "data": "16"
+      },
+      {
+        "field": "On-line CPU(s) list:",
+        "data": "0-15"
+      },
+      {
+        "field": "Vendor ID:",
+        "data": "GenuineIntel"
+      },
+      {
+        "field": "Model name:",
+        "data": "Intel(R) Core(TM) Ultra 7 356H"
+      },
+      {
+        "field": "CPU family:",
+        "data": "6"
+      },
+      {
+        "field": "Model:",
+        "data": "204"
+      },
+      {
+        "field": "Thread(s) per core:",
+        "data": "1"
+      },
+      {
+        "field": "Core(s) per socket:",
+        "data": "16"
+      },
+      {
+        "field": "Socket(s):",
+        "data": "1"
+      },
+      {
+        "field": "Stepping:",
+        "data": "2"
+      },
+      {
+        "field": "Microcode version:",
+        "data": "0x11b"
+      },
+      {
+        "field": "CPU(s) scaling MHz:",
+        "data": "59%"
+      },
+      {
+        "field": "CPU max MHz:",
+        "data": "4700.0000"
+      },
+      {
+        "field": "CPU min MHz:",
+        "data": "400.0000"
+      },
+      {
+        "field": "BogoMIPS:",
+        "data": "7372.80"
+      },
+      {
+        "field": "Flags:",
+        "data": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdt_a rdseed adx smap clflushopt clwb intel_pt sha_ni xsaveopt xsavec xgetbv1 xsaves split_lock_detect user_shstk avx_vnni lass fred lam wbnoinvd dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp hwp_pkg_req hfi vnmi umip pku ospke waitpkg gfni vaes vpclmulqdq rdpid bus_lock_detect movdiri movdir64b fsrm md_clear serialize arch_lbr ibt flush_l1d arch_capabilities"
+      },
+      {
+        "field": "Virtualization:",
+        "data": "VT-x"
+      },
+      {
+        "field": "L1d cache:",
+        "data": "576 KiB (16 instances)"
+      },
+      {
+        "field": "L1i cache:",
+        "data": "1 MiB (16 instances)"
+      },
+      {
+        "field": "L2 cache:",
+        "data": "24 MiB (7 instances)"
+      },
+      {
+        "field": "L3 cache:",
+        "data": "18 MiB (1 instance)"
+      },
+      {
+        "field": "NUMA node(s):",
+        "data": "1"
+      },
+      {
+        "field": "NUMA node0 CPU(s):",
+        "data": "0-15"
+      },
+      {
+        "field": "Vulnerability Gather data sampling:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Ghostwrite:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Indirect target selection:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Itlb multihit:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability L1tf:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Mds:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Meltdown:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Mmio stale data:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Old microcode:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Reg file data sampling:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Retbleed:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Spec rstack overflow:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Spec store bypass:",
+        "data": "Mitigation; Speculative Store Bypass disabled via prctl"
+      },
+      {
+        "field": "Vulnerability Spectre v1:",
+        "data": "Mitigation; usercopy/swapgs barriers and __user pointer sanitization"
+      },
+      {
+        "field": "Vulnerability Spectre v2:",
+        "data": "Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS Not affected; BHI BHI_DIS_S"
+      },
+      {
+        "field": "Vulnerability Srbds:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Tsa:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Tsx async abort:",
+        "data": "Not affected"
+      },
+      {
+        "field": "Vulnerability Vmscape:",
+        "data": "Not affected"
+      }
+    ]
+  },
+  "commands": [
+    "cargo test --release -p olo-web",
+    "cargo test --release -p olo-web --test variables --all-features",
+    "cargo build --release --workspace",
+    "cargo build --release -p olo-web --example variables_bench --example css_bench --example color_bench",
+    "cp --reflink=always target/release/examples/variables_bench /var/tmp/olo-browser-research/variables/variables-default",
+    "/usr/bin/time -v taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 cold",
+    "/usr/bin/time -v taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 warm",
+    "/usr/bin/time -v taskset -c 0 /var/tmp/olo-browser-research/variables/variables-cycle-before 20 cold",
+    "/usr/bin/time -v taskset -c 0 /var/tmp/olo-browser-research/variables/css-MODE 5",
+    "/usr/bin/time -v taskset -c 0 /var/tmp/olo-browser-research/variables/color-MODE 20"
+  ],
+  "source_sha256": {
+    "Cargo.lock": "17ff0dd9e5fe7a3b8c82877b6b0717bc52a4a00f0d56148bc5d1ad2a16e5bfd0",
+    "crates/web/Cargo.toml": "ee68d25d2985f617b88745b2b4a3bf65e1f0d0102efc3bf1496197f8b6ec20a9",
+    "crates/web/src/css/mod.rs": "ff10c278c83e444538bc99edea2a0b64e4991a3e77bc92123a1b99098836e933",
+    "crates/web/src/css/syntax.rs": "6c9d09aa4735133f544d731ccd300cef33f255718f8e6bd871573c3e6284db1c",
+    "crates/web/src/css/syntax/assemble.rs": "9c0265a7334bd2b7f182a23f8f0f09445e9f53d35cecbca75d58745ea5a8bab0",
+    "crates/web/examples/variables_bench.rs": "ce9ca2674f13de95489aa433a2339ef1c84426438f7395e2ccdf48e67ee39ab0",
+    "crates/web/examples/variables_eval.rs": "43dd12f12f30265a6283c72ebcfa7434e4642a34f4547f8f6245bda341f4d171",
+    "crates/web/examples/css_bench.rs": "f4385b37512281e3b8394e99ddac10910075872e0563c900088732247b206402",
+    "crates/web/examples/color_bench.rs": "0f1ad0330740171ca8e325f132ab436d08fb22b01429074a77964acd9267704b",
+    "crates/web/tests/variables.rs": "4c60b90256f8d6f8010cce44ec5f4033c2653c1185176065efa4086630267582",
+    "crates/web/tests/support/variable_fixtures.rs": "16a38297831595e3e02b3540e5016a3b8f70628cc974266cd5bdb064fb274308",
+    "crates/web/src/css/variables/compile.rs": "91cc5c46815bce412d943a2048e78f65f034d120038fa83205efab533a10688f",
+    "crates/web/src/css/variables/mod.rs": "cc4f5f0d61d2dcd0c1ba57cf41f443a2912b83b5470db288aa5d66bf27f2ebe9",
+    "crates/web/src/css/variables/resolve.rs": "ea3343c92398df85dac149c7549ef28c168fe73e6d796acec9b4f9e51365c775"
+  },
+  "binary_sha256": {
+    "variables-default": "0cb383434afc8e2187b1d518704a12b60e19298491333cf0c922ccc416a84e72",
+    "variables-cycle-before": "c33fb0a2feffb13f72262dde387aed282f30fa429e10893a597845babd20ff50",
+    "css-before": "9e13d14b92c7e430ac6919da980f00faa369652a4248343cdc973e9137d7f75d",
+    "css-after": "5b224ae97c8d91bcf9384c4e202d038f810f337039c075852d23cbe46d6008af",
+    "color-before": "20916d438654beec34563113a96e36d94c2239a3dd6c52220adcc8d52c3fd385",
+    "color-after": "397dc214815c2ded09106fbd0aae19ab099da3f957665893a72570b732c4de92"
+  },
+  "parent_identity": {
+    "base_commit": "fe72fd58b0d380ee8389a484a8670514a73b569b",
+    "method": "Temporarily restored the two module-export files to HEAD exactly; other reachable production source and unchanged benchmark sources match HEAD. New unreferenced modules were excluded. Working sources restored in finally. No checkout/fork/session changes.",
+    "export_source_sha256": {
+      "crates/web/src/css/mod.rs": "a311ec7514b08f58e144d31afed1a0dcd02dac2a4ef662179f428cd4b95c8679",
+      "crates/web/src/css/syntax.rs": "686148c22d566fa6952121a68ef90a044bab038dfc550ab283450ea2dc09c7d1"
+    },
+    "binary_sha256": {
+      "css": "9e13d14b92c7e430ac6919da980f00faa369652a4248343cdc973e9137d7f75d",
+      "color": "20916d438654beec34563113a96e36d94c2239a3dd6c52220adcc8d52c3fd385"
+    }
+  },
+  "cycle_control_identity": {
+    "scope": "Same corrected cycle/spelling/metered-work semantics; only mark_cycle uses the earlier suffix scan. Temporary edit restored in finally.",
+    "source_sha256": {
+      "crates/web/src/css/variables/compile.rs": "91cc5c46815bce412d943a2048e78f65f034d120038fa83205efab533a10688f",
+      "crates/web/src/css/variables/mod.rs": "cc4f5f0d61d2dcd0c1ba57cf41f443a2912b83b5470db288aa5d66bf27f2ebe9",
+      "crates/web/src/css/variables/resolve.rs": "ee692366b664c395230d50516aa9d8a1a01d0fb38e41203343b2d9a967347d31",
+      "crates/web/src/css/syntax/assemble.rs": "9c0265a7334bd2b7f182a23f8f0f09445e9f53d35cecbca75d58745ea5a8bab0",
+      "crates/web/examples/variables_bench.rs": "ce9ca2674f13de95489aa433a2339ef1c84426438f7395e2ccdf48e67ee39ab0"
+    },
+    "binary_sha256": "c33fb0a2feffb13f72262dde387aed282f30fa429e10893a597845babd20ff50"
+  },
+  "checks": {
+    "engine_release_tests": {
+      "sha256": "b03c0ba761dbf8a56c177d710375bedbcff8aca515cc6533c0007863194a6ee7",
+      "final_lines": [
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "",
+        "   Doc-tests olo_web",
+        "",
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "all_features_variable_tests": {
+      "sha256": "8051250d724019c2049886f5d134a88651b555ff7a63e6ea8a7f74d7825cf298",
+      "final_lines": [
+        "test work_budget_counts_cached_whitespace_name_keyword_and_spelling_scans ... ok",
+        "test independent_pinned_variable_grammar_cycles_and_substituted_names ... ok",
+        "test assembled_spelling_round_trips_boundaries_escapes_and_eof_recovery ... ok",
+        "test expansion_depth_cancellation_and_hostile_values_are_bounded ... ok",
+        "test generated_static_reference_graphs_match_independent_cycle_reachability ... ok",
+        "",
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        ""
+      ]
+    },
+    "default_strict_clippy": {
+      "sha256": "e8793dd0fda00b41d0c9f5be43912eb38d7463f57a2896388a9e2cf4c95ac3e1",
+      "final_lines": [
+        "warning: profiles for the non root package will be ignored, specify profiles at the workspace root:",
+        "package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml",
+        "workspace: /home/ben/worktrees/olo/browser/Cargo.toml",
+        "    Checking olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 0.31s"
+      ]
+    },
+    "all_features_strict_clippy": {
+      "sha256": "25c2c0c5c61689f40d695d43484cf6c2299ffd25b44d59b60f29a6233e1af088",
+      "final_lines": [
+        "warning: profiles for the non root package will be ignored, specify profiles at the workspace root:",
+        "package:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml",
+        "workspace: /home/ben/worktrees/olo/browser/Cargo.toml",
+        "    Checking olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 0.26s"
+      ]
+    },
+    "workspace_release_build": {
+      "sha256": "c59afdcc910e0e7e182df8f169cf435d0470056f9bd3a622d878f405c8298814",
+      "final_lines": [
+        "1940 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {",
+        "     |            ^^^^^^^^^^^^^^",
+        "",
+        "warning: `gpui` (lib) generated 7 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)",
+        "   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 0.41s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    },
+    "package_format": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "final_lines": []
+    }
+  },
+  "summary": {
+    "cold": {
+      "rss_kib_samples": [
+        3856,
+        3832,
+        4064
+      ],
+      "value_size": 16,
+      "batch": [
+        {
+          "accounted_reserved_bytes": 408000,
+          "compile_drop_us": 164.09045,
+          "count": 1000,
+          "independent": true
+        },
+        {
+          "accounted_reserved_bytes": 69488,
+          "compile_drop_us": 36.95255,
+          "count": 1000,
+          "independent": false
+        }
+      ],
+      "cases": [
+        {
+          "source": "var(--base)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 4,
+          "shared_returned_arena_bytes": 229664,
+          "cached_properties": 1,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.118744,
+          "resolve_us": 0.0872344,
+          "first_compile_us": 0.42300000000000004,
+          "first_resolver_new_us": 6.267,
+          "first_resolve_us": 1.434
+        },
+        {
+          "source": "var(--b)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 4,
+          "shared_returned_arena_bytes": 229664,
+          "cached_properties": 3,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.110973,
+          "resolve_us": 0.23935724999999997,
+          "first_compile_us": 0.22,
+          "first_resolver_new_us": 0.032999999999999995,
+          "first_resolve_us": 0.9420000000000001
+        },
+        {
+          "source": "var(var(--name))",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 4,
+          "shared_returned_arena_bytes": 229664,
+          "cached_properties": 2,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.137805,
+          "resolve_us": 0.19283219999999998,
+          "first_compile_us": 0.315,
+          "first_resolver_new_us": 0.019000000000000003,
+          "first_resolve_us": 0.775
+        },
+        {
+          "source": "var(--missing, rgb(var(--r) 0 0))",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 13,
+          "shared_returned_arena_bytes": 448,
+          "cached_properties": 1,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.27632850000000003,
+          "resolve_us": 0.34636625,
+          "first_compile_us": 1.173,
+          "first_resolver_new_us": 0.017,
+          "first_resolve_us": 1.252
+        },
+        {
+          "source": "rgb(calc(var(--r) + var(--delta)) 0 0)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 24,
+          "shared_returned_arena_bytes": 656,
+          "cached_properties": 2,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.3261055,
+          "resolve_us": 0.5191974,
+          "first_compile_us": 1.129,
+          "first_resolver_new_us": 0.018,
+          "first_resolve_us": 1.2369999999999999
+        },
+        {
+          "source": "var(--diamond)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 17,
+          "shared_returned_arena_bytes": 512,
+          "cached_properties": 5,
+          "cached_arena_bytes": 230960,
+          "compile_us": 0.1006885,
+          "resolve_us": 0.9357192000000001,
+          "first_compile_us": 0.30400000000000005,
+          "first_resolver_new_us": 0.018,
+          "first_resolve_us": 2.783
+        },
+        {
+          "source": "var(--cycle-a,red)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 3,
+          "shared_returned_arena_bytes": 344,
+          "cached_properties": 2,
+          "cached_arena_bytes": 0,
+          "compile_us": 0.137608,
+          "resolve_us": 0.40232899999999994,
+          "first_compile_us": 0.41100000000000003,
+          "first_resolver_new_us": 0.017,
+          "first_resolve_us": 0.9930000000000001
+        },
+        {
+          "source": "var(--long)",
+          "resolve_iterations": 40,
+          "result_source_bytes": 5000,
+          "shared_returned_arena_bytes": 69872,
+          "cached_properties": 2,
+          "cached_arena_bytes": 299536,
+          "compile_us": 0.1080305,
+          "resolve_us": 85.282775,
+          "first_compile_us": 0.26899999999999996,
+          "first_resolver_new_us": 0.019000000000000003,
+          "first_resolve_us": 132.22
+        },
+        {
+          "source": "var(--deep0,red)",
+          "resolve_iterations": 40,
+          "result_source_bytes": 3,
+          "shared_returned_arena_bytes": 344,
+          "cached_properties": 33,
+          "cached_arena_bytes": 0,
+          "compile_us": 0.134147,
+          "resolve_us": 151.404025,
+          "first_compile_us": 0.277,
+          "first_resolver_new_us": 0.019000000000000003,
+          "first_resolve_us": 159.054
+        }
+      ]
+    },
+    "warm": {
+      "rss_kib_samples": [
+        3948,
+        3924,
+        3864
+      ],
+      "value_size": 16,
+      "batch": [
+        {
+          "accounted_reserved_bytes": 408000,
+          "compile_drop_us": 163.4436,
+          "count": 1000,
+          "independent": true
+        },
+        {
+          "accounted_reserved_bytes": 69488,
+          "compile_drop_us": 36.3023,
+          "count": 1000,
+          "independent": false
+        }
+      ],
+      "cases": [
+        {
+          "source": "var(--base)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 4,
+          "shared_returned_arena_bytes": 229664,
+          "cached_properties": 1,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.1086665,
+          "resolve_us": 0.055343050000000005,
+          "first_compile_us": 0.458,
+          "first_resolver_new_us": 6.083,
+          "first_resolve_us": 1.314
+        },
+        {
+          "source": "var(--b)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 4,
+          "shared_returned_arena_bytes": 229664,
+          "cached_properties": 3,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.11037100000000001,
+          "resolve_us": 0.05422804999999999,
+          "first_compile_us": 0.21,
+          "first_resolver_new_us": 0.034,
+          "first_resolve_us": 0.864
+        },
+        {
+          "source": "var(var(--name))",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 4,
+          "shared_returned_arena_bytes": 229664,
+          "cached_properties": 2,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.1339545,
+          "resolve_us": 0.12190040000000002,
+          "first_compile_us": 0.277,
+          "first_resolver_new_us": 0.014,
+          "first_resolve_us": 0.72
+        },
+        {
+          "source": "var(--missing, rgb(var(--r) 0 0))",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 13,
+          "shared_returned_arena_bytes": 448,
+          "cached_properties": 1,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.2819065,
+          "resolve_us": 0.3028248,
+          "first_compile_us": 1.119,
+          "first_resolver_new_us": 0.015,
+          "first_resolve_us": 1.34
+        },
+        {
+          "source": "rgb(calc(var(--r) + var(--delta)) 0 0)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 24,
+          "shared_returned_arena_bytes": 656,
+          "cached_properties": 2,
+          "cached_arena_bytes": 229664,
+          "compile_us": 0.3219015,
+          "resolve_us": 0.4231124,
+          "first_compile_us": 1.219,
+          "first_resolver_new_us": 0.016,
+          "first_resolve_us": 1.256
+        },
+        {
+          "source": "var(--diamond)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 17,
+          "shared_returned_arena_bytes": 512,
+          "cached_properties": 5,
+          "cached_arena_bytes": 230960,
+          "compile_us": 0.11250149999999999,
+          "resolve_us": 0.0602621,
+          "first_compile_us": 0.312,
+          "first_resolver_new_us": 0.014,
+          "first_resolve_us": 2.769
+        },
+        {
+          "source": "var(--cycle-a,red)",
+          "resolve_iterations": 20000,
+          "result_source_bytes": 3,
+          "shared_returned_arena_bytes": 344,
+          "cached_properties": 2,
+          "cached_arena_bytes": 0,
+          "compile_us": 0.1563455,
+          "resolve_us": 0.13340775000000002,
+          "first_compile_us": 0.415,
+          "first_resolver_new_us": 0.014,
+          "first_resolve_us": 0.9820000000000001
+        },
+        {
+          "source": "var(--long)",
+          "resolve_iterations": 40,
+          "result_source_bytes": 5000,
+          "shared_returned_arena_bytes": 69872,
+          "cached_properties": 2,
+          "cached_arena_bytes": 299536,
+          "compile_us": 0.1101675,
+          "resolve_us": 0.06687499999999999,
+          "first_compile_us": 0.203,
+          "first_resolver_new_us": 0.015,
+          "first_resolve_us": 106.46
+        },
+        {
+          "source": "var(--deep0,red)",
+          "resolve_iterations": 40,
+          "result_source_bytes": 3,
+          "shared_returned_arena_bytes": 344,
+          "cached_properties": 33,
+          "cached_arena_bytes": 0,
+          "compile_us": 0.1230095,
+          "resolve_us": 0.147475,
+          "first_compile_us": 0.23099999999999998,
+          "first_resolver_new_us": 0.016,
+          "first_resolve_us": 170.822
+        }
+      ]
+    }
+  },
+  "cycle_summary": {
+    "before": {
+      "rss_kib_samples": [
+        3808,
+        3988,
+        3996
+      ],
+      "cases": [
+        {
+          "source": "var(--base)",
+          "resolve_us": 0.09854965
+        },
+        {
+          "source": "var(--b)",
+          "resolve_us": 0.2580145
+        },
+        {
+          "source": "var(var(--name))",
+          "resolve_us": 0.20926025
+        },
+        {
+          "source": "var(--missing, rgb(var(--r) 0 0))",
+          "resolve_us": 0.35988790000000004
+        },
+        {
+          "source": "rgb(calc(var(--r) + var(--delta)) 0 0)",
+          "resolve_us": 0.53819735
+        },
+        {
+          "source": "var(--diamond)",
+          "resolve_us": 0.9725478500000001
+        },
+        {
+          "source": "var(--cycle-a,red)",
+          "resolve_us": 0.4077619
+        },
+        {
+          "source": "var(--long)",
+          "resolve_us": 85.629125
+        },
+        {
+          "source": "var(--deep0,red)",
+          "resolve_us": 179.413325
+        }
+      ]
+    },
+    "after": {
+      "rss_kib_samples": [
+        3960,
+        4072,
+        3864
+      ],
+      "cases": [
+        {
+          "source": "var(--base)",
+          "resolve_us": 0.09563105000000001
+        },
+        {
+          "source": "var(--b)",
+          "resolve_us": 0.2448681
+        },
+        {
+          "source": "var(var(--name))",
+          "resolve_us": 0.20090619999999998
+        },
+        {
+          "source": "var(--missing, rgb(var(--r) 0 0))",
+          "resolve_us": 0.36040975
+        },
+        {
+          "source": "rgb(calc(var(--r) + var(--delta)) 0 0)",
+          "resolve_us": 0.5487955
+        },
+        {
+          "source": "var(--diamond)",
+          "resolve_us": 0.9599083499999999
+        },
+        {
+          "source": "var(--cycle-a,red)",
+          "resolve_us": 0.41052335
+        },
+        {
+          "source": "var(--long)",
+          "resolve_us": 88.674025
+        },
+        {
+          "source": "var(--deep0,red)",
+          "resolve_us": 162.177975
+        }
+      ]
+    }
+  },
+  "common_summary": {
+    "css": {
+      "before": {
+        "rss_kib_samples": [
+          13496,
+          13528,
+          13428
+        ],
+        "cases": [
+          {
+            "case": "stylesheet",
+            "parse_and_drop_ms": 8.054295399999999,
+            "tokenize_ms": 4.3391556,
+            "first_parse_ms": 9.519171
+          },
+          {
+            "case": "literals",
+            "parse_and_drop_ms": 0.0554552,
+            "tokenize_ms": 0.051929600000000006,
+            "first_parse_ms": 0.075117
+          },
+          {
+            "case": "decoded",
+            "parse_and_drop_ms": 2.7275514000000003,
+            "tokenize_ms": 2.7168292000000003,
+            "first_parse_ms": 2.731735
+          },
+          {
+            "case": "declaration_values",
+            "parse_and_drop_ms": 7.7194036,
+            "tokenize_ms": 4.108231999999999,
+            "first_parse_ms": 8.304728
+          },
+          {
+            "case": "mixed_2000",
+            "parse_and_drop_ms": 0.5570656,
+            "tokenize_ms": 0.2982648,
+            "first_parse_ms": 0.569538
+          },
+          {
+            "case": "mixed_4000",
+            "parse_and_drop_ms": 1.1244504000000002,
+            "tokenize_ms": 0.6128922,
+            "first_parse_ms": 1.143291
+          },
+          {
+            "case": "mixed_8000",
+            "parse_and_drop_ms": 2.2409470000000002,
+            "tokenize_ms": 1.1750922000000001,
+            "first_parse_ms": 2.227373
+          }
+        ]
+      },
+      "after": {
+        "rss_kib_samples": [
+          13372,
+          13412,
+          13304
+        ],
+        "cases": [
+          {
+            "case": "stylesheet",
+            "parse_and_drop_ms": 8.0836062,
+            "tokenize_ms": 4.4898634,
+            "first_parse_ms": 9.740022
+          },
+          {
+            "case": "literals",
+            "parse_and_drop_ms": 0.05874539999999999,
+            "tokenize_ms": 0.0562594,
+            "first_parse_ms": 0.084471
+          },
+          {
+            "case": "decoded",
+            "parse_and_drop_ms": 2.6875266,
+            "tokenize_ms": 2.683747,
+            "first_parse_ms": 2.714118
+          },
+          {
+            "case": "declaration_values",
+            "parse_and_drop_ms": 7.7632306,
+            "tokenize_ms": 4.2223062,
+            "first_parse_ms": 8.653409
+          },
+          {
+            "case": "mixed_2000",
+            "parse_and_drop_ms": 0.5637176,
+            "tokenize_ms": 0.3009404,
+            "first_parse_ms": 0.557275
+          },
+          {
+            "case": "mixed_4000",
+            "parse_and_drop_ms": 1.1154604000000001,
+            "tokenize_ms": 0.6025802,
+            "first_parse_ms": 1.106062
+          },
+          {
+            "case": "mixed_8000",
+            "parse_and_drop_ms": 2.239023,
+            "tokenize_ms": 1.2126278000000001,
+            "first_parse_ms": 2.246048
+          }
+        ]
+      }
+    },
+    "color": {
+      "before": {
+        "rss_kib_samples": [
+          18576,
+          18824,
+          18780
+        ],
+        "cases": [
+          {
+            "source": "#369c",
+            "parse_ns": 18.3885,
+            "resolve_ns": 13.6412,
+            "first_parse_ns": 2169
+          },
+          {
+            "source": "rebeccapurple",
+            "parse_ns": 107.9071,
+            "resolve_ns": 13.70875,
+            "first_parse_ns": 1472
+          },
+          {
+            "source": "rgb(30% 60% 90% / 70%)",
+            "parse_ns": 77.6692,
+            "resolve_ns": 13.6186,
+            "first_parse_ns": 1418
+          },
+          {
+            "source": "oklch(60% 0.25 150 / 0.8)",
+            "parse_ns": 78.69385,
+            "resolve_ns": 13.6662,
+            "first_parse_ns": 404
+          },
+          {
+            "source": "color(display-p3 1 0.5 -0.2)",
+            "parse_ns": 71.71225,
+            "resolve_ns": 14.0103,
+            "first_parse_ns": 376
+          },
+          {
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))",
+            "parse_ns": 187.45835,
+            "resolve_ns": 15.51595,
+            "first_parse_ns": 930
+          }
+        ]
+      },
+      "after": {
+        "rss_kib_samples": [
+          18608,
+          18552,
+          18660
+        ],
+        "cases": [
+          {
+            "source": "#369c",
+            "parse_ns": 17.77805,
+            "resolve_ns": 13.7995,
+            "first_parse_ns": 1513
+          },
+          {
+            "source": "rebeccapurple",
+            "parse_ns": 106.76615,
+            "resolve_ns": 13.72885,
+            "first_parse_ns": 1248
+          },
+          {
+            "source": "rgb(30% 60% 90% / 70%)",
+            "parse_ns": 81.54435,
+            "resolve_ns": 13.839,
+            "first_parse_ns": 1497
+          },
+          {
+            "source": "oklch(60% 0.25 150 / 0.8)",
+            "parse_ns": 81.6885,
+            "resolve_ns": 13.83725,
+            "first_parse_ns": 440
+          },
+          {
+            "source": "color(display-p3 1 0.5 -0.2)",
+            "parse_ns": 75.11175,
+            "resolve_ns": 13.9266,
+            "first_parse_ns": 428
+          },
+          {
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))",
+            "parse_ns": 189.29535,
+            "resolve_ns": 14.58625,
+            "first_parse_ns": 955
+          }
+        ]
+      }
+    }
+  },
+  "runs": [
+    {
+      "mode": "cold",
+      "run": 0,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 167.87935,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 36.95255,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.118744,
+            "first_compile_us": 0.47800000000000004,
+            "first_resolve_us": 1.573,
+            "first_resolver_new_us": 6.758,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.0885375,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.110973,
+            "first_compile_us": 0.22,
+            "first_resolve_us": 0.9420000000000001,
+            "first_resolver_new_us": 0.032999999999999995,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.23681370000000002,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.13413,
+            "first_compile_us": 0.533,
+            "first_resolve_us": 0.651,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.19283219999999998,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.27626,
+            "first_compile_us": 2.187,
+            "first_resolve_us": 1.512,
+            "first_resolver_new_us": 0.024,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.34636625,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.327415,
+            "first_compile_us": 1.3719999999999999,
+            "first_resolve_us": 1.716,
+            "first_resolver_new_us": 0.018,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.5055447,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.1006885,
+            "first_compile_us": 0.332,
+            "first_resolve_us": 2.965,
+            "first_resolver_new_us": 0.041,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.9320392,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.137608,
+            "first_compile_us": 0.5179999999999999,
+            "first_resolve_us": 1.2830000000000001,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.40232899999999994,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.09634999999999999,
+            "first_compile_us": 0.369,
+            "first_resolve_us": 144.70299999999997,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 40,
+            "resolve_us": 85.282775,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.118003,
+            "first_compile_us": 0.29,
+            "first_resolve_us": 159.054,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 40,
+            "resolve_us": 149.29565,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3856\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 2\n\tMinor (reclaiming a frame) page faults: 2056\n\tVoluntary context switches: 4\n\tInvoluntary context switches: 2\n\tSwaps: 0\n\tFile system inputs: 4640\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "warm",
+      "run": 0,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 167.9275,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 36.3023,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.1086665,
+            "first_compile_us": 0.44999999999999996,
+            "first_resolve_us": 1.624,
+            "first_resolver_new_us": 6.083,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.055343050000000005,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.11037100000000001,
+            "first_compile_us": 0.21,
+            "first_resolve_us": 0.855,
+            "first_resolver_new_us": 0.032,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.0543586,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 40000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.14065350000000001,
+            "first_compile_us": 0.277,
+            "first_resolve_us": 0.6940000000000001,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.13282080000000002,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.2819065,
+            "first_compile_us": 1.119,
+            "first_resolve_us": 1.34,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.3028248,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 40000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.32516,
+            "first_compile_us": 1.194,
+            "first_resolve_us": 1.256,
+            "first_resolver_new_us": 0.013000000000000001,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.44242795000000007,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 20001,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.112519,
+            "first_compile_us": 0.312,
+            "first_resolve_us": 3.176,
+            "first_resolver_new_us": 0.02,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.05937645,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.1563455,
+            "first_compile_us": 0.415,
+            "first_resolve_us": 0.9820000000000001,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.1437347,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 1039,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.11019999999999999,
+            "first_compile_us": 0.26,
+            "first_resolve_us": 128.929,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 40,
+            "resolve_us": 0.068325,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 40,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.1230095,
+            "first_compile_us": 0.272,
+            "first_resolve_us": 176.363,
+            "first_resolver_new_us": 0.016,
+            "resolve_iterations": 40,
+            "resolve_us": 0.149875,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": false,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 warm\"\n\tUser time (seconds): 0.03\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 100%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.03\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3948\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2055\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 3\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "warm",
+      "run": 1,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 163.4436,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 36.48975,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.11070949999999999,
+            "first_compile_us": 0.48500000000000004,
+            "first_resolve_us": 1.314,
+            "first_resolver_new_us": 6.341,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.055743600000000004,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.113352,
+            "first_compile_us": 0.25,
+            "first_resolve_us": 0.864,
+            "first_resolver_new_us": 0.034,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.05422804999999999,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 40000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.12637250000000003,
+            "first_compile_us": 0.323,
+            "first_resolve_us": 0.749,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.12064335000000001,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.2700365,
+            "first_compile_us": 1.099,
+            "first_resolve_us": 1.403,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.3143359,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 40000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.316317,
+            "first_compile_us": 1.3579999999999999,
+            "first_resolve_us": 1.327,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.4021277,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 20001,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.1064245,
+            "first_compile_us": 0.5249999999999999,
+            "first_resolve_us": 2.769,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.0602621,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.1546515,
+            "first_compile_us": 0.415,
+            "first_resolve_us": 0.932,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.13308445,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 1039,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.1101675,
+            "first_compile_us": 0.203,
+            "first_resolve_us": 106.46,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 40,
+            "resolve_us": 0.0661,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 40,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.12154549999999999,
+            "first_compile_us": 0.23099999999999998,
+            "first_resolve_us": 170.822,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 40,
+            "resolve_us": 0.147475,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": false,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 warm\"\n\tUser time (seconds): 0.02\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 93%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.03\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3924\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2054\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 3\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "cold",
+      "run": 1,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 164.09045,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 37.41495,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.1045555,
+            "first_compile_us": 0.41,
+            "first_resolve_us": 1.434,
+            "first_resolver_new_us": 6.267,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.0856471,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.10824850000000001,
+            "first_compile_us": 0.205,
+            "first_resolve_us": 0.889,
+            "first_resolver_new_us": 0.032,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.2479977,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.137805,
+            "first_compile_us": 0.315,
+            "first_resolve_us": 0.775,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.19226685,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.282413,
+            "first_compile_us": 1.173,
+            "first_resolve_us": 1.249,
+            "first_resolver_new_us": 0.013000000000000001,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.3452014,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.31258099999999994,
+            "first_compile_us": 1.129,
+            "first_resolve_us": 1.22,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.5389255000000001,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.09379349999999999,
+            "first_compile_us": 0.30400000000000005,
+            "first_resolve_us": 2.457,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.9649911,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.13639400000000002,
+            "first_compile_us": 0.345,
+            "first_resolve_us": 0.9680000000000001,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.4543775,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.1080305,
+            "first_compile_us": 0.16999999999999998,
+            "first_resolve_us": 132.22,
+            "first_resolver_new_us": 0.02,
+            "resolve_iterations": 40,
+            "resolve_us": 94.739525,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.1452635,
+            "first_compile_us": 0.277,
+            "first_resolve_us": 179.123,
+            "first_resolver_new_us": 0.02,
+            "resolve_iterations": 40,
+            "resolve_us": 168.242775,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 100%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3832\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2039\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 5\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "cold",
+      "run": 2,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 162.1577,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 36.89185,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.12070600000000001,
+            "first_compile_us": 0.42300000000000004,
+            "first_resolve_us": 1.221,
+            "first_resolver_new_us": 5.663,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.0872344,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.1122985,
+            "first_compile_us": 0.23900000000000002,
+            "first_resolve_us": 0.9650000000000001,
+            "first_resolver_new_us": 0.032999999999999995,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.23935724999999997,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.140994,
+            "first_compile_us": 0.28900000000000003,
+            "first_resolve_us": 0.7929999999999999,
+            "first_resolver_new_us": 0.02,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.19946400000000003,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.27632850000000003,
+            "first_compile_us": 1.1340000000000001,
+            "first_resolve_us": 1.252,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.35626030000000003,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.3261055,
+            "first_compile_us": 1.1,
+            "first_resolve_us": 1.2369999999999999,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.5191974,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.1158145,
+            "first_compile_us": 0.255,
+            "first_resolve_us": 2.783,
+            "first_resolver_new_us": 0.018,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.9357192000000001,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.1451755,
+            "first_compile_us": 0.41100000000000003,
+            "first_resolve_us": 0.9930000000000001,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.3912907,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.11561149999999999,
+            "first_compile_us": 0.26899999999999996,
+            "first_resolve_us": 131.35299999999998,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 40,
+            "resolve_us": 84.54185,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.134147,
+            "first_compile_us": 0.255,
+            "first_resolve_us": 157.572,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 40,
+            "resolve_us": 151.404025,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 4064\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2057\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 4\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "warm",
+      "run": 2,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 161.35625,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 36.2374,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.096328,
+            "first_compile_us": 0.458,
+            "first_resolve_us": 1.256,
+            "first_resolver_new_us": 5.322,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.0543034,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.09204899999999999,
+            "first_compile_us": 0.171,
+            "first_resolve_us": 0.896,
+            "first_resolver_new_us": 0.034,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.05319465,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 40000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.1339545,
+            "first_compile_us": 0.265,
+            "first_resolve_us": 0.72,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.12190040000000002,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.29895499999999997,
+            "first_compile_us": 1.1280000000000001,
+            "first_resolve_us": 1.277,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.29380354999999997,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 40000,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.3219015,
+            "first_compile_us": 1.219,
+            "first_resolve_us": 1.2249999999999999,
+            "first_resolver_new_us": 0.016,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.4231124,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 20001,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.11250149999999999,
+            "first_compile_us": 0.268,
+            "first_resolve_us": 2.484,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.060347899999999996,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 20000,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.16450800000000002,
+            "first_compile_us": 0.309,
+            "first_resolve_us": 1.102,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.13340775000000002,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 1039,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.099244,
+            "first_compile_us": 0.149,
+            "first_resolve_us": 102.504,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 40,
+            "resolve_us": 0.06687499999999999,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 40,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.128029,
+            "first_compile_us": 0.203,
+            "first_resolve_us": 159.54500000000002,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 40,
+            "resolve_us": 0.13965,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": false,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 warm\"\n\tUser time (seconds): 0.03\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 100%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.03\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3864\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2054\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 2\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ],
+  "cycle_runs": [
+    {
+      "mode": "before",
+      "run": 0,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 167.43775,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 35.7488,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.095675,
+            "first_compile_us": 0.41800000000000004,
+            "first_resolve_us": 2.0260000000000002,
+            "first_resolver_new_us": 6.109,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.09854965,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.105575,
+            "first_compile_us": 0.186,
+            "first_resolve_us": 0.873,
+            "first_resolver_new_us": 0.034,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.26630794999999996,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.12413100000000002,
+            "first_compile_us": 0.288,
+            "first_resolve_us": 0.615,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.2104973,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.2731815,
+            "first_compile_us": 1.1540000000000001,
+            "first_resolve_us": 1.268,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.3740812,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.31162300000000004,
+            "first_compile_us": 1.166,
+            "first_resolve_us": 1.193,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.53819735,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.10946249999999999,
+            "first_compile_us": 0.284,
+            "first_resolve_us": 2.512,
+            "first_resolver_new_us": 0.018,
+            "resolve_iterations": 20000,
+            "resolve_us": 1.00912535,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.1435315,
+            "first_compile_us": 0.414,
+            "first_resolve_us": 0.95,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.4077619,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.097595,
+            "first_compile_us": 0.202,
+            "first_resolve_us": 113.893,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 40,
+            "resolve_us": 86.4355,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.13050949999999997,
+            "first_compile_us": 0.26399999999999996,
+            "first_resolve_us": 204.53,
+            "first_resolver_new_us": 0.022,
+            "resolve_iterations": 40,
+            "resolve_us": 179.413325,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-cycle-before 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3808\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2038\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 4\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 0,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 163.6005,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 37.95465,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.119942,
+            "first_compile_us": 0.458,
+            "first_resolve_us": 1.669,
+            "first_resolver_new_us": 5.899,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.0930922,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.11392949999999999,
+            "first_compile_us": 0.233,
+            "first_resolve_us": 0.779,
+            "first_resolver_new_us": 0.03,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.2448681,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.1333135,
+            "first_compile_us": 0.283,
+            "first_resolve_us": 0.628,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.20061055,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.2964135,
+            "first_compile_us": 1.0839999999999999,
+            "first_resolve_us": 1.553,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.36040975,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.3404705,
+            "first_compile_us": 1.157,
+            "first_resolve_us": 1.291,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.5520633,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.1243305,
+            "first_compile_us": 0.325,
+            "first_resolve_us": 2.717,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.9599083499999999,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.16426400000000002,
+            "first_compile_us": 0.49,
+            "first_resolve_us": 0.9760000000000001,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.4681319500000001,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.112265,
+            "first_compile_us": 0.29,
+            "first_resolve_us": 126.87199999999999,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 40,
+            "resolve_us": 88.674025,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.1343125,
+            "first_compile_us": 0.218,
+            "first_resolve_us": 177.911,
+            "first_resolver_new_us": 0.018,
+            "resolve_iterations": 40,
+            "resolve_us": 162.177975,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3960\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2056\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 4\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 1,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 162.49065,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 37.7818,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.12072799999999999,
+            "first_compile_us": 0.48699999999999993,
+            "first_resolve_us": 1.507,
+            "first_resolver_new_us": 7.718,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.0959202,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.112822,
+            "first_compile_us": 0.25899999999999995,
+            "first_resolve_us": 0.877,
+            "first_resolver_new_us": 0.034,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.244786,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.129577,
+            "first_compile_us": 0.329,
+            "first_resolve_us": 0.802,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.20090619999999998,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.281512,
+            "first_compile_us": 1.22,
+            "first_resolve_us": 1.319,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.36053615,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.3167955,
+            "first_compile_us": 1.174,
+            "first_resolve_us": 1.3,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.5487955,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.112786,
+            "first_compile_us": 0.329,
+            "first_resolve_us": 2.754,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 1.0561091,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.14220449999999998,
+            "first_compile_us": 0.384,
+            "first_resolve_us": 1.016,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.41052335,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.1074325,
+            "first_compile_us": 0.197,
+            "first_resolve_us": 126.918,
+            "first_resolver_new_us": 0.018,
+            "resolve_iterations": 40,
+            "resolve_us": 96.33515000000001,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.12084700000000001,
+            "first_compile_us": 0.374,
+            "first_resolve_us": 200.675,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 40,
+            "resolve_us": 194.963875,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 100%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 4072\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2042\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 6\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 1,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 168.85555,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 37.46115,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.10030999999999998,
+            "first_compile_us": 0.439,
+            "first_resolve_us": 2.1550000000000002,
+            "first_resolver_new_us": 6.178,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.09935215,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.0903745,
+            "first_compile_us": 0.19999999999999998,
+            "first_resolve_us": 0.85,
+            "first_resolver_new_us": 0.037,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.2580145,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.130299,
+            "first_compile_us": 0.257,
+            "first_resolve_us": 0.6950000000000001,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.20926025,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.2887235,
+            "first_compile_us": 1.28,
+            "first_resolve_us": 1.541,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.35988790000000004,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.318005,
+            "first_compile_us": 1.139,
+            "first_resolve_us": 1.18,
+            "first_resolver_new_us": 0.07,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.5433676000000001,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.09684649999999999,
+            "first_compile_us": 0.32,
+            "first_resolve_us": 2.539,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.9725478500000001,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.14210350000000002,
+            "first_compile_us": 0.49100000000000005,
+            "first_resolve_us": 1.034,
+            "first_resolver_new_us": 0.022,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.40880415000000003,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.0936325,
+            "first_compile_us": 0.18,
+            "first_resolve_us": 129.21800000000002,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 40,
+            "resolve_us": 82.69422499999999,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.12525000000000003,
+            "first_compile_us": 0.301,
+            "first_resolve_us": 192.141,
+            "first_resolver_new_us": 0.018,
+            "resolve_iterations": 40,
+            "resolve_us": 176.59142500000002,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-cycle-before 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3988\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2056\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 6\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 2,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 163.72555,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 37.334199999999996,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.10955449999999999,
+            "first_compile_us": 0.386,
+            "first_resolve_us": 1.38,
+            "first_resolver_new_us": 5.703,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.088259,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.09676,
+            "first_compile_us": 0.221,
+            "first_resolve_us": 0.75,
+            "first_resolver_new_us": 0.032,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.23544600000000002,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.13018649999999998,
+            "first_compile_us": 0.28200000000000003,
+            "first_resolve_us": 0.905,
+            "first_resolver_new_us": 0.013000000000000001,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.1963466,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.282843,
+            "first_compile_us": 1.0979999999999999,
+            "first_resolve_us": 1.2610000000000001,
+            "first_resolver_new_us": 0.02,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.3586779,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.3300145,
+            "first_compile_us": 1.172,
+            "first_resolve_us": 1.24,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.51286845,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.113069,
+            "first_compile_us": 0.267,
+            "first_resolve_us": 2.553,
+            "first_resolver_new_us": 0.013000000000000001,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.9712432000000001,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.14575849999999999,
+            "first_compile_us": 0.414,
+            "first_resolve_us": 0.892,
+            "first_resolver_new_us": 0.112,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.40095564999999994,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.11002600000000001,
+            "first_compile_us": 0.197,
+            "first_resolve_us": 128.13899999999998,
+            "first_resolver_new_us": 0.273,
+            "resolve_iterations": 40,
+            "resolve_us": 85.629125,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.1261965,
+            "first_compile_us": 0.24699999999999997,
+            "first_resolve_us": 202.05700000000002,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 40,
+            "resolve_us": 181.68515,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-cycle-before 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3996\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2038\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 3\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 2,
+      "benchmark": {
+        "batch": [
+          {
+            "accounted_reserved_bytes": 408000,
+            "compile_drop_us": 163.4306,
+            "count": 1000,
+            "independent": true
+          },
+          {
+            "accounted_reserved_bytes": 69488,
+            "compile_drop_us": 36.304449999999996,
+            "count": 1000,
+            "independent": false
+          }
+        ],
+        "cases": [
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.110601,
+            "first_compile_us": 0.385,
+            "first_resolve_us": 2.149,
+            "first_resolver_new_us": 7.38,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.09563105000000001,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--base)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 3,
+            "compile_us": 0.10855100000000001,
+            "first_compile_us": 0.227,
+            "first_resolve_us": 0.928,
+            "first_resolver_new_us": 0.04,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.24726495,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(--b)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.1312105,
+            "first_compile_us": 0.28200000000000003,
+            "first_resolve_us": 0.729,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.2062913,
+            "result_source_bytes": 4,
+            "shared_returned_arena_bytes": 229664,
+            "source": "var(var(--name))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 1,
+            "compile_us": 0.2742365,
+            "first_compile_us": 1.079,
+            "first_resolve_us": 1.254,
+            "first_resolver_new_us": 0.016,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.33750805,
+            "result_source_bytes": 13,
+            "shared_returned_arena_bytes": 448,
+            "source": "var(--missing, rgb(var(--r) 0 0))"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 229664,
+            "cached_properties": 2,
+            "compile_us": 0.3141735,
+            "first_compile_us": 1.145,
+            "first_resolve_us": 1.273,
+            "first_resolver_new_us": 0.013000000000000001,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.50211335,
+            "result_source_bytes": 24,
+            "shared_returned_arena_bytes": 656,
+            "source": "rgb(calc(var(--r) + var(--delta)) 0 0)"
+          },
+          {
+            "cache_hits": 1,
+            "cached_arena_bytes": 230960,
+            "cached_properties": 5,
+            "compile_us": 0.09636650000000001,
+            "first_compile_us": 0.29700000000000004,
+            "first_resolve_us": 2.424,
+            "first_resolver_new_us": 0.015,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.9402705,
+            "result_source_bytes": 17,
+            "shared_returned_arena_bytes": 512,
+            "source": "var(--diamond)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 2,
+            "compile_us": 0.134498,
+            "first_compile_us": 0.339,
+            "first_resolve_us": 0.9199999999999999,
+            "first_resolver_new_us": 0.014,
+            "resolve_iterations": 20000,
+            "resolve_us": 0.39675335000000006,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--cycle-a,red)"
+          },
+          {
+            "cache_hits": 999,
+            "cached_arena_bytes": 299536,
+            "cached_properties": 2,
+            "compile_us": 0.09323700000000001,
+            "first_compile_us": 0.21,
+            "first_resolve_us": 115.095,
+            "first_resolver_new_us": 0.017,
+            "resolve_iterations": 40,
+            "resolve_us": 87.59382500000001,
+            "result_source_bytes": 5000,
+            "shared_returned_arena_bytes": 69872,
+            "source": "var(--long)"
+          },
+          {
+            "cache_hits": 0,
+            "cached_arena_bytes": 0,
+            "cached_properties": 33,
+            "compile_us": 0.12480950000000002,
+            "first_compile_us": 0.34400000000000003,
+            "first_resolve_us": 168.20499999999998,
+            "first_resolver_new_us": 0.019000000000000003,
+            "resolve_iterations": 40,
+            "resolve_us": 155.386725,
+            "result_source_bytes": 3,
+            "shared_returned_arena_bytes": 344,
+            "source": "var(--deep0,red)"
+          }
+        ],
+        "cold_cache": true,
+        "method": "Cold control clears results before each public request, retaining worker capacities; warm mode reuses memoized properties. Both modes memoize cycles/dependencies within one request.",
+        "rounds": 20,
+        "scope": "Prebuilt CSS token value compilation and substitution against an explicit immutable winning-property snapshot. No CSSOM, cascade, layout, rendering, JS, network, GPU, UI or Chrome comparison",
+        "value_size": 16
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/variables-default 20 cold\"\n\tUser time (seconds): 0.07\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.07\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 3864\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 2055\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 3\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ],
+  "common_runs": [
+    {
+      "mode": "before",
+      "run": 0,
+      "case": "css",
+      "benchmark": {
+        "baseline_css_parser": false,
+        "results": [
+          {
+            "case": "stylesheet",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 98304,
+            "first_parse_ms": 9.854689,
+            "items": 8192,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 262144,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 8.1152276,
+            "rounds": 5,
+            "source_bytes": 655360,
+            "tokenize_ms": 4.5429446,
+            "tokens": 278528
+          },
+          {
+            "case": "literals",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.075117,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 10,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.0554552,
+            "rounds": 5,
+            "source_bytes": 2128598,
+            "tokenize_ms": 0.051929600000000006,
+            "tokens": 11
+          },
+          {
+            "case": "decoded",
+            "decoded_slot_reserved_bytes": 64,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.694781,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 9,
+            "owned_text_bytes": 300000,
+            "parse_and_drop_ms": 2.7383206,
+            "rounds": 5,
+            "source_bytes": 500017,
+            "tokenize_ms": 3.2331306,
+            "tokens": 10
+          },
+          {
+            "case": "declaration_values",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 1572864,
+            "first_parse_ms": 8.450911999999999,
+            "items": 1,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 200005,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 10.4627252,
+            "rounds": 5,
+            "source_bytes": 400021,
+            "tokenize_ms": 4.168300400000001,
+            "tokens": 200005
+          },
+          {
+            "case": "mixed_2000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.569538,
+            "items": 2000,
+            "node_reserved_bytes": 393216,
+            "node_size": 24,
+            "nodes": 16000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.5628434,
+            "rounds": 5,
+            "source_bytes": 38000,
+            "tokenize_ms": 0.30853579999999997,
+            "tokens": 18000
+          },
+          {
+            "case": "mixed_4000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 1.256068,
+            "items": 4000,
+            "node_reserved_bytes": 786432,
+            "node_size": 24,
+            "nodes": 32000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 1.144946,
+            "rounds": 5,
+            "source_bytes": 76000,
+            "tokenize_ms": 0.6128922,
+            "tokens": 36000
+          },
+          {
+            "case": "mixed_8000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.2893570000000003,
+            "items": 8000,
+            "node_reserved_bytes": 1572864,
+            "node_size": 24,
+            "nodes": 64000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 2.2826006,
+            "rounds": 5,
+            "source_bytes": 152000,
+            "tokenize_ms": 1.2271648,
+            "tokens": 72000
+          }
+        ],
+        "scalar_scans": false,
+        "scope": "Static CSS syntax only; no selectors, property grammar, style, layout, network, UI or Chrome comparison"
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/css-before 5\"\n\tUser time (seconds): 0.20\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 93%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.22\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 13496\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 5257\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 56\n\tSwaps: 0\n\tFile system inputs: 2272\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 0,
+      "case": "css",
+      "benchmark": {
+        "baseline_css_parser": false,
+        "results": [
+          {
+            "case": "stylesheet",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 98304,
+            "first_parse_ms": 9.740135,
+            "items": 8192,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 262144,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 8.137749199999998,
+            "rounds": 5,
+            "source_bytes": 655360,
+            "tokenize_ms": 4.4898634,
+            "tokens": 278528
+          },
+          {
+            "case": "literals",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.084471,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 10,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.05874539999999999,
+            "rounds": 5,
+            "source_bytes": 2128598,
+            "tokenize_ms": 0.0562594,
+            "tokens": 11
+          },
+          {
+            "case": "decoded",
+            "decoded_slot_reserved_bytes": 64,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.677277,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 9,
+            "owned_text_bytes": 300000,
+            "parse_and_drop_ms": 2.7092232,
+            "rounds": 5,
+            "source_bytes": 500017,
+            "tokenize_ms": 2.6977734,
+            "tokens": 10
+          },
+          {
+            "case": "declaration_values",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 1572864,
+            "first_parse_ms": 8.794820999999999,
+            "items": 1,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 200005,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 7.9045222,
+            "rounds": 5,
+            "source_bytes": 400021,
+            "tokenize_ms": 4.2290228,
+            "tokens": 200005
+          },
+          {
+            "case": "mixed_2000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.557275,
+            "items": 2000,
+            "node_reserved_bytes": 393216,
+            "node_size": 24,
+            "nodes": 16000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.5637176,
+            "rounds": 5,
+            "source_bytes": 38000,
+            "tokenize_ms": 0.3009404,
+            "tokens": 18000
+          },
+          {
+            "case": "mixed_4000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 1.096516,
+            "items": 4000,
+            "node_reserved_bytes": 786432,
+            "node_size": 24,
+            "nodes": 32000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 1.1154604000000001,
+            "rounds": 5,
+            "source_bytes": 76000,
+            "tokenize_ms": 0.6025802,
+            "tokens": 36000
+          },
+          {
+            "case": "mixed_8000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.246048,
+            "items": 8000,
+            "node_reserved_bytes": 1572864,
+            "node_size": 24,
+            "nodes": 64000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 2.239023,
+            "rounds": 5,
+            "source_bytes": 152000,
+            "tokenize_ms": 1.2126278000000001,
+            "tokens": 72000
+          }
+        ],
+        "scalar_scans": false,
+        "scope": "Static CSS syntax only; no selectors, property grammar, style, layout, network, UI or Chrome comparison"
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/css-after 5\"\n\tUser time (seconds): 0.20\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 95%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.22\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 13372\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 5255\n\tVoluntary context switches: 3\n\tInvoluntary context switches: 6\n\tSwaps: 0\n\tFile system inputs: 4152\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 0,
+      "case": "color",
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.15271600000000002,
+            "first_step_us": 3.181,
+            "from": "Srgb",
+            "max_step_us": 5.837,
+            "samples_ms": [
+              0.12440500000000002,
+              0.124113,
+              0.126675,
+              0.124184,
+              0.121883,
+              0.130743,
+              0.12993600000000002,
+              0.124957,
+              0.12181,
+              0.12231500000000001,
+              0.130313,
+              0.12212200000000001,
+              0.122217,
+              0.12774300000000002,
+              0.121974,
+              0.124593,
+              0.121476,
+              0.121628,
+              0.121405,
+              0.121713
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.972138,
+            "first_step_us": 19.537,
+            "from": "DisplayP3Linear",
+            "max_step_us": 19.537,
+            "samples_ms": [
+              0.8774949999999999,
+              0.8947649999999999,
+              0.896706,
+              0.877498,
+              0.8753120000000001,
+              0.877035,
+              0.882442,
+              0.881707,
+              0.915473,
+              0.92128,
+              0.90338,
+              0.875896,
+              0.933368,
+              0.896472,
+              0.875316,
+              0.908372,
+              0.899917,
+              0.8947719999999999,
+              0.884675,
+              0.870884
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.9709150000000001,
+            "first_step_us": 18.807000000000002,
+            "from": "XyzD50",
+            "max_step_us": 18.807000000000002,
+            "samples_ms": [
+              0.899643,
+              0.898817,
+              0.901049,
+              0.8775080000000001,
+              0.876022,
+              0.8756550000000001,
+              0.874226,
+              0.877868,
+              0.877625,
+              0.892958,
+              0.8825299999999999,
+              0.872271,
+              0.87708,
+              0.874031,
+              0.885944,
+              0.887092,
+              0.876815,
+              0.8982079999999999,
+              0.9069240000000001,
+              0.907438
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.214869,
+            "first_step_us": 135.985,
+            "from": "Oklab",
+            "max_step_us": 135.985,
+            "samples_ms": [
+              8.247715,
+              8.268988,
+              8.311126999999999,
+              8.252974,
+              8.264118000000002,
+              8.297831,
+              8.290994,
+              8.240439,
+              8.162906,
+              8.255092000000001,
+              8.298563,
+              8.199083,
+              8.283252,
+              8.309865,
+              8.303499,
+              8.315792,
+              8.251362,
+              8.243095,
+              8.219626,
+              8.206589000000001
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 15.918019,
+            "first_step_us": 249.715,
+            "from": "DisplayP3",
+            "max_step_us": 260.653,
+            "samples_ms": [
+              15.842223999999998,
+              16.135881,
+              16.071914,
+              16.031854000000003,
+              16.016617,
+              16.026061000000002,
+              15.918432,
+              16.048641999999997,
+              16.140643999999998,
+              16.004227999999998,
+              15.989804,
+              15.947807000000001,
+              16.132619000000002,
+              16.057319,
+              16.17196,
+              16.012473,
+              15.980178,
+              15.891615000000002,
+              15.996670000000002,
+              15.876717
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 3005,
+            "parse_ns": 18.3885,
+            "resolve_ns": 13.9458,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1577,
+            "parse_ns": 106.2624,
+            "resolve_ns": 13.70875,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1418,
+            "parse_ns": 77.6692,
+            "resolve_ns": 13.6198,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 404,
+            "parse_ns": 77.6202,
+            "resolve_ns": 13.7862,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 486,
+            "parse_ns": 71.71225,
+            "resolve_ns": 14.35185,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 955,
+            "parse_ns": 187.45835,
+            "resolve_ns": 15.7001,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/color-before 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.61\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18576\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 6604\n\tVoluntary context switches: 2\n\tInvoluntary context switches: 22\n\tSwaps: 0\n\tFile system inputs: 2024\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 0,
+      "case": "color",
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.139786,
+            "first_step_us": 2.6919999999999997,
+            "from": "Srgb",
+            "max_step_us": 2.6919999999999997,
+            "samples_ms": [
+              0.129922,
+              0.119349,
+              0.120729,
+              0.119417,
+              0.120605,
+              0.12448400000000001,
+              0.12075,
+              0.11887199999999999,
+              0.12365,
+              0.12419100000000001,
+              0.12147100000000001,
+              0.124731,
+              0.132971,
+              0.12532600000000002,
+              0.12176300000000001,
+              0.120019,
+              0.122962,
+              0.12437200000000001,
+              0.120943,
+              0.12452
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.9309729999999999,
+            "first_step_us": 22.563000000000002,
+            "from": "DisplayP3Linear",
+            "max_step_us": 22.563000000000002,
+            "samples_ms": [
+              0.892484,
+              0.898903,
+              0.8747680000000001,
+              0.874905,
+              0.8911910000000001,
+              0.903258,
+              0.9058360000000001,
+              0.896931,
+              0.887569,
+              0.8753059999999999,
+              0.89466,
+              0.886935,
+              0.8955019999999999,
+              0.876471,
+              0.876216,
+              0.8733369999999999,
+              0.874289,
+              5.461324,
+              0.963171,
+              0.873965
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.9259799999999999,
+            "first_step_us": 19.403,
+            "from": "XyzD50",
+            "max_step_us": 19.403,
+            "samples_ms": [
+              0.896298,
+              0.924507,
+              0.887283,
+              0.875901,
+              0.875914,
+              0.8936630000000001,
+              0.891652,
+              0.8786790000000001,
+              0.910585,
+              0.895866,
+              0.901648,
+              0.916958,
+              0.894866,
+              0.877164,
+              0.876475,
+              0.874228,
+              0.8739009999999999,
+              0.877803,
+              0.875622,
+              0.878846
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.251966,
+            "first_step_us": 136.786,
+            "from": "Oklab",
+            "max_step_us": 136.786,
+            "samples_ms": [
+              8.241732,
+              8.323527,
+              8.241636999999999,
+              8.251384,
+              8.245700999999999,
+              8.318714,
+              8.247443,
+              8.277697,
+              8.330313,
+              8.394302,
+              8.315976,
+              8.269943,
+              8.223596,
+              8.244800999999999,
+              8.300519,
+              8.283261999999999,
+              8.202966,
+              8.206046,
+              8.178071000000001,
+              8.300053
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 16.167236000000003,
+            "first_step_us": 257.937,
+            "from": "DisplayP3",
+            "max_step_us": 262.119,
+            "samples_ms": [
+              16.193381,
+              16.064452,
+              16.016883999999997,
+              16.114469999999997,
+              15.944005,
+              16.022154,
+              16.12955,
+              15.984545999999998,
+              15.950293,
+              15.918548000000001,
+              15.873853,
+              16.039007,
+              16.075486,
+              16.027292,
+              16.009424000000003,
+              16.072578,
+              16.046142,
+              16.157421000000003,
+              16.202129,
+              16.025996
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1513,
+            "parse_ns": 17.77805,
+            "resolve_ns": 13.7995,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 839,
+            "parse_ns": 105.40145,
+            "resolve_ns": 13.95595,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1078,
+            "parse_ns": 84.25755,
+            "resolve_ns": 14.36835,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 476,
+            "parse_ns": 80.31005,
+            "resolve_ns": 14.31645,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 428,
+            "parse_ns": 78.36345,
+            "resolve_ns": 14.34875,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 987,
+            "parse_ns": 187.6581,
+            "resolve_ns": 14.5393,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/color-after 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.01\n\tPercent of CPU this job got: 94%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.63\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18608\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 1\n\tMinor (reclaiming a frame) page faults: 6603\n\tVoluntary context switches: 3\n\tInvoluntary context switches: 103\n\tSwaps: 0\n\tFile system inputs: 4536\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 1,
+      "case": "css",
+      "benchmark": {
+        "baseline_css_parser": false,
+        "results": [
+          {
+            "case": "stylesheet",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 98304,
+            "first_parse_ms": 9.564287,
+            "items": 8192,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 262144,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 8.0111116,
+            "rounds": 5,
+            "source_bytes": 655360,
+            "tokenize_ms": 4.5431332,
+            "tokens": 278528
+          },
+          {
+            "case": "literals",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.09678600000000001,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 10,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.0613586,
+            "rounds": 5,
+            "source_bytes": 2128598,
+            "tokenize_ms": 0.05641240000000001,
+            "tokens": 11
+          },
+          {
+            "case": "decoded",
+            "decoded_slot_reserved_bytes": 64,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.71607,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 9,
+            "owned_text_bytes": 300000,
+            "parse_and_drop_ms": 2.6721728,
+            "rounds": 5,
+            "source_bytes": 500017,
+            "tokenize_ms": 2.6508013999999998,
+            "tokens": 10
+          },
+          {
+            "case": "declaration_values",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 1572864,
+            "first_parse_ms": 8.291098999999999,
+            "items": 1,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 200005,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 7.7299824,
+            "rounds": 5,
+            "source_bytes": 400021,
+            "tokenize_ms": 4.2223062,
+            "tokens": 200005
+          },
+          {
+            "case": "mixed_2000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.5545829999999999,
+            "items": 2000,
+            "node_reserved_bytes": 393216,
+            "node_size": 24,
+            "nodes": 16000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.5624830000000001,
+            "rounds": 5,
+            "source_bytes": 38000,
+            "tokenize_ms": 0.3185478,
+            "tokens": 18000
+          },
+          {
+            "case": "mixed_4000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 1.106062,
+            "items": 4000,
+            "node_reserved_bytes": 786432,
+            "node_size": 24,
+            "nodes": 32000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 1.1113773999999998,
+            "rounds": 5,
+            "source_bytes": 76000,
+            "tokenize_ms": 0.6180962,
+            "tokens": 36000
+          },
+          {
+            "case": "mixed_8000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.213535,
+            "items": 8000,
+            "node_reserved_bytes": 1572864,
+            "node_size": 24,
+            "nodes": 64000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 2.1960542,
+            "rounds": 5,
+            "source_bytes": 152000,
+            "tokenize_ms": 1.2491093999999998,
+            "tokens": 72000
+          }
+        ],
+        "scalar_scans": false,
+        "scope": "Static CSS syntax only; no selectors, property grammar, style, layout, network, UI or Chrome comparison"
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/css-after 5\"\n\tUser time (seconds): 0.20\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.20\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 13412\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 5258\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 9\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 1,
+      "case": "css",
+      "benchmark": {
+        "baseline_css_parser": false,
+        "results": [
+          {
+            "case": "stylesheet",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 98304,
+            "first_parse_ms": 9.519171,
+            "items": 8192,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 262144,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 8.000758,
+            "rounds": 5,
+            "source_bytes": 655360,
+            "tokenize_ms": 4.3391556,
+            "tokens": 278528
+          },
+          {
+            "case": "literals",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.110351,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 10,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.0705636,
+            "rounds": 5,
+            "source_bytes": 2128598,
+            "tokenize_ms": 0.0667108,
+            "tokens": 11
+          },
+          {
+            "case": "decoded",
+            "decoded_slot_reserved_bytes": 64,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.731735,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 9,
+            "owned_text_bytes": 300000,
+            "parse_and_drop_ms": 2.7275514000000003,
+            "rounds": 5,
+            "source_bytes": 500017,
+            "tokenize_ms": 2.7032196,
+            "tokens": 10
+          },
+          {
+            "case": "declaration_values",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 1572864,
+            "first_parse_ms": 8.120353999999999,
+            "items": 1,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 200005,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 7.630547999999999,
+            "rounds": 5,
+            "source_bytes": 400021,
+            "tokenize_ms": 4.108231999999999,
+            "tokens": 200005
+          },
+          {
+            "case": "mixed_2000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.58422,
+            "items": 2000,
+            "node_reserved_bytes": 393216,
+            "node_size": 24,
+            "nodes": 16000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.5570656,
+            "rounds": 5,
+            "source_bytes": 38000,
+            "tokenize_ms": 0.2982648,
+            "tokens": 18000
+          },
+          {
+            "case": "mixed_4000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 1.143291,
+            "items": 4000,
+            "node_reserved_bytes": 786432,
+            "node_size": 24,
+            "nodes": 32000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 1.1244504000000002,
+            "rounds": 5,
+            "source_bytes": 76000,
+            "tokenize_ms": 1.07715,
+            "tokens": 36000
+          },
+          {
+            "case": "mixed_8000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.2215920000000002,
+            "items": 8000,
+            "node_reserved_bytes": 1572864,
+            "node_size": 24,
+            "nodes": 64000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 2.2355481999999998,
+            "rounds": 5,
+            "source_bytes": 152000,
+            "tokenize_ms": 1.1675216000000002,
+            "tokens": 72000
+          }
+        ],
+        "scalar_scans": false,
+        "scope": "Static CSS syntax only; no selectors, property grammar, style, layout, network, UI or Chrome comparison"
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/css-before 5\"\n\tUser time (seconds): 0.20\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 98%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.20\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 13528\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 5257\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 21\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 1,
+      "case": "color",
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.13676000000000002,
+            "first_step_us": 2.756,
+            "from": "Srgb",
+            "max_step_us": 2.756,
+            "samples_ms": [
+              0.12444299999999998,
+              0.125623,
+              0.120267,
+              0.121374,
+              0.120289,
+              0.12570699999999999,
+              0.121045,
+              0.12194,
+              0.12299399999999999,
+              0.122065,
+              0.121995,
+              0.120489,
+              0.121337,
+              0.120227,
+              0.12199700000000001,
+              4.379007,
+              0.131787,
+              0.126419,
+              0.141155,
+              0.132686
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.927661,
+            "first_step_us": 18.031000000000002,
+            "from": "DisplayP3Linear",
+            "max_step_us": 18.031000000000002,
+            "samples_ms": [
+              0.935395,
+              0.900511,
+              0.892579,
+              0.9271429999999999,
+              0.900437,
+              0.8741829999999999,
+              0.877672,
+              0.8757510000000001,
+              0.8846550000000001,
+              0.888867,
+              0.876438,
+              0.8764759999999999,
+              0.8747619999999999,
+              0.873285,
+              0.877225,
+              0.8753730000000001,
+              0.8769480000000001,
+              0.900478,
+              0.8926620000000001,
+              0.900719
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.892335,
+            "first_step_us": 19.734,
+            "from": "XyzD50",
+            "max_step_us": 19.734,
+            "samples_ms": [
+              0.8879400000000001,
+              0.894486,
+              0.8850410000000001,
+              0.879454,
+              0.898025,
+              0.87703,
+              0.87711,
+              0.8904479999999999,
+              0.896123,
+              0.878404,
+              0.875597,
+              0.87538,
+              0.876604,
+              0.878887,
+              0.880424,
+              0.875505,
+              0.875857,
+              0.890597,
+              0.878159,
+              0.87626
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.23819,
+            "first_step_us": 139.126,
+            "from": "Oklab",
+            "max_step_us": 139.126,
+            "samples_ms": [
+              8.307958000000001,
+              8.193643999999999,
+              8.136410999999999,
+              8.146447,
+              8.247917000000001,
+              8.38968,
+              8.171055,
+              8.289855000000001,
+              8.256639,
+              8.298252000000002,
+              8.268914,
+              8.215093,
+              8.182996999999999,
+              8.14631,
+              8.237786999999999,
+              8.250453,
+              8.266994,
+              8.310914,
+              8.202191,
+              8.245133
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 15.963824,
+            "first_step_us": 252.1,
+            "from": "DisplayP3",
+            "max_step_us": 309.812,
+            "samples_ms": [
+              16.103581,
+              16.084767,
+              15.900437,
+              16.058889,
+              15.863069000000001,
+              15.924119000000001,
+              15.983628,
+              15.844638000000002,
+              15.928520000000002,
+              15.986799999999999,
+              16.099368,
+              16.082281000000002,
+              15.986602999999999,
+              15.912991000000002,
+              15.984422000000002,
+              15.987813,
+              16.125951999999998,
+              16.109386999999998,
+              16.029776,
+              15.959985999999999
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1211,
+            "parse_ns": 17.04715,
+            "resolve_ns": 14.6414,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 2391,
+            "parse_ns": 106.76615,
+            "resolve_ns": 13.72885,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 2349,
+            "parse_ns": 81.54435,
+            "resolve_ns": 13.839,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 428,
+            "parse_ns": 88.51775,
+            "resolve_ns": 13.83725,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 431,
+            "parse_ns": 75.11175,
+            "resolve_ns": 13.9266,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 955,
+            "parse_ns": 192.1253,
+            "resolve_ns": 14.8246,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/color-after 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.01\n\tPercent of CPU this job got: 96%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.62\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18552\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6602\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 99\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 1,
+      "case": "color",
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.13928000000000001,
+            "first_step_us": 2.471,
+            "from": "Srgb",
+            "max_step_us": 2.471,
+            "samples_ms": [
+              0.12613,
+              0.123111,
+              0.122798,
+              0.122765,
+              0.12238900000000001,
+              0.12234,
+              0.12193000000000001,
+              0.122452,
+              0.124872,
+              0.129222,
+              0.12478500000000001,
+              0.130394,
+              0.130315,
+              0.123907,
+              0.13131199999999998,
+              0.12444299999999998,
+              0.124504,
+              0.12286,
+              0.12261300000000001,
+              0.12259700000000001
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.92657,
+            "first_step_us": 18.847,
+            "from": "DisplayP3Linear",
+            "max_step_us": 19.82,
+            "samples_ms": [
+              0.908257,
+              0.928981,
+              0.921798,
+              0.91343,
+              0.875095,
+              0.8868590000000001,
+              0.883958,
+              0.873202,
+              0.88298,
+              0.879004,
+              0.877794,
+              0.8883829999999999,
+              0.896566,
+              0.89658,
+              0.905107,
+              0.900952,
+              0.8821150000000001,
+              0.879585,
+              0.874105,
+              0.875968
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.929299,
+            "first_step_us": 19.448999999999998,
+            "from": "XyzD50",
+            "max_step_us": 19.448999999999998,
+            "samples_ms": [
+              0.8773080000000001,
+              0.873256,
+              0.875854,
+              0.8825299999999999,
+              0.894011,
+              0.8876379999999999,
+              0.916682,
+              0.892783,
+              0.872886,
+              0.8754569999999999,
+              0.876901,
+              0.88583,
+              0.880162,
+              0.883996,
+              0.894733,
+              0.894114,
+              0.9005690000000001,
+              0.880767,
+              0.8959480000000001,
+              0.916194
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.243531,
+            "first_step_us": 142.349,
+            "from": "Oklab",
+            "max_step_us": 142.349,
+            "samples_ms": [
+              8.183663000000001,
+              8.265776,
+              8.393869,
+              8.244643,
+              8.257615,
+              8.323166,
+              8.181856,
+              8.208340999999999,
+              8.250722999999999,
+              8.293164,
+              8.158346,
+              8.152173000000001,
+              8.182654,
+              8.319938,
+              8.299439000000001,
+              8.219964,
+              8.261372,
+              8.283672000000001,
+              8.263034000000001,
+              8.297944
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 16.113711,
+            "first_step_us": 256.364,
+            "from": "DisplayP3",
+            "max_step_us": 259.945,
+            "samples_ms": [
+              16.012142,
+              16.129982000000002,
+              16.074104,
+              16.035037,
+              18.48606,
+              16.094254999999997,
+              28.247004999999998,
+              16.07542,
+              16.116516,
+              15.98034,
+              15.96336,
+              16.121965,
+              16.084719,
+              16.086362,
+              16.159387000000002,
+              15.984207,
+              16.19176,
+              16.168911,
+              16.091092,
+              16.112229
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1108,
+            "parse_ns": 17.2943,
+            "resolve_ns": 13.6412,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1144,
+            "parse_ns": 107.9071,
+            "resolve_ns": 13.62025,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1378,
+            "parse_ns": 76.99295,
+            "resolve_ns": 13.6186,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 405,
+            "parse_ns": 78.69385,
+            "resolve_ns": 13.6662,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 368,
+            "parse_ns": 70.9295,
+            "resolve_ns": 13.619,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 911,
+            "parse_ns": 187.5627,
+            "resolve_ns": 15.51595,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/color-before 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 97%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.62\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18824\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6606\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 76\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 2,
+      "case": "css",
+      "benchmark": {
+        "baseline_css_parser": false,
+        "results": [
+          {
+            "case": "stylesheet",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 98304,
+            "first_parse_ms": 9.363468999999998,
+            "items": 8192,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 262144,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 8.054295399999999,
+            "rounds": 5,
+            "source_bytes": 655360,
+            "tokenize_ms": 4.2870306,
+            "tokens": 278528
+          },
+          {
+            "case": "literals",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.069454,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 10,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.05251360000000001,
+            "rounds": 5,
+            "source_bytes": 2128598,
+            "tokenize_ms": 0.0499798,
+            "tokens": 11
+          },
+          {
+            "case": "decoded",
+            "decoded_slot_reserved_bytes": 64,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.7655060000000002,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 9,
+            "owned_text_bytes": 300000,
+            "parse_and_drop_ms": 2.7131217999999997,
+            "rounds": 5,
+            "source_bytes": 500017,
+            "tokenize_ms": 2.7168292000000003,
+            "tokens": 10
+          },
+          {
+            "case": "declaration_values",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 1572864,
+            "first_parse_ms": 8.304728,
+            "items": 1,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 200005,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 7.7194036,
+            "rounds": 5,
+            "source_bytes": 400021,
+            "tokenize_ms": 3.9978752,
+            "tokens": 200005
+          },
+          {
+            "case": "mixed_2000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.5527540000000001,
+            "items": 2000,
+            "node_reserved_bytes": 393216,
+            "node_size": 24,
+            "nodes": 16000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.5497458,
+            "rounds": 5,
+            "source_bytes": 38000,
+            "tokenize_ms": 0.2932696,
+            "tokens": 18000
+          },
+          {
+            "case": "mixed_4000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 1.110895,
+            "items": 4000,
+            "node_reserved_bytes": 786432,
+            "node_size": 24,
+            "nodes": 32000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 1.1201595999999998,
+            "rounds": 5,
+            "source_bytes": 76000,
+            "tokenize_ms": 0.5912454,
+            "tokens": 36000
+          },
+          {
+            "case": "mixed_8000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.227373,
+            "items": 8000,
+            "node_reserved_bytes": 1572864,
+            "node_size": 24,
+            "nodes": 64000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 2.2409470000000002,
+            "rounds": 5,
+            "source_bytes": 152000,
+            "tokenize_ms": 1.1750922000000001,
+            "tokens": 72000
+          }
+        ],
+        "scalar_scans": false,
+        "scope": "Static CSS syntax only; no selectors, property grammar, style, layout, network, UI or Chrome comparison"
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/css-before 5\"\n\tUser time (seconds): 0.19\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.20\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 13428\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 5256\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 15\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 2,
+      "case": "css",
+      "benchmark": {
+        "baseline_css_parser": false,
+        "results": [
+          {
+            "case": "stylesheet",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 98304,
+            "first_parse_ms": 9.740022,
+            "items": 8192,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 262144,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 8.0836062,
+            "rounds": 5,
+            "source_bytes": 655360,
+            "tokenize_ms": 4.4434904,
+            "tokens": 278528
+          },
+          {
+            "case": "literals",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.064314,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 10,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.05140159999999999,
+            "rounds": 5,
+            "source_bytes": 2128598,
+            "tokenize_ms": 0.049624,
+            "tokens": 11
+          },
+          {
+            "case": "decoded",
+            "decoded_slot_reserved_bytes": 64,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.714118,
+            "items": 1,
+            "node_reserved_bytes": 384,
+            "node_size": 24,
+            "nodes": 9,
+            "owned_text_bytes": 300000,
+            "parse_and_drop_ms": 2.6875266,
+            "rounds": 5,
+            "source_bytes": 500017,
+            "tokenize_ms": 2.683747,
+            "tokens": 10
+          },
+          {
+            "case": "declaration_values",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 1572864,
+            "first_parse_ms": 8.653409,
+            "items": 1,
+            "node_reserved_bytes": 6291456,
+            "node_size": 24,
+            "nodes": 200005,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 7.7632306,
+            "rounds": 5,
+            "source_bytes": 400021,
+            "tokenize_ms": 4.1319604000000005,
+            "tokens": 200005
+          },
+          {
+            "case": "mixed_2000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 0.570886,
+            "items": 2000,
+            "node_reserved_bytes": 393216,
+            "node_size": 24,
+            "nodes": 16000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 0.5688066,
+            "rounds": 5,
+            "source_bytes": 38000,
+            "tokenize_ms": 0.2997938,
+            "tokens": 18000
+          },
+          {
+            "case": "mixed_4000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 1.124007,
+            "items": 4000,
+            "node_reserved_bytes": 786432,
+            "node_size": 24,
+            "nodes": 32000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 1.1341672,
+            "rounds": 5,
+            "source_bytes": 76000,
+            "tokenize_ms": 0.5978756,
+            "tokens": 36000
+          },
+          {
+            "case": "mixed_8000",
+            "decoded_slot_reserved_bytes": 0,
+            "dimension_reserved_bytes": 0,
+            "first_parse_ms": 2.264665,
+            "items": 8000,
+            "node_reserved_bytes": 1572864,
+            "node_size": 24,
+            "nodes": 64000,
+            "owned_text_bytes": 0,
+            "parse_and_drop_ms": 2.266772,
+            "rounds": 5,
+            "source_bytes": 152000,
+            "tokenize_ms": 1.2076324,
+            "tokens": 72000
+          }
+        ],
+        "scalar_scans": false,
+        "scope": "Static CSS syntax only; no selectors, property grammar, style, layout, network, UI or Chrome comparison"
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/css-after 5\"\n\tUser time (seconds): 0.20\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.20\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 13304\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 5256\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 10\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 8\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "before",
+      "run": 2,
+      "case": "color",
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.13560699999999998,
+            "first_step_us": 2.559,
+            "from": "Srgb",
+            "max_step_us": 2.559,
+            "samples_ms": [
+              0.131189,
+              0.12241500000000001,
+              0.123201,
+              0.140266,
+              0.12383000000000001,
+              0.122042,
+              0.120767,
+              0.121676,
+              0.12541,
+              0.124367,
+              0.129037,
+              0.120786,
+              0.120408,
+              0.120699,
+              0.120044,
+              0.12134900000000001,
+              0.126192,
+              0.132072,
+              0.126248,
+              0.121674
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.8995430000000001,
+            "first_step_us": 18.605,
+            "from": "DisplayP3Linear",
+            "max_step_us": 18.605,
+            "samples_ms": [
+              0.9108430000000001,
+              0.926634,
+              0.878723,
+              0.8760629999999999,
+              0.882764,
+              0.904307,
+              0.896354,
+              0.888003,
+              0.874942,
+              0.890871,
+              0.89105,
+              0.912796,
+              0.876213,
+              0.872553,
+              0.874974,
+              0.911486,
+              0.8947459999999999,
+              0.87807,
+              0.875625,
+              0.894755
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.9700639999999999,
+            "first_step_us": 20.727999999999998,
+            "from": "XyzD50",
+            "max_step_us": 20.727999999999998,
+            "samples_ms": [
+              0.878637,
+              0.873838,
+              0.88632,
+              0.872365,
+              0.878984,
+              0.890783,
+              0.8734390000000001,
+              0.887472,
+              0.894119,
+              0.91788,
+              0.8799279999999999,
+              0.887177,
+              0.8953369999999999,
+              0.8740910000000001,
+              0.8760169999999999,
+              0.877218,
+              0.8743559999999999,
+              0.883938,
+              0.8774759999999999,
+              0.879365
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.299258,
+            "first_step_us": 149.209,
+            "from": "Oklab",
+            "max_step_us": 149.209,
+            "samples_ms": [
+              8.221478000000001,
+              8.201191999999999,
+              8.294913,
+              8.335635,
+              8.185267,
+              8.192018000000001,
+              8.296297,
+              8.222320999999999,
+              8.249602,
+              8.249193,
+              8.339308,
+              8.213137,
+              8.234820000000001,
+              8.341460999999999,
+              8.269878,
+              8.264029,
+              8.203486,
+              8.232445,
+              8.203241,
+              8.162308
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 16.064111,
+            "first_step_us": 249.622,
+            "from": "DisplayP3",
+            "max_step_us": 261.115,
+            "samples_ms": [
+              15.981345000000001,
+              28.337859,
+              16.095134,
+              27.740115,
+              16.005440999999998,
+              15.984777,
+              16.115750000000002,
+              16.104514,
+              16.086533,
+              15.983298,
+              16.183521,
+              16.122449,
+              16.10664,
+              16.057126,
+              16.019724,
+              15.991848999999998,
+              16.277746999999998,
+              16.145824,
+              16.011696999999998,
+              16.077711
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 2169,
+            "parse_ns": 19.5138,
+            "resolve_ns": 13.2667,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1472,
+            "parse_ns": 116.02775,
+            "resolve_ns": 13.78295,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1548,
+            "parse_ns": 82.28035,
+            "resolve_ns": 13.1844,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 391,
+            "parse_ns": 82.6631,
+            "resolve_ns": 13.275,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 376,
+            "parse_ns": 78.74355,
+            "resolve_ns": 14.0103,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 930,
+            "parse_ns": 185.57795,
+            "resolve_ns": 14.389,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/color-before 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 95%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.62\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18780\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6603\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 113\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    },
+    {
+      "mode": "after",
+      "run": 2,
+      "case": "color",
+      "benchmark": {
+        "color_size": 20,
+        "conversion": [
+          {
+            "count": 262144,
+            "first_ms": 0.12397499999999999,
+            "first_step_us": 2.4,
+            "from": "Srgb",
+            "max_step_us": 2.4,
+            "samples_ms": [
+              0.123664,
+              0.122371,
+              0.12153800000000001,
+              0.122118,
+              0.122103,
+              0.121339,
+              0.12203599999999999,
+              0.120776,
+              0.124674,
+              0.12017900000000001,
+              0.121908,
+              0.122607,
+              0.122425,
+              0.121222,
+              0.12210800000000001,
+              0.120537,
+              0.12232599999999999,
+              0.121658,
+              0.13388899999999998,
+              0.123273
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.905833,
+            "first_step_us": 15.427999999999999,
+            "from": "DisplayP3Linear",
+            "max_step_us": 16.032,
+            "samples_ms": [
+              0.8738360000000001,
+              0.895425,
+              0.9012560000000001,
+              0.8761399999999999,
+              0.8770009999999999,
+              0.873889,
+              0.9719089999999999,
+              0.921223,
+              0.887379,
+              0.905728,
+              0.892648,
+              0.917479,
+              0.8742930000000001,
+              0.888713,
+              0.87535,
+              0.916945,
+              0.8790920000000001,
+              0.883924,
+              0.889522,
+              0.876792
+            ],
+            "to": "SrgbLinear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 0.930261,
+            "first_step_us": 18.624,
+            "from": "XyzD50",
+            "max_step_us": 18.624,
+            "samples_ms": [
+              0.907473,
+              0.903894,
+              0.8799800000000001,
+              0.885086,
+              0.8889790000000001,
+              0.8762000000000001,
+              0.891904,
+              0.8758900000000001,
+              0.9118120000000001,
+              0.8758769999999999,
+              0.875925,
+              0.887182,
+              0.897464,
+              0.8794529999999999,
+              0.910475,
+              0.918891,
+              0.923546,
+              0.938046,
+              0.874586,
+              0.9095639999999999
+            ],
+            "to": "DisplayP3Linear"
+          },
+          {
+            "count": 262144,
+            "first_ms": 8.189961,
+            "first_step_us": 139.894,
+            "from": "Oklab",
+            "max_step_us": 139.894,
+            "samples_ms": [
+              8.316221,
+              8.195928,
+              8.26336,
+              8.227121,
+              8.238358,
+              8.228305,
+              8.355497,
+              8.307051,
+              8.282994,
+              8.249663,
+              8.235799,
+              8.243324999999999,
+              8.210543000000001,
+              8.229963,
+              8.265195,
+              8.186941,
+              8.140527,
+              8.16207,
+              8.209519,
+              8.416587
+            ],
+            "to": "Srgb"
+          },
+          {
+            "count": 262144,
+            "first_ms": 16.244011999999998,
+            "first_step_us": 261.093,
+            "from": "DisplayP3",
+            "max_step_us": 262.024,
+            "samples_ms": [
+              16.08213,
+              16.068870999999998,
+              16.011666,
+              16.136571999999997,
+              16.163005000000002,
+              16.016067,
+              16.091336000000002,
+              16.175061,
+              16.099575,
+              15.966126000000001,
+              16.137571,
+              15.924333999999998,
+              16.110064,
+              16.041370999999998,
+              16.025036,
+              16.000401,
+              16.112834,
+              15.966917,
+              16.008929000000002,
+              16.135911999999998
+            ],
+            "to": "Srgb"
+          }
+        ],
+        "f64_storage": false,
+        "parsing": [
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 2318,
+            "parse_ns": 18.015,
+            "resolve_ns": 13.421,
+            "source": "#369c"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1248,
+            "parse_ns": 109.9545,
+            "resolve_ns": 13.5099,
+            "source": "rebeccapurple"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 1497,
+            "parse_ns": 73.23005,
+            "resolve_ns": 13.4004,
+            "source": "rgb(30% 60% 90% / 70%)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 440,
+            "parse_ns": 81.6885,
+            "resolve_ns": 13.4429,
+            "source": "oklch(60% 0.25 150 / 0.8)"
+          },
+          {
+            "expression_nodes": 0,
+            "expression_reserved_bytes": 0,
+            "first_parse_ns": 379,
+            "parse_ns": 72.3209,
+            "resolve_ns": 13.4078,
+            "source": "color(display-p3 1 0.5 -0.2)"
+          },
+          {
+            "expression_nodes": 5,
+            "expression_reserved_bytes": 232,
+            "first_parse_ns": 923,
+            "parse_ns": 189.29535,
+            "resolve_ns": 14.58625,
+            "source": "light-dark(#fff,light-dark(currentColor,oklch(.2 .1 20)))"
+          }
+        ],
+        "rounds": 20,
+        "scalar_conversion": false,
+        "scope": "Typed colors and allocation-free CPU conversion worker; no style/layout/GPU/UI/network/JS or Chrome comparison",
+        "ten_thousand_absolute_values_reserved_bytes": 240000,
+        "value_size": 24
+      },
+      "time_v": "\tCommand being timed: \"taskset -c 0 /var/tmp/olo-browser-research/variables/color-after 20\"\n\tUser time (seconds): 0.59\n\tSystem time (seconds): 0.00\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:00.60\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 18660\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 6606\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 22\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 16\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n"
+    }
+  ]
+}

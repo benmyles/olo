@@ -88,3 +88,11 @@ host environments, helper expansion, numeric reference decoding and
 unported cases. No upstream JS/CSSOM/page engine executes in the tests.
 Production typed arithmetic is original Rust based on CSS Values 4/5
 and the Typed OM numeric type rules, not an embedded third-party CSS engine.
+
+`tests/variable-fixtures` imports 25 unmodified WPT CSS Variables resources
+from revision `d7bb5bb848fcd304c10669288a211dbafd106d90` (BSD-3-Clause,
+included `LICENSE.md`). Its README, literal extractor, SOURCE.json and
+inventoried non-passes document the native grammar/cycle/substituted-name
+ports. No upstream JS or page executes, and no third-party variable or
+style engine is embedded. Production substitution and token assembly are
+original Rust based on CSS Variables and CSS Values/Syntax.

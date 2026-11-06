@@ -7,6 +7,7 @@ pub mod math;
 mod parser;
 pub mod selectors;
 mod syntax;
+pub mod variables;
 pub use parser::{ParseError, Statement, StatementKind, SyntaxError};
 mod tokenizer;
 pub use syntax::{Component, Components, Kind, Memory, Syntax};

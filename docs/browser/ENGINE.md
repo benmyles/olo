@@ -605,3 +605,117 @@ cargo test --release -p olo-web --test colors --all-features
 cargo build --release -p olo-web --example color_math_bench
 taskset -c 0 /usr/bin/time -v target/release/examples/color_math_bench 20
 ```
+
+
+## Custom-property token values and substitution
+
+`css::variables::Value::compile(Components, Limits, cancellation)` validates
+generic declaration contents and current var() argument grammar, then copies
+only those tokens into an owned compact Syntax. `compile_batch` shares one
+source/token arena across values; each view is 16 bytes. Original stylesheet
+Syntax/source is released. One live view retains its whole batch, so callers
+should group values with compatible lifetimes. A pending bit shares the
+end-index field; arenas are capped at 2^31-1 nodes. The root Syntax node
+layout stays 24 bytes. Empty values are valid; only `Computed::invalid()`
+denotes guaranteed-invalid.
+
+The original assembler copies flat token structures and numeric/decoded
+payloads directly, without concatenating variable strings or retokenizing
+the expanded text. It rebuilds container ranges, normalizes implicit EOF
+closures and preserves names, units, number spellings and casing. Required
+boundary comments prevent new identifiers, dimensions, percentages, CDO/CDC
+or comments from appearing across pasted tokens. `source_spelling()` exposes
+the assembled value's own coherent spelling (linear in its top-level token
+count), not CSSOM/author serialization or adjoining batch values. Normal
+output-byte checks use a constant-time whole-arena preflight, avoiding a
+spelling scan for values whose complete arena fits the limit.
+
+var() supports empty/multiple-token fallbacks, current free-form {} wrappers,
+case-sensitive decoded custom names and names produced by nested var().
+Argument grammar is validated even in unused fallbacks. Selection resolves
+only the needed fallback, so unused fallback cycles are irrelevant. Other
+known arbitrary substitution functions remain pending, and selected
+unimplemented functions return Unsupported rather than masquerading as
+missing custom properties.
+
+`Resolver::new(&Context, Limits, cancellation)` works on a supplied winning
+unregistered-property snapshot. The host provides stable unique property IDs,
+already-computed inherited values and animation-taint metadata. It must keep
+that snapshot cheap and stable during an operation and advance `revision()`
+for changes to lookup/inheritance/taint/cascade results. Revisions are checked
+only on requests; changed snapshots discard cached results and a mid-operation
+change returns ContextChanged. Operational failures discard partial caches.
+There are no threads, timers, polling or idle work in the module.
+
+Property results are memoized; static values and aliases share arenas without
+copying tokens on repeated reads. Consumers should retain the resulting typed
+property values after substitution, rather than rebuilding them each frame.
+A custom property's direct or substituted sole CSS-wide keyword applies at
+its property boundary: initial is invalid, inherit/unset use the supplied
+parent, and revert-family keywords call the actual cascade host (default
+RequiresCascade). A consumer's remaining property grammar/ranges and CSS-wide
+behavior still belong to the future property compiler.
+
+Active property guards detect demand-driven cycles. All cycle participants
+remain invalid despite their fallbacks; callers outside a cycle may recover.
+Merged cyclic cache entries retain links to earlier roots while guards
+unwind, so repeated references and overlapping cycles stay correct. Marking
+uses the active-suffix invariant to avoid rescanning an already-marked group.
+Dependency reads propagate supplied animation taint through custom properties;
+non-animatable consumers can exclude tainted var() references and use fallbacks.
+This is taint/animation plumbing, not animation execution or registration.
+
+Limits bound source/output bytes, emitted nodes, work, combined nesting,
+cached-property count and unique cached arena reservation. The hard nesting
+maximum is 256. Oversized expansions become guaranteed-invalid, enabling
+surrounding var() fallbacks. Even after output is invalid/over-limit, remaining
+references are visited to detect cycles; writing stops once its output cap
+is exhausted. Work, cancellation and cache quotas remain separate operational
+errors. Cache arena accounting includes shared input arenas once, and excludes
+hash-table/control metadata, allocator bookkeeping and transient stacks;
+property/guard counts bound that storage separately. Context callbacks must
+not perform long/blocking work. The future style job must run these APIs on
+workers, retain results, report progress and own cancellation.
+
+Whitespace scans for single names and CSS-wide keywords are metered too.
+Argument validation charges source spans, and a spelling scan needed for a
+smaller output limit charges the value's node range before traversal. Cached
+large values therefore cannot bypass the work budget through repeated scans.
+
+Independent evidence: 25 pinned WPT resources, 65 parsing/name cases,
+60 property assertions in eleven cycle groups and 26 unported drivers:
+**151 inventoried native cases, 119 passes and 32 explicit non-passes**.
+Four cases need other substitution functions, two need registered-property
+hosts, and 26 JS/CSSOM/style/layout/document drivers are not ported. Native
+reference decoding uses literal canonical numeric/ident strings, not engine
+output. Given block winners honor duplicate/importance order in the adapter;
+this is not cascade, JS, CSSOM or layout. The evaluator exits 1 until every
+inventoried case is supported.
+
+Twelve native groups also check source lifetime/Debug privacy, shared arenas,
+typed color/math consumption, token boundaries/escapes/EOF recovery,
+inheritance/keywords, taint, revisions, cancellation, output/cache/work limits,
+10,000 nested inputs, 10,000 malformed values and 1,000 generated eight-node
+graphs against independent transitive-closure cycle membership. The fixture
+README describes source selection and scope; hashes reject changed bytes and
+literal extraction reproduces derived data. See the variable coverage and
+release measurement artifacts for exact identities and results.
+
+```sh
+cargo test --release -p olo-web --test variables
+cargo run --release -p olo-web --example variables_eval -- /var/tmp/variables.json
+# Exits 1 while any inventoried case remains unsupported.
+cargo build --release -p olo-web --example variables_bench
+taskset -c 0 /usr/bin/time -v target/release/examples/variables_bench 20 cold
+taskset -c 0 /usr/bin/time -v target/release/examples/variables_bench 20 warm
+```
+
+Current CSS references consulted 2026-11-05:
+[CSS Variables 1](https://drafts.csswg.org/css-variables-1/),
+[CSS Values 5 substitution](https://drafts.csswg.org/css-values-5/#arbitrary-substitution),
+[CSS Syntax boundaries](https://drafts.csswg.org/css-syntax-3/#serializing).
+Full arbitrary-substitution early invocation/spread, registered properties,
+other functions/attribute and URL taint, animation integration, CSSOM,
+actual declaration/cascade/style hosts and live invalidation remain open.
+No webpage, Chrome rendering, browser memory, UI latency or all-site dark
+mode capability follows from these native ports or microbenchmarks.

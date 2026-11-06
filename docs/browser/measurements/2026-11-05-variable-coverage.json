@@ -1,0 +1,380 @@
+{
+  "scope": "Native ports of literal var argument/declaration grammar, provided winning custom-property snapshots and literal computed-token references; not WPT JS/CSSOM/cascade/layout/page execution",
+  "base_commit": "fe72fd58b0d380ee8389a484a8670514a73b569b",
+  "total": 151,
+  "counts": {
+    "passed": 119,
+    "unsupported": 32
+  },
+  "fixture_manifest_sha256": "ed1dbb8b3b45beb4b0d51fa6ddd0eec8db18cc31af5542fb2df03ce4054c3726",
+  "full_report_sha256": "9c3ffcc6a8965fa67c7603f46a1ed7514b98a9b84e5d919e10d1d48f7c6b6a8f",
+  "commands": [
+    "/usr/bin/python3 crates/web/tests/variable-fixtures/extract.py",
+    "cargo run --release -p olo-web --example variables_eval -- /var/tmp/olo-browser-research/variables/final-report.json"
+  ],
+  "extraction_reproduces_exact_bytes": true,
+  "evaluator_exit_code": 1,
+  "unexpected_mismatches_errors_panics": 0,
+  "per_file_counts": {
+    "test_variable_legal_values.html": {
+      "passed": 23
+    },
+    "var-parsing.html": {
+      "passed": 18
+    },
+    "variable-reference-name-substitution.html": {
+      "passed": 18,
+      "unsupported": 6
+    },
+    "variable-cycles.html": {
+      "passed": 60
+    },
+    "variable-css-wide-keywords-after-substitution.html": {
+      "unsupported": 2
+    },
+    "variable-css-wide-keywords.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-07.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-08.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-09.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-10.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-11.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-12.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-13.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-30.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-48.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-49.html": {
+      "unsupported": 1
+    },
+    "variable-declaration-50.html": {
+      "unsupported": 1
+    },
+    "variable-definition-keywords.html": {
+      "unsupported": 2
+    },
+    "variable-definition.html": {
+      "unsupported": 4
+    },
+    "variable-empty-name-reserved.html": {
+      "unsupported": 1
+    },
+    "variable-exponential-blowup.html": {
+      "unsupported": 1
+    },
+    "variable-reference-39.html": {
+      "unsupported": 1
+    },
+    "variable-reference-without-whitespace.html": {
+      "unsupported": 1
+    },
+    "variable-substitution-basic.html": {
+      "unsupported": 1
+    },
+    "variable-substitution-variable-declaration.html": {
+      "unsupported": 1
+    }
+  },
+  "nonpasses": [
+    {
+      "base": " --other: 10px; ",
+      "declarations": "width: var(attr(data-name type(*)));",
+      "expected": "10px",
+      "file": "variable-reference-name-substitution.html",
+      "helper": "assert_equals",
+      "invalid": false,
+      "line": 115,
+      "mode": "substitute",
+      "offset": 4898,
+      "outcome": "unsupported",
+      "property": "width",
+      "reason": "CSS variables Unsupported(\"arbitrary substitution function\")",
+      "requires": []
+    },
+    {
+      "base": " --other: 10px; ",
+      "declarations": "width: var(attr(data-not-a-name type(*)), 100px);",
+      "expected": "100px",
+      "file": "variable-reference-name-substitution.html",
+      "helper": "assert_equals",
+      "invalid": false,
+      "line": 119,
+      "mode": "substitute",
+      "offset": 5037,
+      "outcome": "unsupported",
+      "property": "width",
+      "reason": "CSS variables Unsupported(\"arbitrary substitution function\")",
+      "requires": []
+    },
+    {
+      "base": " --other: 10px; ",
+      "declarations": "width: var(if(style(--other: 10px): --other; else: --unset));",
+      "expected": "10px",
+      "file": "variable-reference-name-substitution.html",
+      "helper": "assert_equals",
+      "invalid": false,
+      "line": 123,
+      "mode": "substitute",
+      "offset": 5214,
+      "outcome": "unsupported",
+      "property": "width",
+      "reason": "CSS variables Unsupported(\"arbitrary substitution function\")",
+      "requires": []
+    },
+    {
+      "base": " --other: 10px; ",
+      "declarations": "width: var(random-item(--key, --other, --other));",
+      "expected": "10px",
+      "file": "variable-reference-name-substitution.html",
+      "helper": "assert_equals",
+      "invalid": false,
+      "line": 127,
+      "mode": "substitute",
+      "offset": 5376,
+      "outcome": "unsupported",
+      "property": "width",
+      "reason": "CSS variables Unsupported(\"arbitrary substitution function\")",
+      "requires": []
+    },
+    {
+      "base": " --other: 10px; ",
+      "declarations": "--name: --registered-length; width: var(var(--name));",
+      "expected": "7px",
+      "file": "variable-reference-name-substitution.html",
+      "helper": "assert_equals",
+      "invalid": false,
+      "line": 142,
+      "mode": "substitute",
+      "offset": 6177,
+      "outcome": "unsupported",
+      "property": "width",
+      "reason": "Unsupported(registered-property host)",
+      "requires": [
+        "registered_properties"
+      ]
+    },
+    {
+      "base": " --other: 10px; ",
+      "declarations": "--name: --registered-universal; width: var(var(--name), 130px);",
+      "expected": "130px",
+      "file": "variable-reference-name-substitution.html",
+      "helper": "assert_equals",
+      "invalid": false,
+      "line": 147,
+      "mode": "substitute",
+      "offset": 6456,
+      "outcome": "unsupported",
+      "property": "width",
+      "reason": "Unsupported(registered-property host)",
+      "requires": [
+        "registered_properties"
+      ]
+    },
+    {
+      "file": "variable-css-wide-keywords-after-substitution.html",
+      "helper": "test",
+      "line": 72,
+      "offset": 2541,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-css-wide-keywords-after-substitution.html",
+      "helper": "test",
+      "line": 82,
+      "offset": 3122,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-css-wide-keywords.html",
+      "helper": "test",
+      "line": 330,
+      "offset": 9324,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-declaration-07.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-08.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-09.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-10.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-11.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-12.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-13.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-30.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-48.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-49.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-declaration-50.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-definition-keywords.html",
+      "helper": "test",
+      "line": 58,
+      "offset": 2350,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition-keywords.html",
+      "helper": "test",
+      "line": 66,
+      "offset": 2721,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition.html",
+      "helper": "test",
+      "line": 47,
+      "offset": 3708,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition.html",
+      "helper": "test",
+      "line": 58,
+      "offset": 4181,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition.html",
+      "helper": "test",
+      "line": 70,
+      "offset": 4741,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-definition.html",
+      "helper": "test",
+      "line": 91,
+      "offset": 6093,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-empty-name-reserved.html",
+      "helper": "test",
+      "line": 10,
+      "offset": 471,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-exponential-blowup.html",
+      "helper": "test",
+      "line": 24,
+      "offset": 789,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-reference-39.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-reference-without-whitespace.html",
+      "helper": "document",
+      "outcome": "unsupported",
+      "reason": "document/reftest driver not ported"
+    },
+    {
+      "file": "variable-substitution-basic.html",
+      "helper": "test",
+      "line": 112,
+      "offset": 4449,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    },
+    {
+      "file": "variable-substitution-variable-declaration.html",
+      "helper": "test",
+      "line": 147,
+      "offset": 5943,
+      "outcome": "unsupported",
+      "reason": "JS/CSSOM/style/layout driver not ported"
+    }
+  ],
+  "website_evidence": {
+    "passed_cases": 0,
+    "required_cases": 3000,
+    "passing_sites": 0,
+    "selected_sites": 100
+  }
+}

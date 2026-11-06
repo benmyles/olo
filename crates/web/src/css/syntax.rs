@@ -1,6 +1,8 @@
 //! Immutable preorder component arena. Child lists skip entire subtrees;
 //! blocks/functions never recursively own nodes, including on error/drop.
+mod assemble;
 use super::{Diagnostic, DiagnosticKind, Error, Limits, Numeric, Result, TokenKind, Tokenizer};
+pub(in crate::css) use assemble::Assembler;
 use std::{
     borrow::Cow,
     ops::Range,
