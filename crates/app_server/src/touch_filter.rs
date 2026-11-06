@@ -37,18 +37,22 @@ const QUIRKS_FILE: &str = "olo-touchpad.quirks";
 /// The quirk that lets pressure through to the plugin. A ThinkPad's
 /// pressure is its haptic click's force, which libinput's own quirk drops
 /// (a pressure pad): let through for the palm model, libinput is told not
-/// to count touches by it (`AttrPressureRange=0:0`, its "pressure-based
+/// to count touches by it (`AttrPressureRange=none`, its "pressure-based
 /// touch detection disabled": its default threshold, 240 of 2000, is past
 /// any fingertip here) nor palms (`AttrPalmPressureThreshold=0`: its
 /// default, 130, is under a fingertip's click, and a palm by pressure is
-/// one for good).
+/// one for good). Every line is one libinput's loader takes ([`takes`]):
+/// one it doesn't, and it loads no quirk at all, its own included (Olo's
+/// `AttrPressureRange=0:0` did, 2026-11-05: libinput's own quirk for the
+/// ThinkPad's pad went with it, and it counted touches by pressure, past
+/// any fingertip there, and the touchpad was dead).
 pub fn quirks() -> String {
     let mut sections: Vec<String> =
         DEVICES.iter().map(|d| format!("[Olo touch filter: {d}]\nMatchUdevType=touchpad\nMatchName=*{d}*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPalmPressureThreshold=0\n")).collect();
     sections.extend(
         THINKPADS
             .iter()
-            .map(|d| format!("[Olo touch filter: {d}]\nMatchUdevType=touchpad\nMatchName=*{d}*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPressureRange=0:0\nAttrPalmPressureThreshold=0\n")),
+            .map(|d| format!("[Olo touch filter: {d}]\nMatchUdevType=touchpad\nMatchName=*{d}*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPressureRange=none\nAttrPalmPressureThreshold=0\n")),
     );
     format!("# Written by Olo's app_server while its touch filter is on (docs/TOUCHPAD.md).\n\n{}", sections.join("\n"))
 }
@@ -114,10 +118,23 @@ pub fn install(t: &TouchpadSettings) -> Option<String> {
     let plugin = render(t);
     let (dir, quirks_dir) = (dir(), quirks_dir());
     let (path, quirks_path) = (dir.join(FILE), quirks_dir.join(QUIRKS_FILE));
+    // (A quirk libinput wouldn't take is never written: it would take
+    // every quirk with it, the pads' own.)
+    let quirks = quirks();
+    let bad: Vec<&str> = quirks.lines().filter(|l| !takes(l)).collect();
+    if !bad.is_empty() {
+        tracing::error!(?bad, "the touch filter's quirk has lines libinput wouldn't take: written without it");
+    }
     match &plugin {
         Some(text) => {
-            let written =
-                std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text)).and_then(|_| std::fs::create_dir_all(&quirks_dir)).and_then(|_| std::fs::write(&quirks_path, quirks()));
+            let written = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text)).and_then(|_| {
+                if bad.is_empty() {
+                    std::fs::create_dir_all(&quirks_dir).and_then(|_| std::fs::write(&quirks_path, &quirks))
+                } else {
+                    let _ = std::fs::remove_file(&quirks_path);
+                    Ok(())
+                }
+            });
             if let Err(e) = written {
                 tracing::warn!(%e, path = %path.display(), "could not write the touch filter");
                 let _ = std::fs::remove_file(&path);
@@ -131,6 +148,50 @@ pub fn install(t: &TouchpadSettings) -> Option<String> {
         }
     }
     plugin
+}
+
+/// Whether libinput's quirks loader (1.32's `quirks.c`, `parse_match` and
+/// `parse_attr`, with `util-prop-parsers.c`) takes `line` of a quirks
+/// file, for what Olo writes: a section, a comment, and the matches and
+/// attributes Olo uses, as libinput parses them. Anything else isn't
+/// taken (Olo writes nothing it hasn't checked against the parser).
+pub fn takes(line: &str) -> bool {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return true;
+    }
+    if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+        return !name.is_empty();
+    }
+    let Some((key, value)) = line.split_once('=') else { return false };
+    match key {
+        "MatchUdevType" => matches!(value, "touchpad" | "mouse" | "pointingstick" | "keyboard" | "joystick" | "tablet" | "tablet-pad"),
+        "MatchName" => !value.is_empty(),
+        // `+` or `-` and a property's name (or its number, in hex), `;`
+        // between them.
+        "AttrInputProp" => value.split(';').all(|p| {
+            let (sign, name) = p.split_at(p.len().min(1));
+            matches!(sign, "+" | "-")
+                && (u32::from_str_radix(name.strip_prefix("0x").unwrap_or(name), 16).is_ok_and(|n| n <= 0x1f)
+                    || matches!(
+                        name,
+                        "INPUT_PROP_POINTER"
+                            | "INPUT_PROP_DIRECT"
+                            | "INPUT_PROP_BUTTONPAD"
+                            | "INPUT_PROP_SEMI_MT"
+                            | "INPUT_PROP_TOPBUTTONPAD"
+                            | "INPUT_PROP_POINTING_STICK"
+                            | "INPUT_PROP_ACCELEROMETER"
+                            | "INPUT_PROP_PRESSUREPAD"
+                    ))
+        }),
+        // `none`, or `high:low` with low under high (`0:0` is not taken).
+        "AttrPressureRange" | "AttrTouchSizeRange" => {
+            value == "none" || value.split_once(':').and_then(|(hi, lo)| Some((hi.parse::<i32>().ok()?, lo.parse::<i32>().ok()?))).is_some_and(|(hi, lo)| lo < hi)
+        }
+        "AttrPalmPressureThreshold" | "AttrThumbPressureThreshold" => value.parse::<u32>().is_ok(),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -171,7 +232,24 @@ mod tests {
         let q = quirks();
         assert!(q.contains("[Olo touch filter: Apple MTP]\nMatchUdevType=touchpad\nMatchName=*Apple MTP*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPalmPressureThreshold=0\n"));
         // A ThinkPad's: through, but no touch or palm by it in libinput.
-        assert!(q.contains("[Olo touch filter: GXTP5420]\nMatchUdevType=touchpad\nMatchName=*GXTP5420*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPressureRange=0:0\nAttrPalmPressureThreshold=0\n"));
+        assert!(q.contains("[Olo touch filter: GXTP5420]\nMatchUdevType=touchpad\nMatchName=*GXTP5420*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPressureRange=none\nAttrPalmPressureThreshold=0\n"));
+        // Every line one libinput's loader takes.
+        for line in q.lines() {
+            assert!(takes(line), "libinput wouldn't take {line:?}");
+        }
+    }
+
+    /// As libinput 1.32's parser has them: what broke every quirk on the
+    /// ThinkPad (`0:0`), and what it takes.
+    #[test]
+    fn quirk_lines_as_libinput_takes_them() {
+        assert!(!takes("AttrPressureRange=0:0"), "0:0 fails libinput's parse_range_property (low must be under high)");
+        assert!(!takes("AttrPressureRange=10:20") && takes("AttrPressureRange=20:10") && takes("AttrPressureRange=none"));
+        assert!(takes("AttrInputProp=-INPUT_PROP_PRESSUREPAD") && takes("AttrInputProp=+INPUT_PROP_BUTTONPAD;-0x07"));
+        assert!(!takes("AttrInputProp=INPUT_PROP_PRESSUREPAD") && !takes("AttrInputProp=-INPUT_PROP_NOPE"));
+        assert!(takes("AttrPalmPressureThreshold=0") && !takes("AttrPalmPressureThreshold=-1"));
+        assert!(takes("MatchUdevType=touchpad") && !takes("MatchUdevType=pad"));
+        assert!(!takes("AttrSomethingNew=1"), "nothing Olo hasn't checked against the parser");
     }
 
     const SLOT: u32 = 0x3_002f;

@@ -462,7 +462,7 @@ the plugin as libinput would get them, 315 of the firmware's flips back
 to a finger are held as palms (2467 palm reports), and none of 12,663
 finger reports is told a palm; without the filter the first resting
 palm is told a finger at its 19th report. Its quirk takes the pressure
-pad property away (the model reads the force) with `AttrPressureRange=0:0`
+pad property away (the model reads the force) with `AttrPressureRange=none`
 (libinput's "pressure-based touch detection disabled": its default
 threshold, 240, is past any fingertip here) and
 `AttrPalmPressureThreshold=0` (its default, 130, is under a fingertip's
@@ -470,6 +470,23 @@ click, and a palm by pressure is one for good), as libinput 1.32's
 `tp_init_pressure` and `tp_init_palmdetect_pressure` read them. A frame
 costs the plugin 7.5 µs there (the MacBook's 16–27 µs), and nothing when
 nothing touches.
+
+**The dead touchpad** (Ben, after upgrading, 2026-11-05: "now the
+touchpad doesn't even work"). The quirk first said `AttrPressureRange=0:0`,
+which libinput's parser refuses (`parse_range_property`: the low must be
+under the high; `none` is how to say no range). One line refused and
+libinput loads no quirks at all ("Failed to load the device quirks"), its
+own for this pad too: the pad was no pressure pad then, and libinput
+counted its touches by pressure at its default threshold (240), which no
+fingertip here reaches. With `none`, the real libinput (`libinput
+debug-events --verbose` with the file in a private `XDG_RUNTIME_DIR`,
+read-only) says "quirks: enabling INPUT_PROP_PRESSUREPAD", then
+"disabling", then "pressure-based touch detection disabled", and detects
+palms by their tool ("palm detected (tool-palm)"). And app_server now
+writes a quirk only if every line is one libinput's parser takes
+(`touch_filter::takes`, its rules for what Olo writes, from libinput
+1.32's source): a line it wouldn't take, and the filter goes on without
+its quirk rather than taking every quirk down with it.
 
 ## Preferences ▸ Touchpad & Mouse
 
