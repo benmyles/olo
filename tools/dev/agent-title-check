@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-"""Coding agents' tab titles, end to end, as each agent runs the tool.
+"""Coding agents' tab titles, end to end, as each agent reaches the tool.
 
   agent-title-check
 
 Starts a headless session of its own ("agtitle", HOME a folder of its own
 under /var/tmp) with Terminal in it, Preferences ▸ Terminal's agent
-settings on, its tab in that HOME, then sets the tab's title through
-`olo-terminal --mcp` (agent_title.rs) the way each agent runs it:
+settings on, its tab in that HOME, and the tab title service
+(`olo-terminal --mcp-service`, title_service.rs) on a port of its own,
+from a copy of the build. Then sets the tab's title over HTTP the way
+each agent does:
 
-  Codex:        a bare environment (Codex gives its MCP servers HOME, PATH,
-                LANG and a few more: no XDG_RUNTIME_DIR, no display),
-                started outside the tab's processes (in Codex's daemon),
-                the tab found by its folder.
-  Claude Code:  run from the tab's shell (its environment, the tab found
-                as an ancestor), and across an upgrade: the server's file
-                replaced under it and SIGURG sent, as olo-session does; it
-                becomes the new version between messages and the same
-                connection sets the title again.
+  Codex:        from outside the tab's processes (as Codex's daemon), the
+                tab found by the folder it gives.
+  Claude Code:  from under the tab's shell (the tab found from the
+                process that connected, and its ancestors), across an
+                upgrade (the copy replaced and SIGURG sent, as
+                olo-session does: the same process becomes the new file,
+                the socket handed over) and across a crash (the service
+                killed and started again, as olo-session does: the next
+                request is answered).
 
-and checks the window's title each time. The server runs from a copy of
-the build in the session's folder, so the upgrade replaces the copy.
+and checks the window's title each time.
 """
 import json, os, shutil, signal, subprocess, sys, time
 
@@ -30,6 +31,8 @@ SCRATCH = f"/var/tmp/olo-agent-title-{os.getpid()}"
 HOME = os.path.join(SCRATCH, "home")
 BIN = os.path.join(ROOT, "target/release/olo-terminal")
 COPY = os.path.join(SCRATCH, "olo-terminal")
+# (Not the session's 17893.)
+PORT = 17993
 
 
 def ts(*a):
@@ -53,28 +56,20 @@ def wait_title(want, within=5.0):
     return False
 
 
-# A client of the server: one initialize, then each title in turn; between
-# the first and the second, the server's file replaced and SIGURG sent if
-# asked. Prints each answer's text as a JSON line.
+# A client of the service, as an agent is: each request on a connection of
+# its own. `title` sets that title (cwd: the folder given); prints the
+# tool's answer.
 CLIENT = r'''
-import json, os, shutil, signal, subprocess, sys, time
-server, out, upgrade, titles = sys.argv[1], sys.argv[2], sys.argv[3] == "upgrade", sys.argv[4:]
-env = json.loads(os.environ.pop("AGENT_ENV")) if "AGENT_ENV" in os.environ else dict(os.environ)
-p = subprocess.Popen([server, "--mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=env, cwd=os.getcwd())
+import http.client, json, os, sys
+port, title = int(sys.argv[1]), sys.argv[2]
 def ask(i, method, params=None):
-    p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": params or {}}) + "\n"); p.stdin.flush()
-    return json.loads(p.stdout.readline())
-said = [ask(1, "initialize")["result"]["serverInfo"]["name"]]
-for i, title in enumerate(titles):
-    if i == 1 and upgrade:
-        shutil.copyfile(server, server + ".new"); os.chmod(server + ".new", 0o755); os.rename(server + ".new", server)
-        os.kill(p.pid, signal.SIGURG); time.sleep(0.5)
-        said.append("exe " + os.readlink(f"/proc/{p.pid}/exe"))
-    r = ask(10 + i, "tools/call", {"name": "set_tab_title", "arguments": {"title": title, "cwd": os.getcwd()}})
-    said.append(r["result"]["content"][0]["text"])
-    time.sleep(1.0)
-p.stdin.close(); p.wait(timeout=5)
-open(out, "w").write(json.dumps(said))
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=20)
+    c.request("POST", "/mcp", json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": params or {}}), {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
+    r = c.getresponse()
+    return json.loads(r.read())
+assert ask(1, "initialize", {"protocolVersion": "2025-06-18"})["result"]["serverInfo"]["name"] == "olo-terminal"
+r = ask(2, "tools/call", {"name": "set_tab_title", "arguments": {"title": title, "cwd": os.getcwd()}})
+print(r["result"]["content"][0]["text"])
 '''
 
 
@@ -108,34 +103,45 @@ def main():
                 break
         check(ok, "Terminal's tab is in the agents' snapshot")
 
-        print("Codex (a bare environment, outside the tab, by folder):")
-        bare = {k: os.environ[k] for k in ("PATH", "LANG", "USER", "LOGNAME", "SHELL", "TERM") if k in os.environ}
-        bare["HOME"] = HOME
-        out = os.path.join(SCRATCH, "codex.json")
-        # (Reparented away from this process tree, as under Codex's daemon.)
-        env = dict(bare, AGENT_ENV=json.dumps(bare))
-        subprocess.run(["bash", "-c", f"( cd {HOME} && exec {sys.executable} {client} {COPY} {out} no 'Review PR 412' > {out}.log 2>&1 & )"], env=env)
-        check(wait_title("Review PR 412", 8), "the tab titled by the server Codex runs")
-        for _ in range(20):
-            if os.path.exists(out):
-                break
-            time.sleep(0.25)
-        said = json.load(open(out)) if os.path.exists(out) else open(out + ".log").read()
-        print("     ", said)
+        service = subprocess.Popen([COPY, "--mcp-service"], env=dict(os.environ, OLO_TERMINAL_MCP_PORT=str(PORT)), stdin=subprocess.DEVNULL)
+        time.sleep(0.5)
+        check(service.poll() is None, "the service listens")
 
-        print("Claude Code (under the tab's shell, across an upgrade):")
-        out = os.path.join(SCRATCH, "claude.json")
-        ts("type", N, f"{sys.executable} {client} {COPY} {out} upgrade 'Fix login redirect' 'Write the tests'")
+        print("Codex (outside the tab, by folder):")
+        # (Reparented away from this process tree, as under Codex's daemon:
+        # else the tab found would be the one this runs in.)
+        out = os.path.join(SCRATCH, "codex.txt")
+        subprocess.run(["bash", "-c", f"( cd {HOME} && exec {sys.executable} {client} {PORT} 'Review PR 412' > {out} 2>&1 & )"])
+        check(wait_title("Review PR 412", 8), "the tab titled for an agent outside it")
+        print("     ", open(out).read().strip() if os.path.exists(out) else "")
+
+        print("Claude Code (under the tab's shell):")
+        ts("type", N, f"{sys.executable} {client} {PORT} 'Fix login redirect'")
         ts("key", N, "28")
-        check(wait_title("Fix login redirect", 8), "the tab titled by the server under its shell")
-        check(wait_title("Write the tests", 10), "titled again by the same server after it upgraded in place")
-        for _ in range(20):
-            if os.path.exists(out):
-                break
-            time.sleep(0.25)
-        said = json.load(open(out)) if os.path.exists(out) else []
-        print("     ", said)
-        check(any(s.startswith("exe ") and not s.endswith("(deleted)") for s in said), "the server became the new file")
+        check(wait_title("Fix login redirect", 8), "the tab titled for an agent under its shell")
+
+        print("An upgrade (the file replaced, SIGURG):")
+        shutil.copyfile(COPY, COPY + ".new")
+        os.chmod(COPY + ".new", 0o755)
+        os.rename(COPY + ".new", COPY)
+        os.kill(service.pid, signal.SIGURG)
+        time.sleep(0.5)
+        exe = os.readlink(f"/proc/{service.pid}/exe")
+        check(service.poll() is None and not exe.endswith("(deleted)"), f"the same process became the new file ({exe})")
+        ts("type", N, f"{sys.executable} {client} {PORT} 'Write the tests'")
+        ts("key", N, "28")
+        check(wait_title("Write the tests", 8), "titled again by the new version")
+
+        print("A crash (killed, started again):")
+        service.kill()
+        service.wait()
+        service = subprocess.Popen([COPY, "--mcp-service"], env=dict(os.environ, OLO_TERMINAL_MCP_PORT=str(PORT)), stdin=subprocess.DEVNULL)
+        time.sleep(0.5)
+        ts("type", N, f"{sys.executable} {client} {PORT} 'Ship it'")
+        ts("key", N, "28")
+        check(wait_title("Ship it", 8), "titled again by the service started again")
+        service.kill()
+        service.wait()
     finally:
         ts("stop", N)
         shutil.rmtree(SCRATCH, ignore_errors=True)

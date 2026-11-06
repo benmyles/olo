@@ -26,6 +26,7 @@ mod repos;
 mod session;
 mod sudo;
 mod sudo_wire;
+mod title_service;
 mod ui;
 mod view;
 #[allow(dead_code)]
@@ -2602,7 +2603,7 @@ impl Terminal {
             if hooks && let Err(e) = agent_context::set_hooks(on, &exe) {
                 tracing::warn!("coding agents' hook: {e}");
             }
-            if tool && let Err(e) = agent_title::register(titles, &exe) {
+            if tool && let Err(e) = agent_title::register(titles) {
                 tracing::warn!("coding agents' tab title tool: {e}");
             }
         });
@@ -2764,7 +2765,15 @@ fn main() {
             _ => 1,
         });
     }
-    // A coding agent's tab title tool (Preferences ▸ Terminal).
+    // The coding agents' tab title tool, served for the session over
+    // loopback HTTP (one of its services).
+    if args.first().map(String::as_str) == Some(title_service::FLAG) {
+        std::process::exit(match title_service::serve() {
+            c if c == std::process::ExitCode::SUCCESS => 0,
+            _ => 1,
+        });
+    }
+    // The same over stdin and stdout (an agent whose settings still name it).
     if args.first().map(String::as_str) == Some(agent_title::MCP_FLAG) {
         std::process::exit(match agent_title::serve() {
             c if c == std::process::ExitCode::SUCCESS => 0,

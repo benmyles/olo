@@ -202,8 +202,16 @@ pub fn set_hooks(on: bool, exe: &Path) -> Result<(), String> {
 
 /// This process's ancestors, its parent first.
 pub fn ancestors() -> Vec<i32> {
-    let mut all = Vec::new();
-    let mut pid = std::process::id() as i32;
+    let mut all = lineage(std::process::id() as i32);
+    all.remove(0);
+    all
+}
+
+/// `pid` and its ancestors, it first (a process that asked the tab title
+/// service: the agent itself).
+pub fn lineage(pid: i32) -> Vec<i32> {
+    let mut all = vec![pid];
+    let mut pid = pid;
     while let Some(p) = parent(pid).filter(|&p| p > 1 && all.len() < 64) {
         all.push(p);
         pid = p;
