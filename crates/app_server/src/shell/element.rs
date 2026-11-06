@@ -57,9 +57,14 @@ impl WindowElement {
         }
     }
 
+    /// The app id it goes by: the one it gave, or ours for one of our
+    /// web apps in Chrome (`olo_xdg::apps::WEB_APPS`: olo-slack's window
+    /// is `olo.slack`).
     pub fn app_id(&self) -> String {
         match self.0.underlying_surface() {
-            WindowSurface::Wayland(t) => with_states(t.wl_surface(), |states| states.data_map.get::<XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().app_id.clone())).unwrap_or_default(),
+            WindowSurface::Wayland(t) => {
+                olo_xdg::apps::window_app_id(with_states(t.wl_surface(), |states| states.data_map.get::<XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().app_id.clone())).unwrap_or_default())
+            }
         }
     }
 

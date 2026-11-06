@@ -18,9 +18,24 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-screenshot", "Screenshot", "screenshot"),
     ("olo-pool", "Token Pool", "token-pool"),
     ("olo-telegram", "Telegram", "telegram"),
+    ("olo-slack", "Slack", "slack"),
     ("olo-doctor", "Olo Doctor", "doctor"),
     ("olo-suggestions", "Olo Suggestions", "suggestions"),
 ];
+
+/// Our apps that are a web app in Olo's Chrome (olo-slack): the Wayland
+/// app id Chrome gives the app's window (`--app=URL`: `chrome-`, the
+/// URL's host and path, `-`, the profile folder's name), and ours.
+pub const WEB_APPS: &[(&str, &str)] = &[("chrome-app.slack.com__client-Default", "olo.slack")];
+
+/// The app id a window goes by: the one it gave, or ours for one of our
+/// web apps' windows ([`WEB_APPS`]).
+pub fn window_app_id(given: String) -> String {
+    match WEB_APPS.iter().find(|(chrome, _)| *chrome == given) {
+        Some((_, ours)) => (*ours).to_owned(),
+        None => given,
+    }
+}
 
 /// Our applications that open another window when asked while running
 /// (`--new-window`, handed to the running copy): Tracker's New Window.

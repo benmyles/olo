@@ -3394,5 +3394,17 @@
   "title": "Starting Olo: the start-up screen",
   "caption": "As a session starts, every display shows Olo's start-up screen (the upgrade veil's look, its own icons), lit as the displays, the desktop and Deskbar come up; Olo's start-up sound plays once a session.",
   "image": "2026-11-05/194742-starting-olo-the-start-up-screen.png"
+ },
+ {
+  "time": "2026-11-05T20:31:11",
+  "title": "olo-slack: Slack as an Olo app",
+  "caption": "Slack's web app in Olo's Chrome on a profile of its own; its window is olo.slack, so Deskbar names it Slack with Olo's icon.",
+  "image": "2026-11-05/203111-olo-slack-slack-as-an-olo-app.png"
+ },
+ {
+  "time": "2026-11-05T20:31:11",
+  "title": "olo-slack: Slack's notifications are Olo's",
+  "caption": "A Slack message as an Olo notification (Message style, Slack's edge); a click goes to the conversation. Shown here from a stand-in page.",
+  "image": "2026-11-05/203111-olo-slack-slack-s-notifications-are-olo-s.png"
  }
 ]

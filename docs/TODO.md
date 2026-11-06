@@ -1439,6 +1439,22 @@ of Finished; a new one goes where its priority puts it.
   Viewer, the palette's commands (jump to a channel or person, search),
   its windows and messages readable and drivable by agents (the kit's
   tree, Agent Screens), and passwords and passkeys from Olo Passwords.
+  *Built* (2026-11-05, HACKING's "Slack"): `olo-slack` (apps/slack) runs
+  Slack's web app in Olo's Chrome on a profile of its own, its window
+  `olo.slack` (`olo_xdg::apps::WEB_APPS`); one window, `slack://` links
+  and Slack's pages handed to it; no first-run dialog (its ticked "make
+  Chrome the default browser"). The Olo extension and host (1.8.0;
+  `slack.rs`, `slack-page.js`, `slack.js`): Slack's notifications as
+  Olo's (a click goes to the conversation), its unread count on
+  Deskbar, links out in the person's browser, Open in Viewer for
+  pictures, its channels, people, Jump To… and Search… in the palette
+  (`commands::serve`), agents' trees and Passwords as in Chrome. Tested
+  against a stand-in page and Slack's real sign-in page; idle costs
+  nothing. Left, needing Ben's Slack signed in: a look at each against
+  Slack's real client (its title's count, its sidebar's markup for the
+  palette, whether it notifies through `Notification`), and its status
+  following Olo's (away when the screen locks, Do Not Disturb, a
+  meeting), which needs Slack's client to build against.
 
 - **Screen recording, for people and agents** (Ben, 2026-11-04):
   "create an olo native screen recording app similar to CleanShot X

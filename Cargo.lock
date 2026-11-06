@@ -7037,6 +7037,7 @@ dependencies = [
 name = "olo-chrome"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "flate2",
  "getrandom 0.3.4",
  "liblzma",
@@ -7746,6 +7747,16 @@ dependencies = [
  "olo-xdg",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "olo-slack"
+version = "0.1.0"
+dependencies = [
+ "olo-crash",
+ "olo-kit-base",
+ "olo-protocol",
+ "olo-xdg",
 ]
 
 [[package]]

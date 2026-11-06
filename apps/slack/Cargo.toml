@@ -1,0 +1,15 @@
+[package]
+name = "olo-slack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-slack"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-kit-base.workspace = true
+olo-xdg.workspace = true
+olo-protocol.workspace = true

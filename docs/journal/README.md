@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### olo-slack: Slack's notifications are Olo's
+
+*20:31* — A Slack message as an Olo notification (Message style, Slack's edge); a click goes to the conversation. Shown here from a stand-in page.
+
+![olo-slack: Slack's notifications are Olo's](2026-11-05/203111-olo-slack-slack-s-notifications-are-olo-s.png)
+
+### olo-slack: Slack as an Olo app
+
+*20:31* — Slack's web app in Olo's Chrome on a profile of its own; its window is olo.slack, so Deskbar names it Slack with Olo's icon.
+
+![olo-slack: Slack as an Olo app](2026-11-05/203111-olo-slack-slack-as-an-olo-app.png)
+
 ### Starting Olo: the start-up screen
 
 *19:47* — As a session starts, every display shows Olo's start-up screen (the upgrade veil's look, its own icons), lit as the displays, the desktop and Deskbar come up; Olo's start-up sound plays once a session.

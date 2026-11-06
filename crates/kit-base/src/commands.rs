@@ -458,10 +458,30 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
 /// Its menus are empty and nothing can be invoked. Runs until the
 /// process ends; the socket is left for the next sweep.
 pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> + Send + 'static) -> std::io::Result<()> {
+    serve(pid, Served { app_id: app_id.to_owned(), trees: Box::new(trees), menus: Box::new(Vec::new), invoke: Box::new(|_| false) })
+}
+
+/// What [`serve`] answers for a program that isn't a kit app.
+pub struct Served {
+    /// The app id its menus are for.
+    pub app_id: String,
+    /// Its windows' widget trees (it can't tell its surfaces apart: all of
+    /// them, matched by title and size); may take up to `TREE_WAIT`.
+    pub trees: Box<dyn Fn() -> Vec<WindowTree> + Send>,
+    /// Its commands, as menu items (the palette lists them); quick.
+    pub menus: Box<dyn Fn() -> Vec<Entry> + Send>,
+    /// Do a command of `menus`'; whether it was done. Quick.
+    pub invoke: Box<dyn Fn(&str) -> bool + Send>,
+}
+
+/// Answer a kit app's socket for process `pid`, a program that isn't one
+/// (the Olo extension's host does it for Chrome, and for olo-slack's
+/// Chrome with Slack's commands), with `served`. Runs until the process
+/// ends; the socket is left for the next sweep.
+pub fn serve(pid: u32, served: Served) -> std::io::Result<()> {
     let path = socket_path(pid);
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
-    let app_id = app_id.to_owned();
     std::thread::Builder::new().name("trees".into()).spawn(move || {
         for s in listener.incoming().flatten() {
             let _ = s.set_read_timeout(Some(WAIT));
@@ -470,15 +490,17 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
                 continue;
             }
             let answer = match serde_json::from_str::<Ask>(&line) {
-                Ok(Ask::Menus(_) | Ask::MenusIn(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
-                Ok(Ask::Invoke(_) | Ask::InvokeIn(_) | Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Menus(_) | Ask::MenusIn(_)) => serde_json::to_string(&Menus { app_id: served.app_id.clone(), entries: (served.menus)() }),
+                Ok(Ask::Invoke(cmd) | Ask::InvokeIn(InvokeIn { command: cmd, .. })) => {
+                    tracing::info!(command = %cmd, by = %peer(&s), "asked to choose a command");
+                    serde_json::to_string(&serde_json::json!({ "ok": (served.invoke)(&cmd) }))
+                }
+                Ok(Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
                 Ok(Ask::Move(_)) => serde_json::to_string(&crate::moving::Moved::failed(crate::moving::NOT_KIT)),
                 Ok(Ask::Path(_)) => serde_json::to_string(&serde_json::json!({ "path": null })),
-                // It can't tell its surfaces apart: all of them, matched
-                // by title and size.
-                Ok(Ask::Tree(_) | Ask::Hints(_)) => serde_json::to_string(&trees()),
+                Ok(Ask::Tree(_) | Ask::Hints(_)) => serde_json::to_string(&(served.trees)()),
                 Err(_) => continue,
             };
             if let Ok(answer) = answer {

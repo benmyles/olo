@@ -10073,6 +10073,92 @@ copy of Chrome in a fixture `XDG_DATA_HOME` (`olo-chrome` writes into
 the install's `extensions` folder) with a fresh `.checked`, a throwaway
 profile and a page served from 127.0.0.1.
 
+## Slack (apps/slack, olo-slack)
+
+`olo-slack` is Slack, Olo-fied, as `olo-chrome` is Chrome: Slack's web
+app in Olo's Chrome, as an app window of its own (`--app`), on a Chrome
+profile of its own (`$CHROME_CONFIG_HOME`, else the config folder, then
+`olo-slack`: an agent screen has its own), so Slack's sign-in and data
+are Slack's alone and the person's Chrome is untouched. It is one of
+`OUR_APPS` ("Slack", Olo's `slack` icon). Chrome names an `--app`
+window's Wayland app id after the URL and the profile folder
+(`chrome-app.slack.com__client-Default`); app_server reports it as
+`olo.slack` (`olo_xdg::apps::WEB_APPS`, `WindowElement::app_id`), so
+Deskbar, the palette, Twitcher and agents know it as Olo's Slack. It
+always starts on the same page (the app id comes from it) and goes to a
+link once in: `olo-slack LINK` (a `slack://channel?team=T&id=C`, `open`,
+`user` link, or a Slack page) leaves it in the profile folder (`Olo Slack
+Link`) for the extension's host to take once. With Slack open,
+`olo-slack [LINK]` brings its window forward (app_server's `Activate`)
+and hands the link to it (the kit's commands socket: `open URL`), never
+a second window. Chrome starts with `--no-first-run
+--no-default-browser-check`: the first-run dialog's "Make Google Chrome
+the default browser", ticked, would have made Slack's Chrome the
+person's browser. `slack://` links open in it (`open::ours_for`).
+
+The joining is the Olo extension's (apps/chrome: `slack-page.js`,
+`slack.js`, background.js's "olo-slack" part) and its host's (`slack.rs`),
+only in olo-slack's Chrome: olo-slack gives Chrome `OLO_SLACK_URL` and
+`OLO_SLACK_PROFILE`, which reach the host as Chrome starts it; the host
+takes them out of its environment at once (nothing it starts, a link's
+browser, inherits them) and tells the extension `{slack: {url, open}}`.
+The extension then registers its two Slack scripts for Slack's address
+(`chrome.scripting.registerContentScripts`, kept by Chrome between
+starts; the first time, Slack's page is reloaded so they are in from its
+start):
+
+* **Notifications** (`slack-page.js`, in the page's own world before its
+  scripts): the page's `Notification` (and a service worker
+  registration's `showNotification`, and `permissions.query`) is
+  answered there, always granted; each goes to the host, which shows it
+  as an Olo notification of Slack's (`Notifier`, "Slack", `olo-slack`:
+  Message style, Slack's aubergine edge, the sender's face as its icon,
+  fetched by the extension with Slack's sign-in and kept in
+  `~/.cache/olo/slack/faces`; silent, as Slack plays its own sound; a
+  tag's later one updates it in place). Olo's Notifications keeps its
+  history and its Do Not Disturb. A click on one brings Slack forward
+  and is the page's `click` (Slack goes to the conversation); its going
+  is the page's `close`.
+* **Unread count** on Slack's Deskbar row: the page's app badge
+  (`navigator.setAppBadge`, answered in the page) once Slack sets one,
+  else what its title says (`(3) …`: 3; `! …`: at least one), as a
+  `com.canonical.Unity.LauncherEntry` count for `olo-slack.desktop`,
+  sent only when it changes (and again to a new host). Slack's Chrome's
+  downloads show only their progress there (`downloads::SLACK`): the
+  count is Slack's.
+* **Links**: a link out of Slack that would open a tab (a click on a
+  `target=_blank` link, a middle click, Ctrl and a click: `slack.js`; or
+  `window.open`: background.js's `tabs.onCreated`, the tab taken back)
+  opens with Olo's default app for it, the person's own browser, not
+  Slack's Chrome. Slack's own pages (its sign-in, `*.slack.com`) and a
+  sign-in's popup stay.
+* **Pictures**: a picture's context menu has Open in Viewer: the
+  extension fetches it with Slack's sign-in and the host writes it to
+  `~/.cache/olo/slack/pictures` and opens it in Olo's Viewer. The cache
+  keeps faces and pictures 30 days.
+* **The palette**: the host answers the kit's commands socket for
+  Chrome's process (`commands::serve`, `Served`: menus and invoke beside
+  the trees) with Slack's commands, asked of the page as the palette
+  asks (nothing is watched between): Jump To… and Search… (Slack's own
+  Ctrl+K and Ctrl+G), and each conversation in Slack's sidebar under
+  Channels (`#name`) or Direct Messages, which goes there through the
+  sidebar's own link (no reload). Only `jump`, `search` and `open http…`
+  pass the host. 3 ms from asking to answer.
+* **Agents and Passwords**: as in any of Olo's Chrome's windows (the
+  extension's trees, Passwords and passkeys).
+
+Idle, nothing runs (the host 0% of a core, 0 wakeups a second; the page
+watches only its `<title>`). Not yet: Slack's status following Olo's
+(away when the screen locks, Do Not Disturb), which needs Slack's own
+client signed in to build against. Test with a stand-in page served from
+127.0.0.1 (`OLO_SLACK_URL=http://127.0.0.1:PORT/client`: a sidebar of
+`/client/T/C` links, buttons that make a `Notification`, change the
+title and call `setAppBadge`, a `target=_blank` link, a picture), a copy
+of Chrome in a fixture `XDG_DATA_HOME`, `CHROME_CONFIG_HOME` and
+`XDG_CACHE_HOME` in `/var/tmp`, in a tsession with its own bus and
+`olo-notifications --bus` (its app id is the stand-in's there: check
+`olo.slack` against Slack's real address, which shows its sign-in).
+
 ## Log Viewer (apps/logs)
 
 `olo-logs` shows every Olo program's log in one place: what they

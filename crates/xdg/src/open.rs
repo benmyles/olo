@@ -120,6 +120,7 @@ fn ours_for(mime: &str) -> &'static [&'static str] {
             | "application/vnd.oasis.opendocument.presentation",
         ) => &["olo-viewer"],
         (_, "x-scheme-handler/http" | "x-scheme-handler/https") => &["olo-chrome"],
+        (_, "x-scheme-handler/slack") => &["olo-slack"],
         (_, crate::mime::SETTINGS_BACKUP) => &["olo-preferences"],
         _ => &[],
     };
