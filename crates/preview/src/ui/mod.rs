@@ -104,6 +104,9 @@ pub struct PreviewView {
     controls_hide: Option<Task<()>>,
     /// The video's frame showing, or its poster until one comes.
     frame: Option<Arc<RenderImage>>,
+    /// The video's frame showing as decoded (Y'CbCr, drawn by the GPU:
+    /// `Window::paint_yuv`), in `frame`'s place.
+    yuv_frame: Option<Arc<olo_ui::gpui::YuvFrame>>,
     /// Its video is known to be HDR (told as `PreviewEvent::Gamut`: its
     /// window may draw in HDR10).
     video_hdr: bool,
@@ -186,6 +189,7 @@ impl PreviewView {
             controls_until: None,
             controls_hide: None,
             frame: None,
+            yuv_frame: None,
             video_hdr: false,
             art: None,
             art_making: None,
@@ -289,9 +293,11 @@ impl PreviewView {
                 }
                 self.video = match &b {
                     // (Frames as GPUI takes them: BGRA.)
-                    Body::Media(md) if md.playable && md.video => {
-                        Some(video::Video::start_with(&input::Input::file(&self.item.path), md.duration.unwrap_or(0.0), video::Options { playing: true, picture: true, sound: true, bgra: true }))
-                    }
+                    Body::Media(md) if md.playable && md.video => Some(video::Video::start_with(
+                        &input::Input::file(&self.item.path),
+                        md.duration.unwrap_or(0.0),
+                        video::Options { playing: true, picture: true, sound: true, bgra: true, yuv: true },
+                    )),
                     _ => None,
                 };
                 // A video's poster shows until its first frame comes.
@@ -344,6 +350,7 @@ impl PreviewView {
 
     fn forget_pictures(&mut self) {
         self.dropped.extend(self.frame.take());
+        self.yuv_frame = None;
         self.dropped.extend(self.art.take().map(|(_, a)| a));
         self.art_making = None;
     }
@@ -383,6 +390,7 @@ impl PreviewView {
     /// sRGB.
     pub fn gamut(&self, cx: &App) -> olo_ui::gpui::Gamut {
         match &self.frame {
+            _ if self.video.is_some() && self.yuv_frame.is_some() => olo_ui::gpui::Gamut::Srgb,
             Some(f) if self.video.is_some() => f.gamut(),
             _ => self.image.read(cx).gamut(),
         }
@@ -1377,7 +1385,21 @@ impl PreviewView {
                 self.video_hdr = !self.video_hdr;
                 cx.emit(PreviewEvent::Gamut);
             }
+            // As decoded: the GPU makes RGB of it (no picture made here).
+            let frame = match frame {
+                Some(video::Picture::Yuv(f)) => {
+                    let was = if self.yuv_frame.is_some() { Some(olo_ui::gpui::Gamut::Srgb) } else { self.frame.as_ref().map(|f| f.gamut()) };
+                    self.dropped.extend(self.frame.take());
+                    self.yuv_frame = Some(f);
+                    if was != Some(olo_ui::gpui::Gamut::Srgb) {
+                        cx.emit(PreviewEvent::Gamut);
+                    }
+                    None
+                }
+                other => other,
+            };
             if let Some(pic) = frame {
+                self.yuv_frame = None;
                 let gamut = if pic.p3() { olo_ui::gpui::Gamut::DisplayP3 } else { olo_ui::gpui::Gamut::Srgb };
                 let img = match pic {
                     video::Picture::Bgra { size: [w, h], data, .. } => {
@@ -1388,6 +1410,7 @@ impl PreviewView {
                     }
                     // (HDR10's, for a window drawing in it.)
                     video::Picture::Deep { size: [w, h], data } => Some(RenderImage::deep(w as u32, h as u32, &data, olo_ui::gpui::Gamut::Hdr10)),
+                    video::Picture::Yuv(_) => None,
                 };
                 if let Some(img) = img {
                     let was = self.frame.as_ref().map(|f| f.gamut());
@@ -1531,11 +1554,24 @@ impl PreviewView {
             let info_h = if full { 0.0 } else { VIDEO_INFO + if self.video.is_some() { TRANSPORT } else { 0.0 } };
             let area = Bounds::from_corners(r.origin, point(r.right(), r.bottom() - px(info_h)));
             window.paint_quad(gpui::fill(area, gpui::black()));
-            match &self.frame {
-                Some(img) => {
+            // The frame showing: as decoded (the GPU makes RGB of it), or
+            // a picture; its size in pixels either way.
+            enum Shown {
+                Yuv(Arc<olo_ui::gpui::YuvFrame>),
+                Image(Arc<RenderImage>),
+            }
+            let shown = match (&self.yuv_frame, &self.frame) {
+                (Some(f), _) => Some((Shown::Yuv(f.clone()), (f.width, f.height))),
+                (None, Some(img)) => {
                     let sz = img.size(0);
+                    Some((Shown::Image(img.clone()), (sz.width.0 as u32, sz.height.0 as u32)))
+                }
+                (None, None) => None,
+            };
+            match shown {
+                Some((shown, (pw, ph))) => {
                     let s = window.scale_factor();
-                    let (iw, ih) = (sz.width.0 as f32 / s, sz.height.0 as f32 / s);
+                    let (iw, ih) = (pw as f32 / s, ph as f32 / s);
                     let (kw, kh) = (f32::from(area.size.width) / iw, f32::from(area.size.height) / ih);
                     let k = match self.video_zoom {
                         // At most a frame pixel a device pixel (full
@@ -1545,10 +1581,13 @@ impl PreviewView {
                         VideoZoom::Fill => kw.max(kh),
                     };
                     let ib = style::snap(window, Bounds::centered_at(area.center(), size(px(iw * k), px(ih * k))));
-                    self.video_placed = Some((ib, area, (sz.width.0 as u32, sz.height.0 as u32)));
+                    self.video_placed = Some((ib, area, (pw, ph)));
                     // (Filling, what overflows its place is cut off.)
-                    window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
-                        let _ = window.paint_image(ib, gpui::Corners::default(), img.clone(), 0, false);
+                    window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| match shown {
+                        Shown::Yuv(f) => window.paint_yuv(ib, f),
+                        Shown::Image(img) => {
+                            let _ = window.paint_image(ib, gpui::Corners::default(), img, 0, false);
+                        }
                     });
                     agent::record(
                         window,

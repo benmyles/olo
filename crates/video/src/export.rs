@@ -613,4 +613,40 @@ mod tests {
         mp4.chapters(vec![(2000, "Intro".into()), (7500, "Demo".into())]);
         mp4.finish().unwrap();
     }
+
+    /// 4K60 clips to measure playing (`OLO_FIXTURE_DIR=DIR cargo test
+    /// --release -p olo-video make_4k60 -- --ignored`): 10 s of 3840 ×
+    /// 2160 at 60 a second, every frame different (a gradient sliding, bars
+    /// crossing), as H.264, HEVC and AV1 through NVIDIA's encoder (those it
+    /// opens).
+    #[test]
+    #[ignore]
+    fn make_4k60() {
+        let Some(dir) = std::env::var_os("OLO_FIXTURE_DIR").map(PathBuf::from) else { return };
+        let (w, h) = (3840u32, 2160u32);
+        let mut frame = vec![0u8; (w * h * 4) as usize];
+        for codec in [crate::Codec::H264, crate::Codec::Hevc, crate::Codec::Av1] {
+            let Ok(mut enc) = Encoder::new(w, h, 60, Choice::Nvidia, codec) else {
+                eprintln!("no NVENC for {}", codec.name());
+                continue;
+            };
+            let path = dir.join(format!("4k60-{}.mp4", codec.id()));
+            let mut mp4 = Mp4::create_for(&path, w, h, 60_000, enc.codec()).unwrap();
+            for f in 0..600u32 {
+                for y in 0..h {
+                    let row = &mut frame[(y * w * 4) as usize..((y + 1) * w * 4) as usize];
+                    for (x, px) in row.chunks_exact_mut(4).enumerate() {
+                        let x = x as u32;
+                        let bar = ((x + f * 16) / 120) % 2 == 0 && ((y + f * 4) / 270) % 3 != 0;
+                        let g = (((x + f * 8) * 255 / w) % 256) as u8;
+                        px.copy_from_slice(&if bar { [g, 255 - g, (y * 255 / h) as u8, 255] } else { [40, (y * 200 / h) as u8, g, 255] });
+                    }
+                }
+                let (bits, key) = enc.encode(&frame, (w * 4) as usize, Order::Bgra).unwrap();
+                mp4.add(&bits, key, 1000).unwrap();
+            }
+            mp4.finish().unwrap();
+            eprintln!("made {}", path.display());
+        }
+    }
 }

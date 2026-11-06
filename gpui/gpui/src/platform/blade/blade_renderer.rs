@@ -47,6 +47,43 @@ impl From<Bounds<ScaledPixels>> for PodBounds {
 struct SurfaceParams {
     bounds: PodBounds,
     content_mask: PodBounds,
+    /// Olo: RGB from (Y', Cb, Cr, 1), in columns: the picture's matrix
+    /// and range (`YuvFrame::rgb_matrix`).
+    rgb_from_yuv: [[f32; 4]; 4],
+}
+
+/// Olo: a video's picture's two textures (luma; chroma interleaved).
+#[cfg(not(target_os = "macos"))]
+struct YuvPair {
+    y: gpu::Texture,
+    y_view: gpu::TextureView,
+    uv: gpu::Texture,
+    uv_view: gpu::TextureView,
+}
+
+#[cfg(not(target_os = "macos"))]
+impl YuvPair {
+    fn destroy(self, gpu: &gpu::Context) {
+        gpu.destroy_texture_view(self.y_view);
+        gpu.destroy_texture(self.y);
+        gpu.destroy_texture_view(self.uv_view);
+        gpu.destroy_texture(self.uv);
+    }
+}
+
+/// Olo: a video stream's textures (`Window::paint_yuv`): two pairs used
+/// in turn, so a new picture is never written into one the frame before
+/// may still be reading; the size and depth they were made for; and the
+/// picture last uploaded (by address: a stream's frames are new `Arc`s).
+#[cfg(not(target_os = "macos"))]
+#[derive(Default)]
+struct YuvTextures {
+    pairs: [Option<YuvPair>; 2],
+    current: usize,
+    size: (u32, u32),
+    deep: bool,
+    shown: usize,
+    used: bool,
 }
 
 #[derive(blade_macros::ShaderData)]
@@ -459,6 +496,15 @@ pub struct BladeRenderer {
     /// lost (`remake_surface`), and when that was last tried.
     window: Option<RawHandles>,
     remade: Option<std::time::Instant>,
+    /// Olo: each video stream's textures, and the uploads' staging.
+    #[cfg(not(target_os = "macos"))]
+    yuv: std::collections::HashMap<u64, YuvTextures>,
+    #[cfg(not(target_os = "macos"))]
+    yuv_belt: BufferBelt,
+    /// Olo: textures let go this frame, destroyed once the GPU is past
+    /// the frame before (the last that used them).
+    #[cfg(not(target_os = "macos"))]
+    yuv_retired: Vec<YuvPair>,
 }
 
 /// Olo: a window's raw handles, kept to make its surface again: they
@@ -635,7 +681,162 @@ impl BladeRenderer {
             gamut: crate::Gamut::Srgb,
             window: handles,
             remade: None,
+            #[cfg(not(target_os = "macos"))]
+            yuv: std::collections::HashMap::new(),
+            #[cfg(not(target_os = "macos"))]
+            yuv_belt: BufferBelt::new(BufferBeltDescriptor {
+                memory: gpu::Memory::Upload,
+                min_chunk_size: 0x100000,
+                alignment: 0x40,
+            }),
+            #[cfg(not(target_os = "macos"))]
+            yuv_retired: Vec::new(),
         })
+    }
+
+    /// Olo: each video picture painted this frame (`paint_yuv`) whose
+    /// stream doesn't have it yet, uploaded into the stream's next pair of
+    /// textures (made, at its size and depth, the first time); streams not
+    /// painted let go.
+    #[cfg(not(target_os = "macos"))]
+    fn upload_yuv(&mut self, scene: &Scene) {
+        for t in self.yuv.values_mut() {
+            t.used = false;
+        }
+        let gpu = self.gpu.clone();
+        let make = |name: &'static str,
+                    format: gpu::TextureFormat,
+                    (w, h): (u32, u32),
+                    encoder: &mut gpu::CommandEncoder| {
+            let texture = gpu.create_texture(gpu::TextureDesc {
+                name,
+                format,
+                size: gpu::Extent {
+                    width: w.max(1),
+                    height: h.max(1),
+                    depth: 1,
+                },
+                array_layer_count: 1,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: gpu::TextureDimension::D2,
+                usage: gpu::TextureUsage::COPY | gpu::TextureUsage::RESOURCE,
+                external: None,
+            });
+            encoder.init_texture(texture);
+            let view = gpu.create_texture_view(
+                texture,
+                gpu::TextureViewDesc {
+                    name,
+                    format,
+                    dimension: gpu::ViewDimension::D2,
+                    subresources: &Default::default(),
+                },
+            );
+            (texture, view)
+        };
+        let mut uploads: Vec<(gpu::BufferPiece, u32, gpu::Texture, (u32, u32))> = Vec::new();
+        for surface in &scene.surfaces {
+            let f = &surface.frame;
+            let at = std::sync::Arc::as_ptr(f) as usize;
+            let t = self.yuv.entry(f.stream).or_default();
+            t.used = true;
+            if t.size != (f.width, f.height) || t.deep != f.deep {
+                for pair in t.pairs.iter_mut().filter_map(Option::take) {
+                    self.yuv_retired.push(pair);
+                }
+                (t.size, t.deep, t.shown) = ((f.width, f.height), f.deep, 0);
+            }
+            if t.shown == at {
+                continue;
+            }
+            let bytes = if f.deep { 2 } else { 1 };
+            let (cw, ch) = f.chroma_size();
+            if f.y.len() < (f.width * f.height * bytes) as usize
+                || f.uv.len() < (cw * ch * 2 * bytes) as usize
+            {
+                continue;
+            }
+            let next = if t.pairs[t.current].is_some() {
+                (t.current + 1) % 2
+            } else {
+                t.current
+            };
+            if t.pairs[next].is_none() {
+                let (yf, uvf) = if f.deep {
+                    (gpu::TextureFormat::R16Unorm, gpu::TextureFormat::Rg16Unorm)
+                } else {
+                    (gpu::TextureFormat::R8Unorm, gpu::TextureFormat::Rg8Unorm)
+                };
+                let (y, y_view) = make(
+                    "video luma",
+                    yf,
+                    (f.width, f.height),
+                    &mut self.command_encoder,
+                );
+                let (uv, uv_view) = make("video chroma", uvf, (cw, ch), &mut self.command_encoder);
+                t.pairs[next] = Some(YuvPair {
+                    y,
+                    y_view,
+                    uv,
+                    uv_view,
+                });
+            }
+            let pair = t.pairs[next].as_ref().expect("made");
+            let y = self
+                .yuv_belt
+                .alloc_bytes(&f.y[..(f.width * f.height * bytes) as usize], &self.gpu);
+            let uv = self
+                .yuv_belt
+                .alloc_bytes(&f.uv[..(cw * ch * 2 * bytes) as usize], &self.gpu);
+            uploads.push((y, f.width * bytes, pair.y, (f.width, f.height)));
+            uploads.push((uv, cw * 2 * bytes, pair.uv, (cw, ch)));
+            (t.current, t.shown) = (next, at);
+        }
+        if !uploads.is_empty() {
+            let mut transfers = self.command_encoder.transfer("video pictures");
+            for (data, row, texture, (w, h)) in uploads {
+                transfers.copy_buffer_to_texture(
+                    data,
+                    row,
+                    gpu::TexturePiece {
+                        texture,
+                        mip_level: 0,
+                        array_layer: 0,
+                        origin: [0, 0, 0],
+                    },
+                    gpu::Extent {
+                        width: w,
+                        height: h,
+                        depth: 1,
+                    },
+                );
+            }
+        }
+        // Streams not painted this frame: their textures let go.
+        let gone: Vec<u64> = self
+            .yuv
+            .iter()
+            .filter(|(_, t)| !t.used)
+            .map(|(k, _)| *k)
+            .collect();
+        for k in gone {
+            if let Some(mut t) = self.yuv.remove(&k) {
+                self.yuv_retired
+                    .extend(t.pairs.iter_mut().filter_map(Option::take));
+            }
+        }
+    }
+
+    /// Olo: after the frame: the uploads' staging kept till the GPU is
+    /// past it, and the textures let go destroyed (the GPU is past the
+    /// frame before, the last that drew them).
+    #[cfg(not(target_os = "macos"))]
+    fn after_yuv(&mut self, sync_point: &gpu::SyncPoint) {
+        self.yuv_belt.flush(sync_point);
+        for pair in self.yuv_retired.drain(..) {
+            pair.destroy(&self.gpu);
+        }
     }
 
     /// Olo: the window's surface was lost (its compositor went away and
@@ -883,6 +1084,24 @@ impl BladeRenderer {
 
     pub fn destroy(&mut self) {
         self.wait_for_gpu();
+        #[cfg(not(target_os = "macos"))]
+        {
+            let pairs: Vec<YuvPair> = self
+                .yuv
+                .drain()
+                .flat_map(|(_, mut t)| {
+                    t.pairs
+                        .iter_mut()
+                        .filter_map(Option::take)
+                        .collect::<Vec<_>>()
+                })
+                .chain(self.yuv_retired.drain(..))
+                .collect();
+            for pair in pairs {
+                pair.destroy(&self.gpu);
+            }
+            self.yuv_belt.destroy(&self.gpu);
+        }
         // (The atlas is the context's, kept for the next window.)
         self.gpu.destroy_sampler(self.atlas_sampler);
         self.instance_belt.destroy(&self.gpu);
@@ -1065,6 +1284,8 @@ impl BladeRenderer {
             }
         }
         self.atlas.before_frame(&mut self.command_encoder);
+        #[cfg(not(target_os = "macos"))]
+        self.upload_yuv(scene);
 
         let frame = {
             profiling::scope!("acquire frame");
@@ -1078,6 +1299,8 @@ impl BladeRenderer {
             self.instance_belt.flush(&sync_point);
             self.atlas.after_frame(&sync_point);
             self.wait_for_gpu();
+            #[cfg(not(target_os = "macos"))]
+            self.after_yuv(&sync_point);
             self.last_sync_point = Some(sync_point);
             self.remake_surface();
             return;
@@ -1308,9 +1531,32 @@ impl BladeRenderer {
                     let mut _encoder = pass.with(&self.pipelines.surfaces);
 
                     for surface in surfaces {
+                        // Olo: a video's picture, its textures uploaded
+                        // this frame or kept from one before.
                         #[cfg(not(target_os = "macos"))]
                         {
-                            let _ = surface;
+                            let Some(pair) = self
+                                .yuv
+                                .get(&surface.frame.stream)
+                                .and_then(|t| t.pairs[t.current].as_ref())
+                            else {
+                                continue;
+                            };
+                            _encoder.bind(
+                                0,
+                                &ShaderSurfacesData {
+                                    globals,
+                                    surface_locals: SurfaceParams {
+                                        bounds: surface.bounds.into(),
+                                        content_mask: surface.content_mask.bounds.into(),
+                                        rgb_from_yuv: surface.frame.rgb_matrix(),
+                                    },
+                                    t_y: pair.y_view,
+                                    t_cb_cr: pair.uv_view,
+                                    s_surface: self.atlas_sampler,
+                                },
+                            );
+                            _encoder.draw(0, 4, 0, 1);
                             continue;
                         };
 
@@ -1382,6 +1628,12 @@ impl BladeRenderer {
                                     surface_locals: SurfaceParams {
                                         bounds: surface.bounds.into(),
                                         content_mask: surface.content_mask.bounds.into(),
+                                        // (Full-range BT.601, as CoreVideo's.)
+                                        rgb_from_yuv: crate::yuv::rgb_matrix(
+                                            crate::YuvMatrix::Bt601,
+                                            true,
+                                            false,
+                                        ),
                                     },
                                     t_y,
                                     t_cb_cr,
@@ -1405,6 +1657,8 @@ impl BladeRenderer {
         self.atlas.after_frame(&sync_point);
 
         self.wait_for_gpu();
+        #[cfg(not(target_os = "macos"))]
+        self.after_yuv(&sync_point);
         self.last_sync_point = Some(sync_point);
     }
 }

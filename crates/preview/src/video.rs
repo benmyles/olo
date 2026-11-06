@@ -57,6 +57,11 @@ pub enum Picture {
         size: [usize; 2],
         data: Arc<Vec<u16>>,
     },
+    /// Its planes as decoded (4:2:0 Y'CbCr), for a window's GPU to make
+    /// RGB of (`Window::paint_yuv`): an SDR picture whose viewer asked
+    /// (`Options::yuv`).
+    #[cfg(feature = "gpui")]
+    Yuv(Arc<olo_ui::gpui::YuvFrame>),
 }
 
 impl Picture {
@@ -66,6 +71,8 @@ impl Picture {
             Picture::Rgba(i) => i,
             Picture::Bgra { size, data, p3 } => Arc::new(Bitmap { p3, ..Bitmap::from_bgra_unmultiplied(size, &data) }),
             Picture::Deep { size, data } => Arc::new(Bitmap::from_rgba_unmultiplied(size, &deep_to_srgb(&data))),
+            #[cfg(feature = "gpui")]
+            Picture::Yuv(f) => Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &yuv_to_rgba(&f))),
         }
     }
 
@@ -75,8 +82,32 @@ impl Picture {
             Picture::Rgba(i) => i.p3,
             Picture::Bgra { p3, .. } => *p3,
             Picture::Deep { .. } => false,
+            #[cfg(feature = "gpui")]
+            Picture::Yuv(_) => false,
         }
     }
+}
+
+/// A YUV picture as RGBA (a still of it, a copy: rare; the window's GPU
+/// draws it otherwise).
+#[cfg(feature = "gpui")]
+fn yuv_to_rgba(f: &olo_ui::gpui::YuvFrame) -> Vec<u8> {
+    let m = f.rgb_matrix();
+    let (w, h) = (f.width as usize, f.height as usize);
+    let cw = w.div_ceil(2);
+    let sample = |plane: &[u8], i: usize| if f.deep { f32::from(u16::from_le_bytes([plane[i * 2], plane[i * 2 + 1]])) / 65535.0 } else { f32::from(plane[i]) / 255.0 };
+    let mut out = vec![255u8; w * h * 4];
+    for y in 0..h {
+        for x in 0..w {
+            let c = (y / 2) * cw + x / 2;
+            let v = [sample(&f.y, y * w + x), sample(&f.uv, c * 2), sample(&f.uv, c * 2 + 1), 1.0];
+            for (k, o) in out[(y * w + x) * 4..][..3].iter_mut().enumerate() {
+                let r: f32 = (0..4).map(|col| m[col][k] * v[col]).sum();
+                *o = (r.clamp(0.0, 1.0) * 255.0).round() as u8;
+            }
+        }
+    }
+    out
 }
 
 /// An HDR10 picture's half floats (PQ, BT.2020) as sRGB RGBA, its light
@@ -125,16 +156,54 @@ impl Pic {
             Pic::Ready(Picture::Rgba(i)) => i.rgba.len(),
             Pic::Ready(Picture::Bgra { data, .. }) => data.len(),
             Pic::Ready(Picture::Deep { data, .. }) => data.len() * 2,
+            #[cfg(feature = "gpui")]
+            Pic::Ready(Picture::Yuv(f)) => f.y.len() + f.uv.len(),
+        }
+    }
+
+    /// Its planes for the GPU (`Picture::Yuv`, of stream `stream`), if it
+    /// can be drawn so: 4:2:0, and not an HDR picture to be drawn as HDR10
+    /// (`hdr`), nor one whose colours need converting.
+    #[cfg(feature = "gpui")]
+    fn yuv(&self, stream: u64, hdr: bool) -> Option<olo_ui::gpui::YuvFrame> {
+        use olo_ui::gpui::{YuvFrame, YuvMatrix};
+        match self {
+            // (OpenH264's: limited-range BT.601, as `Planar::convert`.)
+            Pic::H264(p) => {
+                let mut uv = Vec::with_capacity(p.u.len() * 2);
+                for (&u, &v) in p.u.iter().zip(&p.v) {
+                    uv.push(u);
+                    uv.push(v);
+                }
+                Some(YuvFrame { stream, width: p.width as u32, height: p.height as u32, deep: false, y: p.y.clone(), uv, matrix: YuvMatrix::Bt601, full_range: false })
+            }
+            Pic::Planes(f) if !(hdr && f.is_hdr()) => {
+                let y = f.yuv420()?;
+                let matrix = match y.matrix {
+                    709 => YuvMatrix::Bt709,
+                    2020 => YuvMatrix::Bt2020,
+                    _ => YuvMatrix::Bt601,
+                };
+                Some(YuvFrame { stream, width: y.width, height: y.height, deep: y.deep, y: y.y, uv: y.uv, matrix, full_range: y.full_range })
+            }
+            _ => None,
         }
     }
 
     /// As a picture to show; `hdr`, an HDR picture as HDR10
-    /// (`Picture::Deep`).
-    fn picture(&self, bgra: bool, hdr: bool) -> Picture {
+    /// (`Picture::Deep`); `yuv`, as planes for the GPU where it can be
+    /// (`Picture::Yuv`, of that stream).
+    fn picture(&self, bgra: bool, hdr: bool, yuv: Option<u64>) -> Picture {
+        #[cfg(feature = "gpui")]
+        if let Some(f) = yuv.and_then(|stream| self.yuv(stream, hdr)) {
+            return Picture::Yuv(Arc::new(f));
+        }
+        #[cfg(not(feature = "gpui"))]
+        let _ = yuv;
         match self {
             Pic::Planes(f) if hdr && f.is_hdr() => match f.to_pq_half() {
                 Some(data) => Picture::Deep { size: [f.width as usize, f.height as usize], data: Arc::new(data) },
-                None => Pic::Planes(f.clone()).picture(bgra, false),
+                None => Pic::Planes(f.clone()).picture(bgra, false, None),
             },
             Pic::H264(p) if bgra => Picture::Bgra { size: [p.width, p.height], data: Arc::new(p.bgra()), p3: false },
             Pic::H264(p) => Picture::Rgba(p.image()),
@@ -225,6 +294,9 @@ struct Shared {
     ahead: usize,
     /// Make pictures BGRA (for pages) rather than RGBA.
     bgra: bool,
+    /// Make them Y'CbCr planes where they can be (`Picture::Yuv`), of this
+    /// stream.
+    yuv: Option<u64>,
     /// Make an HDR picture HDR10's (`Video::draw_hdr`: a window drawing
     /// in HDR10 shows it), rather than mapped for SDR.
     hdr: bool,
@@ -268,13 +340,17 @@ pub struct Video {
 impl Video {
     /// Start playing `input` (of `duration` seconds) at once.
     pub fn start(input: &Input, duration: f64) -> Video {
-        Video::start_with(input, duration, Options { playing: true, picture: true, sound: true, bgra: false })
+        Video::start_with(input, duration, Options { playing: true, picture: true, sound: true, bgra: false, yuv: false })
     }
 
     /// Start `input` as `opts` say: playing or paused (showing its first
     /// picture), with pictures and sound or only one of them.
     pub fn start_with(input: &Input, duration: f64, opts: Options) -> Video {
-        let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, bgra: opts.bgra, ..Default::default() }), Condvar::new()));
+        #[cfg(feature = "gpui")]
+        let yuv = opts.yuv.then(olo_ui::gpui::YuvFrame::new_stream);
+        #[cfg(not(feature = "gpui"))]
+        let yuv = None;
+        let shared = Arc::new((Mutex::new(Shared { eof: !opts.picture, bgra: opts.bgra, yuv, ..Default::default() }), Condvar::new()));
         let (i, s) = (input.clone(), shared.clone());
         let playing = opts.playing;
         let worker = opts
@@ -463,14 +539,14 @@ impl Video {
         // Playing, or waiting for the picture a seek asked for.
         let idle = if self.picture { Duration::from_millis(15) } else { Duration::from_millis(100) };
         let next = if c.since.is_some() || (c.show_next && !sh.eof) { Some(next.unwrap_or(idle)) } else { None };
-        let hdr = sh.hdr;
+        let (hdr, yuv) = (sh.hdr, sh.yuv);
         // (A picture made here, the worker behind: its stream known HDR
         // all the same.)
         sh.stream_hdr |= due.as_ref().is_some_and(|f| matches!(&f.pic, Pic::Planes(p) if p.is_hdr()));
         drop(sh);
         drop(c);
         // Ready unless the worker fell behind.
-        (due.map(|f| f.pic.ready().cloned().unwrap_or_else(|| f.pic.picture(self.bgra, hdr))), next)
+        (due.map(|f| f.pic.ready().cloned().unwrap_or_else(|| f.pic.picture(self.bgra, hdr, yuv))), next)
     }
 }
 
@@ -490,19 +566,23 @@ pub struct Options {
     pub sound: bool,
     /// Pictures as BGRA bytes ([`Video::tick_picture`]).
     pub bgra: bool,
+    /// Pictures as Y'CbCr planes for a window's GPU where they can be
+    /// (`Picture::Yuv`; a build with the `gpui` feature): a 4K picture is
+    /// 12 MB rather than 33, and nothing converts it on the CPU.
+    pub yuv: bool,
 }
 
 /// Make the picture at the front of the queue ready to show (outside the
 /// lock: the UI may be waiting on it).
 fn ripen(m: &Mutex<Shared>) {
-    let (pts, pic, bgra, hdr) = {
+    let (pts, pic, bgra, hdr, yuv) = {
         let sh = m.lock().unwrap();
         match sh.queue.front() {
-            Some(f) if f.pic.ready().is_none() => (f.pts, f.pic.clone(), sh.bgra, sh.hdr),
+            Some(f) if f.pic.ready().is_none() => (f.pts, f.pic.clone(), sh.bgra, sh.hdr, sh.yuv),
             _ => return,
         }
     };
-    let image = pic.picture(bgra, hdr);
+    let image = pic.picture(bgra, hdr, yuv);
     let mut sh = m.lock().unwrap();
     sh.stream_hdr |= matches!(&pic, Pic::Planes(f) if f.is_hdr());
     if let Some(f) = sh.queue.front_mut()
@@ -561,7 +641,7 @@ pub fn picture_at(input: &Input, at: f64) -> Result<Image, String> {
     while sh.queue.is_empty() && !sh.eof && sh.error.is_none() && !worker.is_finished() {
         sh = cv.wait_timeout(sh, Duration::from_millis(10)).unwrap().0;
     }
-    let first = sh.queue.front().map(|f| f.pic.picture(false, false));
+    let first = sh.queue.front().map(|f| f.pic.picture(false, false, None));
     sh.stop = true;
     drop(sh);
     cv.notify_all();
@@ -1333,7 +1413,7 @@ mod tests {
         assert_eq!(colour, Some("HDR (PQ), BT.2020"), "{:?}", m.rows);
         let input = Input::file(&path);
         assert!(picture_at(&input, 1.0).unwrap().p3);
-        let video = Video::start_with(&input, 3.0, Options { playing: false, picture: true, sound: false, bgra: true });
+        let video = Video::start_with(&input, 3.0, Options { playing: false, picture: true, sound: false, bgra: true, yuv: false });
         video.draw_hdr(true);
         let t0 = Instant::now();
         let deep = loop {

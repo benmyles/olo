@@ -332,6 +332,9 @@ pub enum TextureFormat {
     R8Unorm,
     Rg8Unorm,
     Rg8Snorm,
+    /// Olo: 16-bit unsigned normalized (a 10-bit video's planes).
+    R16Unorm,
+    Rg16Unorm,
     Rgba8Unorm,
     Rgba8UnormSrgb,
     Bgra8Unorm,

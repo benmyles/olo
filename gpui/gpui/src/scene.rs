@@ -1271,6 +1271,9 @@ pub(crate) struct PaintSurface {
     pub content_mask: ContentMask<ScaledPixels>,
     #[cfg(target_os = "macos")]
     pub image_buffer: core_video::pixel_buffer::CVPixelBuffer,
+    /// Olo: a video's picture, its planes as decoded (`Window::paint_yuv`).
+    #[cfg(not(target_os = "macos"))]
+    pub frame: std::sync::Arc<crate::YuvFrame>,
 }
 
 impl From<PaintSurface> for Primitive {

@@ -75,6 +75,20 @@ pub mod av1 {
     const EAGAIN: i32 = 11;
 
     /// One decoded frame's planes, copied out of rav1d.
+    /// A picture's 4:2:0 planes for a GPU to draw (`Frame::yuv420`).
+    pub struct Yuv420 {
+        pub width: u32,
+        pub height: u32,
+        /// 16-bit samples (little-endian, in the high bits), else bytes.
+        pub deep: bool,
+        pub y: Vec<u8>,
+        /// Cb and Cr interleaved, half as wide and high (rounded up).
+        pub uv: Vec<u8>,
+        /// Its matrix: 601, 709 or 2020.
+        pub matrix: u16,
+        pub full_range: bool,
+    }
+
     pub struct Frame {
         pub width: u32,
         pub height: u32,
@@ -307,6 +321,49 @@ pub mod av1 {
                 DAV1D_MC_BT2020_NCL | DAV1D_MC_BT2020_CL => (0.2627, 0.0593),
                 _ => (0.299, 0.114),
             }
+        }
+
+        /// Its planes as a GPU draws them (`gpui::YuvFrame`): 4:2:0 only,
+        /// and only a picture an RGB conversion needs nothing more for (not
+        /// HDR, not wide, an ordinary matrix); None otherwise. Luma rows
+        /// packed; Cb and Cr interleaved; 8-bit samples as bytes, deeper
+        /// ones as 16-bit little-endian, in the high bits. With its matrix
+        /// (601, 709 or 2020: as `coefficients` takes it) and range.
+        pub fn yuv420(&self) -> Option<Yuv420> {
+            if self.chroma != Some((1, 1)) || matches!(self.matrix, DAV1D_MC_IDENTITY | DAV1D_MC_SMPTE_YCGCO | DAV1D_MC_FCC | DAV1D_MC_SMPTE240) || super::hdr::needed(self.primaries, self.transfer) {
+                return None;
+            }
+            let (w, h) = (self.width as usize, self.height as usize);
+            let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
+            let deep = self.bpc > 8;
+            let shift = 16 - self.bpc.min(16);
+            let (mut y, mut uv) = (Vec::with_capacity(w * h * if deep { 2 } else { 1 }), Vec::with_capacity(cw * ch * if deep { 4 } else { 2 }));
+            for row in 0..h {
+                let line = &self.planes[0][row * self.stride[0]..][..w];
+                if deep {
+                    y.extend(line.iter().flat_map(|&v| (v << shift).to_le_bytes()));
+                } else {
+                    y.extend(line.iter().map(|&v| v as u8));
+                }
+            }
+            for row in 0..ch {
+                let (us, vs) = (&self.planes[1][row * self.stride[1]..][..cw], &self.planes[2][row * self.stride[2]..][..cw]);
+                for (&u, &v) in us.iter().zip(vs) {
+                    if deep {
+                        uv.extend_from_slice(&(u << shift).to_le_bytes());
+                        uv.extend_from_slice(&(v << shift).to_le_bytes());
+                    } else {
+                        uv.push(u as u8);
+                        uv.push(v as u8);
+                    }
+                }
+            }
+            let matrix = match self.matrix {
+                DAV1D_MC_BT709 => 709,
+                DAV1D_MC_BT2020_NCL | DAV1D_MC_BT2020_CL => 2020,
+                _ => 601,
+            };
+            Some(Yuv420 { width: self.width, height: self.height, deep, y, uv, matrix, full_range: self.full_range })
         }
 
         /// RGBA in sRGB (HDR and wide pictures converted, `hdr`).
