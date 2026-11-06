@@ -6627,17 +6627,35 @@ Screens' Export Video uses too).
   back (54 dB). NVIDIA's encoder can't take them: app_server draws on
   the Intel GPU, and CUDA imports no other GPU's memory.
 - **An encoder that fails mid-recording** is opened again once (its
-  first picture a key frame), and the file goes on if the new one's
-  parameter sets are the same (NVENC's and OpenH264's are, opened with
-  the same settings; `Mp4::add` refuses ones that differ, as the file's
-  sample entry describes one). Failing again, or the file refusing (a
-  full disk), the recording stops there and what was recorded is kept:
-  the file finished, `stopped_early` saying why, the recorder stopped
-  (before, an encoder's error left an unplayable `.part`).
+  first picture a key frame), the stream going on in the same file.
+  Failing again, the next encoder that makes the same codec takes over
+  (`Encoder::others`, best first: NVIDIA's then the processor for H.264;
+  NVIDIA's and the Intel GPU's for AV1, the Intel GPU first on battery;
+  none for HEVC), and the recording says so: `encoder_note` in what it
+  prints, and the saved notification's "An encoder failed; finished on
+  …". Another encoder's parameter sets differ, so its stream goes in a
+  sample entry of its own (`Mp4::new_entry` before its first picture,
+  which must be a key frame): `stsd` lists each, `stsc` maps each run
+  of samples to its entry, and an entry the same as the one before is
+  joined to it (an encoder opened again usually makes the same sets).
+  The readers follow: the Viewer gives each key frame its entry's sets
+  (`media::mp4_later_entries`; the mp4 crate reads only the first
+  entry), GIF export gives the decoder a later entry's sets at its first
+  sample, and Trim copies every entry and switches at the same samples
+  (`trim::video_entries`, which reads `moov` alone rather than the
+  whole file). With no other encoder, or the file refusing (a full
+  disk), the recording stops there and what was recorded is kept: the
+  file finished, `stopped_early` saying why, the recorder stopped.
   `OLO_RECORDING_FAIL_AT=N` makes picture N fail (`N!`: the encoder
-  opened again too), for tests: checked on the processor (carried on;
-  stopped at 1.76 s with 21 frames kept, playable) and on NVENC (opened
-  again in 2.5 s, carried on in the same file, decoded past the gap).
+  opened again too, so the next takes over; `N!!`: every other too, so
+  it stops): checked headless with `--encoder nvidia` and `30!` (NVENC
+  to picture 30, then OpenH264, 33 frames; the Viewer seeking past the
+  switch, a GIF of it, a trim across it). Tests: `olo-video`'s
+  `another_encoders_stream_gets_its_own_sample_entry` (the file's
+  structure, joining, Trim) and `a_recording_goes_on_with_another_encoder`
+  (NVENC then OpenH264, every picture decoded); `olo-preview`'s ignored
+  `plays_across_another_encoders_entry` (`OLO_FALLBACK_MP4`,
+  `OLO_FALLBACK_SEEKS`).
 - **H.264, HEVC or AV1** (`--codec`, `Settings::screen_recording.codec`,
   Preferences ▸ GPUs ▸ Format, which offers H.264 and HEVC;
   `olo_video::Codec`): HEVC and AV1 on NVIDIA's encoder only (the

@@ -575,6 +575,65 @@ pub(crate) fn mp4_av1<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64) -> 
     None
 }
 
+/// Track `track`'s sample entries after its first, of the MPEG-4 file
+/// `r` (`len` bytes long), each from its first sample (counted from 1,
+/// as the sample table's `stsc` maps them): the parameter sets a decoder
+/// is given before a key frame of it (H.264's SPS and PPS with start
+/// codes, AV1's sequence header OBUs). A recording whose encoder failed
+/// went on with another's stream in an entry of its own; the mp4 crate
+/// reads only the first.
+pub(crate) fn mp4_later_entries<R: std::io::Read + std::io::Seek>(r: &mut R, len: u64, track: u32) -> Vec<(u32, Vec<u8>)> {
+    let Some(moov) = moov(r, len) else { return Vec::new() };
+    let u32_at = |b: &[u8], at: usize| b.get(at..at + 4).and_then(|x| x.try_into().ok()).map(u32::from_be_bytes);
+    for trak in children(&moov, b"trak") {
+        let Some(tkhd) = children(trak, b"tkhd").next() else { continue };
+        let off = if tkhd.first() == Some(&1) { 20 } else { 12 };
+        if u32_at(tkhd, off) != Some(track) {
+            continue;
+        }
+        let (Some(stsd), Some(stsc), Some(stco)) = (
+            within(trak, &[b"mdia", b"minf", b"stbl", b"stsd"]),
+            within(trak, &[b"mdia", b"minf", b"stbl", b"stsc"]),
+            within(trak, &[b"mdia", b"minf", b"stbl"]).and_then(|t| children(t, b"stco").next().or_else(|| children(t, b"co64").next())),
+        ) else {
+            return Vec::new();
+        };
+        // Each entry's sets (after the first), by its index (from 1).
+        let mut sets: Vec<Option<Vec<u8>>> = Vec::new();
+        for (kind, entry) in boxes(stsd.get(8..).unwrap_or_default()) {
+            let inner = entry.get(78..).unwrap_or_default();
+            sets.push(match &kind {
+                b"avc1" | b"avc3" => children(inner, b"avcC").next().and_then(parse_avcc).map(|(_, ps)| ps.iter().flat_map(|p| [&[0u8, 0, 0, 1][..], p].concat()).collect()),
+                b"av01" => children(inner, b"av1C").next().and_then(|c| c.get(4..)).map(<[u8]>::to_vec),
+                _ => None,
+            });
+        }
+        if sets.len() < 2 {
+            return Vec::new();
+        }
+        // stsc's runs: first chunk, samples a chunk, entry; to each run's
+        // first sample.
+        let chunks = u32_at(stco, 4).unwrap_or(0);
+        let runs: Vec<(u32, u32, u32)> = (0..u32_at(stsc, 4).unwrap_or(0) as usize).filter_map(|i| Some((u32_at(stsc, 8 + i * 12)?, u32_at(stsc, 12 + i * 12)?, u32_at(stsc, 16 + i * 12)?))).collect();
+        let (mut out, mut sample) = (Vec::new(), 1u32);
+        for (i, &(first, per, entry)) in runs.iter().enumerate() {
+            let end = runs.get(i + 1).map_or(chunks + 1, |r| r.0);
+            if entry > 1
+                && let Some(Some(s)) = sets.get(entry as usize - 1)
+                && out.last().is_none_or(|(_, last): &(u32, Vec<u8>)| last != s)
+            {
+                out.push((sample, s.clone()));
+            } else if entry == 1 && !out.is_empty() {
+                // (Back to the first entry's: the caller's own.)
+                out.push((sample, Vec::new()));
+            }
+            sample += end.saturating_sub(first) * per;
+        }
+        return out;
+    }
+    Vec::new()
+}
+
 /// An MPEG-4 file's chapters, from Nero's `chpl` in `moov`'s `udta`
 /// (version 1: four reserved bytes, a count, then each start in 100 ns
 /// units and a title of up to 255 bytes).

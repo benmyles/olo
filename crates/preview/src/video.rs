@@ -870,6 +870,9 @@ struct Mp4 {
     /// form, or AV1's sequence header (VP9 needs none; HEVC's decoder
     /// starts from its own, `hevc`).
     sets: Vec<u8>,
+    /// Later sample entries' sets, each from its first sample (empty:
+    /// the first entry's again): `media::mp4_later_entries`.
+    later: Vec<(u32, Vec<u8>)>,
     hevc: Option<(hevc::Config, hevc::Colour)>,
     /// The track's colour as its sample entry says (AV1's, HEVC's).
     colour: hevc::Colour,
@@ -946,7 +949,13 @@ impl Mp4 {
             }
         }
         let colour = av1.as_ref().map(|a| a.colour).or(hv.as_ref().map(|h| h.colour)).unwrap_or_default();
-        Ok(Mp4 { track, codec, timescale, shift, sets, hevc, colour, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
+        // Another encoder's stream after the first's (a recording's whose
+        // encoder failed), in sample entries of their own.
+        let later = match codec {
+            Codec::H264 | Codec::Av1 => input.open().ok().map(|(mut f, len)| media::mp4_later_entries(&mut f, len, track)).unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        Ok(Mp4 { track, codec, timescale, shift, sets, later, hevc, colour, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
     }
 }
 
@@ -973,7 +982,9 @@ impl Demux for Mp4 {
             let Ok(Some(s)) = self.reader.read_sample(self.track, id) else { continue };
             let mut data = Vec::with_capacity(s.bytes.len() + 64);
             if s.is_sync {
-                data.extend_from_slice(&self.sets);
+                // (The sets of the sample entry this sample is in.)
+                let later = self.later.iter().rev().find(|(from, _)| *from <= id).map(|(_, sets)| sets).filter(|sets| !sets.is_empty());
+                data.extend_from_slice(later.unwrap_or(&self.sets));
             }
             // (AV1 samples are OBUs as the decoder takes them, VP9's
             // frames or superframes, HEVC's length-prefixed NAL units.)
@@ -1273,6 +1284,22 @@ mod tests {
         // The first picture is the one showing at the target.
         assert!((pts[0] - target).abs() < 0.05, "{name} @ {target}: {pts:?}");
         assert!(pts.windows(2).all(|w| w[1] > w[0]), "{name}: in order {pts:?}");
+    }
+
+    /// A recording whose encoder failed and another went on: its second
+    /// sample entry's parameter sets given at its first key frame, so it
+    /// plays across the switch and from a seek past it. `OLO_FALLBACK_MP4`
+    /// is olo-video's `a_recording_goes_on_with_another_encoder`'s file
+    /// (kept with `OLO_KEEP_TEST_VIDEO=1`): NVENC to 1 s, then OpenH264.
+    #[test]
+    #[ignore]
+    fn plays_across_another_encoders_entry() {
+        let path = std::path::PathBuf::from(std::env::var("OLO_FALLBACK_MP4").expect("OLO_FALLBACK_MP4"));
+        // (`OLO_FALLBACK_SEEKS=3.3,3.6`: where a recording's own switch is.)
+        let targets: Vec<f64> = std::env::var("OLO_FALLBACK_SEEKS").map_or_else(|_| vec![0.5, 0.97, 1.5], |s| s.split(',').filter_map(|t| t.parse().ok()).collect());
+        for target in targets {
+            seeks(&path, target);
+        }
     }
 
     /// AV1 in MPEG-4 (which the mp4 crate doesn't know): `OLO_SAMPLES=dir`

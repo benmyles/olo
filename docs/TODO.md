@@ -1116,8 +1116,12 @@ Nothing: what's left is waiting for Ben or blocked.
     default, named; the NVIDIA GPU; the processor). *Then*
     (2026-11-05): HEVC and AV1 on NVENC, each codec at a measured
     constant quality; an encoder failing mid-recording opened again,
-    else the recording kept to there (not yet falling back to another
-    encoder: the file's sample entry describes one stream).
+    else the recording kept to there. *Then* (2026-11-06): falling back
+    to the next encoder of the codec (NVENC to the processor for H.264,
+    NVENC and the Intel GPU's for AV1), saying so (`encoder_note`, the
+    saved notification), its stream in a sample entry of its own that
+    the Viewer, GIF export and Trim follow; checked headless (NVENC
+    failing at picture 30, OpenH264 finishing it).
     *Found* (2026-11-05), for Intel's and AMD's: Fedora's own VA-API
     drivers (iHD from Fedora, Mesa's) leave out the patented codecs: on
     this ThinkPad's Intel GPU (xe, renderD128) iHD encodes only JPEG,

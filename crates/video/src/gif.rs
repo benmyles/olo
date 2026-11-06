@@ -166,6 +166,36 @@ struct Video {
     duration: u64,
     /// What its decoder starts from.
     start: Start,
+    /// Later sample entries' parameter sets (another encoder's stream,
+    /// where a recording's failed), each from its first sample.
+    later: Vec<(u32, Vec<u8>)>,
+}
+
+/// A later sample entry's parameter sets, as its decoder is given them
+/// before its first sample: H.264's SPS and PPS (Annex B), AV1's
+/// configOBUs. (HEVC's: none; no recording goes on in another's.)
+fn entry_sets(entry: &[u8]) -> Option<Vec<u8>> {
+    let boxes = entry.get(86..)?;
+    match entry.get(4..8)? {
+        b"avc1" | b"avc3" => {
+            let c = crate::trim::find(boxes, b"avcC")?;
+            let mut out = Vec::new();
+            let mut at = 5;
+            for mask in [0x1f, 0xff] {
+                let n = (*c.get(at)? & mask) as usize;
+                at += 1;
+                for _ in 0..n {
+                    let l = u16::from_be_bytes([*c.get(at)?, *c.get(at + 1)?]) as usize;
+                    out.extend_from_slice(&[0, 0, 0, 1]);
+                    out.extend_from_slice(c.get(at + 2..at + 2 + l)?);
+                    at += 2 + l;
+                }
+            }
+            Some(out)
+        }
+        b"av01" => crate::trim::find(boxes, b"av1C").and_then(|c| c.get(4..)).map(<[u8]>::to_vec),
+        _ => None,
+    }
 }
 
 /// A decoder's start: H.264's parameter sets (Annex B, sent before the
@@ -184,7 +214,9 @@ impl Video {
         let size = f.metadata().map_err(|e| e.to_string())?.len();
         let reader = mp4::Mp4Reader::read_header(std::io::BufReader::new(f), size).map_err(|e| format!("not a video Olo can read: {e}"))?;
         let (&track, t) = reader.tracks().iter().find(|(_, t)| t.track_type().ok() == Some(mp4::TrackType::Video)).ok_or("no video in it")?;
-        let entry = crate::trim::video_entry(path).ok_or("not a video Olo makes GIFs of (H.264, HEVC or AV1)")?;
+        let entries = crate::trim::video_entries(path).ok_or("not a video Olo makes GIFs of (H.264, HEVC or AV1)")?;
+        let later = entries.iter().skip(1).filter_map(|(from, e)| Some((*from, entry_sets(e)?))).collect();
+        let entry = entries.into_iter().next().map(|(_, e)| e).ok_or("no video entry")?;
         // (A visual sample entry: 8 bytes of header and 78 of fields, then
         // its boxes.)
         let config = |kind: &[u8; 4]| entry.get(86..).and_then(|b| crate::trim::find(b, kind)).map(<[u8]>::to_vec);
@@ -202,7 +234,19 @@ impl Video {
         };
         let (width, height) = (u32::from(u16::from_be_bytes([entry[32], entry[33]])), u32::from(u16::from_be_bytes([entry[34], entry[35]])));
         let (timescale, samples, duration) = (t.timescale(), t.sample_count(), t.duration().as_millis() as u64);
-        Ok(Video { path: path.to_path_buf(), track, width, height, timescale, samples, duration, start })
+        Ok(Video { path: path.to_path_buf(), track, width, height, timescale, samples, duration, start, later })
+    }
+
+    /// Whether sample `i` starts a stream (the first, or a later sample
+    /// entry's first, whose sets `dec` is given).
+    fn fresh(&self, dec: &mut Decoder, i: u32) -> bool {
+        match self.later.iter().find(|(from, _)| *from == i) {
+            Some((_, sets)) => {
+                dec.restart(sets);
+                true
+            }
+            None => i == 1,
+        }
     }
 
     fn seconds(&self) -> f64 {
@@ -226,7 +270,8 @@ impl Video {
                 return Err("cancelled".into());
             }
             let Some(s) = r.read_sample(self.track, i).map_err(|e| e.to_string())? else { break };
-            if dec.decode(&s.bytes, i == 1, (self.width, self.height), &mut rgb)? {
+            let fresh = self.fresh(&mut dec, i);
+            if dec.decode(&s.bytes, fresh, (self.width, self.height), &mut rgb)? {
                 shrink(&rgb, self.width as usize, self.height as usize, &mut small, ow as usize, oh as usize);
                 have = true;
             }
@@ -320,6 +365,15 @@ impl Decoder {
             }
         };
         Ok(into_rgb(pictures, size, rgb))
+    }
+
+    /// Another stream's parameter sets from the next sample (`fresh`).
+    fn restart(&mut self, sets: &[u8]) {
+        match self {
+            Decoder::H264(_, params) => *params = sets.to_vec(),
+            Decoder::Av1(_, config) => *config = sets.to_vec(),
+            Decoder::Hevc(_) => {}
+        }
     }
 
     /// At the end: a picture the decoder still held, into `rgb`.
@@ -464,7 +518,8 @@ impl Opened {
         let mut rgb = vec![0u8; v.width as usize * v.height as usize * 3];
         for i in 1..=v.samples {
             let Some(s) = r.read_sample(v.track, i).map_err(|e| e.to_string())? else { break };
-            if dec.decode(&s.bytes, i == 1, (v.width, v.height), &mut rgb)? {
+            let fresh = v.fresh(&mut dec, i);
+            if dec.decode(&s.bytes, fresh, (v.width, v.height), &mut rgb)? {
                 f(&rgb)?;
             }
         }
