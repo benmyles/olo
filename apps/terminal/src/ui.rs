@@ -730,7 +730,10 @@ impl Terminal {
         if focused {
             t.tab_mut().attention = false;
         }
-        t.tab().session.woke();
+        // (Every pane drawn has taken its wake-up, the tiles too.)
+        for &(i, _, _) in &layout.panes {
+            t.tabs[i].session.woke();
+        }
         {
             let session = &t.tab().session;
             let mut current = session.shared.scheme.lock().unwrap();

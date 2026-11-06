@@ -5156,7 +5156,14 @@ front while its client waits to draw (`waiting_to_draw`) is told to
 draw at once and shows only its tab, the old front still drawn, until
 it commits or `FRONTING` (100 ms) passes (`Decoration::fronting`): a
 Terminal tab clicked showed what it had printed a second before, then
-jumped to now. Moving, resizing,
+jumped to now. It waits once: one new to its group waits so too, till
+it has been the front (`Decoration::fronted`), and a wait ended by its
+drawing counts as that (`drew_while_fronting`): a commit asks for the
+next frame, and taken for one still to come to the front, a busy window
+was held back after every frame it drew, the old front showing for
+seconds (a Terminal with an agent streaming, after an upgrade, when no
+window has been the front; `top_turn`,
+`a_window_brought_forward_waits_once`). Moving, resizing,
 rolling up and tiling (one cell per group) act on the whole group; an
 arranging command on a window behind brings it to the front first
 (`front_of_group`). A

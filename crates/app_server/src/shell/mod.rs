@@ -221,7 +221,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 if &root == surface {
                     // Drawn since it came to the front of its group: it
                     // shows (`Decoration::fronting`).
-                    if window.decorated() && window.decoration().fronting.take().is_some() {
+                    if window.decorated() && groups::drew_while_fronting(&mut window.decoration()) {
                         self.backend_data.wake(None);
                     }
                     self.place_on_content(surface);

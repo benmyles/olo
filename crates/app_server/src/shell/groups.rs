@@ -259,20 +259,13 @@ pub fn mark_behind(space: &Space<WindowElement>) -> Vec<WindowElement> {
                 // (Only with another of its group to show meanwhile: the
                 // one in front closed, it shows at once.)
                 let others = || space.elements().any(|o| o != w && o.decorated() && o.decoration().group == Some(g));
-                // (Coming from behind, or new to the group: one that opened
-                // into it mid-drag drew the size it was asked as the drag
-                // moved on, auto-fuzz seed 16.)
-                if (d.behind || !d.fronted) && d.fronting.is_none() && waiting_to_draw(w) && others() {
-                    d.fronting = Some(Instant::now());
+                let (started, front) = top_turn(&mut d, || waiting_to_draw(w), others, Instant::now());
+                if started {
                     fronting.push(w.clone());
                 }
-                if d.fronting.is_some_and(|t| t.elapsed() >= FRONTING) {
-                    d.fronting = None;
-                }
                 // (Its group's front is the one under it meanwhile.)
-                if d.fronting.is_none() {
+                if front {
                     fronts.push(g);
-                    d.fronted = true;
                 }
                 false
             }
@@ -289,6 +282,47 @@ pub fn mark_behind(space: &Space<WindowElement>) -> Vec<WindowElement> {
 /// How long a window come to the front of its group waits to have drawn
 /// before it shows anyway (`Decoration::fronting`).
 pub const FRONTING: Duration = Duration::from_millis(100);
+
+/// The turn in `mark_behind` of a window at the top of its group, at
+/// `now`: whether it starts waiting to draw (coming from behind, or never
+/// yet its group's front, with something new to draw and another of its
+/// group to show meanwhile), and whether it is its group's front now (not
+/// waiting). Once it has been the front it waits no more: a window whose
+/// wait ended as it drew (`drew_while_fronting`) asked for its next frame
+/// as it did, and taken for one coming to the front again it was held
+/// back after every frame, the window under it showing: a busy Terminal
+/// (an agent streaming) brought to the front after an upgrade (when no
+/// window has been the front yet) didn't show for seconds (Ben,
+/// 2026-11-05).
+fn top_turn(d: &mut super::deco::Decoration, waiting: impl FnOnce() -> bool, others: impl FnOnce() -> bool, now: Instant) -> (bool, bool) {
+    let mut started = false;
+    // (Coming from behind, or new to the group: one that opened into it
+    // mid-drag drew the size it was asked as the drag moved on, auto-fuzz
+    // seed 16.)
+    if (d.behind || !d.fronted) && d.fronting.is_none() && waiting() && others() {
+        d.fronting = Some(now);
+        started = true;
+    }
+    if d.fronting.is_some_and(|t| now.duration_since(t) >= FRONTING) {
+        d.fronting = None;
+    }
+    let front = d.fronting.is_none();
+    if front {
+        d.fronted = true;
+    }
+    (started, front)
+}
+
+/// The window waiting to draw before it shows (`Decoration::fronting`)
+/// has drawn: it shows, and has been its group's front from now on.
+/// Whether it was waiting.
+pub fn drew_while_fronting(d: &mut super::deco::Decoration) -> bool {
+    let was = d.fronting.take().is_some();
+    if was {
+        d.fronted = true;
+    }
+    was
+}
 
 /// Its client asked for a frame callback and hasn't had it: it has
 /// something new to draw.
@@ -955,6 +989,42 @@ mod tests {
         let tabs = [100];
         assert_eq!(tab_place(&tabs, 100, 400, 100.0, Some(1)).0, 1);
         assert_eq!(tab_place(&tabs, 100, 400, 100.0, Some(0)).0, 0);
+    }
+
+    /// A window brought to the front of its group waits once to draw,
+    /// then shows, however busy it is: drawing, it asks for its next frame
+    /// at once, and that is no reason to hold it back again (after an
+    /// upgrade, when no window has been the front, a busy Terminal didn't
+    /// show for seconds).
+    #[test]
+    fn a_window_brought_forward_waits_once() {
+        let t0 = Instant::now();
+        let ms = |n| t0 + Duration::from_millis(n);
+        // Never the front yet (after an upgrade), with something to draw.
+        let mut d = crate::shell::deco::Decoration::default();
+        assert_eq!(top_turn(&mut d, || true, || true, ms(0)), (true, false), "it waits to draw");
+        assert_eq!(top_turn(&mut d, || true, || true, ms(16)), (false, false), "still waiting");
+        // It draws (and asks for its next frame as it does).
+        assert!(drew_while_fronting(&mut d));
+        for k in 1..20 {
+            assert_eq!(top_turn(&mut d, || true, || true, ms(16 + 16 * k)), (false, true), "shown, frame {k}");
+        }
+        // Brought from behind again: one wait again.
+        d.behind = true;
+        assert_eq!(top_turn(&mut d, || true, || true, ms(1000)), (true, false));
+        d.behind = false;
+        assert!(drew_while_fronting(&mut d));
+        assert_eq!(top_turn(&mut d, || true, || true, ms(1016)), (false, true));
+        // One that never draws shows once the wait runs out.
+        let mut quiet = crate::shell::deco::Decoration::default();
+        assert_eq!(top_turn(&mut quiet, || true, || true, ms(0)), (true, false));
+        assert_eq!(top_turn(&mut quiet, || true, || true, ms(99)), (false, false));
+        assert_eq!(top_turn(&mut quiet, || true, || true, ms(100)), (false, true));
+        // Alone in its group, or nothing to draw: no wait.
+        let mut alone = crate::shell::deco::Decoration::default();
+        assert_eq!(top_turn(&mut alone, || true, || false, ms(0)), (false, true));
+        let mut idle = crate::shell::deco::Decoration::default();
+        assert_eq!(top_turn(&mut idle, || false, || true, ms(0)), (false, true));
     }
 
     #[test]

@@ -437,6 +437,19 @@ impl TermWin {
     }
 
     /// [`TermWin::tiling`] with its rows already laid out.
+    /// Whether tab `i` is drawn now: the active one, or one of the tiles
+    /// while the window's tabs are tiled.
+    fn drawn(&self, i: usize) -> bool {
+        if i == self.active {
+            return true;
+        }
+        if !self.tiled {
+            return false;
+        }
+        let rows = self.tile_rows();
+        self.tiling_in(&rows) && rows.iter().flatten().any(|&j| j == i)
+    }
+
     fn tiling_in(&self, rows: &[Vec<usize>]) -> bool {
         self.tiled && rows.iter().map(Vec::len).sum::<usize>() > 1 && rows.iter().flatten().any(|&i| i == self.active)
     }
@@ -2255,7 +2268,10 @@ impl Terminal {
         let Message(shell, event) = *msg;
         let Some((win, i)) = self.find_shell(shell) else { return };
         let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
-        let showing = i == t.active;
+        // (Drawn: the active tab, or a tile of tabs tiled: a tile not the
+        // active one printing redrew nothing, and its wake-up wasn't taken
+        // either, so it stood still till something else drew the window.)
+        let showing = t.drawn(i);
         let tab = &mut t.tabs[i];
         match event {
             // A tab that isn't showing is drawn (and woken again) when it is.
