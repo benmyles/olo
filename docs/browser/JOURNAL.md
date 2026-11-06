@@ -1794,3 +1794,108 @@ style sharing and actual lifecycle jobs. Profile compound/common subject-key
 selectivity beyond this deliberately selective index workload. Full property/
 selector/HTML/Web IDL, networking, layout/GPU painting, V8, native shell/Olo
 integrations and executable site journeys remain acceptance work.
+
+
+## 2026-11-05 — logical-property cascade projection
+
+Progress; full browser goal remains active. Added explicit computed-axis
+projection over the existing frozen candidate storage. This milestone
+implements no browser window, networking, V8, layout or painting. Website
+evidence remains **0/3,000 cases, 0/100 sites**.
+
+`Resolver::axes` resolves writing-mode/direction/text-orientation before
+paired queries, using variables, defaulting and rollback. Missing required
+computed parent axes are an explicit Unsupported result. Computed RTL remains
+available to descendants when upright vertical text forces used LTR;
+sideways modes keep horizontal typographic conventions. The registry now has
+89 longhands/16 shorthands, with all covering 88 resettable longhands.
+
+`Resolver::projected` combines 20 physical/logical pairs (40 longhands) for
+preferred/min/max size, margin, padding, inset and overflow. Declaration order,
+specificity, importance, origins and layers all compare through Priority.
+The result retains the winning declared source for inheritance across changed
+parent/child axes. all: inherit prefers physical longhands on ties. Revert
+traverses both aliases; invalid computed substitution defaults the winner.
+Pending logical shorthands select the declared member and share the existing
+expansion/cache, including taint policy and retained limits. Raw declared
+queries keep a separate compile-time result type around the same algorithm.
+No persistent alias index, whole computed-style map, timer or frame work added.
+
+Consulted CSS Logical Properties 1 §4, CSS Writing Modes 4 §5.1/6.4 and CSS
+Overflow 3. A detailed follow-up reading caught that upright has no effect in
+sideways typographic modes; corrected before acceptance and tested across all
+ten mode/direction combinations. A drafted inheritance test initially stored
+literal inherit in a custom property, which correctly inherits that custom
+property rather than retaining an ordinary token. Corrected the test to use
+an ordinary property's var() fallback; production behavior was already right.
+
+Independent evidence: nine unchanged pinned WPT documents/helpers at
+`d7bb5bb848fcd304c10669288a211dbafd106d90`, license and SHA-256 manifest in
+`crates/web/tests/logical-fixtures`. The extractor reads upstream literal
+mapping/value tables and ports assertion loops, never engine output. It
+preserves source-order and selector-specificity checks for all ten combinations,
+logical/physical shorthands, deferred/inherited writing mode, variables and
+layer rollback. Explicit inert target nodes reproduce helper-created nodes;
+each mutation is an independent frozen input. **5,757 native assertions/drivers:
+5,726 pass; 31 CSSOM drivers unsupported; no unexpected mismatch/error/panic.**
+These are assertion ports, not 5,757 complete browser tests. Evaluator exits 1.
+The older cascade corpus remains 128 pass/eight unsupported.
+
+Six focused native groups cover every mapped group, paired identity/order,
+inheritance source/all, used vs computed direction, missing-parent context,
+pending/cache reuse, invalid substitution, important/origin/layer/rule rollback,
+rollback cycles, taint, cancellation and work/depth/memory bounds. Shared native
+fixture adapter now computes coherent parent axes and follows inheritance
+source. It remains a supplied-context numeric/color adapter, not a style engine.
+
+Release measurements: Intel Core Ultra 7 356H, Linux 7.2.15, CPU0 affinity;
+three alternating before/after runs against parent acfd0d8e. The same new raw
+query example was compiled against each revision. Extended repeats to 30M
+queries and 300 cascade rounds after short-run variation; **both short and long
+raw runs are retained**, with binary/source/toolchain identities and script in
+`measurements/2026-11-05-logical.json` and `2026-11-05-logical-measure.py`.
+These are synthetic worker-library costs, not page/Chrome performance.
+
+Long-run medians (individual process means):
+
+| Operation | Before | After |
+| --- | ---: | ---: |
+| Raw width | 8.688 ns | 8.170 ns |
+| Raw margin-left | 8.256 ns | 8.670 ns |
+| Raw color | 7.506 ns | 7.544 ns |
+| Raw missing height | 2.728 ns | 2.701 ns |
+| 1,000-element indexed match/resolve | 0.2761 ms | 0.2743 ms |
+| 2,000-element indexed match/resolve | 0.5627 ms | 0.5632 ms |
+| 4,000-element indexed match/resolve | 1.1823 ms | 1.1336 ms |
+
+Raw margin median rose 5.0%; its before range is 8.238–8.734 ns, after
+8.166–8.933 ns. Mixed changes and overlapping ranges do not demonstrate a
+uniform speedup or settle all performance acceptance. Keep this variation on
+the TODO for future coherent style workloads. Raw snapshot payload remains
+**416 bytes before/after**, excluding allocator/maps/borrowed typed programs.
+
+New paired-query medians: one physical 9.439 ns, both aliases 15.490 ns,
+sideways logical margin 13.668 ns, cached pending shorthand 32.580 ns,
+paired rule rollback 30.128 ns. First query latency ranges respectively
+0.862–2.808 µs, 0.255–0.438 µs, 0.095–0.200 µs, 3.660–3.827 µs,
+0.256–0.589 µs. First axes resolution 0.076–1.011 µs across scenarios.
+Axes occupies three bytes. Existing snapshot storage is reused (256 or
+416 payload bytes in these examples); there is no separate alias allocation.
+No direct before speedup is claimed for the new projection capability.
+No SIMD/GPU addition: this is bounded scalar priority work, with existing
+SIMD token/math/color facilities unchanged.
+
+All **113 normal release tests** and **112 all-feature tests** pass (the
+owned-decoder move-only test is deliberately disabled by its copy control).
+Strict default/all-feature release clippy, package formatting, fixture
+reproduction/hash checks and diff checks pass. Full workspace release build
+passes: cargo 6.54 s, wall 6.64 s including possible build-lock waits; existing
+GPUI warnings and proc-macro-error2 future-compatibility notice remain.
+No GUI launched, no personal session changed, no visible UI change to journal
+with tools/journal.py.
+
+Next: computed/inherited style and UA defaults, logical border/corner groups,
+font/color/used-value hosts, conditional stylesheet contexts and actual live
+invalidation/style sharing. CSSOM, shaping, bidi, layout, painting, networking,
+V8, native shell/agent control/Olo integrations and all website journeys remain
+required. Paired defaulting alone supplies none of that evidence.

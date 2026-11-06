@@ -52,11 +52,11 @@ item means implemented and verified; a partial implementation stays open.
   29 explicit non-passes; 128 independent An+B cases checked.
 - [ ] Complete selector integration: live state, nesting, shadow/functional
   pseudo-elements, remaining fixture contexts, full standards behavior and
-  document/style invalidation. Rule indexing and namespace at-rule contexts
-  remain unimplemented.
+  document/style invalidation. Core rule indexing and stylesheet-local
+  namespace contexts are implemented below; full context behavior remains open.
 - [ ] Implement CSS property grammars, cascade, media queries and real
   element/style invalidation.
-- [x] Core typed declaration compilation: 88 longhands and 16 shorthands (including
+- [x] Core typed declaration compilation: 89 longhands and 16 shorthands (including
   all over implemented resettable properties),
   dimensional/range rules, structured display values, shared pending shorthand
   substitution and invalid-at-computed-value unset; independent native ports
@@ -67,10 +67,16 @@ item means implemented and verified; a partial implementation stays open.
   defaulting/revert-family traversal, guarded custom rollback and shared pending
   expansion. Native ports 128/136 pass; eight rendering drivers remain unported.
 - [ ] Complete cascade/style integration: media/supports/container/import/scope
-  conditions, logical/physical group projection and rollback, actual flattened
+  conditions, actual flattened
   inheritance, UA defaults/presentational hints, computed font/color/size hosts,
   CSSOM, animations/transitions/registrations, live state and generation-aware
   invalidation/style sharing. Frozen candidate snapshots are not computed styles.
+- [x] Project the 40 implemented physical/logical box/overflow longhands into
+  paired cascades after computed axes; preserve inheritance source across axes,
+  shared pending substitution, physical precedence for all and paired rollback.
+  Native logical ports: 5,726/5,757 pass; 31 CSSOM drivers remain unsupported.
+- [ ] Complete logical border/corner properties and remaining property groups;
+  coupled overflow transforms, actual computed-value retention and layout hosts.
 - [ ] Complete property registry/grammars (fonts/families, backgrounds/images,
   border-image/radius, grid/alignment, transforms, animations/transitions,
   aliases/descriptors), CSSOM, computed/used-value contexts and style hosts.
@@ -116,6 +122,9 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Profile compound/common subject-key selectivity beyond the selective
   cascade benchmark; the necessary-key index is conservative, not universally
   optimal.
+- [ ] Isolate raw-margin query timing variation after logical projection: median
+  8.256 → 8.670 ns (+5.0%) with overlapping three-run ranges; no uniform
+  speedup claim. Retain short/long raw runs and compare in future style workloads.
 - [ ] Profile ownership preflight costs, the template-milestone fostered-row
   regression and fragment-milestone foreign dispatch costs (raw release
   comparisons in JOURNAL.md); performance acceptance is still open.
@@ -126,9 +135,9 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: logical-group projection, computed/inherited style and UA defaults;
+Next: computed/inherited style and UA defaults, logical borders/corners;
 conditional stylesheet contexts and actual live element/style invalidation;
-stylesheet contexts/rule indexing, property coverage and computed-value hosts,
+stylesheet contexts, property coverage and computed-value hosts,
 remaining selector integrations, descriptor-aware parsing and
 HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
 and the six tree cases requiring script execution.

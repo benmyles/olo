@@ -726,7 +726,7 @@ mode capability follows from these native ports or microbenchmarks.
 connects the generic declaration parser to original typed grammars. The
 standalone `parse(decoded_name, Components, important, ...)` API takes an
 already-decoded CSS property name; it is not a CSSOM setProperty/string-name
-parser. Static ASCII case-insensitive binary lookup covers **88 longhands
+parser. Static ASCII case-insensitive binary lookup covers **89 longhands
 and 16 shorthands**, with canonical names, inherited flags and initial-value
 spellings. The registry intentionally exposes its implemented scope; fonts,
 background images/layers, border-image/radius, transforms, grid templates,
@@ -753,7 +753,7 @@ unbounded literal overflow is accepted and materialized to finite f64 bounds.
 Line-height numbers remain multipliers, distinct from length calculations;
 actual used line metrics are not computed here.
 
-The all shorthand expands over the 87 implemented resettable longhands,
+The all shorthand expands over the 88 implemented resettable longhands,
 excluding direction and custom properties. Unicode-bidi is not implemented.
 This does not imply complete property coverage. Quad/pair shorthands expand
 atomically in physical/logical order; flex-flow
@@ -762,7 +762,7 @@ values. Importance comes from the original declaration and applies to all
 assignments. CSS-wide keywords expand over every implemented member. Display
 retains outer/inner/list-item or internal table/ruby roles and recognizes
 legacy aliases. No box tree, blockification, coupled overflow computation,
-layout mapping of logical axes or CSSOM serializer is implemented.
+layout or CSSOM serializer is implemented; paired cascade projection is described below.
 
 The existing variable scanner validates generic contents and var() arguments
 without copying tokens on an ordinary declaration. A pending shorthand holds
@@ -895,12 +895,12 @@ parent's computed value, never rerun its specified font/unit expression in
 the child's context. The parent callback supplies already-computed inherited
 custom tokens; no whole parent style map is cloned by production code.
 Invalid computed substitution becomes unset without exposing an older rule.
-The all shorthand resets the implemented 87 resettable longhands, excluding
+The all shorthand resets the implemented 88 resettable longhands, excluding
 direction and custom properties; it does not complete the property registry.
 
-Logical/physical groups remain separate declared identities. Their actual
-writing-mode projection and paired-property rollback are **not implemented**.
-Neither are computed fonts/percentages/line metrics, used sizing, coupled
+Logical/physical declarations retain separate specified identities and are
+projected together by the explicit API below. Missing hosts still include
+computed fonts/percentages/line metrics, used sizing, coupled
 property transforms, UA defaults/presentational-hint generation, flattened
 inheritance, CSSOM, animation/transition execution or live invalidation. The
 API is a cascade/defaulting stage, not a complete computed style or a browser.
@@ -954,3 +954,75 @@ Primary references:
 [CSS Namespaces](https://www.w3.org/TR/css-namespaces-3/) and the unchanged
 WPT sources/metadata in tests/cascade-fixtures. Scope, identities and raw
 measurements are recorded in the journal and release artifacts.
+
+
+## Logical-property projection
+
+`Resolver::axes(parent_axes, allow_animation_tainted)` resolves writing-mode,
+direction and text-orientation through the ordinary cascade/variable machinery
+before logical projection. Missing required parent axes return Unsupported;
+a child cannot silently substitute the initial axes for a missing parent.
+`Axes` retains computed direction, including RTL underneath upright text.
+Upright changes used direction only in vertical typographic modes
+(vertical-rl/vertical-lr); horizontal and sideways modes keep their direction.
+This follows CSS Writing Modes 4 §5.1 and §6.4. No bidi/shaping or root/body
+layout propagation is performed.
+
+`Resolver::projected(property, axes, allow_animation_tainted)` combines the
+two equivalent declared ranges by priority. All ten standard mode/direction
+combinations are represented. The current registry has 20 pairs covering 40
+longhands: preferred/minimum/maximum size, margins, padding, insets and
+overflow. Border/corner logical longhands remain unimplemented. `Axes::pair`
+returns physical then logical; `Axes::physical` provides the canonical name
+for future computed storage. Unpaired properties pass through unchanged.
+`Resolver::property` remains the raw declared-property query, useful for the
+prerequisites and diagnostics; it does not perform paired projection.
+
+`Projected { value, source }` retains the declaration identity that supplied
+Initial/Inherit/Specified. An Inherit result must read `source` on the parent
+using the parent's axes and copy the already-computed value. For example,
+margin-inline-start: inherit in an RTL child reads the LTR parent's left
+margin, whereas margin-right: inherit reads its right margin. Physical
+longhands win equal priority when all expands both sets, so all: inherit
+copies physical margins across changed axes. Ordinary source order still
+wins between distinct logical/physical declarations.
+
+Rollback searches both ranges under the same origin/layer/rule constraints
+and cycle/work/cancellation guards. A pending logical shorthand selects its
+actual declared member from the shared expansion, even when queried through
+its physical alias. Missing/invalid substitution defaults the winning value
+rather than exposing the older alias. Taint policy and retained limits remain
+part of pending-cache identity. There is no extra persistent alias index,
+whole-style clone, timer or per-frame work. The raw and projected return paths
+use separate compile-time output types around the same resolver algorithm.
+
+Nine unchanged pinned WPT resources contribute **5,757 inventoried native
+assertions/drivers: 5,726 pass and 31 CSSOM drivers remain unsupported**.
+The literal mapping/value tables and helper assertion loops independently
+exercise every standard mode/direction combination, declaration order,
+specificity, physical/logical shorthands, deferred/inherited writing mode,
+variables and layer rollback. The adapter supplies explicit inert nodes that
+the upstream helper creates with JS; each mutation is a fresh frozen input.
+It now computes parent axes and follows inheritance source correctly.
+Six focused native groups additionally check all/reset inheritance, upright
+and sideways behavior, raw parent direction, missing-parent context,
+important/origin/rule rollback, invalid substitution, shared cache/taint,
+cancellation, work/depth and retained-memory limits. This is no JS/CSSOM,
+live-invalidation, layout, text-shaping, rasterization or website evidence.
+
+```sh
+cargo test --release -p olo-web --test logical
+/usr/bin/python3 crates/web/tests/logical-fixtures/extract.py
+cargo run --release -p olo-web --example logical_eval -- /var/tmp/logical-report.json
+cargo run --release -p olo-web --example cascade_property_bench -- 3000000
+cargo run --release -p olo-web --example logical_bench -- 1000000
+```
+
+Primary references consulted 2026-11-05:
+[CSS Logical Properties 1 §4](https://drafts.csswg.org/css-logical-1/#box),
+[CSS Writing Modes 4 §5.1](https://drafts.csswg.org/css-writing-modes-4/#text-orientation)
+and [§6.4](https://drafts.csswg.org/css-writing-modes-4/#logical-to-physical),
+and [CSS Overflow 3](https://drafts.csswg.org/css-overflow-3/#overflow-properties).
+Pinned originals, literal extraction, scope and hashes are under
+`crates/web/tests/logical-fixtures`. Release measurements and coverage summary
+are in `measurements/2026-11-05-logical*.json`; journal records the outcomes.

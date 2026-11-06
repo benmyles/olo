@@ -39,6 +39,7 @@ struct Engine<'a> {
     inline: Option<&'a str>,
     quirks: bool,
     customs: RefCell<HashMap<NodeId, BTreeMap<String, variables::Computed>>>,
+    axes: RefCell<HashMap<NodeId, cascade::Axes>>,
 }
 impl Engine<'_> {
     fn parent(&self, n: NodeId) -> Result<Option<NodeId>> {
@@ -85,20 +86,37 @@ impl Engine<'_> {
         self.customs.borrow_mut().insert(n, values.clone());
         Ok(values)
     }
-    fn defaulted(&self, n: NodeId, p: Property, depth: usize) -> Result<Defaulted> {
+    fn axes(&self, n: NodeId, depth: usize) -> Result<cascade::Axes> {
+        if depth > 128 {
+            return Err(fail("native axes parent depth"));
+        }
+        if let Some(axes) = self.axes.borrow().get(&n) {
+            return Ok(*axes);
+        }
+        let parent_node = self.parent(n)?;
+        let parent_axes = parent_node.map(|parent| self.axes(parent, depth + 1)).transpose()?;
+        let parent = Parent(if let Some(parent) = parent_node { self.customs(parent, depth + 1)? } else { BTreeMap::new() });
+        let inline = self.inline(n)?;
+        let c = self.snapshot(n, &parent, &inline)?;
+        let axes = c.resolver().axes(parent_axes, true).map_err(err)?;
+        self.axes.borrow_mut().insert(n, axes);
+        Ok(axes)
+    }
+    fn defaulted(&self, n: NodeId, p: Property, depth: usize) -> Result<cascade::Projected> {
         let parent = Parent(if let Some(parent) = self.parent(n)? { self.customs(parent, depth + 1)? } else { BTreeMap::new() });
         let inline = self.inline(n)?;
         let c = self.snapshot(n, &parent, &inline)?;
-        c.resolver().property(p, true).map_err(err)
+        c.resolver().projected(p, self.axes(n, depth)?, true).map_err(err)
     }
     fn color(&self, n: NodeId, p: Property, depth: usize) -> Result<[f64; 4]> {
         if depth > 128 {
             return Err(fail("native color parent depth"));
         }
-        let value = match self.defaulted(n, p, depth)? {
+        let projected = self.defaulted(n, p, depth)?;
+        let value = match projected.value {
             Defaulted::Inherit => {
                 if let Some(parent) = self.parent(n)? {
-                    return self.color(parent, p, depth + 1);
+                    return self.color(parent, projected.source, depth + 1);
                 } else {
                     initial(p)?
                 }
@@ -133,10 +151,11 @@ impl Engine<'_> {
         if depth > 128 {
             return Err(fail("native numeric parent depth"));
         }
-        let value = match self.defaulted(n, p, depth)? {
+        let projected = self.defaulted(n, p, depth)?;
+        let value = match projected.value {
             Defaulted::Inherit => {
                 if let Some(parent) = self.parent(n)? {
-                    return self.numeric(parent, p, depth + 1);
+                    return self.numeric(parent, projected.source, depth + 1);
                 } else {
                     initial(p)?
                 }
@@ -194,7 +213,9 @@ fn evaluate_case(dir: &Path, case: &Json) -> Result<()> {
     if source.contains("attachShadow") || source.contains("getAnimations") {
         return Err(fail("shadow/animation document host"));
     }
-    let parsed = html::parse(Arc::from(source), Default::default(), None).map_err(err)?;
+    // Some upstream helpers create their target nodes through JavaScript.
+    // A port may supply that explicit inert DOM; no script is evaluated here.
+    let parsed = html::parse(Arc::from(case["html"].as_str().unwrap_or(&source)), Default::default(), None).map_err(err)?;
     let mut b = SheetBuilder::new(Default::default());
     for style in case["styles"].as_array().unwrap() {
         let s = Syntax::parse(Arc::from(style.as_str().unwrap()), Default::default(), None).map_err(err)?;
@@ -227,6 +248,7 @@ fn evaluate_case(dir: &Path, case: &Json) -> Result<()> {
         inline: case["inline"].as_str(),
         quirks: parsed.quirks == html::QuirksMode::Quirks,
         customs: RefCell::new(HashMap::new()),
+        axes: RefCell::new(HashMap::new()),
     };
     let expected = case["expected"].as_str().unwrap();
     let property = case["property"].as_str().unwrap();

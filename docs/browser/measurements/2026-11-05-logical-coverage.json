@@ -1,0 +1,226 @@
+{
+  "scope": "Pinned CSS logical native assertion ports. Literal WPT mapping/values and assertion loops; no JS, CSSOM, live mutation, layout, shaping, rasterization, UI or website evidence. CSSOM drivers remain unsupported.",
+  "total": 5757,
+  "counts": {
+    "passed": 5726,
+    "unsupported": 31
+  },
+  "files": {
+    "logical-box-margin.html": {
+      "passed": 1528,
+      "unsupported": 4
+    },
+    "logical-box-padding.html": {
+      "passed": 1528,
+      "unsupported": 4
+    },
+    "logical-box-inset.html": {
+      "passed": 1528,
+      "unsupported": 4
+    },
+    "logical-box-size.html": {
+      "passed": 1080,
+      "unsupported": 3
+    },
+    "logicalprops-with-deferred-writing-mode.html": {
+      "passed": 48
+    },
+    "logicalprops-with-variables-revert.html": {
+      "passed": 6
+    },
+    "logicalprops-with-variables.html": {
+      "passed": 8,
+      "unsupported": 16
+    }
+  },
+  "unsupported": [
+    {
+      "file": "logical-box-margin.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "margin-inline-start: style declaration support"
+    },
+    {
+      "file": "logical-box-margin.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "margin-inline: serialize specified value"
+    },
+    {
+      "file": "logical-box-margin.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "margin-block: serialize specified value"
+    },
+    {
+      "file": "logical-box-margin.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "margin: serialize specified value"
+    },
+    {
+      "file": "logical-box-padding.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "padding-inline-start: style declaration support"
+    },
+    {
+      "file": "logical-box-padding.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "padding-inline: serialize specified value"
+    },
+    {
+      "file": "logical-box-padding.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "padding-block: serialize specified value"
+    },
+    {
+      "file": "logical-box-padding.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "padding: serialize specified value"
+    },
+    {
+      "file": "logical-box-inset.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "inset-inline-start: style declaration support"
+    },
+    {
+      "file": "logical-box-inset.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "inset-inline: serialize specified value"
+    },
+    {
+      "file": "logical-box-inset.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "inset-block: serialize specified value"
+    },
+    {
+      "file": "logical-box-inset.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified/shorthand serialization driver",
+      "title": "inset: serialize specified value"
+    },
+    {
+      "file": "logical-box-size.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "inline-size: style declaration support"
+    },
+    {
+      "file": "logical-box-size.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "max-inline-size: style declaration support"
+    },
+    {
+      "file": "logical-box-size.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "min-inline-size: style declaration support"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical longhands with variables specified margin-inline-start"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical longhands with variables specified margin-inline-end"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical longhands with variables specified margin-inline"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM shorthand serialization driver",
+      "title": "Logical longhands with variables computed margin-inline"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 1 variable specified margin-inline-start"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 1 variable specified margin-inline-end"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 1 variable specified margin-inline"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM shorthand serialization driver",
+      "title": "Logical shorthand with 1 variable computed margin-inline"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 2 variables specified margin-inline-start"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 2 variables specified margin-inline-end"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 2 variables specified margin-inline"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM shorthand serialization driver",
+      "title": "Logical shorthand with 2 variables computed margin-inline"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 1 variable and 1 length specified margin-inline-start"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 1 variable and 1 length specified margin-inline-end"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM specified-value driver",
+      "title": "Logical shorthand with 1 variable and 1 length specified margin-inline"
+    },
+    {
+      "file": "logicalprops-with-variables.html",
+      "outcome": "unsupported",
+      "reason": "CSSOM shorthand serialization driver",
+      "title": "Logical shorthand with 1 variable and 1 length computed margin-inline"
+    }
+  ],
+  "fixture_manifest_sha256": "0c020342ffa28ec08633f3ef117142886edd05256705b9bbf0d6b8899385e40e",
+  "full_report_sha256": "e81156cff90368ffda0ca88986b8a47cccf50043c7bb35de422fd1ea98ec0015"
+}

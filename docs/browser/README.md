@@ -6,7 +6,7 @@ engine does not meet the objective. The installed browser remains
 available while this one is developed. Nothing here changes defaults.
 
 **Status: static HTML/DOM document and fragment construction plus generic
-CSS syntax, selectors, typed numeric calculations, core typed declarations, frozen stylesheet/cascade snapshots, custom-property substitution
+CSS syntax, selectors, typed numeric calculations, core typed declarations, frozen stylesheet/cascade snapshots with logical-property projection, custom-property substitution
 and contextual colors/conversion are
 implemented. No browser shell, complete computed styles/live invalidation, layout or
 JavaScript execution yet; no demonstrated website compatibility.** The 99% target is an acceptance criterion,

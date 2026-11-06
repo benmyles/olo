@@ -1,0 +1,1588 @@
+{
+  "parent": "acfd0d8ec5233feef860c06b998db26d81921919",
+  "platform": "Linux-7.2.15-300.fc45.x86_64-x86_64-with-glibc2.44",
+  "cpu": ": Intel(R) Core(TM) Ultra 7 356H",
+  "affinity": 0,
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "method": "Release builds; three alternating before/after process runs on CPU0. Per-process means; first calls separate; no concurrent builds/tests. No page/Chrome evidence.",
+  "hashes": {
+    "cascade-before": "917c797ac704c2b8c3f952ffe76dafe414aa47e1935b759c4c033b0911c63ca2",
+    "cascade-after": "230c5b1f402e781893591635b377342443ec44848ed5354ee54b61df87b8718f",
+    "property-before": "270d8d706c5a3e68a95ef714be0a1f00b8d30bbafe5ecea09e262e326313fa08",
+    "property-after": "7e14781c8b4d039f1cca40faeb77670103994fb73b70ba0051f4a92e2fbcd0be",
+    "projected-after": "67ca9c1ce3b9282950647446ba74e71d2fffaf1c8bf7fcd7eb6706a096feed62"
+  },
+  "source_hashes": {
+    "crates/web/src/css/cascade/mod.rs": "6969e016b14499264cbbf046a8935594fff251edbcf2a072844fc11ce6565c1d",
+    "crates/web/src/css/cascade/axes.rs": "4fde16bf08cb4dc0842ca75a3aa9384aed6dbd7ba150aa7f1cb4239bea3fd63d",
+    "crates/web/src/css/properties/registry.rs": "519439ab35d33436b00285ded93bb0bfec678c2eff514e1d2971c75e02c4c5f2",
+    "crates/web/examples/cascade_bench.rs": "e21b8d7ef1a7603ff930ef68f1715636476bdb64804f79a98d2018f12233f95a",
+    "crates/web/examples/cascade_property_bench.rs": "07b7c2e42df7f2c9e3517ca3ecd591e3e25e340ef34985f5b788af2c3a0051e1",
+    "crates/web/examples/logical_bench.rs": "683204d2038ac96add4b284f9dee844ef778176828db8cf14693a6159eefe1e1",
+    "docs/browser/measurements/2026-11-05-logical-measure.py": "7dff7a653c0d4cfacb829f5120531a209dfd1b70fff96c0db3621c52e57b94b6"
+  },
+  "runs": [
+    {
+      "repeat": 0,
+      "benchmark": "property",
+      "variant": "before",
+      "result": {
+        "cases": [
+          {
+            "first_ns": 434,
+            "ns_per_query": 8.289126933333334,
+            "property": "width"
+          },
+          {
+            "first_ns": 69,
+            "ns_per_query": 8.733707599999999,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 171,
+            "ns_per_query": 7.509254933333334,
+            "property": "color"
+          },
+          {
+            "first_ns": 52,
+            "ns_per_query": 2.7258774666666667,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      }
+    },
+    {
+      "repeat": 0,
+      "benchmark": "property",
+      "variant": "after",
+      "result": {
+        "cases": [
+          {
+            "first_ns": 519,
+            "ns_per_query": 8.170037166666667,
+            "property": "width"
+          },
+          {
+            "first_ns": 29,
+            "ns_per_query": 8.1658126,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 86,
+            "ns_per_query": 8.361827033333334,
+            "property": "color"
+          },
+          {
+            "first_ns": 53,
+            "ns_per_query": 2.7319101666666668,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      }
+    },
+    {
+      "repeat": 0,
+      "benchmark": "cascade",
+      "variant": "before",
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.55699416,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.624432,
+            "first_match_us": 10.79,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.2700275333333333,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.0381190266666667,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 0.980303,
+            "first_match_us": 4.767,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.5431978,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.1406967666666668,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 1.9939760000000002,
+            "first_match_us": 5.481,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.1093545566666665,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 300,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      }
+    },
+    {
+      "repeat": 0,
+      "benchmark": "cascade",
+      "variant": "after",
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.6545579400000001,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.620233,
+            "first_match_us": 5.191,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.2738789366666667,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.0654917366666665,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 1.007094,
+            "first_match_us": 5.414000000000001,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.5631533266666666,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.1165153833333337,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 2.069863,
+            "first_match_us": 12.029,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.1344459433333334,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 300,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      }
+    },
+    {
+      "repeat": 0,
+      "benchmark": "projected",
+      "variant": "after",
+      "result": {
+        "axes_bytes": 3,
+        "cases": [
+          {
+            "first_axes_ns": 642,
+            "first_query_ns": 862,
+            "name": "one-physical",
+            "ns_per_query": 9.439112466666666,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 213,
+            "first_query_ns": 258,
+            "name": "both-aliases",
+            "ns_per_query": 15.958313566666666,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 256
+          },
+          {
+            "first_axes_ns": 312,
+            "first_query_ns": 200,
+            "name": "logical-side",
+            "ns_per_query": 13.210703366666667,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 362,
+            "first_query_ns": 3660,
+            "name": "pending-shorthand",
+            "ns_per_query": 32.807900733333334,
+            "pending_cached": 1,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 147,
+            "first_query_ns": 528,
+            "name": "rollback",
+            "ns_per_query": 30.128002133333332,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 256
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Paired defaulting on frozen snapshots. Axes computed once per snapshot; first calls reported separately. Literal scalar checks outside timings. No layout, shaping, UI, website or Chrome evidence."
+      }
+    },
+    {
+      "repeat": 1,
+      "benchmark": "property",
+      "variant": "before",
+      "result": {
+        "cases": [
+          {
+            "first_ns": 435,
+            "ns_per_query": 8.687677133333333,
+            "property": "width"
+          },
+          {
+            "first_ns": 257,
+            "ns_per_query": 8.2378432,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 238,
+            "ns_per_query": 7.4450035,
+            "property": "color"
+          },
+          {
+            "first_ns": 188,
+            "ns_per_query": 2.7279684333333334,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      }
+    },
+    {
+      "repeat": 1,
+      "benchmark": "property",
+      "variant": "after",
+      "result": {
+        "cases": [
+          {
+            "first_ns": 616,
+            "ns_per_query": 8.1319611,
+            "property": "width"
+          },
+          {
+            "first_ns": 44,
+            "ns_per_query": 8.933056333333333,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 79,
+            "ns_per_query": 7.5185247,
+            "property": "color"
+          },
+          {
+            "first_ns": 41,
+            "ns_per_query": 2.7011864666666665,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      }
+    },
+    {
+      "repeat": 1,
+      "benchmark": "cascade",
+      "variant": "before",
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.5593858366666666,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.643004,
+            "first_match_us": 5.676,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.2761180633333333,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.04176928,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 0.98131,
+            "first_match_us": 5.876,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.6348330333333333,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.086574686666667,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 2.0333270000000003,
+            "first_match_us": 8.028,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.1823059066666668,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 300,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      }
+    },
+    {
+      "repeat": 1,
+      "benchmark": "cascade",
+      "variant": "after",
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.5622268533333333,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.650871,
+            "first_match_us": 5.888,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.27425662,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.0271124333333335,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 1.011532,
+            "first_match_us": 5.433000000000001,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.5550601266666667,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.1401513866666666,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 1.9850330000000003,
+            "first_match_us": 11.627,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.1009579299999999,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 300,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      }
+    },
+    {
+      "repeat": 1,
+      "benchmark": "projected",
+      "variant": "after",
+      "result": {
+        "axes_bytes": 3,
+        "cases": [
+          {
+            "first_axes_ns": 737,
+            "first_query_ns": 2808,
+            "name": "one-physical",
+            "ns_per_query": 10.1315224,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 499,
+            "first_query_ns": 438,
+            "name": "both-aliases",
+            "ns_per_query": 15.489624433333333,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 256
+          },
+          {
+            "first_axes_ns": 410,
+            "first_query_ns": 95,
+            "name": "logical-side",
+            "ns_per_query": 13.668003166666667,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 76,
+            "first_query_ns": 3827,
+            "name": "pending-shorthand",
+            "ns_per_query": 32.463381,
+            "pending_cached": 1,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 153,
+            "first_query_ns": 256,
+            "name": "rollback",
+            "ns_per_query": 29.786362033333333,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 256
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Paired defaulting on frozen snapshots. Axes computed once per snapshot; first calls reported separately. Literal scalar checks outside timings. No layout, shaping, UI, website or Chrome evidence."
+      }
+    },
+    {
+      "repeat": 2,
+      "benchmark": "property",
+      "variant": "before",
+      "result": {
+        "cases": [
+          {
+            "first_ns": 499,
+            "ns_per_query": 9.0539607,
+            "property": "width"
+          },
+          {
+            "first_ns": 35,
+            "ns_per_query": 8.2558913,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 71,
+            "ns_per_query": 7.505939433333333,
+            "property": "color"
+          },
+          {
+            "first_ns": 54,
+            "ns_per_query": 2.7307304,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      }
+    },
+    {
+      "repeat": 2,
+      "benchmark": "property",
+      "variant": "after",
+      "result": {
+        "cases": [
+          {
+            "first_ns": 589,
+            "ns_per_query": 8.188262466666666,
+            "property": "width"
+          },
+          {
+            "first_ns": 57,
+            "ns_per_query": 8.669679233333332,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 86,
+            "ns_per_query": 7.544449166666666,
+            "property": "color"
+          },
+          {
+            "first_ns": 41,
+            "ns_per_query": 2.6999447,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      }
+    },
+    {
+      "repeat": 2,
+      "benchmark": "cascade",
+      "variant": "before",
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.5686404566666667,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.612104,
+            "first_match_us": 12.483,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.27948077000000004,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.14080586,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 1.02076,
+            "first_match_us": 6.953,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.5627105366666666,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.0926358966666667,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 1.9745549999999998,
+            "first_match_us": 5.355,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.21420606,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 300,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      }
+    },
+    {
+      "repeat": 2,
+      "benchmark": "cascade",
+      "variant": "after",
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.56033934,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.6380309999999999,
+            "first_match_us": 4.832,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.27567578666666664,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.04856014,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 1.025764,
+            "first_match_us": 5.21,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.5981619033333334,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.0500789166666666,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 2.062828,
+            "first_match_us": 5.412999999999999,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.1336380499999998,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 300,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      }
+    },
+    {
+      "repeat": 2,
+      "benchmark": "projected",
+      "variant": "after",
+      "result": {
+        "axes_bytes": 3,
+        "cases": [
+          {
+            "first_axes_ns": 1011,
+            "first_query_ns": 2057,
+            "name": "one-physical",
+            "ns_per_query": 9.438203966666666,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 271,
+            "first_query_ns": 255,
+            "name": "both-aliases",
+            "ns_per_query": 15.470773733333333,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 256
+          },
+          {
+            "first_axes_ns": 657,
+            "first_query_ns": 123,
+            "name": "logical-side",
+            "ns_per_query": 14.0216999,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 168,
+            "first_query_ns": 3746,
+            "name": "pending-shorthand",
+            "ns_per_query": 32.58003983333333,
+            "pending_cached": 1,
+            "snapshot_payload_bytes": 416
+          },
+          {
+            "first_axes_ns": 353,
+            "first_query_ns": 589,
+            "name": "rollback",
+            "ns_per_query": 30.156116533333332,
+            "pending_cached": 0,
+            "snapshot_payload_bytes": 256
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Paired defaulting on frozen snapshots. Axes computed once per snapshot; first calls reported separately. Literal scalar checks outside timings. No layout, shaping, UI, website or Chrome evidence."
+      }
+    }
+  ],
+  "exploratory_short_runs": {
+    "parent": "acfd0d8ec5233feef860c06b998db26d81921919",
+    "platform": "Linux-7.2.15-300.fc45.x86_64-x86_64-with-glibc2.44",
+    "cpu": ": Intel(R) Core(TM) Ultra 7 356H",
+    "affinity": 0,
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+    "method": "Release builds; three alternating before/after process runs on CPU0. Per-process means; first calls separate; no concurrent builds/tests. No page/Chrome evidence.",
+    "hashes": {
+      "cascade-before": "917c797ac704c2b8c3f952ffe76dafe414aa47e1935b759c4c033b0911c63ca2",
+      "cascade-after": "230c5b1f402e781893591635b377342443ec44848ed5354ee54b61df87b8718f",
+      "property-before": "270d8d706c5a3e68a95ef714be0a1f00b8d30bbafe5ecea09e262e326313fa08",
+      "property-after": "7e14781c8b4d039f1cca40faeb77670103994fb73b70ba0051f4a92e2fbcd0be",
+      "projected-after": "67ca9c1ce3b9282950647446ba74e71d2fffaf1c8bf7fcd7eb6706a096feed62"
+    },
+    "source_hashes": {
+      "crates/web/src/css/cascade/mod.rs": "6969e016b14499264cbbf046a8935594fff251edbcf2a072844fc11ce6565c1d",
+      "crates/web/src/css/cascade/axes.rs": "4fde16bf08cb4dc0842ca75a3aa9384aed6dbd7ba150aa7f1cb4239bea3fd63d",
+      "crates/web/src/css/properties/registry.rs": "519439ab35d33436b00285ded93bb0bfec678c2eff514e1d2971c75e02c4c5f2",
+      "crates/web/examples/cascade_bench.rs": "e21b8d7ef1a7603ff930ef68f1715636476bdb64804f79a98d2018f12233f95a",
+      "crates/web/examples/cascade_property_bench.rs": "07b7c2e42df7f2c9e3517ca3ecd591e3e25e340ef34985f5b788af2c3a0051e1",
+      "crates/web/examples/logical_bench.rs": "683204d2038ac96add4b284f9dee844ef778176828db8cf14693a6159eefe1e1",
+      "docs/browser/measurements/2026-11-05-logical-measure.py": "ba0ae18038e6b467d74d0ced116ad9dba6a550a5bf93ae7403c083e75b3af7f2"
+    },
+    "runs": [
+      {
+        "repeat": 0,
+        "benchmark": "property",
+        "variant": "before",
+        "result": {
+          "cases": [
+            {
+              "first_ns": 630,
+              "ns_per_query": 9.055352666666666,
+              "property": "width"
+            },
+            {
+              "first_ns": 317,
+              "ns_per_query": 9.043285666666666,
+              "property": "margin-left"
+            },
+            {
+              "first_ns": 302,
+              "ns_per_query": 10.082777666666667,
+              "property": "color"
+            },
+            {
+              "first_ns": 80,
+              "ns_per_query": 3.21799,
+              "property": "height"
+            }
+          ],
+          "rounds": 3000000,
+          "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+          "snapshot_payload_bytes": 416
+        }
+      },
+      {
+        "repeat": 0,
+        "benchmark": "property",
+        "variant": "after",
+        "result": {
+          "cases": [
+            {
+              "first_ns": 517,
+              "ns_per_query": 9.462825333333333,
+              "property": "width"
+            },
+            {
+              "first_ns": 58,
+              "ns_per_query": 9.537516666666667,
+              "property": "margin-left"
+            },
+            {
+              "first_ns": 192,
+              "ns_per_query": 8.178224666666667,
+              "property": "color"
+            },
+            {
+              "first_ns": 64,
+              "ns_per_query": 4.119882333333333,
+              "property": "height"
+            }
+          ],
+          "rounds": 3000000,
+          "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+          "snapshot_payload_bytes": 416
+        }
+      },
+      {
+        "repeat": 0,
+        "benchmark": "cascade",
+        "variant": "before",
+        "result": {
+          "baseline_rule_scan": false,
+          "cases": [
+            {
+              "accounted_rule_payload_bytes": 358909,
+              "checksum_per_round": 50500.0,
+              "compile_drop_ms": 0.7973406,
+              "declaration_array_bytes": 64000,
+              "elements": 1000,
+              "first_compile_ms": 0.673384,
+              "first_match_us": 7.159000000000001,
+              "index_entries": 1000,
+              "index_key_value_capacity_bytes": 71680,
+              "index_vector_bytes": 16000,
+              "match_resolve_ms": 0.29730403333333333,
+              "rule_array_bytes": 40960,
+              "rules": 1000,
+              "selected_rules_per_round": 1000,
+              "selector_reserved_bytes": 166269,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 24810
+            },
+            {
+              "accounted_rule_payload_bytes": 718909,
+              "checksum_per_round": 101000.0,
+              "compile_drop_ms": 1.1072934666666667,
+              "declaration_array_bytes": 128000,
+              "elements": 2000,
+              "first_compile_ms": 1.0353789999999998,
+              "first_match_us": 4.5600000000000005,
+              "index_entries": 2000,
+              "index_key_value_capacity_bytes": 143360,
+              "index_vector_bytes": 32000,
+              "match_resolve_ms": 0.6004010999999999,
+              "rule_array_bytes": 81920,
+              "rules": 2000,
+              "selected_rules_per_round": 2000,
+              "selector_reserved_bytes": 333629,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 50730
+            },
+            {
+              "accounted_rule_payload_bytes": 1438909,
+              "checksum_per_round": 202000.0,
+              "compile_drop_ms": 2.274256133333333,
+              "declaration_array_bytes": 256000,
+              "elements": 4000,
+              "first_compile_ms": 2.067026,
+              "first_match_us": 7.373,
+              "index_entries": 4000,
+              "index_key_value_capacity_bytes": 286720,
+              "index_vector_bytes": 64000,
+              "match_resolve_ms": 1.2032124000000002,
+              "rule_array_bytes": 163840,
+              "rules": 4000,
+              "selected_rules_per_round": 4000,
+              "selector_reserved_bytes": 668349,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 102570
+            }
+          ],
+          "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+          "rounds": 30,
+          "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+        }
+      },
+      {
+        "repeat": 0,
+        "benchmark": "cascade",
+        "variant": "after",
+        "result": {
+          "baseline_rule_scan": false,
+          "cases": [
+            {
+              "accounted_rule_payload_bytes": 358909,
+              "checksum_per_round": 50500.0,
+              "compile_drop_ms": 0.6549760333333334,
+              "declaration_array_bytes": 64000,
+              "elements": 1000,
+              "first_compile_ms": 0.67207,
+              "first_match_us": 6.453,
+              "index_entries": 1000,
+              "index_key_value_capacity_bytes": 71680,
+              "index_vector_bytes": 16000,
+              "match_resolve_ms": 0.28786280000000003,
+              "rule_array_bytes": 40960,
+              "rules": 1000,
+              "selected_rules_per_round": 1000,
+              "selector_reserved_bytes": 166269,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 24810
+            },
+            {
+              "accounted_rule_payload_bytes": 718909,
+              "checksum_per_round": 101000.0,
+              "compile_drop_ms": 1.1131649333333333,
+              "declaration_array_bytes": 128000,
+              "elements": 2000,
+              "first_compile_ms": 1.127301,
+              "first_match_us": 3.84,
+              "index_entries": 2000,
+              "index_key_value_capacity_bytes": 143360,
+              "index_vector_bytes": 32000,
+              "match_resolve_ms": 0.5781888666666666,
+              "rule_array_bytes": 81920,
+              "rules": 2000,
+              "selected_rules_per_round": 2000,
+              "selector_reserved_bytes": 333629,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 50730
+            },
+            {
+              "accounted_rule_payload_bytes": 1438909,
+              "checksum_per_round": 202000.0,
+              "compile_drop_ms": 2.2930599999999997,
+              "declaration_array_bytes": 256000,
+              "elements": 4000,
+              "first_compile_ms": 2.173191,
+              "first_match_us": 7.859999999999999,
+              "index_entries": 4000,
+              "index_key_value_capacity_bytes": 286720,
+              "index_vector_bytes": 64000,
+              "match_resolve_ms": 1.1633132,
+              "rule_array_bytes": 163840,
+              "rules": 4000,
+              "selected_rules_per_round": 4000,
+              "selector_reserved_bytes": 668349,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 102570
+            }
+          ],
+          "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+          "rounds": 30,
+          "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+        }
+      },
+      {
+        "repeat": 0,
+        "benchmark": "projected",
+        "variant": "after",
+        "result": {
+          "axes_bytes": 3,
+          "cases": [
+            {
+              "first_axes_ns": 478,
+              "first_query_ns": 774,
+              "name": "one-physical",
+              "ns_per_query": 10.58016,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 336,
+              "first_query_ns": 248,
+              "name": "both-aliases",
+              "ns_per_query": 17.570947,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 256
+            },
+            {
+              "first_axes_ns": 635,
+              "first_query_ns": 316,
+              "name": "logical-side",
+              "ns_per_query": 17.679326,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 455,
+              "first_query_ns": 6115,
+              "name": "pending-shorthand",
+              "ns_per_query": 45.172275,
+              "pending_cached": 1,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 66,
+              "first_query_ns": 420,
+              "name": "rollback",
+              "ns_per_query": 42.269327,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 256
+            }
+          ],
+          "rounds": 1000000,
+          "scope": "Paired defaulting on frozen snapshots. Axes computed once per snapshot; first calls reported separately. Literal scalar checks outside timings. No layout, shaping, UI, website or Chrome evidence."
+        }
+      },
+      {
+        "repeat": 1,
+        "benchmark": "property",
+        "variant": "before",
+        "result": {
+          "cases": [
+            {
+              "first_ns": 570,
+              "ns_per_query": 11.063354666666667,
+              "property": "width"
+            },
+            {
+              "first_ns": 213,
+              "ns_per_query": 8.792900666666666,
+              "property": "margin-left"
+            },
+            {
+              "first_ns": 177,
+              "ns_per_query": 8.146684666666667,
+              "property": "color"
+            },
+            {
+              "first_ns": 61,
+              "ns_per_query": 3.237,
+              "property": "height"
+            }
+          ],
+          "rounds": 3000000,
+          "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+          "snapshot_payload_bytes": 416
+        }
+      },
+      {
+        "repeat": 1,
+        "benchmark": "property",
+        "variant": "after",
+        "result": {
+          "cases": [
+            {
+              "first_ns": 561,
+              "ns_per_query": 9.266036,
+              "property": "width"
+            },
+            {
+              "first_ns": 182,
+              "ns_per_query": 8.650555,
+              "property": "margin-left"
+            },
+            {
+              "first_ns": 144,
+              "ns_per_query": 8.175680333333334,
+              "property": "color"
+            },
+            {
+              "first_ns": 60,
+              "ns_per_query": 3.3326743333333333,
+              "property": "height"
+            }
+          ],
+          "rounds": 3000000,
+          "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+          "snapshot_payload_bytes": 416
+        }
+      },
+      {
+        "repeat": 1,
+        "benchmark": "cascade",
+        "variant": "before",
+        "result": {
+          "baseline_rule_scan": false,
+          "cases": [
+            {
+              "accounted_rule_payload_bytes": 358909,
+              "checksum_per_round": 50500.0,
+              "compile_drop_ms": 0.7254102333333333,
+              "declaration_array_bytes": 64000,
+              "elements": 1000,
+              "first_compile_ms": 0.7107640000000001,
+              "first_match_us": 6.604,
+              "index_entries": 1000,
+              "index_key_value_capacity_bytes": 71680,
+              "index_vector_bytes": 16000,
+              "match_resolve_ms": 0.28591996666666664,
+              "rule_array_bytes": 40960,
+              "rules": 1000,
+              "selected_rules_per_round": 1000,
+              "selector_reserved_bytes": 166269,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 24810
+            },
+            {
+              "accounted_rule_payload_bytes": 718909,
+              "checksum_per_round": 101000.0,
+              "compile_drop_ms": 1.1706260333333334,
+              "declaration_array_bytes": 128000,
+              "elements": 2000,
+              "first_compile_ms": 1.053666,
+              "first_match_us": 6.4590000000000005,
+              "index_entries": 2000,
+              "index_key_value_capacity_bytes": 143360,
+              "index_vector_bytes": 32000,
+              "match_resolve_ms": 0.5904616,
+              "rule_array_bytes": 81920,
+              "rules": 2000,
+              "selected_rules_per_round": 2000,
+              "selector_reserved_bytes": 333629,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 50730
+            },
+            {
+              "accounted_rule_payload_bytes": 1438909,
+              "checksum_per_round": 202000.0,
+              "compile_drop_ms": 2.3018739,
+              "declaration_array_bytes": 256000,
+              "elements": 4000,
+              "first_compile_ms": 2.4400939999999998,
+              "first_match_us": 7.601,
+              "index_entries": 4000,
+              "index_key_value_capacity_bytes": 286720,
+              "index_vector_bytes": 64000,
+              "match_resolve_ms": 1.1815462666666667,
+              "rule_array_bytes": 163840,
+              "rules": 4000,
+              "selected_rules_per_round": 4000,
+              "selector_reserved_bytes": 668349,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 102570
+            }
+          ],
+          "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+          "rounds": 30,
+          "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+        }
+      },
+      {
+        "repeat": 1,
+        "benchmark": "cascade",
+        "variant": "after",
+        "result": {
+          "baseline_rule_scan": false,
+          "cases": [
+            {
+              "accounted_rule_payload_bytes": 358909,
+              "checksum_per_round": 50500.0,
+              "compile_drop_ms": 0.6106504333333334,
+              "declaration_array_bytes": 64000,
+              "elements": 1000,
+              "first_compile_ms": 0.661956,
+              "first_match_us": 5.591,
+              "index_entries": 1000,
+              "index_key_value_capacity_bytes": 71680,
+              "index_vector_bytes": 16000,
+              "match_resolve_ms": 0.28934733333333335,
+              "rule_array_bytes": 40960,
+              "rules": 1000,
+              "selected_rules_per_round": 1000,
+              "selector_reserved_bytes": 166269,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 24810
+            },
+            {
+              "accounted_rule_payload_bytes": 718909,
+              "checksum_per_round": 101000.0,
+              "compile_drop_ms": 1.1436294999999999,
+              "declaration_array_bytes": 128000,
+              "elements": 2000,
+              "first_compile_ms": 1.064262,
+              "first_match_us": 5.629,
+              "index_entries": 2000,
+              "index_key_value_capacity_bytes": 143360,
+              "index_vector_bytes": 32000,
+              "match_resolve_ms": 0.6076053333333333,
+              "rule_array_bytes": 81920,
+              "rules": 2000,
+              "selected_rules_per_round": 2000,
+              "selector_reserved_bytes": 333629,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 50730
+            },
+            {
+              "accounted_rule_payload_bytes": 1438909,
+              "checksum_per_round": 202000.0,
+              "compile_drop_ms": 2.1859592666666665,
+              "declaration_array_bytes": 256000,
+              "elements": 4000,
+              "first_compile_ms": 2.39076,
+              "first_match_us": 6.317,
+              "index_entries": 4000,
+              "index_key_value_capacity_bytes": 286720,
+              "index_vector_bytes": 64000,
+              "match_resolve_ms": 1.2066962333333333,
+              "rule_array_bytes": 163840,
+              "rules": 4000,
+              "selected_rules_per_round": 4000,
+              "selector_reserved_bytes": 668349,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 102570
+            }
+          ],
+          "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+          "rounds": 30,
+          "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+        }
+      },
+      {
+        "repeat": 1,
+        "benchmark": "projected",
+        "variant": "after",
+        "result": {
+          "axes_bytes": 3,
+          "cases": [
+            {
+              "first_axes_ns": 678,
+              "first_query_ns": 1015,
+              "name": "one-physical",
+              "ns_per_query": 10.637471,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 284,
+              "first_query_ns": 263,
+              "name": "both-aliases",
+              "ns_per_query": 17.414056,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 256
+            },
+            {
+              "first_axes_ns": 646,
+              "first_query_ns": 206,
+              "name": "logical-side",
+              "ns_per_query": 14.958685,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 263,
+              "first_query_ns": 5565,
+              "name": "pending-shorthand",
+              "ns_per_query": 34.145313,
+              "pending_cached": 1,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 127,
+              "first_query_ns": 522,
+              "name": "rollback",
+              "ns_per_query": 34.144287,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 256
+            }
+          ],
+          "rounds": 1000000,
+          "scope": "Paired defaulting on frozen snapshots. Axes computed once per snapshot; first calls reported separately. Literal scalar checks outside timings. No layout, shaping, UI, website or Chrome evidence."
+        }
+      },
+      {
+        "repeat": 2,
+        "benchmark": "property",
+        "variant": "before",
+        "result": {
+          "cases": [
+            {
+              "first_ns": 839,
+              "ns_per_query": 10.242222666666667,
+              "property": "width"
+            },
+            {
+              "first_ns": 321,
+              "ns_per_query": 9.702069333333334,
+              "property": "margin-left"
+            },
+            {
+              "first_ns": 195,
+              "ns_per_query": 9.154101666666667,
+              "property": "color"
+            },
+            {
+              "first_ns": 138,
+              "ns_per_query": 3.5040933333333335,
+              "property": "height"
+            }
+          ],
+          "rounds": 3000000,
+          "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+          "snapshot_payload_bytes": 416
+        }
+      },
+      {
+        "repeat": 2,
+        "benchmark": "property",
+        "variant": "after",
+        "result": {
+          "cases": [
+            {
+              "first_ns": 474,
+              "ns_per_query": 9.718891333333334,
+              "property": "width"
+            },
+            {
+              "first_ns": 57,
+              "ns_per_query": 9.833036,
+              "property": "margin-left"
+            },
+            {
+              "first_ns": 108,
+              "ns_per_query": 9.047172,
+              "property": "color"
+            },
+            {
+              "first_ns": 148,
+              "ns_per_query": 3.3597026666666667,
+              "property": "height"
+            }
+          ],
+          "rounds": 3000000,
+          "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+          "snapshot_payload_bytes": 416
+        }
+      },
+      {
+        "repeat": 2,
+        "benchmark": "cascade",
+        "variant": "before",
+        "result": {
+          "baseline_rule_scan": false,
+          "cases": [
+            {
+              "accounted_rule_payload_bytes": 358909,
+              "checksum_per_round": 50500.0,
+              "compile_drop_ms": 0.7571879,
+              "declaration_array_bytes": 64000,
+              "elements": 1000,
+              "first_compile_ms": 0.73649,
+              "first_match_us": 7.035,
+              "index_entries": 1000,
+              "index_key_value_capacity_bytes": 71680,
+              "index_vector_bytes": 16000,
+              "match_resolve_ms": 0.28293799999999997,
+              "rule_array_bytes": 40960,
+              "rules": 1000,
+              "selected_rules_per_round": 1000,
+              "selector_reserved_bytes": 166269,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 24810
+            },
+            {
+              "accounted_rule_payload_bytes": 718909,
+              "checksum_per_round": 101000.0,
+              "compile_drop_ms": 1.5423814666666666,
+              "declaration_array_bytes": 128000,
+              "elements": 2000,
+              "first_compile_ms": 1.1122779999999999,
+              "first_match_us": 7.710999999999999,
+              "index_entries": 2000,
+              "index_key_value_capacity_bytes": 143360,
+              "index_vector_bytes": 32000,
+              "match_resolve_ms": 1.0673688666666665,
+              "rule_array_bytes": 81920,
+              "rules": 2000,
+              "selected_rules_per_round": 2000,
+              "selector_reserved_bytes": 333629,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 50730
+            },
+            {
+              "accounted_rule_payload_bytes": 1438909,
+              "checksum_per_round": 202000.0,
+              "compile_drop_ms": 2.4769734333333338,
+              "declaration_array_bytes": 256000,
+              "elements": 4000,
+              "first_compile_ms": 3.763028,
+              "first_match_us": 8.216999999999999,
+              "index_entries": 4000,
+              "index_key_value_capacity_bytes": 286720,
+              "index_vector_bytes": 64000,
+              "match_resolve_ms": 1.21594,
+              "rule_array_bytes": 163840,
+              "rules": 4000,
+              "selected_rules_per_round": 4000,
+              "selector_reserved_bytes": 668349,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 102570
+            }
+          ],
+          "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+          "rounds": 30,
+          "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+        }
+      },
+      {
+        "repeat": 2,
+        "benchmark": "cascade",
+        "variant": "after",
+        "result": {
+          "baseline_rule_scan": false,
+          "cases": [
+            {
+              "accounted_rule_payload_bytes": 358909,
+              "checksum_per_round": 50500.0,
+              "compile_drop_ms": 0.6469104,
+              "declaration_array_bytes": 64000,
+              "elements": 1000,
+              "first_compile_ms": 0.734815,
+              "first_match_us": 6.7540000000000004,
+              "index_entries": 1000,
+              "index_key_value_capacity_bytes": 71680,
+              "index_vector_bytes": 16000,
+              "match_resolve_ms": 0.28895536666666666,
+              "rule_array_bytes": 40960,
+              "rules": 1000,
+              "selected_rules_per_round": 1000,
+              "selector_reserved_bytes": 166269,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 24810
+            },
+            {
+              "accounted_rule_payload_bytes": 718909,
+              "checksum_per_round": 101000.0,
+              "compile_drop_ms": 1.1801771,
+              "declaration_array_bytes": 128000,
+              "elements": 2000,
+              "first_compile_ms": 1.0431240000000002,
+              "first_match_us": 6.008,
+              "index_entries": 2000,
+              "index_key_value_capacity_bytes": 143360,
+              "index_vector_bytes": 32000,
+              "match_resolve_ms": 0.5845730666666668,
+              "rule_array_bytes": 81920,
+              "rules": 2000,
+              "selected_rules_per_round": 2000,
+              "selector_reserved_bytes": 333629,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 50730
+            },
+            {
+              "accounted_rule_payload_bytes": 1438909,
+              "checksum_per_round": 202000.0,
+              "compile_drop_ms": 2.387923966666667,
+              "declaration_array_bytes": 256000,
+              "elements": 4000,
+              "first_compile_ms": 2.1835829999999996,
+              "first_match_us": 7.683999999999999,
+              "index_entries": 4000,
+              "index_key_value_capacity_bytes": 286720,
+              "index_vector_bytes": 64000,
+              "match_resolve_ms": 1.2087131000000002,
+              "rule_array_bytes": 163840,
+              "rules": 4000,
+              "selected_rules_per_round": 4000,
+              "selector_reserved_bytes": 668349,
+              "snapshot_payload_bytes": 416,
+              "source_bytes": 102570
+            }
+          ],
+          "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+          "rounds": 30,
+          "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+        }
+      },
+      {
+        "repeat": 2,
+        "benchmark": "projected",
+        "variant": "after",
+        "result": {
+          "axes_bytes": 3,
+          "cases": [
+            {
+              "first_axes_ns": 633,
+              "first_query_ns": 1018,
+              "name": "one-physical",
+              "ns_per_query": 10.469116,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 71,
+              "first_query_ns": 569,
+              "name": "both-aliases",
+              "ns_per_query": 17.621142,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 256
+            },
+            {
+              "first_axes_ns": 472,
+              "first_query_ns": 278,
+              "name": "logical-side",
+              "ns_per_query": 14.431547,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 198,
+              "first_query_ns": 4530,
+              "name": "pending-shorthand",
+              "ns_per_query": 35.892423,
+              "pending_cached": 1,
+              "snapshot_payload_bytes": 416
+            },
+            {
+              "first_axes_ns": 387,
+              "first_query_ns": 517,
+              "name": "rollback",
+              "ns_per_query": 33.099152,
+              "pending_cached": 0,
+              "snapshot_payload_bytes": 256
+            }
+          ],
+          "rounds": 1000000,
+          "scope": "Paired defaulting on frozen snapshots. Axes computed once per snapshot; first calls reported separately. Literal scalar checks outside timings. No layout, shaping, UI, website or Chrome evidence."
+        }
+      }
+    ]
+  }
+}

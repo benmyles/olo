@@ -108,3 +108,9 @@ unmodified WPT data at the revision in `tests/cascade-fixtures/SOURCE.json`.
 Their BSD license is reproduced there. Native literal ports explicitly omit
 JS/CSSOM, animations, layout and rasterization; a reftest's background-color
 component does not establish that its rendered reference matches.
+
+The nine logical-property documents/helpers in `tests/logical-fixtures/wpt`
+are unchanged WPT data at the revision in `tests/logical-fixtures/SOURCE.json`.
+The BSD license is reproduced there. Native ports retain literal mappings,
+values and assertion loops; CSSOM drivers remain explicit non-passes. No JS,
+live mutation, layout, text shaping or rasterization is executed by these ports.

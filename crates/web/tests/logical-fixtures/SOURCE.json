@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "d7bb5bb848fcd304c10669288a211dbafd106d90",
+  "resource_directory": "css/css-logical",
+  "files": {
+    ".gitattributes": "c6a6c303cfda51673d39df3addb42834783bf6f675b033f963d7eff77600d8c0",
+    "LICENSE.md": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
+    "README.md": "6d3ea75545c1aebe44c6f8195f5925c08271379b84b3ae4d36befde590144a3d",
+    "derived.json": "0fc66c07573ce140fdd628deb5f7964e1b2aa2881ac205f4c8f2e495a6994205",
+    "extract.py": "aec711ee42354f41060d2d0f2557b325f0ffaa4b02bd7de24fadf5e0862c8b42",
+    "wpt/logical-box-inset.html": "45884b0cd068dd90071e86eb46ae67a9436d2415a784200542d555414b9eff6c",
+    "wpt/logical-box-margin.html": "c0e681441d655902eaef7b5d2d23eea0eb56834ddd75dc3020f078a4857affd9",
+    "wpt/logical-box-padding.html": "06152980f0f2973229df93727d765de4c16c2549c065121c0532282fc81f8e13",
+    "wpt/logical-box-size.html": "6908adca721a7e9cbc5481160c6e42e594609651a3826fef73e243fc1f90de15",
+    "wpt/logicalprops-with-deferred-writing-mode.html": "f82eb6bbed3406f4d3be27feecefd55c105de5469e16521d0803f3c124fd8b62",
+    "wpt/logicalprops-with-variables-revert.html": "7f22e333bab77519c5a91f1c6a55a1b4bdbc1fd80f455ddc5b1fa3f985b26b9f",
+    "wpt/logicalprops-with-variables.html": "b248864d68b4c707bd0dc274ed11c7f97ad7041a8bc80776d57a9c4f20bae30c",
+    "wpt/resources/test-box-properties.js": "edac7e61c08a1ef7883a01da521857f202f86087ed419f6822399a3d8138383d",
+    "wpt/resources/test-shared.js": "59baaeff11500ef3645539474da88db9f09d4d3a3ae8c6b75a5acc094276223f"
+  }
+}

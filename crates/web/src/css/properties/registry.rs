@@ -85,6 +85,7 @@ keyword_registry! {
     MaxContent => "max-content",
     Medium => "medium",
     Middle => "middle",
+    Mixed => "mixed",
     MinContent => "min-content",
     None => "none",
     Normal => "normal",
@@ -99,6 +100,7 @@ keyword_registry! {
     Rtl => "rtl",
     ScaleDown => "scale-down",
     Scroll => "scroll",
+    Sideways => "sideways",
     SidewaysLr => "sideways-lr",
     SidewaysRl => "sideways-rl",
     Small => "small",
@@ -116,6 +118,7 @@ keyword_registry! {
     Thick => "thick",
     Thin => "thin",
     Top => "top",
+    Upright => "upright",
     Vertical => "vertical",
     VerticalLr => "vertical-lr",
     VerticalRl => "vertical-rl",
@@ -227,6 +230,7 @@ property_registry! {
     TextAlign, "text-align", Grammar::Keywords(&[Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify,Keyword::MatchParent,Keyword::JustifyAll]), "start", true;
     TextAlignLast, "text-align-last", Grammar::Keywords(&[Keyword::Auto,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify]), "auto", true;
     TextDecorationColor, "text-decoration-color", Grammar::Color(&[]), "currentcolor", false;
+    TextOrientation, "text-orientation", Grammar::Keywords(&[Keyword::Mixed,Keyword::Upright,Keyword::Sideways]), "mixed", true;
     Top, "top", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
     VerticalAlign, "vertical-align", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Baseline,Keyword::Sub,Keyword::Super,Keyword::TextTop,Keyword::TextBottom,Keyword::Middle,Keyword::Top,Keyword::Bottom]), "baseline", false;
     Visibility, "visibility", Grammar::Keywords(&[Keyword::Visible,Keyword::Hidden,Keyword::Collapse]), "visible", true;
@@ -251,7 +255,7 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontSize,FontWeight,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,Top,VerticalAlign,Visibility,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
+    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontSize,FontWeight,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,Top,VerticalAlign,Visibility,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;

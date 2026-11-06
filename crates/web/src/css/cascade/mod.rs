@@ -1,6 +1,8 @@
 //! Original stylesheet cascade. Defaulted declarations are not computed/used
 //! font or layout values. All compilation/matching/resolution runs on workers.
+mod axes;
 mod priority;
+pub use axes::{Axes, Direction, TextOrientation, WritingMode};
 mod sheets;
 use super::{properties as p, selectors, variables};
 pub use priority::{Origin, Priority};
@@ -53,6 +55,30 @@ pub enum Defaulted {
     Specified(p::Value),
     Initial,
     Inherit,
+}
+/// Paired cascade result. For Inherit, read `source` on the parent using
+/// the parent's axes, then copy that already-computed value. A logical source
+/// must not be replaced by its physical counterpart in the child's axes.
+#[derive(Clone, Debug)]
+pub struct Projected {
+    pub value: Defaulted,
+    pub source: p::Property,
+}
+trait Output {
+    const PROJECT: bool;
+    fn finish(value: Defaulted, source: p::Property) -> Self;
+}
+impl Output for Defaulted {
+    const PROJECT: bool = false;
+    fn finish(value: Defaulted, _: p::Property) -> Self {
+        value
+    }
+}
+impl Output for Projected {
+    const PROJECT: bool = true;
+    fn finish(value: Defaulted, source: p::Property) -> Self {
+        Self { value, source }
+    }
 }
 #[derive(Clone, Copy)]
 enum Data<'a> {
@@ -231,6 +257,32 @@ impl<'a> Cascade<'a> {
         }
         Ok(None)
     }
+    fn highest(&self, physical: Option<usize>, logical: Option<usize>) -> Option<usize> {
+        match (physical, logical) {
+            // A declaration such as all expands both. Physical longhands win
+            // equal priority, as required for all: inherit across changed axes.
+            (Some(p), Some(l)) if self.entries[l].priority > self.entries[p].priority => Some(l),
+            (Some(p), _) => Some(p),
+            (None, l) => l,
+        }
+    }
+    fn rollback_pair(&self, from: usize, wide: variables::Wide, physical: std::ops::Range<usize>, logical: std::ops::Range<usize>) -> Result<Option<usize>> {
+        let priority = self.entries[from].priority;
+        if priority.encapsulation != 0 {
+            return Err(Error::Unsupported("encapsulation rollback host"));
+        }
+        let mut candidates = [None; 2];
+        for (slot, range) in candidates.iter_mut().zip([physical, logical]) {
+            for i in range {
+                self.tick()?;
+                if self.entries[i].priority.eligible_after(priority, wide)? {
+                    *slot = Some(i);
+                    break;
+                }
+            }
+        }
+        Ok(self.highest(candidates[0], candidates[1]))
+    }
     fn defaulted(&self, property: p::Property, wide: variables::Wide) -> Defaulted {
         if self.has_parent && (wide == variables::Wide::Inherit || wide == variables::Wide::Unset && property.inherited()) { Defaulted::Inherit } else { Defaulted::Initial }
     }
@@ -246,21 +298,32 @@ pub struct Resolver<'a> {
 }
 impl Resolver<'_> {
     pub fn property(&mut self, property: p::Property, allow_animation_tainted: bool) -> Result<Defaulted> {
+        self.resolve::<Defaulted>(property, Axes::default(), allow_animation_tainted)
+    }
+    /// Cascade physical/logical equivalents together after resolving axes.
+    /// Both aliases share a result. Retain `source` for correct inheritance.
+    pub fn projected(&mut self, property: p::Property, axes: Axes, allow_animation_tainted: bool) -> Result<Projected> {
+        self.resolve::<Projected>(property, axes, allow_animation_tainted)
+    }
+    fn resolve<O: Output>(&mut self, property: p::Property, axes: Axes, allow_animation_tainted: bool) -> Result<O> {
         self.cascade.work.set(0);
         self.cascade.tick()?;
-        let range = self.cascade.known_range(property);
-        let mut at = (!range.is_empty()).then_some(range.start);
+        let pair = if O::PROJECT { axes.pair(property) } else { None };
+        let primary = pair.map_or(property, |p| p[0]);
+        let range = self.cascade.known_range(primary);
+        let other = pair.map_or(0..0, |p| self.cascade.known_range(p[1]));
+        let mut at = self.cascade.highest((!range.is_empty()).then_some(range.start), (!other.is_empty()).then_some(other.start));
         let mut seen = smallvec::SmallVec::<[usize; 8]>::new();
         while let Some(i) = at {
             self.cascade.tick()?;
             if seen.contains(&i) {
-                return Ok(self.cascade.defaulted(property, variables::Wide::Unset));
+                return Ok(O::finish(self.cascade.defaulted(primary, variables::Wide::Unset), primary));
             }
             if seen.len() >= self.cascade.limits.depth.min(256) {
                 return Err(Error::Limit);
             }
             seen.push(i);
-            let Data::Known(_, raw) = self.cascade.entries[i].data else { unreachable!() };
+            let Data::Known(declared, raw) = self.cascade.entries[i].data else { unreachable!() };
             let value = if let p::Value::Pending(pending) = raw {
                 let key = (Arc::as_ptr(pending) as usize, allow_animation_tainted);
                 if !self.pending.contains_key(&key) {
@@ -281,17 +344,19 @@ impl Resolver<'_> {
                     self.pending_bytes += bytes;
                     self.pending.insert(key, values);
                 }
-                &self.pending[&key].iter().find(|a| a.property == property).ok_or(Error::Invalid)?.value
+                &self.pending[&key].iter().find(|a| a.property == declared).ok_or(Error::Invalid)?.value
             } else {
                 raw
             };
             match value {
-                p::Value::Wide(wide @ (variables::Wide::Revert | variables::Wide::RevertLayer | variables::Wide::RevertRule)) => at = self.cascade.rollback(i, *wide)?,
-                p::Value::Wide(wide) => return Ok(self.cascade.defaulted(property, *wide)),
-                _ => return Ok(Defaulted::Specified(value.clone())),
+                p::Value::Wide(wide @ (variables::Wide::Revert | variables::Wide::RevertLayer | variables::Wide::RevertRule)) => {
+                    at = if pair.is_some() { self.cascade.rollback_pair(i, *wide, range.clone(), other.clone())? } else { self.cascade.rollback(i, *wide)? };
+                }
+                p::Value::Wide(wide) => return Ok(O::finish(self.cascade.defaulted(declared, *wide), declared)),
+                _ => return Ok(O::finish(Defaulted::Specified(value.clone()), declared)),
             }
         }
-        Ok(self.cascade.defaulted(property, variables::Wide::Unset))
+        Ok(O::finish(self.cascade.defaulted(primary, variables::Wide::Unset), primary))
     }
     pub fn custom(&mut self, name: &str) -> Result<variables::Computed> {
         self.cascade.work.set(0);
