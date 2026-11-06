@@ -76,6 +76,28 @@ pub enum Order {
     Rgba,
 }
 
+/// The box in an MP4's `udta` (and what it says) marking it Olo's screen
+/// recording; in a GIF, a comment saying the same.
+const OLO_MARK: &[u8; 4] = b"oloR";
+const OLO_SAYS: &[u8] = b"Olo screen recording";
+
+/// Whether the video at `path` is a screen recording Olo made (or made
+/// again: an export of one), by its mark, whatever it's named.
+pub fn made_by_olo(path: &std::path::Path) -> bool {
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif")) {
+        // (The comment comes before the first frame.)
+        let mut head = vec![0u8; 4096];
+        let n = std::fs::File::open(path).and_then(|mut f| std::io::Read::read(&mut f, &mut head)).unwrap_or(0);
+        return head[..n].windows(OLO_SAYS.len()).any(|w| w == OLO_SAYS);
+    }
+    trim::moov(path).is_some_and(|moov| trim::find(&moov, b"udta").and_then(|u| trim::find(u, OLO_MARK)).is_some())
+}
+
+/// The comment marking a GIF Olo's (for `gif::from_mp4`).
+pub(crate) fn olo_gif_comment() -> &'static [u8] {
+    OLO_SAYS
+}
+
 /// The bitrate a screen's video is given: about a tenth of a bit a pixel
 /// a frame (a 4K screen at 30 a second: 25 Mbit/s), 1 to 80 Mbit/s.
 pub fn bitrate(width: u32, height: u32, fps: u32) -> u32 {
@@ -507,6 +529,8 @@ pub struct Mp4 {
     /// Chapters (`chapters`): where each starts (milliseconds) and its
     /// title.
     chapters: Vec<(u64, String)>,
+    /// Marked as Olo's recording (`mark_olo`).
+    olo: bool,
 }
 
 impl Mp4 {
@@ -605,6 +629,7 @@ impl Mp4 {
             audio: None,
             start: 0,
             chapters: Vec::new(),
+            olo: false,
         })
     }
 
@@ -748,6 +773,12 @@ impl Mp4 {
         Ok(())
     }
 
+    /// Marked as Olo's screen recording (a box of Olo's own in `udta`:
+    /// [`made_by_olo`]), so a library knows it whatever it's named.
+    pub fn mark_olo(&mut self) {
+        self.olo = true;
+    }
+
     /// Played from `ticks` into the video (an edit list), what's before
     /// kept only to decode from (a trimmed recording starts at its key
     /// frame before).
@@ -834,7 +865,10 @@ impl Mp4 {
             (Some(a), Some(length)) => sound_track(a, length, &matrix),
             _ => Vec::new(),
         };
-        let udta = if self.chapters.is_empty() {
+        // Olo's own mark (`made_by_olo`), so its recordings are known
+        // whatever they're named.
+        let mark = if self.olo { bx(OLO_MARK, OLO_SAYS) } else { Vec::new() };
+        let chpl = if self.chapters.is_empty() {
             Vec::new()
         } else {
             let mut body = vec![0u8; 4];
@@ -850,8 +884,9 @@ impl Mp4 {
                 body.push(end as u8);
                 body.extend_from_slice(&title.as_bytes()[..end]);
             }
-            bx(b"udta", &full(b"chpl", 0x0100_0000, &body))
+            full(b"chpl", 0x0100_0000, &body)
         };
+        let udta = if mark.is_empty() && chpl.is_empty() { Vec::new() } else { bx(b"udta", &[chpl, mark].concat()) };
         let moov = bx(b"moov", &[mvhd, trak, sound_trak, udta].concat());
         self.file.write_all(&moov)?;
         // `mdat`'s size: its header (16) and every sample.

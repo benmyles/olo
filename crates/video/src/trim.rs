@@ -77,6 +77,10 @@ pub fn trim(src: &Path, dst: &Path, start: f64, end: f64) -> Result<Trimmed, Str
     let lead = from_ticks.saturating_sub(first.start_time).min(u64::from(u32::MAX)) as u32;
     let mut entry_now = entry_of(*first_i);
     let mut mp4 = Mp4::copying(dst, w, h, vscale, entry_now.clone()).map_err(|e| e.to_string())?;
+    // (A trim of Olo's recording is one too.)
+    if crate::made_by_olo(src) {
+        mp4.mark_olo();
+    }
     let has_sound = sound.is_some();
     let audio_samples = match &sound {
         Some((at, ascale, acount, config, chans, bitrate)) => {

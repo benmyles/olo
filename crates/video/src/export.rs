@@ -226,6 +226,10 @@ fn to_mp4(src: &Path, dst: &Path, edit: &Edit, opts: &Options, cancel: &AtomicBo
     let fps = opts.fps.min(120);
     let mut enc = Encoder::with_quality(ow, oh, if fps == 0 { 30 } else { fps }, opts.encoder, opts.codec, opts.quality)?;
     let mut mp4 = Mp4::create_for(dst, ow, oh, 1000, enc.codec()).map_err(|e| e.to_string())?;
+    // (An export of Olo's recording is one too.)
+    if crate::made_by_olo(src) || src.file_name().is_some_and(|n| n.to_string_lossy().starts_with("Screen Recording")) {
+        mp4.mark_olo();
+    }
     // An output moment (seconds) to the MP4's ticks: on the frame rate's
     // grid when there is one.
     let ticks = |t: f64| -> u64 { if fps == 0 { (t * 1000.0).round() as u64 } else { ((t * f64::from(fps)).round() * 1000.0 / f64::from(fps)).round() as u64 } };
@@ -452,6 +456,8 @@ mod tests {
         mp4.chapters(vec![(500, "first".into()), (1500, "cut".into()), (2500, "third".into())]);
         mp4.finish().unwrap();
         assert_eq!(marks_of(&src).iter().map(|m| m.1.as_str()).collect::<Vec<_>>(), ["first", "cut", "third"]);
+        // Not marked as Olo's: its export isn't either.
+        assert!(!crate::made_by_olo(&src));
         // The second second cut out; the right half kept, halved.
         let edit = Edit { keep: vec![(0.0, 1.0), (2.0, 4.0)], crop: Some([160, 0, 160, 240]), mute: true, marks: None };
         let never = AtomicBool::new(false);
@@ -462,6 +468,7 @@ mod tests {
         // gone).
         assert_eq!(made.frames, 3, "{made:?}");
         assert_eq!(marks_of(&dst), vec![(0.5, "first".to_owned()), (1.5, "third".to_owned())]);
+        assert!(!crate::made_by_olo(&dst));
         // Its last picture: the square (x 220..260 of the source) at x 30..50
         // of the half-size crop.
         let v = Video::open(&dst).unwrap();
@@ -499,6 +506,7 @@ mod tests {
         let mut enc = crate::H264::new(w, h, 30).unwrap();
         let mut mp4 = Mp4::create(&src, w, h, 1000).unwrap();
         mp4.with_sound(&aac.track(), 48_000, 160_000);
+        mp4.mark_olo();
         for _ in 0..2 {
             let (bits, key) = enc.encode(&vec![128u8; (w * h * 4) as usize], w as usize * 4, Order::Bgra).unwrap();
             mp4.add(&bits, key, 1000).unwrap();
@@ -521,6 +529,8 @@ mod tests {
         let never = AtomicBool::new(false);
         let made = export(&src, &dst, &edit, &Options { encoder: Choice::Cpu, ..Options::default() }, &never, &|_| {}).unwrap();
         assert!(made.sound);
+        // Olo's recording, and its export too, by their mark.
+        assert!(crate::made_by_olo(&src) && crate::made_by_olo(&dst));
         // Its waveform: loud all through the source, but for the edges.
         let p = peaks(&src, 20, &never).unwrap().unwrap();
         assert!(p[2..18].iter().all(|&v| (0.15..0.4).contains(&v)), "{p:?}");

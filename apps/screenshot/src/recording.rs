@@ -1079,7 +1079,9 @@ fn encode(
             None => olo_video::even(w, h),
         };
         let enc = olo_video::Encoder::new(vw, vh, fps, choice, codec)?;
-        let mp4 = olo_video::Mp4::create_for(part, vw, vh, 1000, enc.codec()).map_err(|e| e.to_string())?;
+        let mut mp4 = olo_video::Mp4::create_for(part, vw, vh, 1000, enc.codec()).map_err(|e| e.to_string())?;
+        // (Olo's: a library knows it whatever it's named.)
+        mp4.mark_olo();
         Ok((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]))
     };
     // Opened now, at the size the capture says (before the recording

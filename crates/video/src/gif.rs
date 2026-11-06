@@ -81,6 +81,8 @@ pub fn from_mp4(src: &Path, dst: &Path, opts: &Options, cancel: &AtomicBool, pro
     let out = File::create(dst).map_err(|e| format!("{}: {e}", dst.display()))?;
     let mut gif = gif::Encoder::new(BufWriter::new(out), ow as u16, oh as u16, &palette).map_err(|e| e.to_string())?;
     gif.set_repeat(gif::Repeat::Infinite).map_err(|e| e.to_string())?;
+    // (Olo's mark: a comment, so a library knows it whatever it's named.)
+    gif.write_raw_extension(gif::Extension::Comment.into(), &[crate::olo_gif_comment()]).map_err(|e| e.to_string())?;
     let mut shown_now: Option<Vec<u8>> = None;
     let mut pending: Option<(gif::Frame<'static>, usize)> = None;
     let mut frames = 0usize;
@@ -179,6 +181,8 @@ mod tests {
         let never = AtomicBool::new(false);
         let made = from_mp4(&mp4_path, &gif_path, &Options { fps: 10, width: 160 }, &never, &|_| {}).unwrap();
         assert_eq!((made.width, made.height), (160, 120));
+        // Olo's mark, in a comment.
+        assert!(crate::made_by_olo(&gif_path));
         // A frame for each move: the still stretches held, not repeated.
         assert_eq!(made.frames, 4, "{made:?}");
         let mut d = gif::DecodeOptions::new();

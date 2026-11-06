@@ -6991,6 +6991,28 @@ Screens' Export Video uses too).
   review --all`: nothing found); dragged into a Tracker window (the file
   copied there), Copy pasted as the path, Delete in the Trash, Show in
   Tracker its folder; idle, 0 wakeups.
+- **Recordings** (`library.rs`, `olo-screenshot --library`; Record ▸
+  Recordings…, Deskbar's recording menu; one window, a second
+  `--library` brings it forward): every screen recording in the Videos
+  folder, as CleanShot X's history, in the kit's BColumnListView: its
+  picture (a tenth in, at most a second, at the row's size for the
+  window's scale, one pixel a device pixel), name, length ("GIF" for a
+  GIF), size and date, newest first (a header click sorts), found by
+  name as it's typed ("1 of 4 recordings"). Play and a double click (the
+  Viewer), Edit (the Viewer's editor), Show in Tracker, Rename… (a
+  dialog; the extension kept, a name taken refused) and Delete (to the
+  Trash). What each is and its picture are read on a worker, 64 at a
+  time, as they're needed, and kept; the folder is followed (inotify),
+  so a recording made, renamed or deleted anywhere shows at once. A
+  recording is known by Olo's mark, not its name: the recorder, the trim
+  and the export write a box of Olo's own in the MP4's `udta` (`oloR`,
+  `Mp4::mark_olo`), a GIF a comment (`olo_video::made_by_olo` reads
+  either), so one renamed stays; files named "Screen Recording …" (from
+  before the mark) are listed too. `olo-screenshot --recordings` prints
+  the list as JSON for agents (path, name, seconds, width, height,
+  bytes, modified). Checked headless at 1×, 1.5× and 2×, light and dark
+  (`tsession review`: no errors); searched, renamed (still listed),
+  deleted (in the Trash, gone from the list at once).
 - **Editing** (the Viewer's `video_edit.rs`: Edit ▸ Edit Video…, ⌘E;
   `olo-viewer --edit PATH`, the card's Edit, which a running Viewer is
   handed): CleanShot X's editor, under the playing video (the window

@@ -14,8 +14,9 @@ something nobody here has is in "Blocked", with what it waits for.
 ## Working on now
 
 - **Screen recording in Screenshot** (below, in Not started): the
-  control bar, the card after, the export and the editor are done; next
-  the library, then Start's options, Do Not Disturb, the skill.
+  control bar, the card after, the export, the editor and the library are
+  done; next Start's options (sizes and shapes for a region), Do Not
+  Disturb while recording, the skill.
 
 ## Not started (highest priority first)
 
@@ -39,8 +40,9 @@ something nobody here has is in "Blocked", with what it waits for.
   - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
     Edit and Delete, dragged out as the file. Done (HACKING, "After"):
     it's saved already (in Videos), so there's no Save.
-  - **Library**: every recording with its picture, length, size and date:
-    play, edit, show, rename, delete, search.
+  - ~~**Library**: every recording with its picture, length, size and
+    date: play, edit, show, rename, delete, search.~~ Done (HACKING,
+    "Recordings").
   - **Editor**: a timeline (pictures along it, the sound's waveform),
     trim, cut out a stretch, crop, the zooms and marks edited, sound
     muted, and Export (MP4 or GIF, size, frame rate, quality) on a worker
