@@ -3506,6 +3506,14 @@ looks even slightly off before calling something done.
 
 ### Layout review (`olo_ui::review`)
 
+Authored document geometry (web pages, PDF content, etc.) follows its format,
+not native widget metrics. Mark its structured `agent::Node` records with
+`document_content: true`: snapshots/actions keep the nodes, while the native
+spacing/inset review excludes them. Never use this for native toolbars,
+dialogs or overlays. Document geometry and pixels require format/reference
+evaluations; an empty native review is not document-rendering acceptance.
+
+
 The review reads one frame's painted
 shapes (text with its baseline, filled bands, lines, icons) at the scale
 it was drawn at and flags what tends to look off: what you should look

@@ -44,5 +44,5 @@ fn main() {
             json!({"elements":count,"pipeline_us":micros,"commands":commands,"geometry_sha256":format!("{:x}",geometry.finalize()),"source_sha256":format!("{:x}",Sha256::digest(source.as_bytes()))}),
         );
     }
-    println!("{}", json!({"features":build_features::enabled(),"rounds":rounds,"rows":rows}));
+    println!("{}", json!({"command_bytes":std::mem::size_of::<paint::Command>(),"features":build_features::enabled(),"rounds":rounds,"rows":rows}));
 }

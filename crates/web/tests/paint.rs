@@ -288,3 +288,64 @@ fn linked_sheets_use_first_base_and_document_cascade_order() {
     assert_eq!(page.stylesheet_issues, 1);
     assert_eq!(pixel(&render(&mut painter, &page.scene), 50, 10), [0, 128, 0, 255]);
 }
+
+#[test]
+fn document_input_restyles_link_states_and_keeps_equal_color_owners_separate() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let mut page=olo_web::page::load(Arc::from("<!doctype html><style>body{margin:0}a:link{color:red}a:visited{color:blue}a:hover{color:green}a:active{color:blue}a:focus{color:purple}</style><a id=first href=x>AA</a><a id=second href=y>BB</a>"),&host,&scope,&mut shaper,&mut painter,layout::Viewport{width:100.,height:100.,scale:1.},None,|_,_|{}).unwrap();
+    let owned: Vec<_> = page
+        .scene
+        .commands()
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| if let paint::Primitive::Text { color, .. } = c.primitive { Some((page.scene.text_node(i as u32).unwrap(), color)) } else { None })
+        .collect();
+    assert_eq!(owned.len(), 2);
+    assert_ne!(owned[0].0, owned[1].0);
+    assert!(owned.iter().all(|(_, c)| *c == [255, 0, 0, 255]));
+    let first_text = owned[0].0;
+    let first = page.document.parent(first_text).unwrap().unwrap();
+    page.interaction.hover = Some(first_text);
+    assert!(olo_web::page::Interaction::default().changes_style(page.interaction, page.interaction_mask));
+    page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
+    assert!(page.scene.commands().iter().any(|c| matches!(c.primitive, paint::Primitive::Text { color: [0, 128, 0, 255], .. })));
+    page.interaction.active = Some(first_text);
+    page.interaction.focus = Some(first);
+    page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
+    assert!(page.scene.commands().iter().any(|c| matches!(c.primitive, paint::Primitive::Text { color: [128, 0, 128, 255], .. })));
+    assert!(!olo_web::page::Interaction::default().changes_style(page.interaction, 0));
+}
+
+#[test]
+fn cross_node_ligatures_and_clipped_ink_do_not_invent_click_targets() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/ligature.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline ligature"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let mut shaper = Shaper::default();
+    let mut painter = paint::Engine::default();
+    let mut page = olo_web::page::load(
+        Arc::from("<!doctype html><style>body{margin:0;color:red;font-size:20px}a{color:red}</style><a href=x>A </a><a href=y>B</a> C"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    assert!(page.scene.commands().iter().enumerate().any(|(i, c)| matches!(c.primitive, paint::Primitive::Text { .. }) && page.scene.text_node(i as u32).is_none()));
+    let foreign = html::parse(Arc::from("<!doctype html><p>other"), Default::default(), None).unwrap().document;
+    page.interaction.focus = Some(foreign.root());
+    assert!(page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).is_err());
+    let s = scene("<div class=clip><p>A</p></div>", ".clip{height:5px;width:10px;overflow:hidden}p{position:relative;top:50px}", &mut painter);
+    let text: Vec<_> = s.commands().iter().enumerate().filter(|(_, c)| matches!(c.primitive, paint::Primitive::Text { .. })).collect();
+    assert!(!text.is_empty());
+    assert!(text.iter().all(|(i, _)| s.visible_bounds(*i as u32).is_none()));
+}

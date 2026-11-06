@@ -222,6 +222,9 @@ fn controls(window: &Window) -> Vec<Control> {
         .iter()
         .filter_map(|(r, moved)| {
             let n = r.downcast_ref::<crate::agent::Node>()?;
+            if n.document_content {
+                return None;
+            }
             let at = Bounds { origin: n.bounds.origin + *moved, size: n.bounds.size };
             Some(Control { rect: kb(at), clip: n.clip.map_or(whole, kb), role: n.role.to_owned(), name: n.name.as_ref().map(|s| s.to_string()).unwrap_or_default(), clickable: n.clickable })
         })

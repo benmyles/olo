@@ -319,11 +319,30 @@ this is a harness correction, not a browser speedup.
   path as well as the normal visible path.
 
 - [ ] Public navigation smoke failures: Example Domain is visibly incomplete;
-  Hacker News fails on unavailable selector state. Implement real initial/live
-  element state, then table layout; preserve these explicit failures in evals.
-- [ ] Keep web content geometry out of native kit inset lint: CERN's valid
-  8px UA body margin currently yields a kit window-edge finding. Don't change
-  website spacing to satisfy desktop widget spacing rules.
+  Hacker News gets past initial link/pointer state and now fails on inline box
+  edges. Complete inline edges/typography and table layout; preserve explicit
+  failures in evals.
+- [x] Distinguish authored document records from native widget layout review.
+  `agent::Node.document_content` keeps snapshots/actions while excluding native
+  spacing/inset rules; the shared regression still catches native crowding.
 - [ ] Investigate the small-page pipeline sample regression: 100 elements
   948.099→1016.547 µs median; 1k 9183.913→9217.438 µs. Retaining compiled rules
   enables I/O-free restyle; samples do not establish a speedup or full cost acceptance.
+
+- [ ] Complete document input/hit testing: initial visible text links and
+  hover/active/focus ancestry now work through native/agent pointer input.
+  Box/advance/whitespace/empty-anchor/image targets, pointer capture, cursor
+  styling, keyboard navigation, selection/editing, fragments and default-action
+  event dispatch remain required. Cross-node shared ligatures deliberately
+  have no invented click target until caret ownership is available.
+- [ ] Incremental selector/style/layout/paint invalidation. Dynamic state masks
+  avoid restyle when unused, but actual state changes still restyle the full
+  retained document and rebuild visible tiles. This is not the final cost model.
+- [ ] Complete navigation history/tabs/downloads/new windows and allowed URL
+  handlers. Unsupported link actions currently report a reason without requests.
+- [ ] Cache shared URL values in per-frame link records and bound structured
+  metadata work for pathological content. Focus-only metadata changes need an
+  immediate lightweight repaint even when no CSS selector depends on focus.
+- [ ] Investigate the two candidate drag hitches from the first link-input
+  sample; paired confirmation is clear. Preserve both runs and measure actual
+  hover-to-presentation latency before performance acceptance.

@@ -38,21 +38,36 @@ pub struct Request {
     pub scroll: i32,
     pub cancel: crate::network::Cancel,
     pub recycle: Vec<Arc<RenderImage>>,
+    pub interaction: page::Interaction,
+}
+pub enum Message {
+    Render(Box<Request>),
+    Recycle(Vec<Arc<RenderImage>>),
 }
 pub struct Label {
     pub text: String,
     pub rect: layout::Rect,
+    pub node: Option<olo_web::dom::NodeId>,
+    pub link: Option<Arc<crate::links::Link>>,
 }
 pub enum Reply {
     Status(u64, String),
     Location(u64, String),
     Ready { id: u64, title: String, tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)> },
-    Content { id: u64, labels: Vec<Label>, extent: f64, scroll: i32 },
+    Content { id: u64, labels: Vec<Label>, extent: f64, scroll: i32, interaction_mask: u64 },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
     Error(u64, String),
 }
-pub fn start(proxy: Proxy) -> mpsc::Sender<Request> {
-    let (tx, rx) = mpsc::channel::<Request>();
+struct Cached {
+    key: Key,
+    page: page::Page,
+    viewport_dependent: bool,
+    origin: url::Url,
+    base: url::Url,
+    links: HashMap<olo_web::dom::NodeId, Option<Arc<crate::links::Link>>>,
+}
+pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
+    let (tx, rx) = mpsc::channel::<Message>();
     std::thread::Builder::new()
         .name("browser-page".into())
         .spawn(move || {
@@ -64,12 +79,22 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Request> {
                 let loader = crate::network::Loader::new()?;
                 let mut shaper = shaping::Engine::default();
                 let mut painter = paint::Engine::default();
-                let mut cached: Option<(Key, page::Page, bool)> = None;
+                let mut cached: Option<Cached> = None;
                 let mut tiles = HashMap::new();
                 let mut clock = 0u64;
-                while let Ok(mut r) = rx.recv() {
-                    while let Ok(new) = rx.try_recv() {
-                        r = new
+                while let Ok(message) = rx.recv() {
+                    let mut r = match message {
+                        Message::Render(r) => r,
+                        Message::Recycle(images) => {
+                            drop(images);
+                            continue;
+                        }
+                    };
+                    while let Ok(message) = rx.try_recv() {
+                        match message {
+                            Message::Render(new) => r = new,
+                            Message::Recycle(images) => drop(images),
+                        }
                     }
                     drop(std::mem::take(&mut r.recycle));
                     if r.cancel.load(Ordering::Relaxed) {
@@ -99,7 +124,7 @@ fn render(
     scope: &Scope,
     shaper: &mut shaping::Engine,
     painter: &mut paint::Engine,
-    cached: &mut Option<(Key, page::Page, bool)>,
+    cached: &mut Option<Cached>,
     proxy: &Proxy,
     cache: &mut HashMap<(i32, i32), (Arc<RenderImage>, u64)>,
     clock: &mut u64,
@@ -107,16 +132,21 @@ fn render(
     if r.key.width > MAX_VIEWPORT || r.key.height > MAX_VIEWPORT || !r.key.scale.is_finite() || r.key.scale <= 0. {
         return Err("Viewport exceeds the development renderer limits".into());
     }
-    if let Some((key, page, viewport_dependent)) = cached.as_mut()
+    if let Some(Cached { key, page, viewport_dependent, .. }) = cached.as_mut()
         && key.source == r.key.source
         && key.revision == r.key.revision
         && key.cwd == r.key.cwd
-        && (key.width != r.key.width || key.height != r.key.height || key.scale != r.key.scale || key.palette != r.key.palette)
+        && (key.width != r.key.width || key.height != r.key.height || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(r.interaction, page.interaction_mask))
     {
         proxy.send(Reply::Status(r.id, "Laying out…".into()));
-        if *viewport_dependent || key.scale != r.key.scale || key.palette != r.key.palette {
+        if *viewport_dependent || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(r.interaction, page.interaction_mask) {
+            let previous = page.interaction;
+            page.interaction = r.interaction;
             let host = PageHost::new(scope, &r.key);
-            page.restyle(&host, scope, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {})?;
+            if let Err(error) = page.restyle(&host, scope, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {}) {
+                page.interaction = previous;
+                return Err(error);
+            }
             *viewport_dependent = host.viewport_used.get();
         } else {
             let mut job = layout::Job::new(
@@ -136,7 +166,7 @@ fn render(
         *key = r.key.clone();
         cache.clear();
     }
-    if cached.as_ref().is_none_or(|(key, _, _)| *key != r.key) {
+    if cached.as_ref().is_none_or(|cached| cached.key != r.key) {
         *cached = None;
         cache.clear();
         proxy.send(Reply::Status(r.id, "Loading…".into()));
@@ -203,10 +233,13 @@ fn render(
                 }
             },
         )?;
-        *cached = Some((r.key.clone(), page, host.viewport_used.get()));
+        let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
+        let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());
+        *cached = Some(Cached { key: r.key.clone(), page, viewport_dependent: host.viewport_used.get(), origin, base, links: HashMap::new() });
         cache.clear();
     }
-    let page = &cached.as_ref().unwrap().1;
+    let cached = cached.as_mut().unwrap();
+    let page = &cached.page;
     let scene = &page.scene;
     let extent = scene.content_extent().height;
     let scroll = r.scroll.clamp(0, max_scroll(&r.key, extent));
@@ -224,12 +257,20 @@ fn render(
             if let (Some(lo), Some(hi)) = (gs.iter().map(|g| g.cluster).min(), gs.iter().map(|g| g.cluster).max()) {
                 let end = run.glyphs.iter().filter_map(|g| (g.cluster > hi).then_some(g.cluster)).min().unwrap_or(f.source.end).min(f.source.end);
                 if lo < end {
-                    labels.push(Label { text: run.source[lo as usize..end as usize].to_owned(), rect: c.bounds });
+                    let node = scene.text_node(id);
+                    let Some(rect) = scene.visible_bounds(id) else {
+                        continue;
+                    };
+                    let link = match node {
+                        Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
+                        None => None,
+                    };
+                    labels.push(Label { text: run.source[lo as usize..end as usize].to_owned(), rect, node, link });
                 }
             }
         }
     }
-    proxy.send(Reply::Content { id: r.id, labels, extent, scroll });
+    proxy.send(Reply::Content { id: r.id, labels, extent, scroll, interaction_mask: page.interaction_mask });
     let mut tiles = Vec::new();
     let mut last = Instant::now();
     let top = scroll.div_euclid(256) * 256;

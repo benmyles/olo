@@ -75,10 +75,14 @@ impl Loader {
         Ok(css::Syntax::parse_bytes(&resource.bytes, css::ByteOptions { protocol_encoding: encoding, environment_encoding: Some(document.encoding()) }, Default::default(), Some(cancel))?.syntax)
     }
     fn fetch(&self, mut url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize)) -> page::Result<Resource> {
+        let allow_file = url.scheme() == "file";
         self.runtime.block_on(async {
             let work = async {
                 for _ in 0..=20 {
                     check_url(&url, initiator)?;
+                    if url.scheme() == "file" && !allow_file {
+                        return Err("Web responses cannot redirect to local files".into());
+                    }
                     if url.scheme() == "file" {
                         let path = url.to_file_path().map_err(|_| "Invalid local file URL")?;
                         // Small bounded reads, with cancellation between them. This is
@@ -326,6 +330,13 @@ mod tests {
             }
             server.join().unwrap();
         }
+    }
+    #[test]
+    fn document_redirect_cannot_enter_the_local_filesystem() {
+        let (base, server) = server(&[("/file", "HTTP/1.1 302 Found\r\nLocation: file:///dev/null\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")], 1);
+        let result = Loader::new().unwrap().document(&format!("{base}/file"), None, &Cancel::default(), |_| {});
+        assert!(result.err().unwrap().to_string().contains("local files"));
+        server.join().unwrap();
     }
     #[test]
     fn wrong_css_mime_is_rejected() {

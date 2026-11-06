@@ -44,6 +44,37 @@ impl Scene {
     pub fn commands(&self) -> &[Command] {
         &self.commands
     }
+    /// Resolve a text paint segment back to its stable document node without
+    /// duplicating full DOM handles in every command.
+    pub fn text_node(&self, command: u32) -> Option<crate::dom::NodeId> {
+        let Primitive::Text { owner, fragment, glyphs, .. } = &self.commands.get(command as usize)?.primitive else {
+            return None;
+        };
+        let tree = self.layout.cache().tree();
+        let BoxKind::InlineContent { source } = tree.get(*owner)?.kind else {
+            return None;
+        };
+        let source = tree.text_source(source)?;
+        let text = self.layout.text_layout(*owner)?;
+        let fragment = text.fragments().get(*fragment as usize)?;
+        let run = text.run(fragment)?;
+        let glyph = run.glyphs.get(glyphs.start as usize)?;
+        let prepared = text.text().prepared();
+        let mapping = prepared.mapping_at_output(glyph.cluster)?;
+        let stop = if run.direction == Direction::RightToLeft { run.glyphs.partition_point(|g| g.cluster > glyph.cluster) } else { run.glyphs.partition_point(|g| g.cluster <= glyph.cluster) };
+        let end =
+            if run.direction == Direction::RightToLeft { stop.checked_sub(1).map_or(run.range.end, |i| run.glyphs[i].cluster) } else { run.glyphs.get(stop).map_or(run.range.end, |g| g.cluster) };
+        let last = prepared.mapping_at_output(end.saturating_sub(1))?;
+        let input_end = if last.kind == crate::text::prepare::MappingKind::Copy { last.input.start + (end - last.output.start) } else { last.input.end };
+        let span = source.spans.get(mapping.span as usize)?;
+        (input_end <= span.range.end).then_some(span.node)
+    }
+    /// Clipped ink bounds for structured text. Empty clips never become actions.
+    pub fn visible_bounds(&self, command: u32) -> Option<Rect> {
+        let c = self.commands.get(command as usize)?;
+        let bounds = if c.clip == NONE { c.bounds } else { intersection(c.bounds, self.clips[c.clip as usize]) };
+        (bounds.width > 0. && bounds.height > 0.).then_some(bounds)
+    }
     pub fn content_extent(&self) -> Rect {
         self.extent
     }
@@ -193,7 +224,7 @@ impl<'a> BuildJob<'a> {
                 }
                 let factor = size / f64::from(run.font.units_per_em());
                 let mut pen = 0i64;
-                let mut segment: Option<(u32, Point, [u8; 4], Rect)> = None;
+                let mut segment: Option<(u32, Point, [u8; 4], Rect, u32)> = None;
                 for gi in f.glyphs.clone() {
                     check(self.cancel)?;
                     self.progress.glyphs += 1;
@@ -224,6 +255,9 @@ impl<'a> BuildJob<'a> {
                     let input_start = if mapping.kind == crate::text::prepare::MappingKind::Copy { mapping.input.start + (g.cluster - mapping.output.start) } else { mapping.input.start };
                     let lo = source.spans.partition_point(|s| s.range.end <= input_start);
                     let hi = source.spans.partition_point(|s| s.range.start < input_end);
+                    // A shared cluster spanning DOM nodes needs glyph caret
+                    // ownership. Keep it readable, but do not invent a click target.
+                    let hit_span = if hi - lo == 1 { mapping.span } else { u32::MAX };
                     for next in &source.spans[lo..hi] {
                         let ns = layout.cache().tree().styles().snapshot(next.style_node).ok_or(Error::Stale)?;
                         let mut nc = color(ns, P::Color)?;
@@ -243,9 +277,9 @@ impl<'a> BuildJob<'a> {
                         width: r.width * factor,
                         height: r.height * factor,
                     });
-                    if let Some((start, start_at, old, b)) = segment.take() {
-                        if old == c && gi - start < 64 {
-                            segment = Some((start, start_at, c, bounds.map_or(b, |n| union(b, n))));
+                    if let Some((start, start_at, old, b, span_index)) = segment.take() {
+                        if old == c && span_index == hit_span && gi - start < 64 {
+                            segment = Some((start, start_at, c, bounds.map_or(b, |n| union(b, n)), span_index));
                         } else {
                             self.emit(group, true, b, Primitive::Text { owner: id, fragment: fi, glyphs: start..gi, origin: start_at, color: old }, clip)?;
                         }
@@ -254,10 +288,10 @@ impl<'a> BuildJob<'a> {
                         && let Some(b) = bounds
                         && c[3] != 0
                     {
-                        segment = Some((gi, origin, c, b));
+                        segment = Some((gi, origin, c, b, hit_span));
                     }
                 }
-                if let Some((start, origin, c, b)) = segment {
+                if let Some((start, origin, c, b, _)) = segment {
                     self.emit(group, true, b, Primitive::Text { owner: id, fragment: fi, glyphs: start..f.glyphs.end, origin, color: c }, clip)?;
                 }
             }

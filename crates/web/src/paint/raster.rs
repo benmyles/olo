@@ -94,7 +94,7 @@ impl Engine {
                     let inner = Rect { x: o.x + b.left, y: o.y + b.top, width: (o.width - b.left - b.right).max(0.), height: (o.height - b.top - b.bottom).max(0.) };
                     super::border::raster(&mut out, o, inner, *colors, scale, region, mask.as_ref(), cancel)?;
                 }
-                Primitive::Text { owner, fragment, glyphs, origin, color } => {
+                Primitive::Text { owner, fragment, glyphs, origin, color, .. } => {
                     let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;
                     let f = text.fragments().get(*fragment as usize).ok_or(Error::Invalid)?;
                     let run = text.run(f).ok_or(Error::Invalid)?;

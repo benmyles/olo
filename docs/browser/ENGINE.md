@@ -1947,3 +1947,50 @@ production resource loading is Rust. It records no website compatibility pass.
 and geometry hashes. The network measurement script alternates frozen binaries
 on CPU 0; the parent variant uses 6251094a's page.rs against the same new harness.
 This isolates pipeline/resource-retention overhead, not HTTP throughput.
+
+
+## Initial document links and pointer state (2026-11-06)
+
+Paint text segments preserve source boundaries; visible ownership is derived
+from retained shaping/source mappings to a document-scoped DOM handle without
+adding per-command storage. Adjacent same-colour links
+cannot merge into one click target. A shaping cluster crossing source nodes
+stays readable but is deliberately non-actionable until glyph caret ownership
+is implemented. `Scene::visible_bounds` applies the paint clip before a text
+record becomes an action; hidden/clipped text cannot produce a visible link.
+
+`page::Interaction` is an immutable snapshot of hover, active, focus, focus
+visibility and target handles. The initial inert document provides link state
+and hides visited history; missing form/media/custom/semantic direction state
+still fails explicitly. Nested selector state dependencies are retained as a
+mask. Pointer movement between unchanged targets and changes to unused state
+cause no restyle. Actual relevant changes currently rebuild styles/layout and
+visible tiles from retained DOM/rules, without HTTP or HTML reparsing. This is
+conservative full invalidation; incremental work and hover presentation latency
+remain acceptance work. Failed/cancelled restyles preserve the prior scene/state.
+
+The native canvas hit-tests visible clipped text ink. Primary press/release
+must identify the same anchor. Relative URLs use the first base and final
+response URL. Agent snapshots expose `Link`, visible name, resolved URL and
+focus; `olo-screen click NAME --role Link --name TEXT` drives the same native
+handler. Opening another window, downloads and unsupported schemes currently
+report a reason. Web-to-file navigation and redirects are blocked; embedded URL
+credentials are removed from link snapshots. This is initial document control,
+not full DOM event dispatch, keyboard/caret hit testing or browser isolation.
+
+Replaced and stale image replies go back to the page worker for release;
+recycling is a separate non-rendering message, so it cannot cause a frame loop.
+Renderer work remains cancellable and generation guarded. The initial link
+ancestor cache shares resolved targets and negative ancestry between text runs.
+
+`agent::Node.document_content` separates authored document geometry from native
+spacing review while retaining the agent record. Native toolbars/overlays never
+set it. Browser fidelity requires independent document comparisons, not a clean
+kit review. The shared regression proves native crowding is still detected.
+
+`tools/browser/links-smoke.py NAME /var/tmp/OWNED/output`, on an owned 1280×800
+Agent Screen initially at 2×, checks structured adjacent links, CSS hover/press
+pixels, relative navigation/return, hidden/clipped links and blocked actions,
+across 15 live mode/scale combinations. `interaction_bench` measures the new
+full-restyle cost; the common `page_bench` retains source/geometry identities
+and reports actual paint-command size. No authored fixture is a website pass.

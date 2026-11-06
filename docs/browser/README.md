@@ -9,7 +9,8 @@ available while this one is developed. Nothing here changes defaults.
 CSS/styles and native fonts, shapes text, lays out initial normal flow and
 paints bounded retained tiles in a native `olo-browser` development window.
 Local HTML, initial HTTP/HTTPS navigation and linked CSS, cancellable network
-progress, initial structured visible text, scrolling and restart restoration
+progress, initial structured text and clickable links, live pointer selector states,
+scrolling and restart restoration
 work. The development loader has bounded decoded resources and native TLS
 verification. Complete Fetch/HTTP caching/cookies, JavaScript, complete web layout,
 images/media, semantic document actions, universal dark mode and Olo/password/

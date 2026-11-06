@@ -1,5 +1,6 @@
 //! Initial static page pipeline. Run entirely on workers. Scripts are inert;
 //! network resources, complete UA defaults and browser runtime remain required.
+mod interaction;
 use crate::{
     css::{
         self,
@@ -11,6 +12,7 @@ use crate::{
     html, layout, paint,
     text::shaping,
 };
+pub use interaction::Interaction;
 use std::sync::{Arc, atomic::AtomicBool};
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -28,6 +30,9 @@ pub struct Page {
     pub scene: Arc<paint::Scene>,
     pub title: String,
     pub scripts: usize,
+    pub base_href: Option<String>,
+    pub interaction: Interaction,
+    pub interaction_mask: u64,
     pub stylesheet_issues: usize,
     rules: css::cascade::RuleSet,
     quirks: bool,
@@ -156,9 +161,10 @@ pub fn load_resources(
         }
     }
     let rules = sheets.finish(cancel)?;
+    let interaction_mask = rules.state_mask();
     let quirks = parsed.quirks == html::QuirksMode::Quirks;
-    let (scene, stylesheet_issues) = render(&doc, &rules, quirks, resource_issues, host, scope, shaper, painter, viewport, cancel, &mut progress)?;
-    Ok(Page { document: doc, scene, title, scripts, stylesheet_issues, rules, quirks, resource_issues })
+    let (scene, stylesheet_issues) = render(&doc, &rules, quirks, resource_issues, Interaction::default(), host, scope, shaper, painter, viewport, cancel, &mut progress)?;
+    Ok(Page { document: doc, scene, title, scripts, base_href: base, interaction: Interaction::default(), interaction_mask, stylesheet_issues, rules, quirks, resource_issues })
 }
 impl Page {
     /// Recompute viewport-dependent styles without network I/O or HTML parsing.
@@ -173,7 +179,10 @@ impl Page {
         cancel: Option<&AtomicBool>,
         mut progress: impl FnMut(Phase, usize),
     ) -> Result<()> {
-        let (scene, issues) = render(&self.document, &self.rules, self.quirks, self.resource_issues, host, scope, shaper, painter, viewport, cancel, &mut progress)?;
+        for node in [self.interaction.hover, self.interaction.active, self.interaction.focus, self.interaction.target].into_iter().flatten() {
+            self.document.node_type(node)?;
+        }
+        let (scene, issues) = render(&self.document, &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, &mut progress)?;
         self.scene = scene;
         self.stylesheet_issues = issues;
         Ok(())
@@ -185,6 +194,7 @@ fn render(
     rules: &css::cascade::RuleSet,
     quirks: bool,
     resource_issues: usize,
+    input: Interaction,
     host: &impl Host,
     scope: &Scope,
     shaper: &mut shaping::Engine,
@@ -194,7 +204,8 @@ fn render(
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize)> {
     let defaults = Defaults::new(host, Default::default(), cancel)?;
-    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, ..Default::default() }, Default::default(), cancel)?;
+    let snapshot = interaction::Snapshot { doc, input };
+    let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), ..Default::default() }, Default::default(), cancel)?;
     while !job.step(128, |_| host)?.finished {
         progress(Phase::Styles, job.progress().styled)
     }

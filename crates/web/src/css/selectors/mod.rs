@@ -258,6 +258,13 @@ impl Selectors {
     pub fn compile(values: Components<'_>, options: CompileOptions<'_>, limits: CompileLimits, cancelled: Option<&AtomicBool>) -> Result<Self> {
         compile::compile(values, options, limits, cancelled)
     }
+    /// Conservative state dependencies, including nested logical selectors.
+    pub fn state_mask(&self) -> u64 {
+        self.tests.iter().fold(0, |mask, test| match test {
+            Test::State(state) => mask | (1u64 << *state as u8),
+            _ => mask,
+        })
+    }
     pub fn specificities(&self) -> impl ExactSizeIterator<Item = Specificity> + '_ {
         self.links[self.lists[self.root as usize].links.start as usize..self.lists[self.root as usize].links.end as usize].iter().map(|&i| self.complexes[i as usize].specificity)
     }

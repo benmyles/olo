@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: interactive links in night mode
+
+*04:52* — Same native text-link fixture at live 1.5×, dark appearance and forced 4500K night light. Layout identity comes from retained source mappings without increasing the 80-byte paint command. Hover still uses conservative full-document restyle; complete input, keyboard navigation, fragments, JavaScript and website fidelity remain required.
+
+![Browser: interactive links in night mode](2026-11-06/045235-browser-interactive-links-in-night-mode.png)
+
+### Browser: native document links and live hover
+
+*04:52* — Original Rust engine, actual 2×: structured Link records carry resolved URLs, adjacent equal-colour links retain separate owners, and native/agent pointer input follows the same anchor. Green is live hover; held input paints blue. The authored fixture passes fifteen mode/scale reviews, with no website compatibility pass inferred.
+
+![Browser: native document links and live hover](2026-11-06/045233-browser-native-document-links-and-live-hover.png)
+
 ### Browser: network page in night mode
 
 *04:10* — Same native HTTP fixture at live 1.5×, with dark appearance and 4500K night light. Theme, scale and viewport changes reuse the DOM and compiled sheets without HTTP requests. This is a development fixture, not a website compatibility pass.

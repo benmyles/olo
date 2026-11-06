@@ -3177,3 +3177,75 @@ workspace release build (**11.36 s**) and live Browser/StyledEdit lint at
 1280×800. Evidence: `2026-11-06-network-main-integration.json`. Prior native
 15-mode/scale and frozen performance observations retain their stated scope;
 no website acceptance follows from this merge.
+
+## 2026-11-06 — native text links and pointer selector state
+
+The original engine now resolves initial HTML link state and live pointer
+hover/active/focus ancestry. Compiled nested selector state masks avoid full
+restyle for irrelevant input changes. Relevant changes currently restyle the
+retained document and rebuild visible tiles, with no HTTP or HTML reparse;
+full incremental invalidation and complete document input remain required.
+
+Text paint segments preserve source boundaries even when adjacent links have
+the same colour. Visible ownership is derived from retained shaping mappings,
+not duplicated in commands. A first implementation grew commands 80→88 bytes;
+removed that storage, and final commands remain **80 bytes**. Shared clusters
+crossing DOM nodes stay readable but have no invented click target until glyph
+caret ownership exists. Paint clips constrain structured hit bounds.
+
+The native canvas uses the same primary press/release handler for people and
+agent `Link` clicks. Snapshots carry visible text, resolved URL and painted
+focus state. Links resolve against the first base and final document URL;
+press and release must identify the same anchor. Unsupported schemes,
+downloads/new windows and web-to-file links report reasons without requests;
+embedded credentials are removed from link snapshots. Also closed the HTTP
+navigation redirect-to-file boundary with a loopback regression. New navigation
+cancels/invalidates old replies immediately. Replaced/stale image buffers go
+to the page worker through non-rendering recycle messages, avoiding UI releases
+and render feedback loops. Failed/cancelled restyles retain the old scene/state.
+
+The native fixture passes **15 live light/dark/night × 1/1.25/1.5/1.75/2×**
+reviews at odd coordinates: adjacent URLs, hover green/held blue, relative
+navigation/return, hidden/clipped links and blocked actions. The complete run
+makes 36 expected requests. This is authored fixture evidence, not website
+acceptance. Hacker News gets past selector state and exposes the next explicit
+failure, **inline box edges**; its earlier public smoke is retained with scope.
+
+The kit now distinguishes authored document records (`document_content`) from
+native widget spacing review. This fixes legitimate inline-link/native-spacing
+conflicts without changing web geometry. Structured nodes remain present; the
+shared regression still detects native control crowding. Native toolbars and
+overlays never opt out. Browser fidelity needs separate document comparisons.
+
+Frozen CPU-0 three-pair common pipeline samples, control page/paint runtime
+from **76cf0880** under the same harness: 100 generated divs
+**923.457→998.048 µs** median; 1k **9295.359→9277.460 µs**. Source/geometry hashes
+agree and feature vectors are empty. RSS ranges **8792–9040→8724–9060 KiB**.
+These descriptive samples do not establish a speedup; small-page variance/
+regression remains open. New full-restyle cost is **881.424 / 9132.821 µs**
+for **100 / 1,000 link rows**, each a div plus anchor (not total DOM element
+count); RSS **8976–9160 KiB**. This excludes visible tile/GPU/presentation work.
+
+Native local-scroll first sample RSS **84780→82196 KiB**, confirmation
+**84936→84884 KiB**; no footprint improvement inferred. All four idle samples
+show **0% CPU, zero wakes and zero frames/3 s**. First-report→moving-client-frame
+medians, drag/flick/wheel, first **8.997/9.066/.617→9.109/11.133/.344 ms**;
+confirmation **9.037/8.949/.452→9.103/9.140/.239 ms**. The first candidate run has
+two drag hitches; confirmation has none in either build. Keep both, without
+claiming a fix or completed latency acceptance. Marks are not presentation.
+
+**222 default / 221 all-feature web release tests, nine browser tests and
+thirteen shared-kit/Preferences layout tests pass**, as do strict web/browser
+clippy and workspace release builds. The broader strict UI clippy attempt
+reports 31 existing diagnostics in unchanged code, retained in raw evidence.
+Full 1280×800 desktop live lint reports the known ten findings outside Browser:
+Disk Usage six, Passwords three, Integrations one. Browser passes; the global
+result is not a pass. Raw data and reproducible runners are in
+`2026-11-06-links-{pipeline-cost,ui-cost,ui-cost-confirm,native}.json` and
+`tools/browser/links-smoke.py`. Visual journal: light 2× and night 1.5×.
+
+Next: complete box/advance/empty/image hit testing, keyboard/focus metadata,
+fragments/history/tabs, selection and DOM default actions; incremental state
+invalidation, inline edges/typography/table layout, complete form state and
+runtime/JavaScript isolation. **Goal active: 0/100 sites, 0/3,000 site cases
+accepted.**

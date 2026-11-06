@@ -1,0 +1,289 @@
+{
+  "scope": "Frozen release samples, CPU 0, no concurrent owned GUI clients/builds.\nArgs: /var/tmp/OWNED containing page-before, page-after, interaction; OUTPUT.json.\nParent control: page.rs/paint scene.rs/raster.rs from 76cf0880 under the same\nnew page_bench harness. Other source is common. State restyle is a new capability\nwith no working parent control; measure it separately, without I/O/HTML parsing.\n",
+  "machine": "Linux-7.2.15-300.fc45.x86_64-x86_64-with-glibc2.44",
+  "captured_at_unix": 1793970013.6315782,
+  "rows": [
+    {
+      "repeat": 0,
+      "variant": "page-before",
+      "binary_sha256": "a7b256a5d9dc4d1444a1fcfa69619979e6b07936cb33c82058fdd2ecadbf6e4b",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 917.3103699999999,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9315.2112,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 8792,
+        "user_seconds": 0.98,
+        "system_seconds": 0.02,
+        "elapsed_seconds": 1.03
+      }
+    },
+    {
+      "repeat": 0,
+      "variant": "page-after",
+      "binary_sha256": "b628134a690344faa0fe794f3b4bc75877c4d3817030e367f527f19970b76578",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 927.7535100000001,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9277.4595,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 8724,
+        "user_seconds": 0.98,
+        "system_seconds": 0.02,
+        "elapsed_seconds": 1.03
+      }
+    },
+    {
+      "repeat": 0,
+      "variant": "interaction",
+      "binary_sha256": "ed414cfc2371a9caa75c57d8c95dd52c4019845d1f5f07107093e0032e692ce8",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "command_payload_bytes": 9040,
+            "commands": 100,
+            "full_restyle_us": 886.59352,
+            "link_rows": 100
+          },
+          {
+            "command_payload_bytes": 89760,
+            "commands": 1000,
+            "full_restyle_us": 9076.73203,
+            "link_rows": 1000
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 8976,
+        "user_seconds": 0.98,
+        "system_seconds": 0.0,
+        "elapsed_seconds": 1.01
+      }
+    },
+    {
+      "repeat": 1,
+      "variant": "page-after",
+      "binary_sha256": "b628134a690344faa0fe794f3b4bc75877c4d3817030e367f527f19970b76578",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 998.0477999999999,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9336.6214,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 9044,
+        "user_seconds": 0.99,
+        "system_seconds": 0.02,
+        "elapsed_seconds": 1.04
+      }
+    },
+    {
+      "repeat": 1,
+      "variant": "page-before",
+      "binary_sha256": "a7b256a5d9dc4d1444a1fcfa69619979e6b07936cb33c82058fdd2ecadbf6e4b",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 923.47529,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9218.17654,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 8996,
+        "user_seconds": 0.98,
+        "system_seconds": 0.02,
+        "elapsed_seconds": 1.02
+      }
+    },
+    {
+      "repeat": 1,
+      "variant": "interaction",
+      "binary_sha256": "ed414cfc2371a9caa75c57d8c95dd52c4019845d1f5f07107093e0032e692ce8",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "command_payload_bytes": 9040,
+            "commands": 100,
+            "full_restyle_us": 881.4244,
+            "link_rows": 100
+          },
+          {
+            "command_payload_bytes": 89760,
+            "commands": 1000,
+            "full_restyle_us": 9166.58078,
+            "link_rows": 1000
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 9080,
+        "user_seconds": 0.98,
+        "system_seconds": 0.0,
+        "elapsed_seconds": 1.01
+      }
+    },
+    {
+      "repeat": 2,
+      "variant": "page-before",
+      "binary_sha256": "a7b256a5d9dc4d1444a1fcfa69619979e6b07936cb33c82058fdd2ecadbf6e4b",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 923.45659,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9295.35913,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 9040,
+        "user_seconds": 0.98,
+        "system_seconds": 0.02,
+        "elapsed_seconds": 1.03
+      }
+    },
+    {
+      "repeat": 2,
+      "variant": "page-after",
+      "binary_sha256": "b628134a690344faa0fe794f3b4bc75877c4d3817030e367f527f19970b76578",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "commands": 200,
+            "elements": 100,
+            "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+            "pipeline_us": 1045.24507,
+            "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+          },
+          {
+            "commands": 2000,
+            "elements": 1000,
+            "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+            "pipeline_us": 9245.32449,
+            "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 9060,
+        "user_seconds": 0.98,
+        "system_seconds": 0.02,
+        "elapsed_seconds": 1.04
+      }
+    },
+    {
+      "repeat": 2,
+      "variant": "interaction",
+      "binary_sha256": "ed414cfc2371a9caa75c57d8c95dd52c4019845d1f5f07107093e0032e692ce8",
+      "result": {
+        "command_bytes": 80,
+        "features": [],
+        "rounds": 100,
+        "rows": [
+          {
+            "command_payload_bytes": 9040,
+            "commands": 100,
+            "full_restyle_us": 879.7142099999999,
+            "link_rows": 100
+          },
+          {
+            "command_payload_bytes": 89760,
+            "commands": 1000,
+            "full_restyle_us": 9132.82072,
+            "link_rows": 1000
+          }
+        ]
+      },
+      "cost": {
+        "rss_kib": 9160,
+        "user_seconds": 0.98,
+        "system_seconds": 0.0,
+        "elapsed_seconds": 1.01
+      }
+    }
+  ]
+}

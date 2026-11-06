@@ -205,3 +205,54 @@ fn ui_lint_a_tab_strip_is_clean() {
         assert_clean(if side { "the side strip" } else { "the strip along the top" }, &found);
     }
 }
+
+/// External document spacing remains structured but isn't native widget
+/// spacing; the same window's actual native controls still get reviewed.
+struct DocumentRecords(bool);
+impl Render for DocumentRecords {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        use olo_ui::{
+            agent,
+            gpui::{Bounds, canvas, point, size},
+        };
+        let document_content = self.0;
+        div().size_full().child(
+            canvas(
+                |_, _, _| {},
+                move |_, _, window, cx| {
+                    for (name, x) in [("First web link", 8.), ("Second web link", 69.)] {
+                        agent::record(
+                            window,
+                            cx,
+                            agent::Node {
+                                role: "Link",
+                                name: Some(name.into()),
+                                enabled: true,
+                                clickable: true,
+                                document_content,
+                                bounds: Bounds::new(point(px(x), px(20.)), size(px(60.), px(20.))),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                    for (name, x) in [("Native one", 12.), ("Native two", 73.)] {
+                        agent::record(window, cx, agent::Node::button(name, Bounds::new(point(px(x), px(60.)), size(px(60.), px(20.)))));
+                    }
+                },
+            )
+            .size_full(),
+        )
+    }
+}
+#[test]
+fn ui_lint_document_geometry_stays_structured_and_native_controls_still_check() {
+    let options = WindowOptions::new("Document", 360., 150.);
+    let mut lint = Lint::new();
+    let native = lint.window(&options, |_, cx| cx.new(|_| DocumentRecords(false)));
+    assert!(native.iter().any(|f| f.text.contains("web link")), "{native:?}");
+    let document = lint.window(&options, |_, cx| cx.new(|_| DocumentRecords(true)));
+    assert!(!document.iter().any(|f| f.text.contains("web link")), "{document:?}");
+    assert!(document.iter().any(|f| f.text.contains("Native one") && f.kind == "crowded"), "{document:?}");
+    let trees = lint.trees(&options, |_, cx| cx.new(|_| DocumentRecords(true)));
+    assert!(trees[0].1.iter().any(|n| n.role == "Link" && n.name.as_deref() == Some("First web link")));
+}

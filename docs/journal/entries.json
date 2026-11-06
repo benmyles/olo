@@ -3508,5 +3508,17 @@
   "title": "Browser: network page in night mode",
   "caption": "Same native HTTP fixture at live 1.5\u00d7, with dark appearance and 4500K night light. Theme, scale and viewport changes reuse the DOM and compiled sheets without HTTP requests. This is a development fixture, not a website compatibility pass.",
   "image": "2026-11-06/041046-browser-network-page-in-night-mode.png"
+ },
+ {
+  "time": "2026-11-06T04:52:33",
+  "title": "Browser: native document links and live hover",
+  "caption": "Original Rust engine, actual 2\u00d7: structured Link records carry resolved URLs, adjacent equal-colour links retain separate owners, and native/agent pointer input follows the same anchor. Green is live hover; held input paints blue. The authored fixture passes fifteen mode/scale reviews, with no website compatibility pass inferred.",
+  "image": "2026-11-06/045233-browser-native-document-links-and-live-hover.png"
+ },
+ {
+  "time": "2026-11-06T04:52:35",
+  "title": "Browser: interactive links in night mode",
+  "caption": "Same native text-link fixture at live 1.5\u00d7, dark appearance and forced 4500K night light. Layout identity comes from retained source mappings without increasing the 80-byte paint command. Hover still uses conservative full-document restyle; complete input, keyboard navigation, fragments, JavaScript and website fidelity remain required.",
+  "image": "2026-11-06/045235-browser-interactive-links-in-night-mode.png"
  }
 ]

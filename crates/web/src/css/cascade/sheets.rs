@@ -343,6 +343,9 @@ impl MatchScratch {
     }
 }
 impl RuleSet {
+    pub fn state_mask(&self) -> u64 {
+        self.selectors.state_mask()
+    }
     pub fn issues(&self) -> &[Issue] {
         &self.issues
     }

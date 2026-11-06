@@ -23,6 +23,10 @@ pub struct Node {
     pub bounds: Bounds<Pixels>,
     pub enabled: bool,
     pub clickable: bool,
+    /// Authored document content (web/PDF/etc.) follows its format's geometry,
+    /// rather than native widget spacing. Still present in every agent snapshot;
+    /// only native-control spacing/inset review excludes these records.
+    pub document_content: bool,
     pub focused: bool,
     pub checked: Option<bool>,
     pub selected: Option<bool>,
