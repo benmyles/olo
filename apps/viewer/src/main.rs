@@ -10,6 +10,7 @@ mod pdftext;
 mod pdfview;
 mod pdfwork;
 mod signature;
+mod video_edit;
 
 use std::{
     path::{Path, PathBuf},
@@ -56,6 +57,13 @@ enum Msg {
     /// A video trimmed (`Doc::trim`): where the trimmed copy went, or why
     /// not.
     Trimmed(EntityId, Result<PathBuf, String>),
+    /// The video editor's (`video_edit`): a picture for its timeline
+    /// (which, the scale it's made for, it), the waveform's peaks, how far
+    /// an export is, and what it made (with the edits it made it of).
+    EditPicture(EntityId, usize, f32, std::sync::Arc<gpui::RenderImage>),
+    EditPeaks(EntityId, Option<Vec<f32>>),
+    ExportProgress(EntityId, f32),
+    Exported(EntityId, Result<PathBuf, String>, video_edit::Edits),
 }
 
 enum Content {
@@ -134,6 +142,10 @@ struct Doc {
     crop_press: Option<bool>,
     /// A video being trimmed into a copy, on a worker.
     trimming: bool,
+    /// A video being edited (`video_edit`).
+    video_edit: Option<video_edit::VideoEdit>,
+    /// Opened to be edited (`--edit`): the editor as soon as it shows.
+    pending_edit: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -207,6 +219,8 @@ impl Viewer {
             fullscreen: false,
             edit: None,
             trimming: false,
+            video_edit: None,
+            pending_edit: false,
             on_disk: None,
             focus: cx.focus_handle(),
             crop_press: None,
@@ -338,14 +352,26 @@ impl Viewer {
 
     fn handle_args(&mut self, args: &[String], cwd: Option<&Path>, cx: &mut Context<Self>) {
         let mut opened = false;
+        // `--edit`: a video opened in its editor (Screenshot's card's Edit).
+        let edit = args.iter().any(|a| a == "--edit");
         for a in args.iter().filter(|a| !a.starts_with("--")) {
             let p = PathBuf::from(a);
             let p = match (p.is_absolute(), cwd) {
                 (false, Some(cwd)) => cwd.join(p),
                 _ => p,
             };
-            self.open_file(p, cx);
+            self.open_file(p.clone(), cx);
             opened = true;
+            if edit && let Some(doc) = self.docs.iter().find(|d| d.read(cx).path == p).cloned() {
+                doc.update(cx, |d, cx| {
+                    let shown = matches!(&d.content, Content::Other(prev) if prev.read(cx).is_video());
+                    if shown {
+                        d.start_video_edit(cx);
+                    } else {
+                        d.pending_edit = true;
+                    }
+                });
+            }
         }
         if !opened && self.docs.is_empty() {
             self.open_panel(None, Purpose::Open, cx);
@@ -395,6 +421,15 @@ impl Viewer {
             Msg::Edit(id, ev) => {
                 if let Some(doc) = self.doc_of(id) {
                     doc.update(cx, |d, cx| d.edit_event(ev, cx));
+                }
+            }
+            m @ (Msg::EditPicture(..) | Msg::EditPeaks(..) | Msg::ExportProgress(..) | Msg::Exported(..)) => {
+                let id = match &m {
+                    Msg::EditPicture(id, ..) | Msg::EditPeaks(id, _) | Msg::ExportProgress(id, _) | Msg::Exported(id, ..) => *id,
+                    _ => return,
+                };
+                if let Some(doc) = self.doc_of(id) {
+                    doc.update(cx, |d, cx| d.video_edit_message(m, cx));
                 }
             }
             Msg::Trimmed(id, result) => {
@@ -549,7 +584,13 @@ impl Doc {
                     }
                     if *e == PreviewEvent::Shown && !d.sized {
                         d.sized = true;
-                        d.resize_to(prev, cx);
+                        d.resize_to(prev.clone(), cx);
+                    }
+                    // Opened to be edited (`--edit`): the editor, once the
+                    // video shows.
+                    if *e == PreviewEvent::Shown && d.pending_edit && prev.read(cx).is_video() {
+                        d.pending_edit = false;
+                        d.start_video_edit(cx);
                     }
                     cx.notify();
                 });
@@ -844,8 +885,45 @@ impl Doc {
             && prev.read(cx).is_video()
         {
             let trimming = prev.read(cx).trimming().is_some();
-            menus.push(
-                Menu::new("Edit")
+            let menu = match &self.video_edit {
+                // Editing: its steps, undone and done again, and its tools.
+                Some(e) => {
+                    let busy = e.exporting.is_some();
+                    Menu::new("Edit")
+                        .item("Undo", "edit-undo")
+                        .key("z")
+                        .enabled(e.can_undo() && !busy)
+                        .item("Redo", "edit-redo")
+                        .shift_key("z")
+                        .enabled(e.can_redo() && !busy)
+                        .separator()
+                        .item("Cut", "edit-cut")
+                        .key("x")
+                        .enabled(!busy && (e.selection.is_some() || e.mark.is_some()))
+                        .item("Add Mark", "edit-add-mark")
+                        .key("k")
+                        .enabled(!busy)
+                        .item("Delete Mark", "edit-delete-mark")
+                        .enabled(!busy && e.mark.is_some())
+                        .separator()
+                        .item(if e.cropping.is_some() { "Done Cropping" } else { "Crop…" }, "edit-crop")
+                        .enabled(!busy)
+                        .item("Reset Crop", "edit-crop-reset")
+                        .enabled(!busy && e.now.crop.is_some())
+                        .item(if e.now.mute { "Unmute" } else { "Mute" }, "edit-mute")
+                        .enabled(!busy)
+                        .separator()
+                        .item("Export…", "edit-export")
+                        .shift_key("e")
+                        .enabled(!busy)
+                        .item("Done Editing", "edit-done")
+                        .key("e")
+                }
+                None => Menu::new("Edit")
+                    .item("Edit Video…", "edit-video")
+                    .key("e")
+                    .enabled(!trimming && !self.trimming)
+                    .separator()
                     .item("Trim…", "trim")
                     .key("t")
                     .enabled(!trimming && !self.trimming)
@@ -853,7 +931,8 @@ impl Doc {
                     .enabled(trimming)
                     .item("Cancel Trimming", "trim-cancel")
                     .enabled(trimming),
-            );
+            };
+            menus.push(menu);
         }
         if let Content::Other(prev) = &self.content
             && prev.read(cx).has_text()
@@ -1096,6 +1175,9 @@ impl Doc {
         if matches!(command, "trim" | "trim-cancel" | "trim-save") {
             return self.trim_command(command, cx);
         }
+        if command.starts_with("edit-") {
+            return self.video_edit_command(command, window, cx);
+        }
         // A chapter of the video: where it starts, the one after the
         // position, or before it (within a second of a chapter's start:
         // the one before that, as players do).
@@ -1317,6 +1399,32 @@ impl Doc {
             return;
         }
 
+        // Editing a video: Delete cuts what's chosen; while cropping,
+        // Return takes the frame and Escape puts it away.
+        if let Some(e) = self.video_edit.as_mut()
+            && plain
+        {
+            let handled = match key {
+                "backspace" | "delete" if e.selection.is_some() || e.mark.is_some() => {
+                    self.video_edit_command("edit-cut", window, cx);
+                    true
+                }
+                "enter" if e.cropping.is_some() => {
+                    self.video_edit_command("edit-crop", window, cx);
+                    true
+                }
+                "escape" if e.cropping.is_some() => {
+                    e.cropping = None;
+                    cx.notify();
+                    true
+                }
+                _ => false,
+            };
+            if handled {
+                cx.stop_propagation();
+                return;
+            }
+        }
         let cropping = self.edit.as_ref().is_some_and(|e| e.crop.is_some());
         if cropping && plain {
             let has_sel = self.edit.as_ref().and_then(|e| e.crop.as_ref()).is_some_and(|c| c.sel.is_some());
@@ -1633,9 +1741,18 @@ impl Render for Doc {
             }
             Content::Other(prev) => {
                 let prev = prev.clone();
+                let editing = self.video_edit_area(&prev, window, cx);
                 let mut area = div().relative().size_full().child(prev.clone());
                 if let Some(overlay) = self.crop_overlay(&prev, cx) {
                     area = area.child(overlay);
+                }
+                // Editing a video: the editor's timeline and bar under it.
+                if let Some((timeline, bar, crop)) = editing {
+                    let mut video = div().relative().flex_1().min_h_0().child(prev.clone());
+                    if let Some(crop) = crop {
+                        video = video.child(crop);
+                    }
+                    area = div().size_full().flex().flex_col().child(video).child(timeline).child(bar);
                 }
                 if let Some(bar) = self.trim_bar(&prev, cx) {
                     area = area.child(bar);

@@ -32,7 +32,7 @@ const APP_ID: &str = "olo.screenshot-after";
 const NAMESPACE: &str = "screenshot-after";
 /// The picture's frame (points): this wide, as tall as the video's shape
 /// asks, at most `PICTURE_MOST_H` (narrower then).
-const PICTURE_W: f32 = 240.0;
+const PICTURE_W: f32 = 280.0;
 const PICTURE_MOST_H: f32 = 160.0;
 /// From the screen's edges to the card.
 const MARGIN: f32 = 16.0;
@@ -188,6 +188,20 @@ impl After {
         window.remove_window();
     }
 
+    /// Edit: the recording in the Viewer's editor (`olo-viewer --edit`).
+    fn edit(&mut self, cx: &mut Context<Self>) {
+        match olo_xdg::find_program("olo-viewer") {
+            Some(viewer) => {
+                let argv = [viewer.into_os_string(), "--edit".into(), self.path.clone().into_os_string()];
+                if let Err(e) = olo_xdg::open::spawn(&argv) {
+                    eprintln!("olo-screenshot: couldn't open the editor: {e}");
+                }
+            }
+            None => eprintln!("olo-screenshot: no Viewer to edit it in"),
+        }
+        cx.quit();
+    }
+
     fn delete(&mut self, cx: &mut Context<Self>) {
         if let Err(e) = to_trash(&self.path) {
             eprintln!("olo-screenshot: couldn't move {} to the Trash: {e}", self.path.display());
@@ -339,6 +353,7 @@ impl Render for After {
                     .gap(px(m::TIGHT))
                     .child(Button::new("Show in Tracker").small().on_click(action(|a, _, cx| a.show(cx))))
                     .child(Button::new("Copy").small().on_click(action(|a, window, cx| a.copy(window, cx))))
+                    .child(Button::new("Edit").small().on_click(action(|a, _, cx| a.edit(cx))))
                     .child(Button::new("Delete").small().on_click(action(|a, _, cx| a.delete(cx)))),
             )
     }
@@ -448,12 +463,12 @@ mod tests {
     /// be, a tall one held to `PICTURE_MOST_H` and narrower.
     #[test]
     fn the_picture_frame_follows_the_video() {
-        assert_eq!(picture_size(16.0 / 10.0), (240.0, 150.0));
-        assert_eq!(picture_size(16.0 / 9.0), (240.0, 135.0));
+        assert_eq!(picture_size(16.0 / 10.0), (256.0, 160.0));
+        assert_eq!(picture_size(16.0 / 9.0), (280.0, 158.0));
         let (w, h) = picture_size(9.0 / 16.0);
         assert_eq!(h, PICTURE_MOST_H);
         assert_eq!(w, 90.0);
         // Nothing known: a screen's shape.
-        assert_eq!(picture_size(f32::NAN), (240.0, 150.0));
+        assert_eq!(picture_size(f32::NAN), (256.0, 160.0));
     }
 }

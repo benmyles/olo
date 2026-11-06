@@ -6980,7 +6980,8 @@ Screens' Export Video uses too).
   the file selected), Copy (the file as file managers copy one,
   `clipboard::files`, served by `clipboard::hold` with no window until
   something else is copied) and Delete (to the freedesktop Trash, which
-  Tracker restores from), with a close box. The picture pressed and
+  Tracker restores from), Edit (the recording in the Viewer's editor,
+  `olo-viewer --edit`, below), with a close box. The picture pressed and
   moved 4 points drags the file out (`dnd::files`: a folder copies it, a
   chat or a mail attaches it); dropped somewhere, the card goes. It goes
   by itself 20 s after the pointer left it, the window asked then
@@ -6990,6 +6991,41 @@ Screens' Export Video uses too).
   review --all`: nothing found); dragged into a Tracker window (the file
   copied there), Copy pasted as the path, Delete in the Trash, Show in
   Tracker its folder; idle, 0 wakeups.
+- **Editing** (the Viewer's `video_edit.rs`: Edit ▸ Edit Video…, ⌘E;
+  `olo-viewer --edit PATH`, the card's Edit, which a running Viewer is
+  handed): CleanShot X's editor, under the playing video (the window
+  grown by it, within its screen). A timeline: pictures along it (48
+  made in one pass by `olo_video::read::Video::pictures_near`, at the
+  timeline's height for the window's scale, each tile the one made
+  nearest its middle, one pixel a device pixel; made again when the
+  scale changes), the sound's waveform (`olo_video::export::peaks`, the
+  AAC decoded on a worker; greyed when muted), the marks as flags with
+  their titles (before the flag where they'd pass the end), a handle at
+  each end of what's kept, the cuts dimmed, the playhead. A press on it
+  plays from there; a drag picks a stretch; a handle dragged trims,
+  the picture there shown. Its bar: Cut (the stretch picked, or the
+  mark chosen; Delete too), Add Mark (at the playhead, "Mark N"), Crop
+  (the Viewer's crop frame, `crop.rs`, dragged over the video's
+  picture: `PreviewView::video_picture` says where it was drawn; Crop
+  again or Return takes it, Escape puts it away; the crop chosen shows
+  as what goes dimmed), Mute, what's kept ("0:10 kept of 0:12") or how
+  the export goes, Export…, Done. Every step can be undone and done
+  again (Edit ▸ Undo, Redo); playing, what's cut is skipped and what's
+  past the trim stops it (paused: the player stops only to let the
+  video go). Export… asks Format (MP4 or GIF), Size (whole, three
+  quarters, half, a quarter of the crop), Frame rate (as recorded, 60
+  down to 10) and Quality, then makes "NAME (edited).mp4" (or .gif,
+  "edited 2" if that's taken) beside it on a worker
+  (`olo_video::export`), its percentage and Cancel in the bar, then
+  "Exported …" and Show in Tracker. Done with edits not exported asks
+  first. Nothing changes the video itself. Agents read the timeline
+  (`Slider` Timeline, Trim Start, Trim End; each mark a `Button`; the
+  cuts, the stretch picked and the crop as labels) and drive the same
+  through `olo-screenshot --export`. Checked headless at 1×, 1.5× and 2×,
+  light and dark (`tsession review`: nothing found); a 12 s video with
+  sound and two marks cut, marked, cropped, muted and exported at half
+  size: 200 × 130 (half the 400 × 260 crop), no sound, the marks moved
+  back by the cut.
 - **For agents**, on their screen: `olo-screen record-video NAME
   [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
   [--no-pointer] [--to PATH]` starts it on the screen's display and

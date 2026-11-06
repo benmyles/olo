@@ -14,8 +14,8 @@ something nobody here has is in "Blocked", with what it waits for.
 ## Working on now
 
 - **Screen recording in Screenshot** (below, in Not started): the
-  control bar and the card after are done; next the export pipeline,
-  the editor and the library.
+  control bar, the card after, the export and the editor are done; next
+  the library, then Start's options, Do Not Disturb, the skill.
 
 ## Not started (highest priority first)
 
@@ -37,19 +37,17 @@ something nobody here has is in "Blocked", with what it waits for.
     `--restart` for agents, and in Deskbar's menu; `--stop` waits for
     the recording to finish, not the recorder (0.13 s, was 30).
   - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
-    Edit and Delete, dragged out as the file. Done but Edit (HACKING,
-    "After"): the card, Show in Tracker, Copy, Delete, dragged out; it's
-    saved already (in Videos), so no Save. Edit comes with the editor.
+    Edit and Delete, dragged out as the file. Done (HACKING, "After"):
+    it's saved already (in Videos), so there's no Save.
   - **Library**: every recording with its picture, length, size and date:
     play, edit, show, rename, delete, search.
   - **Editor**: a timeline (pictures along it, the sound's waveform),
     trim, cut out a stretch, crop, the zooms and marks edited, sound
     muted, and Export (MP4 or GIF, size, frame rate, quality) on a worker
-    with progress and Cancel. The export itself is done (HACKING,
-    "Exporting with edits": `olo_video::export`, `olo-screenshot
-    --export`); the editor's window is next, in the Viewer (its player,
-    trim handles and crop overlay are there already), opened by the
-    card's Edit.
+    with progress and Cancel. Done (HACKING, "Editing" and "Exporting
+    with edits"): in the Viewer (Edit Video…, `--edit`, the card's
+    Edit), all but the zooms (a recording's zooms are drawn into its
+    pictures as it records: there's nothing to move afterwards).
   - Agent-native throughout (the kit's tree, `--json`), and the skill
     says how.
 
@@ -72,6 +70,14 @@ something nobody here has is in "Blocked", with what it waits for.
   samples of each format on this machine's Intel GPU and its NVIDIA, and
   CPU only: every frame shown on time (no drops over a minute), the
   cost per frame, and seeking. Everything native (no ffmpeg or GStreamer).
+  Ben, 2026-11-06: "make it so that you can choose the decoding device in
+  the viewer menu and also set the default decoding device in preferences
+  somewhere. please priotize this todo after what you're currently doing":
+  the Viewer's View menu (or a Video menu) chooses the device for the
+  video showing (Automatic, NVIDIA's GPU, the Intel GPU, the processor),
+  saying which is decoding now; Preferences (a Video or Media pane) sets
+  the default every app's playing uses (the Viewer, Quick Look). Next
+  after the screen recording work.
 
 - **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
   blocked: "neither of those are blocked on me", 2026-11-06). A display

@@ -155,6 +155,28 @@ impl Video {
         Ok(())
     }
 
+    /// The picture showing at each of `times` (seconds, in order), made
+    /// `w` × `h` (RGBA, area averages) and given with its index as it
+    /// comes: an editor's pictures along its timeline, in one pass.
+    pub fn pictures_near(&self, times: &[f64], w: u32, h: u32, cancel: &AtomicBool, f: &mut dyn FnMut(usize, &[u8]) -> Result<(), String>) -> Result<(), String> {
+        let mut small = vec![0u8; w as usize * h as usize * 4];
+        let mut k = 0usize;
+        self.each_picture(cancel, &mut |a, b, rgb| {
+            let mut made = false;
+            while k < times.len() && times[k] < b {
+                if times[k] + 1e-9 >= a || k == 0 || !made {
+                    if !made {
+                        shrink(rgb, self.width as usize, self.height as usize, &mut small, w as usize, h as usize);
+                        made = true;
+                    }
+                    f(k, &small)?;
+                }
+                k += 1;
+            }
+            Ok(())
+        })
+    }
+
     /// Each moment shown at `fps` (`k`, from 0), its picture `ow` × `oh`
     /// (RGBA), in order: a sample is decoded once and given for every
     /// moment it's on screen.

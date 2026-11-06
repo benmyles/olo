@@ -122,6 +122,10 @@ pub struct PreviewView {
     /// which end is being dragged (true: the end).
     trim: Option<(f64, f64)>,
     trim_drag: Option<bool>,
+    /// Where the video's picture was drawn: its bounds, the place it's in
+    /// (what of it shows), and its frame's size in pixels (an editor's
+    /// crop frame over it).
+    video_placed: Option<(Bounds<Pixels>, Bounds<Pixels>, (u32, u32))>,
     text_scroll: ScrollHandle,
     list: Entity<ListModel>,
     sheet: usize,
@@ -190,6 +194,7 @@ impl PreviewView {
             video_played: false,
             trim: None,
             trim_drag: None,
+            video_placed: None,
             text_scroll: ScrollHandle::new(),
             list: ListModel::new(cx, false),
             sheet: 0,
@@ -408,6 +413,18 @@ impl PreviewView {
             Transport::seek(v, secs.max(0.0));
             cx.notify();
         }
+    }
+
+    /// The video's length (seconds), if it plays.
+    pub fn duration(&self) -> Option<f64> {
+        let v = self.video.as_ref()?;
+        Some(self.body.as_ref().and_then(|b| if let Body::Media(md) = b { md.duration } else { None }).unwrap_or_else(|| Transport::duration(v)))
+    }
+
+    /// Where the video's picture was last drawn (window points), the
+    /// place it's in, and its frame's size (pixels).
+    pub fn video_picture(&self) -> Option<(Bounds<Pixels>, Bounds<Pixels>, (u32, u32))> {
+        self.video_placed
     }
 
     /// The stretch kept while trimming (seconds), if trimming.
@@ -1528,6 +1545,7 @@ impl PreviewView {
                         VideoZoom::Fill => kw.max(kh),
                     };
                     let ib = style::snap(window, Bounds::centered_at(area.center(), size(px(iw * k), px(ih * k))));
+                    self.video_placed = Some((ib, area, (sz.width.0 as u32, sz.height.0 as u32)));
                     // (Filling, what overflows its place is cut off.)
                     window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
                         let _ = window.paint_image(ib, gpui::Corners::default(), img.clone(), 0, false);

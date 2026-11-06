@@ -267,18 +267,19 @@ fn to_mp4(src: &Path, dst: &Path, edit: &Edit, opts: &Options, cancel: &AtomicBo
     Ok(Exported { seconds: total, frames, width: ow, height: oh, bytes: 0, sound, encoder: enc.name() })
 }
 
-/// The recording's sound (AAC) in what's kept, coded again into `mp4`;
-/// whether it had any. `delay`: the samples before its edit list's start
-/// (the encoder's priming).
-fn sound(src: &Path, mp4: &mut Mp4, keep: &[(f64, f64)], delay: u32, cancel: &AtomicBool) -> Result<bool, String> {
+/// The recording's sound (AAC), decoded: `f` given each piece (16-bit,
+/// interleaved, its channel count), in order, from the very first sample
+/// (the encoder's priming too: `edit_starts`' says how much). Its rate
+/// and channels (the file's), or None if it has none.
+pub fn each_sound(src: &Path, cancel: &AtomicBool, f: &mut dyn FnMut(&[i16], usize) -> Result<(), String>) -> Result<Option<(u32, u32)>, String> {
     use symphonia::core::{
         audio::SampleBuffer,
         codecs::{CODEC_TYPE_AAC, CodecParameters, DecoderOptions},
         formats::Packet,
     };
-    let f = File::open(src).map_err(|e| e.to_string())?;
-    let size = f.metadata().map_err(|e| e.to_string())?.len();
-    let mut r = mp4::Mp4Reader::read_header(BufReader::new(f), size).map_err(|e| e.to_string())?;
+    let file = File::open(src).map_err(|e| e.to_string())?;
+    let size = file.metadata().map_err(|e| e.to_string())?.len();
+    let mut r = mp4::Mp4Reader::read_header(BufReader::new(file), size).map_err(|e| e.to_string())?;
     let Some((id, rate, count, config, channels)) =
         r.tracks().iter().find(|(_, t)| t.track_type().ok() == Some(mp4::TrackType::Audio) && t.media_type().ok() == Some(mp4::MediaType::AAC)).map(|(&id, t)| {
             let aot = t.audio_profile().map(|p| p as u8).unwrap_or(2);
@@ -288,18 +289,10 @@ fn sound(src: &Path, mp4: &mut Mp4, keep: &[(f64, f64)], delay: u32, cancel: &At
             (id, t.timescale(), t.sample_count(), config, u32::from(chans).clamp(1, 2))
         })
     else {
-        return Ok(false);
+        return Ok(None);
     };
     let params = CodecParameters::new().for_codec(CODEC_TYPE_AAC).with_sample_rate(rate).with_extra_data(config.into_boxed_slice()).clone();
     let mut dec = symphonia::default::get_codecs().make(&params, &DecoderOptions::default()).map_err(|e| format!("the sound: {e}"))?;
-    let mut aac = crate::aac::Aac::new(rate, channels, crate::aac::SOUND_BITRATE)?;
-    mp4.with_sound(&aac.track(), rate, crate::aac::SOUND_BITRATE);
-    let ch = channels as usize;
-    // Kept stretches in samples (a channel's), from the edit list's start.
-    let kept: Vec<(u64, u64)> = keep.iter().map(|&(a, b)| ((a * f64::from(rate)).round() as u64, (b * f64::from(rate)).round() as u64)).collect();
-    let mut frame: Vec<i16> = Vec::with_capacity(crate::aac::FRAME * ch);
-    let mut n = 0u64;
-    let mut skip = u64::from(delay);
     let mut buf: Option<SampleBuffer<i16>> = None;
     for i in 1..=count {
         if cancel.load(Ordering::Relaxed) {
@@ -308,7 +301,7 @@ fn sound(src: &Path, mp4: &mut Mp4, keep: &[(f64, f64)], delay: u32, cancel: &At
         let Some(s) = r.read_sample(id, i).map_err(|e| e.to_string())? else { break };
         let decoded = match dec.decode(&Packet::new_from_slice(0, s.start_time, u64::from(s.duration), &s.bytes)) {
             Ok(d) => d,
-            // (A frame it can't decode: its moment silent, the rest kept.)
+            // (A frame it can't decode: its moment left out.)
             Err(_) => continue,
         };
         let spec = *decoded.spec();
@@ -317,8 +310,61 @@ fn sound(src: &Path, mp4: &mut Mp4, keep: &[(f64, f64)], delay: u32, cancel: &At
             *b = SampleBuffer::new(decoded.capacity() as u64, spec);
         }
         b.copy_interleaved_ref(decoded);
-        let got = spec.channels.count().max(1);
-        for at in b.samples().chunks_exact(got) {
+        f(b.samples(), spec.channels.count().max(1))?;
+    }
+    Ok(Some((rate, channels)))
+}
+
+/// The sound track's rate and channels (AAC only), if it has one.
+fn sound_format(src: &Path) -> Result<Option<(u32, u32)>, String> {
+    let file = File::open(src).map_err(|e| e.to_string())?;
+    let size = file.metadata().map_err(|e| e.to_string())?.len();
+    let r = mp4::Mp4Reader::read_header(BufReader::new(file), size).map_err(|e| e.to_string())?;
+    Ok(r.tracks()
+        .values()
+        .find(|t| t.track_type().ok() == Some(mp4::TrackType::Audio) && t.media_type().ok() == Some(mp4::MediaType::AAC))
+        .map(|t| (t.timescale(), t.channel_config().map(|c| c as u32).unwrap_or(2).clamp(1, 2))))
+}
+
+/// How loud the recording's sound is along it: `buckets` peaks (0 to 1),
+/// each the loudest sample in its share of the length (priming left
+/// out); None if it has no sound. For an editor's waveform.
+pub fn peaks(src: &Path, buckets: usize, cancel: &AtomicBool) -> Result<Option<Vec<f32>>, String> {
+    let Some((rate, _)) = sound_format(src)? else { return Ok(None) };
+    let seconds = Video::open(src)?.seconds().max(1e-3);
+    let delay = u64::from(crate::trim::edit_starts(src).unwrap_or_default().get(&2).copied().unwrap_or(0));
+    let mut out = vec![0f32; buckets.max(1)];
+    let per = f64::from(rate.max(1)) * seconds / out.len() as f64;
+    let mut n = 0u64;
+    each_sound(src, cancel, &mut |samples, ch| {
+        for frame in samples.chunks_exact(ch) {
+            if n >= delay
+                && let Some(o) = out.get_mut(((n - delay) as f64 / per) as usize)
+            {
+                *o = frame.iter().map(|&v| f32::from(v).abs() / 32768.0).fold(*o, f32::max);
+            }
+            n += 1;
+        }
+        Ok(())
+    })?;
+    Ok(Some(out))
+}
+
+/// The recording's sound (AAC) in what's kept, coded again into `mp4`;
+/// whether it had any. `delay`: the samples before its edit list's start
+/// (the encoder's priming).
+fn sound(src: &Path, mp4: &mut Mp4, keep: &[(f64, f64)], delay: u32, cancel: &AtomicBool) -> Result<bool, String> {
+    let Some((rate, channels)) = sound_format(src)? else { return Ok(false) };
+    let mut aac = crate::aac::Aac::new(rate, channels, crate::aac::SOUND_BITRATE)?;
+    mp4.with_sound(&aac.track(), rate, crate::aac::SOUND_BITRATE);
+    let ch = channels as usize;
+    // Kept stretches in samples (a channel's), from the edit list's start.
+    let kept: Vec<(u64, u64)> = keep.iter().map(|&(a, b)| ((a * f64::from(rate)).round() as u64, (b * f64::from(rate)).round() as u64)).collect();
+    let mut frame: Vec<i16> = Vec::with_capacity(crate::aac::FRAME * ch);
+    let mut n = 0u64;
+    let mut skip = u64::from(delay);
+    each_sound(src, cancel, &mut |samples, got| {
+        for at in samples.chunks_exact(got) {
             if skip > 0 {
                 skip -= 1;
                 continue;
@@ -339,7 +385,8 @@ fn sound(src: &Path, mp4: &mut Mp4, keep: &[(f64, f64)], delay: u32, cancel: &At
             }
             n += 1;
         }
-    }
+        Ok(())
+    })?;
     if !frame.is_empty() {
         frame.resize(crate::aac::FRAME * ch, 0);
         if let Some(au) = aac.encode(&frame)? {
@@ -474,6 +521,9 @@ mod tests {
         let never = AtomicBool::new(false);
         let made = export(&src, &dst, &edit, &Options { encoder: Choice::Cpu, ..Options::default() }, &never, &|_| {}).unwrap();
         assert!(made.sound);
+        // Its waveform: loud all through the source, but for the edges.
+        let p = peaks(&src, 20, &never).unwrap().unwrap();
+        assert!(p[2..18].iter().all(|&v| (0.15..0.4).contains(&v)), "{p:?}");
         // Decoded back, its priming cut as its edit list says.
         let delay = crate::trim::edit_starts(&dst).unwrap_or_default().get(&2).copied().unwrap_or(0) as usize;
         let f = File::open(&dst).unwrap();
@@ -500,5 +550,57 @@ mod tests {
         assert!((first - 440.0).abs() < 15.0, "{first} Hz, then {second} Hz");
         assert!((second - 880.0).abs() < 25.0, "{first} Hz, then {second} Hz");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A video to try an editor on (`OLO_FIXTURE=PATH cargo test
+    /// --release -p olo-video make_fixture -- --ignored`): 12 s at 30 a
+    /// second, 640 × 400, a bar going across and the colour changing each
+    /// 3 s, a tone rising each second, two marks.
+    #[test]
+    #[ignore]
+    fn make_fixture() {
+        let Some(path) = std::env::var_os("OLO_FIXTURE").map(PathBuf::from) else { return };
+        let (w, h) = (640u32, 400u32);
+        let mut enc = crate::H264::new(w, h, 30).unwrap();
+        let mut mp4 = Mp4::create(&path, w, h, 1000).unwrap();
+        let mut aac = crate::aac::Aac::new(48_000, 2, 160_000).ok();
+        if let Some(a) = &aac {
+            mp4.with_sound(&a.track(), 48_000, 160_000);
+        }
+        let colours = [[200u8, 80, 60], [60, 160, 90], [70, 90, 200], [190, 170, 60]];
+        for f in 0..360u32 {
+            let c = colours[(f / 90) as usize % 4];
+            let bar = (f * 4) % w;
+            let px: Vec<u8> = (0..w * h)
+                .flat_map(|p| {
+                    let (x, _) = (p % w, p / w);
+                    if (bar..bar + 24).contains(&x) { [255, 255, 255, 255] } else { [c[2], c[1], c[0], 255] }
+                })
+                .collect();
+            let (bits, key) = enc.encode(&px, w as usize * 4, Order::Bgra).unwrap();
+            mp4.add(&bits, key, if f % 3 == 0 { 34 } else { 33 }).unwrap();
+        }
+        if let Some(a) = aac.as_mut() {
+            for k in 0..(12 * 48_000 / crate::aac::FRAME + 2) {
+                let frame: Vec<i16> = (0..crate::aac::FRAME)
+                    .flat_map(|i| {
+                        let n = k * crate::aac::FRAME + i;
+                        let t = n as f32 / 48_000.0;
+                        let f = 220.0 * (1.0 + (t as u32 % 12) as f32 / 6.0);
+                        let loud = if (t as u32) % 4 == 3 { 0.1 } else { 0.4 };
+                        let v = ((t * f * std::f32::consts::TAU).sin() * 32767.0 * loud) as i16;
+                        [v, v]
+                    })
+                    .collect();
+                if let Some(au) = a.encode(&frame).unwrap() {
+                    mp4.add_sound(&au).unwrap();
+                }
+            }
+            for au in a.flush().unwrap() {
+                mp4.add_sound(&au).unwrap();
+            }
+        }
+        mp4.chapters(vec![(2000, "Intro".into()), (7500, "Demo".into())]);
+        mp4.finish().unwrap();
     }
 }
