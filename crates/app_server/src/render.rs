@@ -972,6 +972,22 @@ where
     pointer.render_elements(renderer, location, scale.into(), 1.0)
 }
 
+/// The cursor alone, for a cursor capture (`capture::Captures::cursors`):
+/// its picture with its top left at the buffer's, its hotspot where the
+/// session says, at `scale` (the built-in cursor for a named shape, else
+/// the client's surface).
+pub fn cursor_picture<R>(renderer: &mut R, scale: f64, status: &smithay::input::pointer::CursorImageStatus) -> Vec<CustomRenderElements<R>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
+{
+    let shape = crate::cursor::named(status).unwrap_or(crate::cursor::Shape::SystemDefault);
+    let mut pointer = crate::drawing::PointerElement::default();
+    pointer.set_buffer(crate::cursor::buffer(shape, scale), crate::cursor::image(shape, scale).size as i32);
+    pointer.set_status(status.clone());
+    pointer.render_elements(renderer, Point::<i32, Physical>::from((0, 0)), scale.into(), 1.0)
+}
+
 /// Where window `id`'s content (what its client draws) starts on the
 /// screen, if it's shown: as screenshots and Olo's IPC find it.
 pub fn content_origin(space: &Space<WindowElement>, id: u64) -> Option<Point<i32, Logical>> {

@@ -980,6 +980,31 @@ impl<BackendData: Backend> ImageCopyCaptureHandler for AnvilState<BackendData> {
         self.captures.queue(session, frame);
         self.backend_data.wake(None);
     }
+
+    /// The cursor on a screen, apart (the portal's cursor as metadata);
+    /// a window's has none.
+    fn cursor_capture_constraints(&mut self, source: &ImageCaptureSource, _pointer: &smithay::reexports::wayland_server::protocol::wl_pointer::WlPointer) -> Option<BufferConstraints> {
+        if source.user_data().get::<crate::capture::WindowSource>().is_some() {
+            return None;
+        }
+        let output = source.user_data().get::<smithay::output::WeakOutput>()?.upgrade()?;
+        Some(crate::capture::cursor_constraints(&output))
+    }
+
+    fn new_cursor_session(&mut self, session: smithay::wayland::image_copy_capture::CursorSession) {
+        self.captures.add_cursor(session);
+        // Told where the pointer is at its screen's next frame.
+        self.backend_data.wake(None);
+    }
+
+    fn cursor_session_destroyed(&mut self, session: smithay::wayland::image_copy_capture::CursorSessionRef) {
+        self.captures.remove_cursor(&session);
+    }
+
+    fn cursor_frame(&mut self, session: &smithay::wayland::image_copy_capture::CursorSessionRef, frame: Frame) {
+        self.captures.queue_cursor(session, frame);
+        self.backend_data.wake(None);
+    }
 }
 
 delegate_dispatch2!(@<BackendData: Backend + 'static> AnvilState<BackendData>);

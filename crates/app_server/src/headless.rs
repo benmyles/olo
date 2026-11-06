@@ -498,6 +498,15 @@ pub fn run_headless(size_arg: Option<&str>) {
                     })
                 });
             }
+            // The cursor, apart, for those following it.
+            if state.captures.has_cursors()
+                && let Some(area) = state.space.output_geometry(output)
+            {
+                let status = crate::saver::shown_cursor(&state.saver, &state.cursor_status);
+                let now = state.clock.now().into();
+                let at = state.pointer.current_location();
+                state.captures.cursors(&mut state.backend_data.renderer, output, area.to_f64(), now, at, &status);
+            }
         }
         // Recording (finding flicker): what this turn left on screen.
         if let Some(name) = state.ipc.recording.as_ref().map(|r| r.output.clone()) {

@@ -6715,7 +6715,8 @@ its request, for the app's Cancel and for holding an upgrade off.
 
 - **D-Bus** (`portal.rs`): CreateSession serves an
   `impl.portal.Session` at the handle the portal chose (Close drops its
-  streams); SelectSources keeps the cursor mode (hidden or drawn in) and
+  streams); SelectSources keeps the cursor mode (hidden, drawn in, or
+  apart as metadata: below) and
   a restore token (`("olo", 1, connector)`); Start shares without asking
   when the token names a screen still there, or when the same app asked
   less than 5 s ago (Chromium opens several sessions for one share), and
@@ -6966,6 +6967,29 @@ its request, for the app's Cancel and for holding an upgrade off.
   its request) and serves `org.freedesktop.ScreenSaver` (Inhibit gives a
   cookie, held until UnInhibit or the caller leaves the bus), each held
   by an app_server connection that asked `KeepAwake` (see "Power").
+- **The cursor as metadata** (the third cursor mode, 4: what remote
+  desktops and OBS ask for, to draw the pointer themselves): the picture
+  is captured without it, and the capture follows the pointer apart, on
+  a cursor session of ext-image-copy-capture
+  (`Capture::follow_cursor`: a `wl_pointer`, the session's position and
+  hotspot events, and a capture session of its own for the pointer's
+  picture, told apart from the screen's by its user data). app_server
+  serves those sessions for screens (`cursor_capture_constraints`: a
+  square `capture::CURSOR_BOX`, 32 points, at the screen's scale, shared
+  memory): at each frame of a screen with a session on it, where the
+  pointer is on it (its hotspot, in the screen's pixels; none off it or
+  hidden) and its hotspot (`Captures::cursors`), and a cursor frame
+  asked for drawn when the pointer's picture changed
+  (`render::cursor_picture`, its own damage tracker; the first at
+  once). Nothing runs without a session. The stream asks for
+  `SPA_META_Cursor` with its buffers (room for a 256-pixel picture) and
+  fills it on every buffer: the position and hotspot, and the picture
+  (BGRA) when it changed since last sent; off the screen, an empty one,
+  once. A move with nothing else changed is a buffer with no picture
+  (its chunk's size 0), no more often than frames may come. Tried
+  headless (`olo-portal stream-test - SECS --cursor metadata`, then
+  `olo-portal cursor-test NODE SECS`, which asks for the metadata and
+  prints it, in `tools/dev/pw-sandbox`'s PipeWire).
 - **While sharing** olo-portal writes what is shared
   (`olo_protocol::SharingState`: its pid, and each session's app,
   screens and start, in `$XDG_RUNTIME_DIR/olo-sharing-<display>.json`,

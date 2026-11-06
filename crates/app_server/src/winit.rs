@@ -375,6 +375,14 @@ pub fn run_winit() {
                     crate::capture::picture(renderer, &output, space, &parked, what, locked, || (Vec::new(), overview, color, cursor.then_some((pointer.0, &pointer.1))))
                 });
             }
+            if state.captures.has_cursors()
+                && let Some(area) = state.space.output_geometry(&output)
+            {
+                let status = crate::saver::shown_cursor(&state.saver, &state.cursor_status);
+                let now = state.clock.now().into();
+                let at = state.pointer.current_location();
+                state.captures.cursors(state.backend_data.backend.renderer(), &output, area.to_f64(), now, at, &status);
+            }
             display_handle.flush_clients().unwrap();
         }
 

@@ -14,13 +14,15 @@ use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
     globals::{GlobalListContents, registry_queue_init},
-    protocol::{wl_buffer, wl_output, wl_registry, wl_shm, wl_shm_pool},
+    protocol::{wl_buffer, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool},
 };
 use wayland_protocols::{
     ext::{
         foreign_toplevel_list::v1::client::{ext_foreign_toplevel_handle_v1, ext_foreign_toplevel_list_v1},
         image_capture_source::v1::client::{ext_foreign_toplevel_image_capture_source_manager_v1, ext_image_capture_source_v1, ext_output_image_capture_source_manager_v1},
-        image_copy_capture::v1::client::{ext_image_copy_capture_frame_v1 as frame_v1, ext_image_copy_capture_manager_v1, ext_image_copy_capture_session_v1 as session_v1},
+        image_copy_capture::v1::client::{
+            ext_image_copy_capture_cursor_session_v1 as cursor_v1, ext_image_copy_capture_frame_v1 as frame_v1, ext_image_copy_capture_manager_v1, ext_image_copy_capture_session_v1 as session_v1,
+        },
     },
     wp::linux_dmabuf::zv1::client::{zwp_linux_buffer_params_v1, zwp_linux_dmabuf_v1},
 };
@@ -55,6 +57,57 @@ struct State {
     constraints_done: bool,
     stopped: bool,
     frame: Option<Result<(), String>>,
+    cursor: CursorState,
+}
+
+/// The cursor session's (`Capture::follow_cursor`): where the pointer is
+/// on the screen, its hotspot, and its picture's session.
+#[derive(Default)]
+struct CursorState {
+    /// Where the hotspot is, in the screen's pixels (None: off it).
+    position: Option<(i32, i32)>,
+    hotspot: (i32, i32),
+    /// The picture's size and formats, as its session says.
+    size: Option<(u32, u32)>,
+    formats: Vec<wl_shm::Format>,
+    constraints_done: bool,
+    frame: Option<Result<(), String>>,
+    /// The place or picture changed since `Capture::cursor` was last read.
+    changed: bool,
+}
+
+/// Marks what belongs to the cursor's picture (its session and frames),
+/// told apart from the screen's.
+struct OfCursor;
+
+/// Where the pointer is on a screen and what it looks like, apart from
+/// the screen's picture (`Capture::cursor`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Cursor {
+    /// Where its hotspot is, in the screen's pixels; None: off it, or
+    /// hidden.
+    pub position: Option<(i32, i32)>,
+    /// The hotspot's place in the picture.
+    pub hotspot: (i32, i32),
+    /// The picture (BGRA rows, `size.0 * 4` bytes each) and its size,
+    /// once one has come; `serial` grows with each new one.
+    pub size: (u32, u32),
+    pub serial: u64,
+}
+
+/// A cursor session and its picture.
+struct Following {
+    // (Kept: dropping it would end the session.)
+    _session: cursor_v1::ExtImageCopyCaptureCursorSessionV1,
+    pictures: session_v1::ExtImageCopyCaptureSessionV1,
+    /// The buffer its pictures come into (a memfd), and its size.
+    buffer: Option<(wl_buffer::WlBuffer, memmap2::MmapMut, (u32, u32))>,
+    frame: Option<frame_v1::ExtImageCopyCaptureFrameV1>,
+    /// The last picture that came, and how many have.
+    image: Vec<u8>,
+    image_size: (u32, u32),
+    serial: u64,
+    _pointer: wl_pointer::WlPointer,
 }
 
 /// The buffer frames are captured into.
@@ -85,6 +138,12 @@ pub struct Capture {
     frame: Option<frame_v1::ExtImageCopyCaptureFrameV1>,
     /// It was asked for into `buffer` (not one of the stream's).
     into_own: bool,
+    /// What it captures, kept for a cursor session on it.
+    source: ext_image_capture_source_v1::ExtImageCaptureSourceV1,
+    copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
+    seat: Option<wl_seat::WlSeat>,
+    /// The pointer followed apart (`follow_cursor`).
+    following: Option<Following>,
 }
 
 /// What to capture.
@@ -123,6 +182,7 @@ impl Capture {
         let mut state = State::default();
         let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).map_err(|_| "no wl_shm".to_owned())?;
         let dmabuf: Option<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1> = globals.bind(&qh, 3..=3, ()).ok();
+        let seat: Option<wl_seat::WlSeat> = globals.bind(&qh, 1..=7, ()).ok();
         let copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server offers no ext-image-copy-capture".to_owned())?;
         let (image_source, name) = match source {
             Source::Output(name) => {
@@ -180,7 +240,91 @@ impl Capture {
                 }
             })
         };
-        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, filled: false, frame: None, into_own: false })
+        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, filled: false, frame: None, into_own: false, source: image_source, copier, seat, following: None })
+    }
+
+    /// Follow the pointer apart from the picture (a cursor session: the
+    /// portal's cursor sent as metadata): where it is (`cursor`) and its
+    /// picture (`cursor_image`), each kept up to date as `poll` reads.
+    /// Ask for the picture without the pointer drawn in (`cursor` false).
+    pub fn follow_cursor(&mut self) -> Result<(), String> {
+        if self.following.is_some() {
+            return Ok(());
+        }
+        let qh = self.queue.handle();
+        let seat = self.seat.as_ref().ok_or("app_server offers no seat")?;
+        let pointer = seat.get_pointer(&qh, ());
+        let session = self.copier.create_pointer_cursor_session(&self.source, &pointer, &qh, ());
+        let pictures = session.get_capture_session(&qh, OfCursor);
+        while !self.state.cursor.constraints_done && !self.state.stopped {
+            self.queue.blocking_dispatch(&mut self.state).map_err(|e| e.to_string())?;
+        }
+        self.following = Some(Following { _session: session, pictures, buffer: None, frame: None, image: Vec::new(), image_size: (0, 0), serial: 0, _pointer: pointer });
+        self.request_cursor()
+    }
+
+    /// Where the pointer is and its picture's serial, if it's followed
+    /// (`follow_cursor`), and whether either changed since last asked.
+    pub fn cursor(&mut self) -> Option<(Cursor, bool)> {
+        let f = self.following.as_ref()?;
+        let c = &mut self.state.cursor;
+        let changed = std::mem::take(&mut c.changed);
+        Some((Cursor { position: c.position, hotspot: c.hotspot, size: f.image_size, serial: f.serial }, changed))
+    }
+
+    /// Whether where the pointer is, or its picture, changed since
+    /// `cursor` was last asked (without asking).
+    pub fn cursor_changed(&self) -> bool {
+        self.following.is_some() && self.state.cursor.changed
+    }
+
+    /// The pointer's last picture (BGRA rows), if one has come.
+    pub fn cursor_image(&self) -> Option<&[u8]> {
+        self.following.as_ref().filter(|f| f.serial > 0).map(|f| f.image.as_slice())
+    }
+
+    /// Ask for the cursor's next picture: at once the first time, then
+    /// when it changes.
+    fn request_cursor(&mut self) -> Result<(), String> {
+        let Some((w, h)) = self.state.cursor.size else { return Ok(()) };
+        let format = [wl_shm::Format::Argb8888, wl_shm::Format::Xrgb8888].into_iter().find(|f| self.state.cursor.formats.contains(f)).ok_or("no BGRA format for the cursor")?;
+        let fresh = self.following.as_ref().is_some_and(|f| f.buffer.as_ref().is_none_or(|b| b.2 != (w, h)));
+        if fresh {
+            let (buffer, map) = shm(&self.shm, &self.queue.handle(), w, h, format)?;
+            let f = self.following.as_mut().unwrap();
+            if let Some((old, _, _)) = f.buffer.replace((buffer, map, (w, h))) {
+                old.destroy();
+            }
+        }
+        let qh = self.queue.handle();
+        let Some(f) = self.following.as_mut() else { return Ok(()) };
+        let (buffer, _, _) = f.buffer.as_ref().unwrap();
+        self.state.cursor.frame = None;
+        let frame = f.pictures.create_frame(&qh, OfCursor);
+        frame.attach_buffer(buffer);
+        frame.damage_buffer(0, 0, w as i32, h as i32);
+        frame.capture();
+        f.frame = Some(frame);
+        self.queue.flush().map_err(|e| e.to_string())
+    }
+
+    /// The cursor's picture that came (or failed), and the next asked for.
+    fn cursor_came(&mut self) -> Result<(), String> {
+        let Some(done) = self.state.cursor.frame.take() else { return Ok(()) };
+        let Some(f) = self.following.as_mut() else { return Ok(()) };
+        if let Some(frame) = f.frame.take() {
+            frame.destroy();
+        }
+        if done.is_ok()
+            && let Some((_, map, size)) = f.buffer.as_ref()
+        {
+            f.image.clear();
+            f.image.extend_from_slice(&map[..(size.0 * size.1 * 4) as usize]);
+            f.image_size = *size;
+            f.serial += 1;
+            self.state.cursor.changed = true;
+        }
+        self.request_cursor()
     }
 
     /// Frames into shared memory, never dmabufs (asked before the first
@@ -371,6 +515,9 @@ impl Capture {
             }
         }
         self.queue.dispatch_pending(&mut self.state).map_err(|e| e.to_string())?;
+        if self.following.is_some() {
+            self.cursor_came()?;
+        }
         let Some(done) = self.state.frame.take() else { return Ok(None) };
         if let Some(frame) = self.frame.take() {
             frame.destroy();
@@ -441,6 +588,28 @@ impl Capture {
         self.copy_into(&mut data, w as usize * 4)?;
         Ok(Picture { width: w, height: h, stride: w * 4, format, data })
     }
+}
+
+/// A shared-memory buffer of `w`×`h` in `format`, and its memory.
+fn shm(shm: &wl_shm::WlShm, qh: &QueueHandle<State>, w: u32, h: u32, format: wl_shm::Format) -> Result<(wl_buffer::WlBuffer, memmap2::MmapMut), String> {
+    let stride = w * 4;
+    let len = (stride * h) as usize;
+    // SAFETY: a fresh memfd, owned from here on.
+    let fd = unsafe {
+        let raw = libc::memfd_create(c"olo-portal-cursor".as_ptr(), libc::MFD_CLOEXEC);
+        if raw < 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        OwnedFd::from_raw_fd(raw)
+    };
+    let file = std::fs::File::from(fd);
+    file.set_len(len as u64).map_err(|e| e.to_string())?;
+    // SAFETY: the file is ours and stays this size.
+    let map = unsafe { memmap2::MmapMut::map_mut(&file) }.map_err(|e| e.to_string())?;
+    let pool = shm.create_pool(file.as_fd(), len as i32, qh, ());
+    let buffer = pool.create_buffer(0, w as i32, h as i32, stride as i32, format, qh, ());
+    pool.destroy();
+    Ok((buffer, map))
 }
 
 /// In an Olo session, straight to app_server (as the kit does): the
@@ -556,6 +725,49 @@ impl Dispatch<frame_v1::ExtImageCopyCaptureFrameV1, ()> for State {
     }
 }
 
+impl Dispatch<cursor_v1::ExtImageCopyCaptureCursorSessionV1, ()> for State {
+    fn event(state: &mut Self, _: &cursor_v1::ExtImageCopyCaptureCursorSessionV1, event: cursor_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        let c = &mut state.cursor;
+        match event {
+            cursor_v1::Event::Enter => {}
+            cursor_v1::Event::Leave => c.position = None,
+            cursor_v1::Event::Position { x, y } => c.position = Some((x, y)),
+            cursor_v1::Event::Hotspot { x, y } => c.hotspot = (x, y),
+            _ => {}
+        }
+        c.changed = true;
+    }
+}
+
+impl Dispatch<session_v1::ExtImageCopyCaptureSessionV1, OfCursor> for State {
+    fn event(state: &mut Self, _: &session_v1::ExtImageCopyCaptureSessionV1, event: session_v1::Event, _: &OfCursor, _: &Connection, _: &QueueHandle<Self>) {
+        let c = &mut state.cursor;
+        match event {
+            session_v1::Event::BufferSize { width, height } => {
+                c.size = Some((width, height));
+                c.formats.clear();
+            }
+            session_v1::Event::ShmFormat { format } => {
+                if let wayland_client::WEnum::Value(f) = format {
+                    c.formats.push(f);
+                }
+            }
+            session_v1::Event::Done => c.constraints_done = true,
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<frame_v1::ExtImageCopyCaptureFrameV1, OfCursor> for State {
+    fn event(state: &mut Self, _: &frame_v1::ExtImageCopyCaptureFrameV1, event: frame_v1::Event, _: &OfCursor, _: &Connection, _: &QueueHandle<Self>) {
+        match event {
+            frame_v1::Event::Ready => state.cursor.frame = Some(Ok(())),
+            frame_v1::Event::Failed { reason } => state.cursor.frame = Some(Err(format!("the cursor's picture failed: {reason:?}"))),
+            _ => {}
+        }
+    }
+}
+
 macro_rules! ignore {
     ($($t:ty),*) => {$(
         impl Dispatch<$t, ()> for State {
@@ -572,5 +784,7 @@ ignore!(
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
     ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1,
     ext_image_capture_source_v1::ExtImageCaptureSourceV1,
-    ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1
+    ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
+    wl_seat::WlSeat,
+    wl_pointer::WlPointer
 );

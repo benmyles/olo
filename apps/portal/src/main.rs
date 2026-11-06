@@ -19,6 +19,8 @@
 //! olo-portal read-test NODE OUT.png [--hold SECS] [--dmabuf|--linear]
 //!                                 read a PipeWire node's frames, as an
 //!                                 app does
+//! olo-portal cursor-test NODE [SECONDS]  read a node's cursor metadata
+//!                                 (`stream-test - SECS --cursor metadata`)
 //! olo-portal --stop SESSION       end a share (Deskbar's Stop Sharing)
 //! ```
 
@@ -322,7 +324,13 @@ fn main() -> std::process::ExitCode {
                 Some(id) => capture::Source::Window { id, app_id: String::new(), title: String::new() },
                 None => capture::Source::Output(args.get(1).cloned().filter(|o| o != "-")),
             };
-            return match stream::run(source, true, || {}) {
+            // (`--cursor metadata`: the pointer apart, as an app asks for it.)
+            let cursor = match args.iter().position(|a| a == "--cursor").and_then(|i| args.get(i + 1)).map(String::as_str) {
+                Some("metadata") => stream::Cursor::Metadata,
+                Some("hidden") => stream::Cursor::Hidden,
+                _ => stream::Cursor::Embedded,
+            };
+            return match stream::run(source, cursor, || {}) {
                 Ok(share) => {
                     println!("node {} ({}×{})", share.node, share.size.0, share.size.1);
                     std::thread::sleep(std::time::Duration::from_secs(secs));
@@ -344,6 +352,11 @@ fn main() -> std::process::ExitCode {
                 Err(e) => return fail(e),
             };
             return client::share_test(out, value("--bus"), hold, types, modifiers).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
+        }
+        Some("cursor-test") => {
+            let Some(node) = args.get(1).and_then(|n| n.parse().ok()) else { return usage() };
+            let secs = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
+            return client::cursor_test(node, secs).map_or_else(fail, |()| std::process::ExitCode::SUCCESS);
         }
         Some("read-test") => {
             let (Some(node), Some(out)) = (args.get(1).and_then(|n| n.parse().ok()), args.get(2)) else { return usage() };

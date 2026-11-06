@@ -52,10 +52,24 @@ pub fn live() -> usize {
     LIVE.load(Ordering::Relaxed)
 }
 
-/// Start sharing `source` (a screen, or a window), with the
-/// pointer drawn in if `cursor`. `lost` is called if the share ends
-/// by itself, not stopped (app_server never came back).
-pub fn run(source: Source, cursor: bool, lost: impl FnOnce() + Send + 'static) -> Result<Share, String> {
+/// How the pointer goes with a share (the portal's cursor modes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cursor {
+    /// Not at all.
+    Hidden,
+    /// Drawn into the picture.
+    Embedded,
+    /// Apart, as metadata on each buffer (where it is, and its picture
+    /// when that changes): for an app that draws it itself (a remote
+    /// desktop's viewer, OBS). A move with nothing else changed is a
+    /// buffer with no picture.
+    Metadata,
+}
+
+/// Start sharing `source` (a screen, or a window), the pointer as
+/// `cursor` says. `lost` is called if the share ends by itself, not
+/// stopped (app_server never came back).
+pub fn run(source: Source, cursor: Cursor, lost: impl FnOnce() + Send + 'static) -> Result<Share, String> {
     let stop = Arc::new(AtomicBool::new(false));
     let (tx, rx) = mpsc::channel::<Result<(u32, (u32, u32)), String>>();
     {
@@ -128,6 +142,16 @@ struct Shared {
     /// app_server itself goes soon after (a reload, which the share
     /// outlives).
     stopped_at: Option<std::time::Instant>,
+    /// The pointer goes as metadata (`Cursor::Metadata`, and the capture
+    /// follows it).
+    cursor_meta: bool,
+    /// The cursor picture last sent (its serial), and whether the empty
+    /// one (off the screen) was.
+    cursor_sent: u64,
+    cursor_gone_sent: bool,
+    /// When a buffer last went with only the cursor (they go no more
+    /// often than frames may).
+    cursor_at: std::time::Instant,
 }
 
 /// How long after the capture ends to wait for app_server going too.
@@ -157,11 +181,11 @@ fn offer(stream: &pw::stream::Stream, (w, h): (u32, u32), modifiers: Option<&[u6
 
 /// A capture of `source` again, once app_server is back: tried every
 /// quarter second for half a minute (or until the share stops).
-fn reconnect(source: &Source, cursor: bool, stop: &AtomicBool) -> Option<Capture> {
+fn reconnect(source: &Source, cursor: Cursor, stop: &AtomicBool) -> Option<Capture> {
     let until = std::time::Instant::now() + Duration::from_secs(30);
     while std::time::Instant::now() < until && !stop.load(Ordering::Relaxed) {
         std::thread::sleep(Duration::from_millis(250));
-        match Capture::new(source, cursor) {
+        match open(source, cursor) {
             Ok(c) => {
                 tracing::info!("portal: sharing {} again", c.name());
                 return Some(c);
@@ -171,6 +195,114 @@ fn reconnect(source: &Source, cursor: bool, stop: &AtomicBool) -> Option<Capture
     }
     tracing::warn!("portal: app_server didn't come back; the share of {source:?} ends");
     None
+}
+
+/// A capture of `source`, the pointer drawn in or followed apart as
+/// `cursor` says (where following it fails, it's left out).
+fn open(source: &Source, cursor: Cursor) -> Result<Capture, String> {
+    let mut capture = Capture::new(source, cursor == Cursor::Embedded)?;
+    if cursor == Cursor::Metadata
+        && let Err(e) = capture.follow_cursor()
+    {
+        tracing::warn!("portal: the cursor can't go apart ({e}): the share has none");
+    }
+    Ok(capture)
+}
+
+/// The largest cursor picture a buffer's metadata holds (a side, in
+/// pixels): Olo's cursors are 32 points, so 96 pixels at 3×.
+const CURSOR_MAX: u32 = 256;
+
+/// The bytes a cursor's metadata takes: where it is, then its picture.
+fn cursor_meta_size() -> usize {
+    use pw::spa::sys;
+    std::mem::size_of::<sys::spa_meta_cursor>() + std::mem::size_of::<sys::spa_meta_bitmap>() + (CURSOR_MAX * CURSOR_MAX * 4) as usize
+}
+
+/// The cursor's metadata, asked for with the buffers (`Cursor::Metadata`).
+fn cursor_param() -> Option<Vec<u8>> {
+    use pw::spa::{
+        pod::{Object, Property, Value},
+        sys,
+        utils::Id,
+    };
+    let object = Object {
+        type_: pw::spa::utils::SpaTypes::ObjectParamMeta.as_raw(),
+        id: pw::spa::param::ParamType::Meta.as_raw(),
+        properties: vec![Property::new(sys::SPA_PARAM_META_type, Value::Id(Id(sys::SPA_META_Cursor))), Property::new(sys::SPA_PARAM_META_size, Value::Int(cursor_meta_size() as i32))],
+    };
+    serialize(&Value::Object(object))
+}
+
+/// Put where the pointer is (and its picture, if it changed since it
+/// was last sent) in buffer `b`'s cursor metadata, if it has some. Off
+/// the screen, an empty picture is sent once.
+///
+/// # Safety
+/// `b` is one of the stream's buffers, dequeued.
+unsafe fn put_cursor(b: *mut pw::sys::pw_buffer, sh: &mut Shared) {
+    use pw::spa::sys;
+    let Some((c, _)) = sh.capture.cursor() else { return };
+    let head = std::mem::size_of::<sys::spa_meta_cursor>();
+    let bitmap = std::mem::size_of::<sys::spa_meta_bitmap>();
+    // SAFETY: the buffer's metas are PipeWire's, `n_metas` of them, each
+    // `size` bytes at `data`; written only within that.
+    unsafe {
+        let buffer = (*b).buffer;
+        if (*buffer).metas.is_null() {
+            return;
+        }
+        let Some(m) = std::slice::from_raw_parts((*buffer).metas, (*buffer).n_metas as usize).iter().find(|m| m.type_ == sys::SPA_META_Cursor && m.size as usize >= head + bitmap && !m.data.is_null())
+        else {
+            return;
+        };
+        let room = m.size as usize;
+        let mc = m.data.cast::<sys::spa_meta_cursor>();
+        (*mc).id = 1;
+        (*mc).flags = 0;
+        (*mc).bitmap_offset = 0;
+        // (The picture after the cursor's head; its offset set by the caller.)
+        let picture = |w: u32, h: u32, pixels: Option<&[u8]>| {
+            let need = head + bitmap + (w * h * 4) as usize;
+            if need > room {
+                return false;
+            }
+            let mb = m.data.cast::<u8>().add(head).cast::<sys::spa_meta_bitmap>();
+            (*mb).format = sys::SPA_VIDEO_FORMAT_BGRA;
+            (*mb).size = sys::spa_rectangle { width: w, height: h };
+            (*mb).stride = (w * 4) as i32;
+            (*mb).offset = bitmap as u32;
+            let at = std::slice::from_raw_parts_mut(m.data.cast::<u8>().add(head + bitmap), (w * h * 4) as usize);
+            match pixels {
+                Some(p) => at.copy_from_slice(&p[..at.len()]),
+                None => at.fill(0),
+            }
+            true
+        };
+        match c.position {
+            Some((x, y)) => {
+                (*mc).position = sys::spa_point { x, y };
+                (*mc).hotspot = sys::spa_point { x: c.hotspot.0, y: c.hotspot.1 };
+                let (w, h) = c.size;
+                if (c.serial != sh.cursor_sent || sh.cursor_gone_sent)
+                    && let Some(pixels) = sh.capture.cursor_image()
+                    && picture(w, h, Some(pixels))
+                {
+                    (*mc).bitmap_offset = head as u32;
+                    sh.cursor_sent = c.serial;
+                    sh.cursor_gone_sent = false;
+                }
+            }
+            None => {
+                (*mc).position = sys::spa_point { x: 0, y: 0 };
+                (*mc).hotspot = sys::spa_point { x: 0, y: 0 };
+                if !sh.cursor_gone_sent && picture(1, 1, None) {
+                    (*mc).bitmap_offset = head as u32;
+                    sh.cursor_gone_sent = true;
+                }
+            }
+        }
+    }
 }
 
 /// The stream's formats: BGRx at the screen's size, as often as it
@@ -380,8 +512,9 @@ fn fill_buffer(sh: &mut Shared, b: *mut pw::sys::pw_buffer) -> Result<(), String
     Ok(())
 }
 
-fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender<Result<(u32, (u32, u32)), String>>) -> Result<(), String> {
-    let capture = Capture::new(&source, cursor)?;
+fn stream(source: Source, cursor: Cursor, stop: Arc<AtomicBool>, tx: &mpsc::Sender<Result<(u32, (u32, u32)), String>>) -> Result<(), String> {
+    let mut capture = open(&source, cursor)?;
+    let cursor_meta = capture.cursor().is_some();
     // A screen by its name from now on (the first, if none was named).
     let source = match source {
         Source::Output(_) => Source::Output(Some(capture.name().to_owned())),
@@ -420,6 +553,10 @@ fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender
         told: None,
         seq: 0,
         stopped_at: None,
+        cursor_meta,
+        cursor_sent: 0,
+        cursor_gone_sent: false,
+        cursor_at: std::time::Instant::now(),
     }));
     let told = std::cell::Cell::new(false);
     let tx = tx.clone();
@@ -505,7 +642,8 @@ fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender
                 match next {
                     Ok(Some(bytes)) => {
                         let meta = header_meta().unwrap_or_default();
-                        let mut pods: Vec<&pw::spa::pod::Pod> = [&bytes, &meta].into_iter().filter_map(|b| pw::spa::pod::Pod::from_bytes(b)).collect();
+                        let cursor = if shared.borrow().cursor_meta { cursor_param().unwrap_or_default() } else { Vec::new() };
+                        let mut pods: Vec<&pw::spa::pod::Pod> = [&bytes, &meta, &cursor].into_iter().filter_map(|b| pw::spa::pod::Pod::from_bytes(b)).collect();
                         let _ = s.update_params(&mut pods);
                     }
                     Ok(None) => {}
@@ -577,6 +715,9 @@ fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender
                     }
                     shared.seq += 1;
                     stamp(b, shared.seq);
+                    if shared.cursor_meta {
+                        put_cursor(b, &mut shared);
+                    }
                     s.queue_raw_buffer(b);
                 }
             }
@@ -614,6 +755,26 @@ fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender
                     l.quit();
                 }
                 return;
+            }
+            // The pointer moved (or changed) with nothing else: a buffer
+            // with only it, no more often than frames may come.
+            if sh.cursor_meta && !sh.lost && sh.stopped_at.is_none() && sh.streaming && !sh.fresh && sh.capture.cursor_changed() && sh.cursor_at.elapsed() >= sh.every {
+                // SAFETY: the stream's own buffer, given back at once.
+                let b = unsafe { stream_of().dequeue_raw_buffer() };
+                if !b.is_null() {
+                    sh.cursor_at = std::time::Instant::now();
+                    sh.seq += 1;
+                    let seq = sh.seq;
+                    // SAFETY: dequeued above; its first data's chunk.
+                    unsafe {
+                        let d = &mut *(*(*b).buffer).datas;
+                        let chunk = &mut *d.chunk;
+                        chunk.size = 0;
+                        stamp(b, seq);
+                        put_cursor(b, &mut sh);
+                        stream_of().queue_raw_buffer(b);
+                    }
+                }
             }
             if sh.lost || sh.stopped_at.is_some() || !sh.streaming || sh.fresh || sh.capture.waiting() || sh.asked.elapsed() < sh.every.saturating_sub(Duration::from_millis(2)) {
                 return;
@@ -672,12 +833,16 @@ fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender
                             if let Some(b) = sh.filling.take() {
                                 sh.seq += 1;
                                 let seq = sh.seq;
-                                drop(sh);
                                 // SAFETY: dequeued from this stream, not given back yet.
                                 unsafe {
                                     stamp(b, seq);
-                                    stream_of().queue_raw_buffer(b);
+                                    if sh.cursor_meta {
+                                        put_cursor(b, &mut sh);
+                                    }
                                 }
+                                drop(sh);
+                                // SAFETY: as above.
+                                unsafe { stream_of().queue_raw_buffer(b) };
                             }
                         } else {
                             sh.fresh = true;
@@ -719,6 +884,8 @@ fn stream(source: Source, cursor: bool, stop: Arc<AtomicBool>, tx: &mpsc::Sender
         let new = capture.size();
         fd = capture.fd().ok();
         let mut sh = shared.borrow_mut();
+        // (A new capture follows the cursor anew: its picture is sent again.)
+        sh.cursor_sent = 0;
         // The stream's dmabufs, known to the new connection.
         for slot in &mut sh.slots {
             if let Kind::Dma { bo, wl, .. } = &mut slot.kind {
@@ -763,6 +930,6 @@ mod tests {
         assert_eq!(memory.len(), 1);
         assert_eq!(read(&memory[0]), None);
         // The buffers each way, and the header.
-        assert!(buffers(640, 400, Some(1)).is_some() && buffers(640, 400, None).is_some() && header_meta().is_some());
+        assert!(buffers(640, 400, Some(1)).is_some() && buffers(640, 400, None).is_some() && header_meta().is_some() && cursor_param().is_some());
     }
 }

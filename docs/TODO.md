@@ -1240,8 +1240,11 @@ of Finished; a new one goes where its priority puts it.
     taking libei connections only from olo-portal after a grant, Deskbar
     showing it with Stop Remote Control; tested headless with
     `remote_test` (no real Chrome Remote Desktop or Deskflow tried yet).
-    **Left**: the cursor sent as metadata (the third cursor mode; hidden
-    and drawn in are done). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
+    The cursor sent as metadata done too (2026-11-06, HACKING's "The
+    cursor as metadata": app_server's cursor capture sessions, the
+    capture following the pointer, the stream's `SPA_META_Cursor`;
+    tried headless with a reader). *Left*: a real app's go with it
+    (OBS, Chrome Remote Desktop). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
     started by Olo is told it's on GNOME, so it offers Wayland sharing;
     untried, Zoom isn't installed here).
   - **The Olo touches**: the picker, a kit dialog with Screens and

@@ -2541,6 +2541,14 @@ impl AnvilState<UdevData> {
                 crate::capture::picture(renderer, &output, space, &parked, what, locked, || (overlays, overview, desktop_color, cursor.then_some((pointer.0, &pointer.1))))
             });
         }
+        // The cursor, apart, for those following it.
+        if self.captures.has_cursors()
+            && let Some(area) = self.space.output_geometry(&output)
+        {
+            let status = crate::saver::shown_cursor(&self.saver, &self.cursor_status);
+            let now = self.clock.now().into();
+            self.captures.cursors(&mut renderer, &output, area.to_f64(), now, self.pointer.current_location(), &status);
+        }
         let overlays: Vec<CustomRenderElements<_>> = if locked {
             // (Never the veil over the lock screen, nor after it.)
             self.veil = None;
