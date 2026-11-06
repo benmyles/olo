@@ -306,6 +306,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.13.2",
  "cosmic-text",
+ "drm-ffi",
  "fast_image_resize",
  "half",
  "image",

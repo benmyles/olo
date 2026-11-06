@@ -216,6 +216,37 @@ fn planes(
     })
 }
 
+/// Olo: keep the modes the CRTCs already show (app_server restarted in
+/// place, its displays as the last one left them): a device isn't reset,
+/// only its cursor and overlay planes switched off (no modeset); a
+/// surface whose CRTC shows the mode asked for (by its timings: a CRTC's
+/// mode and a connector's differ in their type bits and name) on the
+/// connectors asked for starts from that state, so its first commit is
+/// a page flip; and a device dropped leaves its displays as they are for
+/// the next. Off unless asked (`keep_current_modes`).
+static KEEP_MODES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Olo: keep (or not) the modes CRTCs already show (`KEEP_MODES`).
+pub fn keep_current_modes(on: bool) {
+    KEEP_MODES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn keeping_modes() -> bool {
+    KEEP_MODES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Olo: whether two modes are the same timings (whatever their type bits
+/// and names say).
+pub fn same_timings(a: &drm::control::Mode, b: &drm::control::Mode) -> bool {
+    a.clock() == b.clock()
+        && a.size() == b.size()
+        && a.hsync() == b.hsync()
+        && a.vsync() == b.vsync()
+        && a.hskew() == b.hskew()
+        && a.vscan() == b.vscan()
+        && a.flags() == b.flags()
+}
+
 fn plane_type(dev: &(impl ControlDevice + DevPath), plane: plane::Handle) -> Result<PlaneType, DrmError> {
     let props = dev.get_properties(plane).map_err(|source| {
         DrmError::Access(AccessError {

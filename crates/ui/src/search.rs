@@ -121,6 +121,17 @@ impl SearchField {
         self.field.read(cx).text()
     }
 
+    /// Its text chosen (a filter from a bar, [`FilterBar::drives`]): set,
+    /// and said as typing it would be (`SearchEvent::Changed`), so one
+    /// subscription follows both.
+    pub fn choose(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
+        let text = text.into();
+        if text != self.text(cx) {
+            self.set_text(text, cx);
+            cx.emit(SearchEvent::Changed);
+        }
+    }
+
     /// Its text set (a filter chosen from a bar): no event.
     pub fn set_text(&mut self, text: impl Into<String>, cx: &mut Context<Self>) {
         let text = text.into();
@@ -500,6 +511,14 @@ impl FilterBar {
         self
     }
 
+    /// What its menus choose goes into `field` (`SearchField::choose`):
+    /// the field says it changed, as typing does, so the app follows the
+    /// field alone.
+    pub fn drives(self, field: &Entity<SearchField>) -> Self {
+        let field = field.clone();
+        self.on_change(move |text, _, cx| field.update(cx, |s, cx| s.choose(text, cx)))
+    }
+
     /// How wide the bar's menus are for `text`.
     pub fn width(cx: &App, text: &str, facets: &[Facet]) -> f32 {
         let q = Query::parse(text, &keys(facets));
@@ -542,6 +561,97 @@ fn pill_around(text: f32) -> f32 {
     // (And a pixel more: laid out on device pixels, its edges can each
     // move a fraction of one, taking it from the text's room.)
     (text + m::TEXT_INSET + 15.0 + m::TIGHT + 1.0).ceil()
+}
+
+/// A search and its filters' menus over a list, as the kit's apps have
+/// them ([`header`]): the field and the menus in one row when the field
+/// keeps `min_field` points beside them, else the menus under the field,
+/// their first menu's text `indent` in (over the list's first column's);
+/// and what the search keeps (`count`, "12 of 340") at the end of the
+/// field's row. The menus write the field's text ([`FilterBar::drives`]).
+#[derive(IntoElement)]
+pub struct Header {
+    field: Entity<SearchField>,
+    id: SharedString,
+    facets: Rc<Vec<Facet>>,
+    width: f32,
+    count: Option<SharedString>,
+    clear: bool,
+    min_field: f32,
+    indent: f32,
+}
+
+/// Where a [`Header`]'s menus start when under its field: their first
+/// menu's text over a list's first column's (inside its two lines of
+/// frame), as Log Viewer and Replay have them.
+pub fn list_indent(window: &Window) -> f32 {
+    let frame = f32::from(style::inset(window, Bounds::default(), 2.0).left());
+    frame + m::CELL_INSET - m::TEXT_INSET
+}
+
+/// [`Header`] for `field`, its menus `facets`, in `width` points.
+pub fn header(field: &Entity<SearchField>, id: impl Into<SharedString>, facets: Rc<Vec<Facet>>, width: f32) -> Header {
+    Header { field: field.clone(), id: id.into(), facets, width, count: None, clear: true, min_field: 240.0, indent: 0.0 }
+}
+
+impl Header {
+    /// What the search keeps, at the end of the field's row.
+    pub fn count(mut self, count: impl Into<SharedString>) -> Self {
+        self.count = Some(count.into());
+        self
+    }
+
+    /// No Clear menu (the app has its own).
+    pub fn no_clear(mut self) -> Self {
+        self.clear = false;
+        self
+    }
+
+    /// The least the field keeps beside the menus in one row.
+    pub fn min_field(mut self, w: f32) -> Self {
+        self.min_field = w;
+        self
+    }
+
+    /// The menus' indent when under the field.
+    pub fn indent(mut self, x: f32) -> Self {
+        self.indent = x;
+        self
+    }
+}
+
+impl RenderOnce for Header {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let text = self.field.read(cx).text(cx).to_owned();
+        let font = style::ui_font(FontWeight::NORMAL);
+        let count_w = self.count.as_ref().map_or(0.0, |c| style::text_width_app(cx, c, style::PLAIN_SIZE, &font).ceil() + m::SPACING);
+        let bar_w = FilterBar::width(cx, &text, &self.facets) + m::SPACING + 40.0;
+        let one_row = self.width - bar_w - count_w - m::SPACING >= self.min_field;
+        let mut bar = FilterBar::new(self.id, text, self.facets).drives(&self.field);
+        if !self.clear {
+            bar = bar.no_clear();
+        }
+        let count = self.count.map(|c| {
+            canvas(
+                |_, _, _| {},
+                move |b, _, window, cx| {
+                    let p = crate::theme::palette(cx);
+                    let r = style::label(window, cx, b.right(), b.center().y, style::Align::Right, c.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+                    crate::agent::record(window, cx, crate::agent::Node::label(c.clone(), r));
+                },
+            )
+            .w(px((count_w - m::SPACING).max(0.0)))
+            .h(px(m::CONTROL_HEIGHT))
+            .flex_shrink_0()
+        });
+        let field_w = if one_row { self.width - bar_w - count_w - m::SPACING } else { self.width - count_w };
+        let top = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(field_w.max(1.0))).child(self.field.clone()));
+        if one_row {
+            top.child(div().flex_1().min_w_0().child(bar.max_width(bar_w))).children(count)
+        } else {
+            div().flex().flex_col().gap(px(m::SPACING)).child(top.children(count)).child(div().pl(px(self.indent)).child(bar.max_width(self.width - self.indent)))
+        }
+    }
 }
 
 /// A number with thousands set apart ("12,345"), as counts in menus are.

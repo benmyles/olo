@@ -551,9 +551,9 @@ pub fn items(app: &mut Passwords, window: &mut Window, cx: &mut Context<Password
     // row beside them (inside its well's lines).
     let indent = line + m::SPACING - m::TEXT_INSET;
     let top = line + m::TIGHT + (sidebar::ROW - m::CONTROL_HEIGHT) / 2.0;
-    let bar_me = me.clone();
-    let filters =
-        FilterBar::new("passwords", app.search.clone(), facets.clone()).no_clear().max_width(LIST_WIDTH - indent).on_change(move |text, _, cx| bar_me.update(cx, |a, cx| a.set_search(text, true, cx)));
+    // (What the menus choose goes into the search field, which the app
+    // follows: `FilterBar::drives`.)
+    let filters = FilterBar::new("passwords", app.search.clone(), facets.clone()).no_clear().max_width(LIST_WIDTH - indent).drives(&app.search_field);
 
     // The list, its selection the app's.
     let selected = visible.iter().position(|i| Some(&i.id) == app.selected.as_ref());

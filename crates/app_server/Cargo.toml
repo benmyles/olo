@@ -73,6 +73,8 @@ debug = []
 profile-with-tracy-mem = []
 
 [dev-dependencies]
+# DRM modes made in tests (`keep_current_modes`' timings).
+drm-ffi = "0.9"
 # Runs touchpad.lua against scripted frames (touch_filter's tests).
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
 # examples/color_probe: a client tagging its window's colours.

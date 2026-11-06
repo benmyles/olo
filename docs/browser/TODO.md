@@ -352,3 +352,7 @@ this is a harness correction, not a browser speedup.
 - [ ] Investigate the two candidate drag hitches from the first link-input
   sample; paired confirmation is clear. Preserve both runs and measure actual
   hover-to-presentation latency before performance acceptance.
+- [ ] Reduce the new 1,001-link keyboard case's 17.711 ms median to the
+  frame target; full document restyle/layout/raster is still conservative.
+  Keep the merged-desktop sample's drag/flick hitches visible (baseline 2/1,
+  candidate 1/0) and control external build load before attributing them.

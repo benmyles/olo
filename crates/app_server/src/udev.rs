@@ -1636,7 +1636,13 @@ impl AnvilState<UdevData> {
 
         let fd = DrmDeviceFd::new(DeviceFd::from(fd));
 
-        let (drm, notifier) = DrmDevice::new(fd.clone(), true).map_err(DeviceAddError::DrmDevice)?;
+        // `display.keep_modes` (or `OLO_KEEP_MODES=1`): the displays' modes kept as the last
+        // app_server left them, no modeset at a restart (Olo's Smithay,
+        // `keep_current_modes`); else every connector switched off and
+        // each display modeset from dark, as ever.
+        let keep = self.settings.display.keep_modes || std::env::var_os("OLO_KEEP_MODES").is_some_and(|v| v == "1");
+        smithay::backend::drm::keep_current_modes(keep);
+        let (drm, notifier) = DrmDevice::new(fd.clone(), !keep).map_err(DeviceAddError::DrmDevice)?;
         let gbm = GbmDevice::new(fd).map_err(DeviceAddError::GbmDevice)?;
 
         let registration_token = self
@@ -2924,6 +2930,30 @@ impl<'a> smithay::backend::renderer::element::RenderElement<UdevRenderer<'a>> fo
 
 #[cfg(test)]
 mod tests {
+
+    /// A display's mode is kept at a restart (`OLO_KEEP_MODES`) when the
+    /// CRTC shows its timings, whatever the kernel's type bits and name
+    /// say (a CRTC's mode and its connector's list differ in those).
+    #[test]
+    fn modes_kept_by_their_timings() {
+        use smithay::reexports::drm::control::Mode;
+        let raw = |clock: u32, name: &[u8], kind: u32| {
+            let mut m: drm_ffi::drm_mode_modeinfo = unsafe { std::mem::zeroed() };
+            (m.clock, m.hdisplay, m.hsync_start, m.hsync_end, m.htotal) = (clock, 5120, 5168, 5200, 5280);
+            (m.vdisplay, m.vsync_start, m.vsync_end, m.vtotal, m.vrefresh) = (2880, 2883, 2888, 2962, 60);
+            m.type_ = kind;
+            for (k, b) in name.iter().enumerate() {
+                m.name[k] = *b as _;
+            }
+            Mode::from(m)
+        };
+        let crtc = raw(938250, b"", 0);
+        let listed = raw(938250, b"5120x2880", 0x48);
+        assert!(crtc != listed, "the kernel's own equality tells them apart");
+        assert!(smithay::backend::drm::same_timings(&crtc, &listed));
+        assert!(!smithay::backend::drm::same_timings(&crtc, &raw(938000, b"5120x2880", 0x48)));
+    }
+
     #[test]
     fn mouse_dpi_reads_the_default() {
         assert_eq!(super::mouse_dpi("800@1000"), Some(800));

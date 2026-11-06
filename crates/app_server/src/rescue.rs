@@ -206,7 +206,8 @@ pub fn safe(real: &Settings, main: Option<String>, scales: &[(String, f64)], wor
     // Each display on its own, at its preferred mode (udev and
     // `enter_rescue`) and the scale Olo picks, unrotated, no VRR, HDR or
     // Vivid; brightness is kept as it is (`set_settings`).
-    s.display = DisplaySettings { scale: d.display.scale, main, outputs: Default::default() };
+    // (And the displays modeset at a restart, as ever: `keep_modes` off.)
+    s.display = DisplaySettings { scale: d.display.scale, main, outputs: Default::default(), keep_modes: false };
     for (key, scale) in scales {
         s.display.outputs.entry(key.clone()).or_default().scale = Some(*scale);
     }

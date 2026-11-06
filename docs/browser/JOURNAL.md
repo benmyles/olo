@@ -3318,6 +3318,36 @@ hardcode RAM-backed `/tmp/olo-dev`; the hook bypass is limited to that rerun.
 Still open: box/image/empty-anchor hit regions, complete focus/default actions,
 fragment focus starting points, frame/script history, tabs/downloads/BFCache,
 URL-byte history bounds, incremental invalidation, V8/security/Olo credential
-integration, complete rendering and independent website journeys. The visible
-fixture still lacks correct inter-anchor whitespace, among other renderer gaps.
+integration, complete rendering and independent website journeys. Authored-page
+pixels still require an independent Chrome comparison; a clean native review
+does not establish their typography or spacing fidelity.
 **0/100 websites / 0/3000 combinations accepted; the goal remains active.**
+
+Latest-main integration: pushed **6e19c735**, then merged through **b3cc22f0**:
+shared search headers/filter-field changes, exact auto-tile edges/minima/frame
+anchoring, and opt-in display-mode retention across compositor restarts.
+Browser/web runtime files are unchanged by this merge. Workspace release build
+passes (**2m12s**), **234 browser/web tests**, strict browser/web clippy,
+thirteen kit/Preferences lint tests and both **15-case** native suites pass
+again, including the owned-session re-exec. The full 1280×800 desktop lint
+retains the same **ten findings outside Browser**: Disk Usage six, Passwords
+setup three, Integrations one. Browser is clean. Journal retains all 590 entries.
+
+Merged-desktop frozen paired sample, three replays per build: RSS
+**84400→83896 KiB**; both zero idle CPU/wakeups/frames over three seconds.
+Median first-report-to-moving-client-frame drag/flick/wheel
+**9.870/9.047/0.222→9.168/8.990/0.496 ms**; aggregate hitches
+**2/1/0→1/0/0**. Median slowest draw **0.51/0.50/1.41→0.62/0.57/0.61 ms**.
+Keep these hitches visible alongside the earlier clear sample; this is not a
+speedup or presentation claim. Main-worktree rustc activity was observed at
+the beginning of this integration sample, none at its end; scheduling/load
+was not controlled. The keyboard latency/full-restyle concern remains open.
+
+Evidence: `2026-11-06-navigation-main-integration.json` and
+`2026-11-06-navigation-merged-ui-cost.json`. The first milestone's push hook
+also reran and passed its standard Browser lint, inadvertently using its
+hardcoded `/tmp` root; that tool removes its session folders on completion.
+This integration uses the manually rerun `/var/tmp` lint paths and skips that
+duplicate hook. Its full-desktop failure is recorded, not silently called a
+pass. No personal session reload/install. Latest fetched main is included;
+website acceptance remains **0/100**, and the goal stays active.

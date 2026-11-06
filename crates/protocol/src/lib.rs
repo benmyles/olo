@@ -1766,6 +1766,12 @@ pub struct DisplaySettings {
     /// under a connector by older versions still apply, and move to the
     /// monitor's key when next changed.
     pub outputs: std::collections::BTreeMap<String, OutputConfig>,
+    /// A restart of the window server (an upgrade) keeps the displays'
+    /// modes as they are, rather than switching every display off and on
+    /// again (a second or two dark on each). To try (off unless set):
+    /// `OLO_KEEP_MODES=1` in app_server's environment does the same.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub keep_modes: bool,
 }
 
 /// A GPU, as `Request::Gpus` tells of it.
@@ -1803,7 +1809,7 @@ pub fn is_connector_key(key: &str) -> bool {
 
 impl Default for DisplaySettings {
     fn default() -> Self {
-        DisplaySettings { scale: 2.0, main: None, outputs: Default::default() }
+        DisplaySettings { scale: 2.0, main: None, outputs: Default::default(), keep_modes: false }
     }
 }
 

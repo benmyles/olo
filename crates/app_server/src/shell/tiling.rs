@@ -1155,8 +1155,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             true => (start, target),
             false => self.tile_followers[i].before.iter().find(|(_, t)| t.size == geo.size).copied().unwrap_or((start, target)),
         };
-        let x = if to.loc.x != from.loc.x { to.loc.x + to.size.w - geo.size.w } else { to.loc.x };
-        let y = if to.loc.y != from.loc.y { to.loc.y + to.size.h - geo.size.h } else { to.loc.y };
+        // Held by the side that moved less (the one not dragged): a side
+        // a pixel off by rounding as the other went 125 px had a frame of
+        // the size before hung from the dragged side, 125 px out over its
+        // neighbour (auto-fuzz seed 37).
+        let moved = |a0: i32, a1: i32, b0: i32, b1: i32| ((b0 - a0).abs(), ((b0 + b1) - (a0 + a1)).abs());
+        let (dl, dr) = moved(from.loc.x, from.size.w, to.loc.x, to.size.w);
+        let (dt, db) = moved(from.loc.y, from.size.h, to.loc.y, to.size.h);
+        let x = if dl > dr { to.loc.x + to.size.w - geo.size.w } else { to.loc.x };
+        let y = if dt > db { to.loc.y + to.size.h - geo.size.h } else { to.loc.y };
         let at = Point::from((x, y)) - (geo.loc - loc);
         debug!(target: "olo::rounds", window = window.id(), drew = ?(geo.size.w, geo.size.h), target = ?(target.loc.x, target.loc.y, target.size.w, target.size.h), in_round = self.round_has(window), "follower drew");
         if at != loc {

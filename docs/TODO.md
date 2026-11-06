@@ -13,235 +13,14 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **auto-fuzz: two tiles overlap as a Terminal opens** (found
-  2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
-  NAME --steps 80 --seed 7` on a `--session --shell` session at 3024×1890,
-  1.75×, fails at step 37: "opening olo-terminal: tiles 4
-  (olo.styled-edit) (8, 8, 764, 528) and 10 (olo.terminal) (610, 8, 380,
-  528) overlap". Find why the new tile is laid over its neighbour's, fix
-  it, and run the fuzzer long (several seeds, `--reloads`) until clean.
-  *Step 37 fixed* (2026-11-04): the new Terminal answered its first
-  configure with a frame at its own size (934 wide), and
-  `keep_in_tile_area` pushed that inside the tiling area (x 610); it
-  then drew its tile's size there, over its neighbour, till a layout
-  four seconds later. A window that drew another size than it acked,
-  one it can be, is left where its tile is now (`drawn_otherwise`).
-  Seeds 1–3 pass 60 steps. *Step 39 fixed* too: a drag round was on
-  its way as the drag was let go, and the tiles were laid out again
-  (StyledEdit can't be as narrow as the drag left it), giving the
-  followers new targets; the round's frames came at the drag's sizes
-  and were placed by the new targets (9 drawn 876 wide, anchored on
-  the new right edge: 18 px over 10, for a frame). A follower now keeps
-  its last few asks and places a frame by the one it was drawn for.
-  Seeds 1–5 and 7 pass 80 steps, 8 and 9 with `--reloads` too.
-  *Seed 6's step 55 fixed* as well: the same for the window dragged
-  (it wasn't a follower, so a frame of its last round's size, laid out
-  again, was anchored on the new target's edge, 13 px off); it follows
-  from where the drag put it as the drag ends, and stops following as
-  a drag of it begins. Seeds 1–7 and 10–12 pass 120 steps, 8 with
-  `--reloads` too. *Next*, both there before these changes and both
-  around a reload: seed 13 with reloads at step 19, and seed 9 with
-  reloads now and then at step 46 (settled, then moved: 4, 5 and 6 to
-  the full width a moment after a drag). *Found* for seed 13 (rounds'
-  log, 2026-11-04): not the drag. Window 1, a Terminal tab, came back
-  from the reload only then, during the drag, and was put back where it
-  was before the reload, at its saved size (`restore_placement`: x 1131,
-  577 wide, asked at its first commit by `claim_placement`), though its
-  tile's room (a `Kept` for it in the tree rebuilt after the restart)
-  had moved with the drag; 5 ms later the layout put it in its tile
-  (x 1091, 453 wide). One frame over its neighbour, out past the tiling
-  area. The fix: a window coming back to an auto-tiled display whose
-  tree keeps room for it asks its tile's size as it is now at its first
-  commit and shows in that room, as a new window takes its tile
-  (`auto_claim`), its saved place used only when there's no room kept.
-  Seed 9's step 46 looks the same family: room held for a window not
-  back yet (`Kept`, `RESTORING`) let go a moment after a drag, the
-  tiles growing into it as the fuzzer watches for stillness; to see in
-  the rounds' log, and either the room let go before the fuzzer looks
-  or the fuzzer told that it's coming.
-  *Fixed* (2026-11-04, evening; HACKING's auto-tiling restart): a window
-  coming back claims its kept tile at its first commit, at the tile's
-  size now (seed 13's step 19); a closed or away window's place, which
-  took no room, comes back taking none (it held 19% of the display for
-  20 s after every upgrade: seed 9's step 46, 14's step 42); a group's
-  front given a tile once when several of its windows join it at once
-  (a tree had `[7 / 7]`: 15's step 52); a window behind a tiled one in
-  its group isn't moved by the restart check (13's step 54); and the
-  fuzzer grabs an edge below the tabs (beside a tab is the desktop: 11's
-  step 24). Seeds 1–16 then passed 120 steps with `--reloads` (7 and
-  11 run again alone, 11 once the fuzzer grabbed below the tabs).
-  *Next*: with the edges below the tabs every
-  seed's drags land a little differently, and two new faults turned up
-  in a sweep stopped early: seed 2 at step 67 ("reloading: settled,
-  then moved") and seed 3 at step 103 (bringing a tab to the front of
-  its group, then the tiles moved); then the sweep again to 16.
-  *Seed 2's step 67, read* (its app_server log): the reload brought back
-  29 windows, and some twenty of Terminal's came back as new windows,
-  their saved places not matched at their first commit (only the first
-  of each group is, by its key), so each split a tile ("a new window
-  into its tile"), then folded into its group as it was put back, the
-  tree churning for 0.7 s and the tiles still moving after the fuzzer
-  saw them settle. *Fixed* (2026-11-04, late): those twenty were the
-  Terminals racing each other (each adopted every other's shells as
-  they all re-executed: olo-termd now lists a shell as its Terminal's
-  while that process lives, `Shell::left_by`); and a tab put back is no
-  tile of its own while its group forms (`awaiting`, `kept_for`), nor
-  put back into another kept place once a hand has grouped it. Five
-  Terminals and a Tracker now come back from four reloads in a row
-  straight into their tiles. Seeds 1–16 with `--reloads` pass, all
-  sixteen at once in 155 s (`tools/dev/fuzz-sweep`); seed 1 failed once
-  under that load ("group 1's tab places are [(2, 0), (5, 0), …]": two
-  windows at one tab place) and passed alone: a race to look at. Also with `--floats` (older, on HEAD too):
-  seeds 5 (step 51) and 6 (step 73), a group's window behind showing
-  as a tile over the window being dragged.
-  *The fuzzers are Rust now* (2026-11-04, late; HACKING's fuzzers:
-  `olo-fuzz auto`, floats always in, its own seeds: the Python ones
-  above don't replay). A sweep of 26 seeds (`olo-fuzz sweep --confirm
-  -- auto`, 120 steps; 132 s, the failures confirmed together in 107 s)
-  finds ten faults, each at the same step every run. Mid-drag, tiles
-  out of step or over each other: seeds 8 (step 112, two tiles 495 px
-  past their neighbour for 400 ms), 10 (102), 12 (75, 1.4 s of it), 14
-  (95), 19 (70), 21 (38), 23 (67) and 25 (88). A floating window under a
-  tile after tiling one: 13 (112) and 18 (66). Fix them next, at the
-  cause, then sweep again until a wave is clean (with `--reloads` too).
-  *13 and 18 fixed* (2026-11-05): the window tiled was a Tracker alert
-  (a seam drag had landed in a Tracker window and dragged a folder onto
-  another: the alert said the move failed), and an alert stays over its
-  app's windows as their child, so as a tile it went back over the
-  floats each time they were put over it. Dialogs and alerts now float
-  whatever is asked (`floats_always`). Seed 18 then crashed Tracker at
-  step 81 (a band selection in its columns asked GPUI for an animation
-  frame from a mouse move, outside drawing: a panic), fixed in Tracker
-  and in GPUI. And the fuzzers now run in a sandbox (that drag could
-  have moved the person's files). *Left*, from a wave of 50 in the
-  sandbox (150 s, the failures confirmed together in 122 s), all
-  mid-drag, tiles out of step or over each other: seeds 8 (step 112),
-  10 (102), 12 (75), 14 (95), 19 (70), 21 (38), 23 (67), 25 (88), 28
-  (101, 2.8 s of it), 44 (118), 47 (101, 236 px), 48 (94) and 50 (92).
-  Nine more failed only under the load of 50 at once.
-  *All thirteen fixed* (2026-11-05): a window a drag's round waited for
-  could be under a float, so counted as not shown, and Smithay sent its
-  frame callbacks once a second; GPUI's resize waits for one, so the
-  round ran out of time (50 ms) and its neighbours went on over it for
-  up to a second. Windows in a round now get theirs every frame. And
-  GPUI acknowledged a resize's configure held for the next frame after
-  a newer one (the drag's end): a protocol error, and app_server ended
-  the Terminal ("wrong configure serial"); the held one is dropped once
-  a newer one is acknowledged. A wave of 38 then: no faults (the 8
-  failures the load's, or sessions past the 32 display names a runtime
-  directory had: now 256). *Left*, with `--reloads` (a wave of 22): seed
-  14 at step 22 (a Tracker settled, then moved, after a drag) and 16 at
-  step 54 (one look out of step mid-drag). *14 fixed* (2026-11-05): 11 s
-  after a restart app_server checks the windows that came back against
-  what was saved, and puts back those moved since, unless moved on
-  purpose; a tile floated by an agent (`set_floating` over IPC) wasn't
-  counted as on purpose, so it was put back in its old tile's place.
-  Floating or tiling a window now is. 16 passes by itself (the load's).
-  *Seed 16 again* (2026-11-05, a wave of 24 with `--reloads`, 12 at
-  once: 20 pass, three more pass alone): its step 54 is a StyledEdit
-  window opening into a group mid-drag and drawn in front at a size
-  the drag had moved on from (a group asks its windows for its size only
-  between drags, and `mark_behind`'s wait for a window to draw applied
-  only to one coming from behind). Now a window new to a group is asked
-  for the group's size mid-drag too, one size on the way at a time, and
-  waits to have drawn before it's the front, as one from behind does
-  (`Decoration::fronted`): alone it passes 3 runs in 4. *Left*: under a
-  wave's load it still shows for a look (the 100 ms wait,
-  `groups::FRONTING`, runs out first), and alone it sometimes fails at
-  step 68 ("ungrouping 3: settled, then moved": the two tiles left grow
-  from 211 to 1064 px tall after settling) or step 83 (tiles overlapping
-  for 4 looks mid-drag): races around a reload, next to look at.
-  *Step 68 fixed* (2026-11-05): not a race. A place still kept from the
-  restart before (for a window not back since) was saved again under
-  its old slot number, which the new save had given to another window,
-  so slot 4 was kept twice; one window came back into one, and the
-  other held a fifth of the column for nobody until it timed out 20 s
-  after the restart, the tiles beside it then growing (`SavedNode::of`:
-  such a place is saved as room for its neighbours; unit-tested). Four
-  runs of seed 16 with `--reloads` since: 68 passes in all; two passed
-  outright, two failed at step 54 for one look of 193 (a StyledEdit
-  opened before the restart showing only then, mid-drag, joining tile
-  1's group and drawn at 290 px while its neighbour was where the drag
-  began: the newcomer case above, still racing). *Tried* (2026-11-05):
-  letting a newcomer that hasn't drawn its asked size wait 600 ms rather
-  than `FRONTING`'s 100 before it's its group's front; it broke focus (a
-  window opening into a group wasn't the front when the keyboard was
-  given, so none had it: seed 16 failed at step 4 every run), so it was
-  taken back. The fix wants the keyboard to follow such a window once
-  it's fronted, or the newcomer's wait to apply only mid-drag.
-  *Found* (2026-11-06, eight runs at a time): the window is a StyledEdit
-  opened before the reload and coming back only then, during step 54's
-  drag. It is put in its group's tile at the size it was saved at (290
-  px; the group is 533), asked nothing yet while the drag is on, with no
-  frame callback pending, so it isn't held back (`mark_behind` waits only
-  for something to draw) and is the group's front at once; the window
-  list also names a group's front by the stack, so a newcomer still
-  waiting is reported as the front. The look comes at 160 ms, after the
-  drag (75 ms) has been let go. *Tried and taken back*: a size asked
-  counting as something to draw (3 of 8 failed), a newcomer not at its
-  group's size waiting up to 600 ms mid-drag (3 of 8) or always (5 of 8,
-  and new failures: an empty window at step 1), and the window list
-  naming the drawn window as the front (3 of 8); before them it failed 1
-  in 4. *Next*: the cause, not the wait: a window coming back into a
-  group asked for the group's size at its first commit (as `auto_claim`
-  asks a tile's), so it never draws the saved size at all.
-  *Done* (2026-11-06): a window coming back into a group on screen is
-  asked for the group's size as it is now (on its way, mid-drag) in its
-  first configure (`returning_group_size`). Seed 16 with `--reloads`,
-  nothing else running: 13 of 14 pass (8 runs of 60 steps, 6 of 56;
-  it was 1 failure in 4). (Run beside a build, a run fails at step 1
-  too: a StyledEdit's first frame later than the fuzzer's 0.25 s.)
-  *Found*, the one left (a kept run's log): not a window coming back.
-  The StyledEdit opened at step 49, after the reload, behind its
-  group's front (window 2, both 290 px, then 533 after step 53's drag),
-  was raised over it for 8 ms during step 54's drag (the tree read
-  `[6 | 5]` then `[2 | 5]`: a group's tile is its top window, and 6
-  hadn't drawn the group's 533 yet). *Fixed* (2026-11-06): the window
-  wasn't the race's. The drag's press, on tile 3's right edge, was under
-  a floating Tracker over the tiles: the press was the float's, a folder
-  dragged out of it was let go over StyledEdit, which opened a window
-  for it, failed to read it, closed it and said so (window 6 and its
-  alert 7, mid-drag). The fuzzer now presses only where no other window
-  is over the edge (`op_drag`), fails when any program of its session
-  leaves a crash report (`check_crashes`, the report kept with the
-  logs), and StyledEdit says a folder can't be opened without opening a
-  window for it first. app_server logs at debug who brought a window
-  to the front (`focus_window`'s caller). Seed 16 with `--reloads`: 8
-  of 8; seeds 1–16 with `--reloads`, 8 at once: 15 pass, 13 fails only
-  under the load (passes alone), no faults.
-  *Left*: an app_server panic seen once at seed 16's step 13 (a
-  `Duration` subtracted below zero, no backtrace kept: before
-  `check_crashes`), not seen in 16 runs since; the fuzzer now keeps a
-  report if it happens again. Then sweeps of more seeds.
-  *Swept* (2026-11-06): seeds 17–40 with `--reloads`, 8 at once: 16
-  failed under the load; the sweep's confirmation (the failures again,
-  side by side) left six, and of those, run alone one at a time, five
-  pass (17, 26, 27, 29, 34). *Left*: seed 38 at step 105, every run:
-  dragging 1's right edge, tiles 9 and 10 stay 2 px further apart than
-  the gap for most of the drag (156 of 339 looks): each draws a pixel
-  narrower than asked (9 asked 680, drew 679; 10 asked 212, drew 211).
-  At the fuzzer's 1.75× an odd logical width is no whole number of
-  device pixels and each app rounds its own down, so two neighbours
-  together are 2 px off where the check allows 1.
-  *Looked at* (2026-11-06; the fuzzer's report now names the tiles'
-  apps): 9 is a StyledEdit, 10 a Terminal, both GPUI. Not the layout's
-  rounding (`divide` gives both sides of a split the same edge) and not
-  GPUI at rest: at 1.75× a floating StyledEdit placed at 678–685 and
-  600–603 wide draws each exactly. Mid-drag it draws a pixel short
-  (680 asked, 679 drawn), and Terminal 10, whose edge the drag doesn't
-  touch, moved from 1332 to 1333: its split's ratio taken again from a
-  drawn frame (`take_ratios`/`fraction_of`), so the short pixel moves a
-  neighbour. *Next*: find where a resize by hand (xdg `resizing`, the
-  swapchain grown to its room, `update_drawable_size_within`) loses the
-  pixel at a fractional scale, and keep ratios from the sizes asked,
-  not drawn. (Not app_server's sizes: `inner_size` and `outer_size` are
-  whole points either way, and GPUI's inset is none with Olo's frames,
-  so the configured size is the one kept; an app resizing itself
-  mid-drag is what's left to rule out.)
-  *Swept* seeds 41–64 with `--reloads`, 8 at once: 23 pass, 43 fails
-  only under the load (passes alone): no faults.
+Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
+
+Nothing: every item is being worked on, done (waiting for Ben or
+finished) or blocked.
+
+## Done, waiting for Ben to try or confirm
 
 - **An app_server restart modesets every display** (seen 2026-11-01
   in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
@@ -266,81 +45,17 @@ something nobody here has is in "Blocked", with what it waits for.
   modeset needed; and if the driver refuses it, `reset_state` and
   modeset as now. It needs trying on the real displays (an upgrade
   the person agrees to try), so it isn't shipped blind.
-
-### Tabled (maybe one day)
-
-Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
-you can table the rest of the performance related items under a "maybe
-one day" section in the todos and skip them". Not worked on unless he
-asks again. But (Ben, same day): "still address any performance items
-that are real and cause any noticeable impact to the user but we don't
-have to keep optimizing just for the sake of optimizing": a slowness a
-person notices (a stutter, a lag, a hang) is still fixed at once, as
-any other item; making fast things faster waits here.
-
-- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
-  frames is never acceptable: olo must be buttery smooth on all
-  displays all the time"; the pointer "definitely way slow/stuttery",
-  worst on the Studio Display; app_server at 20% of a core). Done
-  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
-  measured cost and observed drops; `{"type":"frames"}`,
-  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
-  overlay plane as cursor plane, clipped at the display's edge in
-  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
-  flip and app_server restart eight times; a refused flip no longer
-  kills it); windows as scan-out candidates; Smithay vendored with
-  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
-  all `render_output`, and in it the GPU submit (asahi's
-  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
-  in the kernel; plane assignment and atomic tests cost 0.0 ms.
-  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
-  renderer making a fence per texture drawn (a GPU submit an
-  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
-  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
-  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
-  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
-  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
-  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
-  the radio is the person's to fix (the receiver nearer, its
-  extender, a lower polling rate). **Next**: windows on overlay
-  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
-  agree (a client's cursor on the plane rendered right, or the
-  pointer's plane above every window plane and the window refused
-  while the pointer is drawn in the frame over it); the "draws"
-  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
-  at ~11% with a call on is the tick (now once per 8 ms) and looks;
-  per-display render threads (its own TODO).
-
-- **app_server's critical path on threads of its own** (Ben,
-  2026-11-01: "why run the risk of a blocking call? threads would
-  make sure we don't accidentally block"): input → pointer plane
-  update → commit never shares a thread with anything that can
-  block. Design: an input-and-cursor thread owning libinput and the
-  cursor planes (a pointer move is a plane property commit, no frame);
-  a render-and-commit thread per display owning its GL context, DRM
-  surface and pacing (a slow 5K frame can't delay the built-in
-  display's); the Wayland clients and IPC on the main loop, handing
-  each display's thread a snapshot of what to draw. Our own
-  synchronous work (importing a client's buffer, a fence, a DCP test
-  or commit) is what blocks today, and the heartbeat (`timings`)
-  finds it. After the reliability work.
-
-- **Screen recording: frames to the GPU's encoder as dmabufs, and the
-  Intel GPU on battery** (what the screen recording entry below has left;
-  2026-11-06): the captured frames handed to NVENC as CUDA external
-  memory and to VA-API through its DRM PRIME import, its video processor
-  making NV12, rather than copied through the CPU; and `--encoder auto`
-  taking the Intel GPU's AV1 rather than waking the NVIDIA GPU while on
-  battery. *The battery part done* (2026-11-06, `olo_video::on_battery`,
-  unit-tested on made-up supplies; untried unplugged).
-  *Tabled* (2026-11-06): recording runs at 8.5 ms a frame at 2560 × 1600
-  on the Intel GPU and 13 ms at 4K on NVIDIA's, frames copied; the
-  zero-copy path (VA-API's video processor, the capture's dmabuf handed
-  across threads) saves CPU nobody notices, so it waits, as Ben asked
-  for performance work.
-
-## Done, waiting for Ben to try or confirm
+  *Done, opt-in* (2026-11-06; HACKING's "The displays' modes at a
+  restart"): `display.keep_modes: true` in app_server.json (or
+  `OLO_KEEP_MODES=1`) opens each GPU without the reset, switches off
+  only the last app_server's cursor and overlay planes (no modeset;
+  refused, it resets as ever), keeps a CRTC's mode when it is the one
+  asked for by its timings (unit-tested: a CRTC's mode and a
+  connector's listed one, the kernel's equality telling them apart),
+  and leaves the displays as they are when app_server goes. Off by
+  default: untried on real displays (headless has no DRM).
+  *Left* (Ben): set it, upgrade, and see the displays stay lit (the
+  kernel log should have no `set_digital_out_mode` for the restart).
 
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a
@@ -419,9 +134,14 @@ any other item; making fast things faster waits here.
   portal dialogs, the screen saver and the supervisor have none);
   a window's content scrolling when the window is shorter than it
   (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
-  *Reviewed* (2026-11-06): what's left (list, search and filter wiring)
-  isn't worth a kit piece yet, as said above: done, for Ben to say
-  otherwise.
+  *And the last of it* (2026-11-06): the search and filter wiring
+  every searching app had its own of is the kit's: `SearchField::choose`
+  and `FilterBar::drives` (the bar writes the field, the app follows the
+  field alone: Log Viewer, Agent Screens' Replay and Passwords, each of
+  which set the field and re-filtered by hand), and `search::header`
+  (the field, the bar and a count, one row or two, the bar's first menu
+  over the list's first column: Log Viewer and Replay, each with its own
+  copy of that layout). Done, for Ben to say what else repeats.
 
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything
@@ -1858,7 +1578,316 @@ people.
   following Olo's (away when the screen locks, Do Not Disturb, a
   meeting), which needs Slack's client to build against.
 
+### Tabled by Ben: performance work he asked to skip
+
+Blocked on Ben asking for them again. Tabled (Ben, 2026-11-02):
+"performance seems pretty solid now in olo so
+you can table the rest of the performance related items under a "maybe
+one day" section in the todos and skip them". Not worked on unless he
+asks again. But (Ben, same day): "still address any performance items
+that are real and cause any noticeable impact to the user but we don't
+have to keep optimizing just for the sake of optimizing": a slowness a
+person notices (a stutter, a lag, a hang) is still fixed at once, as
+any other item; making fast things faster waits here.
+
+- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
+  frames is never acceptable: olo must be buttery smooth on all
+  displays all the time"; the pointer "definitely way slow/stuttery",
+  worst on the Studio Display; app_server at 20% of a core). Done
+  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
+  measured cost and observed drops; `{"type":"frames"}`,
+  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
+  overlay plane as cursor plane, clipped at the display's edge in
+  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
+  flip and app_server restart eight times; a refused flip no longer
+  kills it); windows as scan-out candidates; Smithay vendored with
+  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
+  all `render_output`, and in it the GPU submit (asahi's
+  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
+  in the kernel; plane assignment and atomic tests cost 0.0 ms.
+  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
+  renderer making a fence per texture drawn (a GPU submit an
+  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
+  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
+  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
+  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
+  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
+  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
+  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  the radio is the person's to fix (the receiver nearer, its
+  extender, a lower polling rate). **Next**: windows on overlay
+  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
+  agree (a client's cursor on the plane rendered right, or the
+  pointer's plane above every window plane and the window refused
+  while the pointer is drawn in the frame over it); the "draws"
+  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
+  at ~11% with a call on is the tick (now once per 8 ms) and looks;
+  per-display render threads (its own TODO).
+
+- **app_server's critical path on threads of its own** (Ben,
+  2026-11-01: "why run the risk of a blocking call? threads would
+  make sure we don't accidentally block"): input → pointer plane
+  update → commit never shares a thread with anything that can
+  block. Design: an input-and-cursor thread owning libinput and the
+  cursor planes (a pointer move is a plane property commit, no frame);
+  a render-and-commit thread per display owning its GL context, DRM
+  surface and pacing (a slow 5K frame can't delay the built-in
+  display's); the Wayland clients and IPC on the main loop, handing
+  each display's thread a snapshot of what to draw. Our own
+  synchronous work (importing a client's buffer, a fence, a DCP test
+  or commit) is what blocks today, and the heartbeat (`timings`)
+  finds it. After the reliability work.
+
+- **Screen recording: frames to the GPU's encoder as dmabufs, and the
+  Intel GPU on battery** (what the screen recording entry below has left;
+  2026-11-06): the captured frames handed to NVENC as CUDA external
+  memory and to VA-API through its DRM PRIME import, its video processor
+  making NV12, rather than copied through the CPU; and `--encoder auto`
+  taking the Intel GPU's AV1 rather than waking the NVIDIA GPU while on
+  battery. *The battery part done* (2026-11-06, `olo_video::on_battery`,
+  unit-tested on made-up supplies; untried unplugged).
+  *Tabled* (2026-11-06): recording runs at 8.5 ms a frame at 2560 × 1600
+  on the Intel GPU and 13 ms at 4K on NVIDIA's, frames copied; the
+  zero-copy path (VA-API's video processor, the capture's dmabuf handed
+  across threads) saves CPU nobody notices, so it waits, as Ben asked
+  for performance work.
+
 ## Done (most recently finished first)
+
+- ~~**auto-fuzz: two tiles overlap as a Terminal opens**~~ (found
+  2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
+  NAME --steps 80 --seed 7` on a `--session --shell` session at 3024×1890,
+  1.75×, fails at step 37: "opening olo-terminal: tiles 4
+  (olo.styled-edit) (8, 8, 764, 528) and 10 (olo.terminal) (610, 8, 380,
+  528) overlap". Find why the new tile is laid over its neighbour's, fix
+  it, and run the fuzzer long (several seeds, `--reloads`) until clean.
+  *Step 37 fixed* (2026-11-04): the new Terminal answered its first
+  configure with a frame at its own size (934 wide), and
+  `keep_in_tile_area` pushed that inside the tiling area (x 610); it
+  then drew its tile's size there, over its neighbour, till a layout
+  four seconds later. A window that drew another size than it acked,
+  one it can be, is left where its tile is now (`drawn_otherwise`).
+  Seeds 1–3 pass 60 steps. *Step 39 fixed* too: a drag round was on
+  its way as the drag was let go, and the tiles were laid out again
+  (StyledEdit can't be as narrow as the drag left it), giving the
+  followers new targets; the round's frames came at the drag's sizes
+  and were placed by the new targets (9 drawn 876 wide, anchored on
+  the new right edge: 18 px over 10, for a frame). A follower now keeps
+  its last few asks and places a frame by the one it was drawn for.
+  Seeds 1–5 and 7 pass 80 steps, 8 and 9 with `--reloads` too.
+  *Seed 6's step 55 fixed* as well: the same for the window dragged
+  (it wasn't a follower, so a frame of its last round's size, laid out
+  again, was anchored on the new target's edge, 13 px off); it follows
+  from where the drag put it as the drag ends, and stops following as
+  a drag of it begins. Seeds 1–7 and 10–12 pass 120 steps, 8 with
+  `--reloads` too. *Next*, both there before these changes and both
+  around a reload: seed 13 with reloads at step 19, and seed 9 with
+  reloads now and then at step 46 (settled, then moved: 4, 5 and 6 to
+  the full width a moment after a drag). *Found* for seed 13 (rounds'
+  log, 2026-11-04): not the drag. Window 1, a Terminal tab, came back
+  from the reload only then, during the drag, and was put back where it
+  was before the reload, at its saved size (`restore_placement`: x 1131,
+  577 wide, asked at its first commit by `claim_placement`), though its
+  tile's room (a `Kept` for it in the tree rebuilt after the restart)
+  had moved with the drag; 5 ms later the layout put it in its tile
+  (x 1091, 453 wide). One frame over its neighbour, out past the tiling
+  area. The fix: a window coming back to an auto-tiled display whose
+  tree keeps room for it asks its tile's size as it is now at its first
+  commit and shows in that room, as a new window takes its tile
+  (`auto_claim`), its saved place used only when there's no room kept.
+  Seed 9's step 46 looks the same family: room held for a window not
+  back yet (`Kept`, `RESTORING`) let go a moment after a drag, the
+  tiles growing into it as the fuzzer watches for stillness; to see in
+  the rounds' log, and either the room let go before the fuzzer looks
+  or the fuzzer told that it's coming.
+  *Fixed* (2026-11-04, evening; HACKING's auto-tiling restart): a window
+  coming back claims its kept tile at its first commit, at the tile's
+  size now (seed 13's step 19); a closed or away window's place, which
+  took no room, comes back taking none (it held 19% of the display for
+  20 s after every upgrade: seed 9's step 46, 14's step 42); a group's
+  front given a tile once when several of its windows join it at once
+  (a tree had `[7 / 7]`: 15's step 52); a window behind a tiled one in
+  its group isn't moved by the restart check (13's step 54); and the
+  fuzzer grabs an edge below the tabs (beside a tab is the desktop: 11's
+  step 24). Seeds 1–16 then passed 120 steps with `--reloads` (7 and
+  11 run again alone, 11 once the fuzzer grabbed below the tabs).
+  *Next*: with the edges below the tabs every
+  seed's drags land a little differently, and two new faults turned up
+  in a sweep stopped early: seed 2 at step 67 ("reloading: settled,
+  then moved") and seed 3 at step 103 (bringing a tab to the front of
+  its group, then the tiles moved); then the sweep again to 16.
+  *Seed 2's step 67, read* (its app_server log): the reload brought back
+  29 windows, and some twenty of Terminal's came back as new windows,
+  their saved places not matched at their first commit (only the first
+  of each group is, by its key), so each split a tile ("a new window
+  into its tile"), then folded into its group as it was put back, the
+  tree churning for 0.7 s and the tiles still moving after the fuzzer
+  saw them settle. *Fixed* (2026-11-04, late): those twenty were the
+  Terminals racing each other (each adopted every other's shells as
+  they all re-executed: olo-termd now lists a shell as its Terminal's
+  while that process lives, `Shell::left_by`); and a tab put back is no
+  tile of its own while its group forms (`awaiting`, `kept_for`), nor
+  put back into another kept place once a hand has grouped it. Five
+  Terminals and a Tracker now come back from four reloads in a row
+  straight into their tiles. Seeds 1–16 with `--reloads` pass, all
+  sixteen at once in 155 s (`tools/dev/fuzz-sweep`); seed 1 failed once
+  under that load ("group 1's tab places are [(2, 0), (5, 0), …]": two
+  windows at one tab place) and passed alone: a race to look at. Also with `--floats` (older, on HEAD too):
+  seeds 5 (step 51) and 6 (step 73), a group's window behind showing
+  as a tile over the window being dragged.
+  *The fuzzers are Rust now* (2026-11-04, late; HACKING's fuzzers:
+  `olo-fuzz auto`, floats always in, its own seeds: the Python ones
+  above don't replay). A sweep of 26 seeds (`olo-fuzz sweep --confirm
+  -- auto`, 120 steps; 132 s, the failures confirmed together in 107 s)
+  finds ten faults, each at the same step every run. Mid-drag, tiles
+  out of step or over each other: seeds 8 (step 112, two tiles 495 px
+  past their neighbour for 400 ms), 10 (102), 12 (75, 1.4 s of it), 14
+  (95), 19 (70), 21 (38), 23 (67) and 25 (88). A floating window under a
+  tile after tiling one: 13 (112) and 18 (66). Fix them next, at the
+  cause, then sweep again until a wave is clean (with `--reloads` too).
+  *13 and 18 fixed* (2026-11-05): the window tiled was a Tracker alert
+  (a seam drag had landed in a Tracker window and dragged a folder onto
+  another: the alert said the move failed), and an alert stays over its
+  app's windows as their child, so as a tile it went back over the
+  floats each time they were put over it. Dialogs and alerts now float
+  whatever is asked (`floats_always`). Seed 18 then crashed Tracker at
+  step 81 (a band selection in its columns asked GPUI for an animation
+  frame from a mouse move, outside drawing: a panic), fixed in Tracker
+  and in GPUI. And the fuzzers now run in a sandbox (that drag could
+  have moved the person's files). *Left*, from a wave of 50 in the
+  sandbox (150 s, the failures confirmed together in 122 s), all
+  mid-drag, tiles out of step or over each other: seeds 8 (step 112),
+  10 (102), 12 (75), 14 (95), 19 (70), 21 (38), 23 (67), 25 (88), 28
+  (101, 2.8 s of it), 44 (118), 47 (101, 236 px), 48 (94) and 50 (92).
+  Nine more failed only under the load of 50 at once.
+  *All thirteen fixed* (2026-11-05): a window a drag's round waited for
+  could be under a float, so counted as not shown, and Smithay sent its
+  frame callbacks once a second; GPUI's resize waits for one, so the
+  round ran out of time (50 ms) and its neighbours went on over it for
+  up to a second. Windows in a round now get theirs every frame. And
+  GPUI acknowledged a resize's configure held for the next frame after
+  a newer one (the drag's end): a protocol error, and app_server ended
+  the Terminal ("wrong configure serial"); the held one is dropped once
+  a newer one is acknowledged. A wave of 38 then: no faults (the 8
+  failures the load's, or sessions past the 32 display names a runtime
+  directory had: now 256). *Left*, with `--reloads` (a wave of 22): seed
+  14 at step 22 (a Tracker settled, then moved, after a drag) and 16 at
+  step 54 (one look out of step mid-drag). *14 fixed* (2026-11-05): 11 s
+  after a restart app_server checks the windows that came back against
+  what was saved, and puts back those moved since, unless moved on
+  purpose; a tile floated by an agent (`set_floating` over IPC) wasn't
+  counted as on purpose, so it was put back in its old tile's place.
+  Floating or tiling a window now is. 16 passes by itself (the load's).
+  *Seed 16 again* (2026-11-05, a wave of 24 with `--reloads`, 12 at
+  once: 20 pass, three more pass alone): its step 54 is a StyledEdit
+  window opening into a group mid-drag and drawn in front at a size
+  the drag had moved on from (a group asks its windows for its size only
+  between drags, and `mark_behind`'s wait for a window to draw applied
+  only to one coming from behind). Now a window new to a group is asked
+  for the group's size mid-drag too, one size on the way at a time, and
+  waits to have drawn before it's the front, as one from behind does
+  (`Decoration::fronted`): alone it passes 3 runs in 4. *Left*: under a
+  wave's load it still shows for a look (the 100 ms wait,
+  `groups::FRONTING`, runs out first), and alone it sometimes fails at
+  step 68 ("ungrouping 3: settled, then moved": the two tiles left grow
+  from 211 to 1064 px tall after settling) or step 83 (tiles overlapping
+  for 4 looks mid-drag): races around a reload, next to look at.
+  *Step 68 fixed* (2026-11-05): not a race. A place still kept from the
+  restart before (for a window not back since) was saved again under
+  its old slot number, which the new save had given to another window,
+  so slot 4 was kept twice; one window came back into one, and the
+  other held a fifth of the column for nobody until it timed out 20 s
+  after the restart, the tiles beside it then growing (`SavedNode::of`:
+  such a place is saved as room for its neighbours; unit-tested). Four
+  runs of seed 16 with `--reloads` since: 68 passes in all; two passed
+  outright, two failed at step 54 for one look of 193 (a StyledEdit
+  opened before the restart showing only then, mid-drag, joining tile
+  1's group and drawn at 290 px while its neighbour was where the drag
+  began: the newcomer case above, still racing). *Tried* (2026-11-05):
+  letting a newcomer that hasn't drawn its asked size wait 600 ms rather
+  than `FRONTING`'s 100 before it's its group's front; it broke focus (a
+  window opening into a group wasn't the front when the keyboard was
+  given, so none had it: seed 16 failed at step 4 every run), so it was
+  taken back. The fix wants the keyboard to follow such a window once
+  it's fronted, or the newcomer's wait to apply only mid-drag.
+  *Found* (2026-11-06, eight runs at a time): the window is a StyledEdit
+  opened before the reload and coming back only then, during step 54's
+  drag. It is put in its group's tile at the size it was saved at (290
+  px; the group is 533), asked nothing yet while the drag is on, with no
+  frame callback pending, so it isn't held back (`mark_behind` waits only
+  for something to draw) and is the group's front at once; the window
+  list also names a group's front by the stack, so a newcomer still
+  waiting is reported as the front. The look comes at 160 ms, after the
+  drag (75 ms) has been let go. *Tried and taken back*: a size asked
+  counting as something to draw (3 of 8 failed), a newcomer not at its
+  group's size waiting up to 600 ms mid-drag (3 of 8) or always (5 of 8,
+  and new failures: an empty window at step 1), and the window list
+  naming the drawn window as the front (3 of 8); before them it failed 1
+  in 4. *Next*: the cause, not the wait: a window coming back into a
+  group asked for the group's size at its first commit (as `auto_claim`
+  asks a tile's), so it never draws the saved size at all.
+  *Done* (2026-11-06): a window coming back into a group on screen is
+  asked for the group's size as it is now (on its way, mid-drag) in its
+  first configure (`returning_group_size`). Seed 16 with `--reloads`,
+  nothing else running: 13 of 14 pass (8 runs of 60 steps, 6 of 56;
+  it was 1 failure in 4). (Run beside a build, a run fails at step 1
+  too: a StyledEdit's first frame later than the fuzzer's 0.25 s.)
+  *Found*, the one left (a kept run's log): not a window coming back.
+  The StyledEdit opened at step 49, after the reload, behind its
+  group's front (window 2, both 290 px, then 533 after step 53's drag),
+  was raised over it for 8 ms during step 54's drag (the tree read
+  `[6 | 5]` then `[2 | 5]`: a group's tile is its top window, and 6
+  hadn't drawn the group's 533 yet). *Fixed* (2026-11-06): the window
+  wasn't the race's. The drag's press, on tile 3's right edge, was under
+  a floating Tracker over the tiles: the press was the float's, a folder
+  dragged out of it was let go over StyledEdit, which opened a window
+  for it, failed to read it, closed it and said so (window 6 and its
+  alert 7, mid-drag). The fuzzer now presses only where no other window
+  is over the edge (`op_drag`), fails when any program of its session
+  leaves a crash report (`check_crashes`, the report kept with the
+  logs), and StyledEdit says a folder can't be opened without opening a
+  window for it first. app_server logs at debug who brought a window
+  to the front (`focus_window`'s caller). Seed 16 with `--reloads`: 8
+  of 8; seeds 1–16 with `--reloads`, 8 at once: 15 pass, 13 fails only
+  under the load (passes alone), no faults.
+  *Left*: an app_server panic seen once at seed 16's step 13 (a
+  `Duration` subtracted below zero, no backtrace kept: before
+  `check_crashes`), not seen in 16 runs since; the fuzzer now keeps a
+  report if it happens again. Then sweeps of more seeds.
+  *Swept* (2026-11-06): seeds 17–40 with `--reloads`, 8 at once: 16
+  failed under the load; the sweep's confirmation (the failures again,
+  side by side) left six, and of those, run alone one at a time, five
+  pass (17, 26, 27, 29, 34). *Left*: seed 38 at step 105, every run:
+  dragging 1's right edge, tiles 9 and 10 stay 2 px further apart than
+  the gap for most of the drag (156 of 339 looks): each draws a pixel
+  narrower than asked (9 asked 680, drew 679; 10 asked 212, drew 211).
+  At the fuzzer's 1.75× an odd logical width is no whole number of
+  device pixels and each app rounds its own down, so two neighbours
+  together are 2 px off where the check allows 1.
+  *Looked at* (2026-11-06; the fuzzer's report now names the tiles'
+  apps): 9 is a StyledEdit, 10 a Terminal, both GPUI. Not the layout's
+  rounding (`divide` gives both sides of a split the same edge) and not
+  GPUI at rest: at 1.75× a floating StyledEdit placed at 678–685 and
+  600–603 wide draws each exactly. Mid-drag it draws a pixel short
+  (680 asked, 679 drawn), and Terminal 10, whose edge the drag doesn't
+  touch, moved from 1332 to 1333: its split's ratio taken again from a
+  drawn frame (`take_ratios`/`fraction_of`), so the short pixel moves a
+  neighbour. *Next*: find where a resize by hand (xdg `resizing`, the
+  swapchain grown to its room, `update_drawable_size_within`) loses the
+  pixel at a fractional scale, and keep ratios from the sizes asked,
+  not drawn. (Not app_server's sizes: `inner_size` and `outer_size` are
+  whole points either way, and GPUI's inset is none with Olo's frames,
+  so the configured size is the one kept; an app resizing itself
+  mid-drag is what's left to rule out.)
+  *Swept* seeds 41–64 with `--reloads`, 8 at once: 23 pass, 43 fails
+  only under the load (passes alone): no faults.
+  *Clean* (2026-11-06): seeds 1–64 with `--reloads`, 8 at once: 52
+  pass, and the 12 that failed under the load pass by themselves: no
+  faults. The last two fixed: neighbouring tiles share an exact edge
+  and a tile at its least size gets it (seed 38), and a late frame
+  hangs from the side that didn't move (seed 37). The panic seen once
+  at seed 16's step 13 hasn't come again in the 64 seeds since
+  (`check_crashes` would report it).
 
 - ~~**The voice model's weights in f16 or int8, if voices stay as clear**~~
   (done 2026-11-05, HACKING's "Voice processing": the weights alone in

@@ -1218,7 +1218,8 @@ In olo-ui: `search_field(cx, hint)` makes an `Entity<SearchField>`
 over what's below with `deferred`); it says `SearchEvent::Changed` and
 `Entered`; `set_facets(Rc<Vec<Facet>>)` (drawn again only when the
 filters or their values change, not their counts, which change with
-every new list), `set_text` (no event: a bar's choice), `focus` (⌘F,
+every new list), `set_text` (no event), `choose` (set, and said as
+`Changed`, as typing it would be: a bar's choice), `focus` (⌘F,
 its text selected). Tab and Return take suggestions by capturing the
 field's own actions (`FocusNext`, the field's `Enter`): bindings run
 before key listeners. `FilterBar::new(id, text, facets).max_width(w)
@@ -1226,6 +1227,15 @@ before key listeners. `FilterBar::new(id, text, facets).max_width(w)
 (`FilterBar::width(cx, text, facets)`, about: each menu is sized from
 its text as shaped in the window, and a pixel more, so rounding to
 device pixels never cuts it short); its menus are kit popups.
+`.drives(&field)` has its choices go into the field (`choose`), so an
+app follows the field alone, one subscription for typed and chosen.
+`search::header(&field, id, facets, width)` is the search over a list
+as Log Viewer and Replay have it: the field and the bar in one row when
+the field keeps `min_field` points (240 unless said), else the bar
+under it, `indent(search::list_indent(window))` putting its first
+menu's text over the list's first column's; `count("12 of 340")` at
+the end of the field's row; `no_clear()`. Passwords' bar, over its list
+apart from its toolbar's field, `drives` it too.
 `search::runs(text, font, color, spans, marks, mark)` makes text runs
 from colour spans and marks (marks are runs' backgrounds), and
 `search::highlight(text, &query, font, color, mark)` marks what a query
@@ -2422,6 +2432,21 @@ event reaches it.
 Olo upgrades without logging out. `olo-session` (what the login
 screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
 hands both to app_server, so clients never see the sockets disappear.
+
+**The displays' modes at a restart** (`display.keep_modes` in
+app_server.json, or `OLO_KEEP_MODES=1`; off unless set, until tried on
+the real displays). As ever, app_server opens each GPU with every
+connector switched off (Smithay's `reset_state`) and modesets each
+display from dark, and the app_server going puts back the state it
+found: each display dark a second or two, twice, at every upgrade.
+Kept, in Olo's Smithay (`backend::drm::keep_current_modes`): the
+device isn't reset, only its cursor and overlay planes switched off in
+a commit that needs no modeset (refused, it's reset as ever); a surface
+whose CRTC already shows the mode asked for (`same_timings`: a CRTC's
+mode and its connector's listed one differ in their type bits and
+name) on the connectors asked for starts from that state, so its first
+commit is a page flip; and the app_server going leaves its displays
+as they are for the next. Rescue modesets as ever.
 
 While a restarted app_server brings the windows back, every display shows
 the **upgrade's veil** (app_server's `veil.rs`), an homage to BeOS's boot
