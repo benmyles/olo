@@ -6666,6 +6666,13 @@ its request, for the app's Cancel and for holding an upgrade off.
   them). A window share reconnects after a reload by its id, or one with
   the same app id and title (windows come back with new ids).
 
+- **Agent screens as sources**: on the person's own display the picker
+  offers each agent screen running (`olo_kit_base::moving::screens`,
+  under Screens as "Agent Screen “NAME”"), captured from that screen's
+  own app_server (`olo_capture::Source::Display`, its Wayland display),
+  so an agent's screen can be shared into a call. Tried in a private
+  world: chosen in the person's picker, its stream through PipeWire
+  carried the screen's 1440×900 desktop.
 - **Kept out, and shown as shared** (app_server's `private.rs`): a
   share or recording never shows a private window, which the person
   still sees: Passwords' windows and the polkit prompt (by app id) and

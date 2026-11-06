@@ -432,6 +432,7 @@ mod tests {
                 sound: false,
                 bus: None,
                 a11y: None,
+                size: (1440, 900),
             }]),
         };
         fn commands(m: &Menu, out: &mut Vec<String>) {

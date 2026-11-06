@@ -1169,11 +1169,11 @@ of Finished; a new one goes where its priority puts it.
     Deskbar's approve prompt (`WindowOptions::private`) and the lock
     screen blacked out of shares and recordings; a shared window ringed
     on screen while it is. Agent screens run their own portal (HACKING
-    "A screen's own bus"). **Left**: the cursor sent as metadata (the
-    third cursor mode; hidden and drawn in are done), an agent screen as
-    a source in the person's picker (to share an agent's screen into a
-    call), Zoom's launcher quirk, and RemoteDesktop over libei (the
-    design's open question).
+    "A screen's own bus"), and the person's picker offers each agent
+    screen as a source (HACKING "Agent screens as sources"). **Left**:
+    the cursor sent as metadata (the third cursor mode; hidden and drawn
+    in are done), Zoom's launcher quirk, and RemoteDesktop over libei
+    (the design's open question).
   - **The Olo touches**: the picker, a kit dialog with Screens and
     Windows, live thumbnails and app icons, opened over the window that
     asked (agents read and drive it through the widget tree for free);

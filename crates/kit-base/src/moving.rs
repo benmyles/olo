@@ -201,6 +201,8 @@ pub struct RunningScreen {
     /// Its own session bus, and the accessibility bus (`bus_env`).
     pub bus: Option<String>,
     pub a11y: Option<String>,
+    /// Its logical size.
+    pub size: (u32, u32),
 }
 
 impl RunningScreen {
@@ -285,6 +287,7 @@ pub fn screens() -> Vec<RunningScreen> {
                 sound: v["sound"].as_bool().unwrap_or(false),
                 bus: v["bus"].as_str().map(str::to_owned),
                 a11y: v["a11y"].as_str().map(str::to_owned),
+                size: (v["width"].as_u64().unwrap_or(0) as u32, v["height"].as_u64().unwrap_or(0) as u32),
             })
         })
         .collect();

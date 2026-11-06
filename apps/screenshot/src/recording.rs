@@ -533,7 +533,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     let what = match &source {
         Source::Window { id, .. } => format!("window {id}"),
         Source::Output(_) if crop.is_some() => "region".into(),
-        Source::Output(_) => "display".into(),
+        Source::Output(_) | Source::Display(_) => "display".into(),
     };
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false, recording: false };
