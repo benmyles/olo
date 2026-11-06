@@ -6670,6 +6670,11 @@ its request, for the app's Cancel and for holding an upgrade off.
   them). A window share reconnects after a reload by its id, or one with
   the same app id and title (windows come back with new ids).
 
+- **Zoom**: its own app offers Wayland sharing only when its
+  `XDG_CURRENT_DESKTOP` is GNOME, so Olo starts it so
+  (`olo_xdg::quirks`, from every launch path; the portal picks its
+  backends by its own environment, so Olo's still answer). Zoom in
+  Chrome needs nothing.
 - **Agent screens as sources**: on the person's own display the picker
   offers each agent screen running (`olo_kit_base::moving::screens`,
   under Screens as "Agent Screen “NAME”"), captured from that screen's
