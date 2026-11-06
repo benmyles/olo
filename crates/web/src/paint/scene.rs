@@ -5,7 +5,7 @@ use crate::{
     layout::{BoxId, BoxKind, Point, Rect},
     text::shaping::Direction,
 };
-use std::{ops::Range, sync::Arc};
+use std::{borrow::Cow, ops::Range, sync::Arc};
 const NONE: u32 = u32::MAX;
 #[derive(Clone, Copy, Debug)]
 pub struct Options {
@@ -54,6 +54,7 @@ impl Scene {
         let BoxKind::InlineContent { source } = tree.get(*owner)?.kind else {
             return None;
         };
+        let source_id = source;
         let source = tree.text_source(source)?;
         let text = self.layout.text_layout(*owner)?;
         let fragment = text.fragments().get(*fragment as usize)?;
@@ -67,7 +68,62 @@ impl Scene {
         let last = prepared.mapping_at_output(end.saturating_sub(1))?;
         let input_end = if last.kind == crate::text::prepare::MappingKind::Copy { last.input.start + (end - last.output.start) } else { last.input.end };
         let span = source.spans.get(mapping.span as usize)?;
+        if tree.controls(source_id).binary_search_by_key(&span.range.start, |c| c.offset).is_ok() {
+            return None;
+        }
         (input_end <= span.range.end).then_some(span.node)
+    }
+    /// Visible text for one paint command, excluding formatting carriers owned
+    /// by elements such as wbr. Actual Unicode in DOM text is preserved.
+    pub fn text_content(&self, command: u32) -> Option<Cow<'_, str>> {
+        let Primitive::Text { owner, fragment, glyphs, .. } = &self.commands.get(command as usize)?.primitive else {
+            return None;
+        };
+        let tree = self.layout.cache().tree();
+        let BoxKind::InlineContent { source } = tree.get(*owner)?.kind else {
+            return None;
+        };
+        let text = self.layout.text_layout(*owner)?;
+        let f = text.fragments().get(*fragment as usize)?;
+        let run = text.run(f)?;
+        let gs = run.glyphs.get(glyphs.start as usize..glyphs.end as usize)?;
+        let start = gs.iter().map(|g| g.cluster).min()?;
+        let last = gs.iter().map(|g| g.cluster).max()?;
+        // Glyph clusters are monotone in the run's direction. Do not rescan
+        // an entire long paragraph for every small visible paint segment.
+        let stop = if run.direction == Direction::RightToLeft { run.glyphs.partition_point(|g| g.cluster > last) } else { run.glyphs.partition_point(|g| g.cluster <= last) };
+        let end =
+            if run.direction == Direction::RightToLeft { stop.checked_sub(1).map_or(run.range.end, |i| run.glyphs[i].cluster) } else { run.glyphs.get(stop).map_or(run.range.end, |g| g.cluster) }
+                .min(f.source.end);
+        if start >= end {
+            return None;
+        }
+        let value = run.source.get(start as usize..end as usize)?;
+        let controls = tree.controls(source);
+        if controls.is_empty() {
+            return Some(Cow::Borrowed(value));
+        }
+        let prepared = text.text().prepared();
+        let a = prepared.mapping_at_output(start)?;
+        let b = prepared.mapping_at_output(end - 1)?;
+        let raw_start = if a.kind == crate::text::prepare::MappingKind::Copy { a.input.start + start - a.output.start } else { a.input.start };
+        let raw_end = if b.kind == crate::text::prepare::MappingKind::Copy { b.input.start + end - b.output.start } else { b.input.end };
+        let lo = controls.partition_point(|c| c.offset < raw_start);
+        let hi = controls.partition_point(|c| c.offset < raw_end);
+        if lo == hi {
+            return Some(Cow::Borrowed(value));
+        }
+        let mut result = String::with_capacity(value.len());
+        let mut cursor = start;
+        for c in &controls[lo..hi] {
+            let m = prepared.mapping_at_source(c.offset)?;
+            // Semantic carriers are copied intact by text preparation.
+            let at = m.output.start + c.offset - m.input.start;
+            result.push_str(run.source.get(cursor as usize..at as usize)?);
+            cursor = at.checked_add(c.kind.carrier().len() as u32)?;
+        }
+        result.push_str(run.source.get(cursor as usize..end as usize)?);
+        Some(Cow::Owned(result))
     }
     /// Clipped ink bounds for structured text. Empty clips never become actions.
     pub fn visible_bounds(&self, command: u32) -> Option<Rect> {
@@ -206,6 +262,7 @@ impl<'a> BuildJob<'a> {
         // Layout is held outside self's mutable command builder borrow.
         let layout = self.layout.clone();
         let text = layout.text_layout(id).ok_or(Error::Invalid)?;
+        let controls = layout.cache().tree().controls(source);
         // Include empty/nested boxes: checking only glyph ownership misses
         // a visible background on an empty padded span or an outer inline.
         for b in layout.cache().tree().inline_boxes(source).ok_or(Error::Invalid)? {
@@ -213,6 +270,14 @@ impl<'a> BuildJob<'a> {
             let s = layout.cache().tree().styles().snapshot(b.node).ok_or(Error::Stale)?;
             if visible(s) && color(s, P::BackgroundColor)?[3] != 0 {
                 return Err(Error::Unsupported("inline backgrounds"));
+            }
+        }
+        for c in controls {
+            check(self.cancel)?;
+            let span = layout.cache().tree().text_source(source).and_then(|s| s.span_at(c.offset)).ok_or(Error::Invalid)?;
+            let s = layout.cache().tree().styles().snapshot(span.style_node).ok_or(Error::Stale)?;
+            if visible(s) && color(s, P::BackgroundColor)?[3] != 0 {
+                return Err(Error::Unsupported("inline break backgrounds"));
             }
         }
         let source = layout.cache().tree().text_source(source).ok_or(Error::Invalid)?;
@@ -259,12 +324,23 @@ impl<'a> BuildJob<'a> {
                     let project_end = prepared.mapping_at_output(end.saturating_sub(1)).ok_or(Error::Invalid)?;
                     let input_end = if project_end.kind == crate::text::prepare::MappingKind::Copy { project_end.input.start + (end - project_end.output.start) } else { project_end.input.end };
                     let input_start = if mapping.kind == crate::text::prepare::MappingKind::Copy { mapping.input.start + (g.cluster - mapping.output.start) } else { mapping.input.start };
+                    let semantic_control = !controls.is_empty() && controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
+                    if semantic_control && input_end <= span.range.end {
+                        if let Some((start, origin, color, bounds, _)) = segment.take() {
+                            self.emit(group, true, bounds, Primitive::Text { owner: id, fragment: fi, glyphs: start..gi, origin, color }, clip)?;
+                        }
+                        pen += i64::from(g.x_advance);
+                        continue;
+                    }
                     let lo = source.spans.partition_point(|s| s.range.end <= input_start);
                     let hi = source.spans.partition_point(|s| s.range.start < input_end);
                     // A shared cluster spanning DOM nodes needs glyph caret
                     // ownership. Keep it readable, but do not invent a click target.
                     let hit_span = if hi - lo == 1 { mapping.span } else { u32::MAX };
                     for next in &source.spans[lo..hi] {
+                        if controls.binary_search_by_key(&next.range.start, |c| c.offset).is_ok() {
+                            continue;
+                        }
                         let ns = layout.cache().tree().styles().snapshot(next.style_node).ok_or(Error::Stale)?;
                         let mut nc = color(ns, P::Color)?;
                         if !visible(ns) {

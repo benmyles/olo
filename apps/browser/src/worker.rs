@@ -309,27 +309,18 @@ fn render(
     scene.query(visible, &mut hits, Some(&r.cancel))?;
     let mut labels = Vec::new();
     for id in hits {
-        let c = &scene.commands()[id as usize];
-        if let paint::Primitive::Text { owner, fragment, glyphs, .. } = &c.primitive {
-            let t = scene.layout().text_layout(*owner).unwrap();
-            let f = &t.fragments()[*fragment as usize];
-            let run = t.run(f).unwrap();
-            let gs = &run.glyphs[glyphs.start as usize..glyphs.end as usize];
-            if let (Some(lo), Some(hi)) = (gs.iter().map(|g| g.cluster).min(), gs.iter().map(|g| g.cluster).max()) {
-                let end = run.glyphs.iter().filter_map(|g| (g.cluster > hi).then_some(g.cluster)).min().unwrap_or(f.source.end).min(f.source.end);
-                if lo < end {
-                    let node = scene.text_node(id);
-                    let Some(rect) = scene.visible_bounds(id) else {
-                        continue;
-                    };
-                    let link = match node {
-                        Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
-                        None => None,
-                    };
-                    labels.push(Label { text: run.source[lo as usize..end as usize].to_owned().into(), rect, node, link });
-                }
-            }
-        }
+        let Some(text) = scene.text_content(id).filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        let node = scene.text_node(id);
+        let Some(rect) = scene.visible_bounds(id) else {
+            continue;
+        };
+        let link = match node {
+            Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
+            None => None,
+        };
+        labels.push(Label { text: text.into_owned().into(), rect, node, link });
     }
     proxy.send(Reply::Content {
         id: r.id,

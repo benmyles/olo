@@ -1,0 +1,53 @@
+{
+  "reason": "Fractional font advances/quantization remain unresolved. These four combinations are rendering nonpasses, including two wrap/height failures; a regression guard is not acceptance.",
+  "expected_nonpasses": {
+    "1.25:adjacent-opportunities-40": [
+      {
+        "field": "B.x",
+        "native": 20,
+        "chrome": 0
+      },
+      {
+        "field": "B.y",
+        "native": 0,
+        "chrome": 20
+      },
+      {
+        "field": "height",
+        "native": 20,
+        "chrome": 40
+      }
+    ],
+    "1.25:rtl-A<wbr>B": [
+      {
+        "field": "A.x",
+        "native": 30.399999618530273,
+        "chrome": 30.375
+      }
+    ],
+    "1.75:adjacent-opportunities-40": [
+      {
+        "field": "B.x",
+        "native": 20,
+        "chrome": 0
+      },
+      {
+        "field": "B.y",
+        "native": 0,
+        "chrome": 20
+      },
+      {
+        "field": "height",
+        "native": 20,
+        "chrome": 40
+      }
+    ],
+    "1.75:rtl-A<wbr>B": [
+      {
+        "field": "A.x",
+        "native": 30.285715103149414,
+        "chrome": 30.267858505249023
+      }
+    ]
+  }
+}

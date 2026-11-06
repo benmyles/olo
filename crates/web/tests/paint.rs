@@ -65,6 +65,48 @@ fn paints_background_canvas_borders_and_native_glyph_positions() {
 }
 
 #[test]
+fn semantic_breaks_move_paint_and_never_expose_carriers_as_text_or_targets() {
+    let mut painter = paint::Engine::default();
+    let s = scene("<div>A<wbr>B<br>C</div>", "", &mut painter);
+    let text: String = (0..s.commands().len()).filter_map(|i| s.text_content(i as u32)).collect();
+    assert_eq!(text, "ABC");
+    let source = s.layout().cache().tree().text_source(0).unwrap();
+    let controls = s.layout().cache().tree().controls(0);
+    assert_eq!(controls.len(), 2);
+    let nodes: Vec<_> = controls.iter().map(|c| source.span_at(c.offset).unwrap().node).collect();
+    for i in 0..s.commands().len() {
+        assert!(!s.text_node(i as u32).is_some_and(|n| nodes.contains(&n)));
+    }
+    let tile = render(&mut painter, &s);
+    for (x, y) in [(1, 3), (21, 3), (1, 23)] {
+        assert_eq!(pixel(&tile, x, y), [0, 0, 0, 255]);
+    }
+    let empty = scene("<div><wbr></div>", "", &mut painter);
+    assert!(!(0..empty.commands().len()).any(|i| empty.text_content(i as u32).is_some()));
+}
+
+#[test]
+fn a_shared_ligature_can_be_read_without_an_internal_optional_break_marker() {
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/ligature.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline ligature"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    let source = format!("<!doctype html><style>{BASE}html{{font-family:'Olo Inline ligature'}}</style><div id=p>f<wbr style='color:red'>i</div>");
+    let page =
+        olo_web::page::load(source.into(), &host, &scope, &mut Shaper::default(), &mut paint::Engine::default(), layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
+    let labels: String = (0..page.scene.commands().len()).filter_map(|i| page.scene.text_content(i as u32)).collect();
+    assert_eq!(labels, "fi");
+    let parent =
+        page.scene.layout().cache().tree().iter().find(|(_, b)| matches!(b.kind, layout::BoxKind::Block { .. }) && page.document.attribute(b.node, "id").unwrap() == Some("p")).unwrap().1.node;
+    let first = page.document.first_child(parent).unwrap().unwrap();
+    let wbr = page.document.next_sibling(first).unwrap().unwrap();
+    let last = page.document.next_sibling(wbr).unwrap().unwrap();
+    assert_eq!(page.document.value(first).unwrap(), Some("f"));
+    assert_eq!(page.document.value(wbr).unwrap(), None);
+    assert_eq!(page.document.value(last).unwrap(), Some("i"));
+}
+
+#[test]
 fn inline_spacing_moves_glyphs_without_block_axis_padding_moving_the_line() {
     let mut p = paint::Engine::default();
     let s = scene("<div>A<span>A</span>A</div>", "span{margin-left:10px;padding-left:5px;padding-right:7px;padding-top:30px;padding-bottom:40px}", &mut p);
@@ -378,4 +420,29 @@ fn cross_node_ligatures_and_clipped_ink_do_not_invent_click_targets() {
     let text: Vec<_> = s.commands().iter().enumerate().filter(|(_, c)| matches!(c.primitive, paint::Primitive::Text { .. })).collect();
     assert!(!text.is_empty());
     assert!(text.iter().all(|(i, _)| s.visible_bounds(*i as u32).is_none()));
+}
+
+#[test]
+fn structured_text_matches_linear_cluster_reference_and_preserves_literal_zwsp() {
+    let mut painter = paint::Engine::default();
+    for css in ["", "div{direction:rtl}"] {
+        let s = scene("<div>A<span style='color:red'> B C </span>D\u{200b}E</div>", css, &mut painter);
+        let mut values = String::new();
+        for (id, command) in s.commands().iter().enumerate() {
+            let paint::Primitive::Text { owner, fragment, glyphs, .. } = &command.primitive else { continue };
+            let text = s.layout().text_layout(*owner).unwrap();
+            let f = &text.fragments()[*fragment as usize];
+            let run = text.run(f).unwrap();
+            let glyphs = &run.glyphs[glyphs.start as usize..glyphs.end as usize];
+            let start = glyphs.iter().map(|g| g.cluster).min().unwrap();
+            let last = glyphs.iter().map(|g| g.cluster).max().unwrap();
+            let end = run.glyphs.iter().filter(|g| g.cluster > last).map(|g| g.cluster).min().unwrap_or(run.range.end).min(f.source.end);
+            let expected = &run.source[start as usize..end as usize];
+            let actual = s.text_content(id as u32).unwrap();
+            assert!(matches!(actual, std::borrow::Cow::Borrowed(_)));
+            assert_eq!(&*actual, expected);
+            values.push_str(&actual);
+        }
+        assert!(values.contains('\u{200b}'), "DOM-authored zero-width spaces must not be filtered");
+    }
 }

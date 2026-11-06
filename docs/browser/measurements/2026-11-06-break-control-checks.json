@@ -1,0 +1,41 @@
+{
+  "baseline": "f1e462cc76f8b6bc0dc0bec36b7bf05b48def46a",
+  "default_web_tests": 239,
+  "additional_cache_identity_test": true,
+  "all_feature_web_tests": 238,
+  "browser_tests": 12,
+  "browser_ignored_measurements": 1,
+  "strict_clippy": "pass; dependency warnings retained",
+  "workspace_release_build_seconds": 16.34,
+  "kit_preferences_lint_tests": 13,
+  "browser_live_lint_errors": 0,
+  "chrome_component": {
+    "cases": 83,
+    "scales": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "total": 415,
+    "matching": 411,
+    "nonpasses": 4,
+    "wrap_height_nonpasses": 2
+  },
+  "native_link_reviews": 15,
+  "native_requests": 36,
+  "website_passes": 0,
+  "scope": "Component milestone only. No full pixel, JavaScript, replaced/control objects or website acceptance. Runtime behavior measured separately.",
+  "native_navigation_reviews": 15,
+  "navigation_requests": 61,
+  "owned_screen_reexec_restoration": "pass",
+  "final_default_web_and_browser_tests": 251,
+  "final_workspace_release_build_seconds": 7.1,
+  "final_strict_clippy": "pass; dependency warnings retained",
+  "native_validation_build": "eeccce62f0de56d89f59dce5d141899d828f8d7cd29e2a775288844d1e7c1c74; before equivalent ordinary-text lookup/hash hoisting",
+  "final_browser_sha256": "b8669e5e7999066f77c4e25b57c98dcfe3fb89f949932ea59bc6345dddebc0e6",
+  "journal_entries": 595,
+  "journal_images_missing": 0,
+  "manual_lint_scratch": "/var/tmp/olo-browser-breaks/lint; duplicate hook lint skipped because hook uses RAM /tmp/olo-dev"
+}

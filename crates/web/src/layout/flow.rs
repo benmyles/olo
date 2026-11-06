@@ -97,6 +97,8 @@ impl<'a> PrepareJob<'a> {
         let container = source.container;
         let style = self.tree.style(container).ok_or(Error::Invalid)?;
         let whitespace = prepare::WhiteSpace::for_style(style)?;
+        let source_controls = self.tree.controls(index as u32);
+        let controls: Box<[_]> = source_controls.iter().map(|c| prepare::Control::new(c.offset, c.kind)).collect::<std::result::Result<_, _>>()?;
         let mut raw_breaks = Vec::new();
         for b in self.tree.inline_boxes(index as u32).ok_or(Error::Invalid)? {
             check(self.cancel)?;
@@ -115,11 +117,12 @@ impl<'a> PrepareJob<'a> {
         for span in &source.spans {
             check(self.cancel)?;
             let s = self.tree.styles.snapshot(span.style_node).ok_or(Error::Stale)?;
+            let control = !source_controls.is_empty() && source_controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
             if s.font().request != style.font().request
                 || s.font().context() != style.font().context()
                 || s.axes() != style.axes()
                 || s.line_height() != style.line_height()
-                || prepare::WhiteSpace::for_style(s)? != whitespace
+                || (!control && prepare::WhiteSpace::for_style(s)? != whitespace)
             {
                 return Err(Error::Unsupported("mixed inline typography/whitespace"));
             }
@@ -131,6 +134,9 @@ impl<'a> PrepareJob<'a> {
                 span.range.hash(&mut hash)
             }
             raw_breaks.hash(&mut hash);
+            if !controls.is_empty() {
+                controls.hash(&mut hash);
+            }
             (Arc::as_ptr(style.font()) as usize, source.source.clone(), hash.finish())
         });
         if let Some(text) = key.as_ref().and_then(|key| self.shared.get(key))
@@ -138,12 +144,13 @@ impl<'a> PrepareJob<'a> {
             && text.prepared().spans().iter().zip(source.spans.iter()).all(|(a, b)| a.range == b.range && a.whitespace == whitespace)
             && text.paragraph().analysis.paragraphs().all(|(_, level)| (level % 2 != 0) == (style.axes().direction == crate::css::style::Direction::Rtl))
             && text.paragraph().shaping_breaks() == shaping_breaks(text.prepared(), &raw_breaks)?.as_ref()
+            && text.prepared().controls() == controls.as_ref()
         {
             self.progress.reused_texts += 1;
             return Ok(text.clone());
         }
         let spans: Arc<[prepare::Span]> = source.spans.iter().map(|s| prepare::Span { range: s.range.clone(), whitespace }).collect();
-        let mut p = prepare::Job::new(source.source.clone(), spans, prepare::Limits { text_bytes: self.limits.text.text_bytes, ..Default::default() }, self.cancel)?;
+        let mut p = prepare::Job::new(source.source.clone(), spans, prepare::Limits { text_bytes: self.limits.text.text_bytes, ..Default::default() }, self.cancel)?.with_controls(controls)?;
         while !p.step(4096)?.finished {}
         let p = Arc::new(p.finish()?);
         let boundaries = shaping_breaks(&p, &raw_breaks)?;

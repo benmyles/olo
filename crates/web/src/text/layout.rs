@@ -280,6 +280,8 @@ pub struct TextJob<'a> {
     cancel: Option<&'a AtomicBool>,
     whitespace: WhiteSpace,
     next: usize,
+    explicit: Box<[u32]>,
+    next_explicit: usize,
     at: usize,
     trailing: Option<u32>,
     lf_trailing: Option<u32>,
@@ -313,6 +315,18 @@ impl<'a> TextJob<'a> {
             return Err(Error::Unsupported("tabs and visible control glyph layout"));
         }
         let index = Index::new(&paragraph, limits, cancel)?;
+        let mut explicit = Vec::new();
+        for c in prepared.controls().iter().filter(|c| c.kind() == super::prepare::ControlKind::Opportunity) {
+            check(cancel)?;
+            let m = prepared.mapping_at_source(c.offset()).ok_or(Error::Invalid)?;
+            if m.kind != super::prepare::MappingKind::Copy {
+                return Err(Error::Invalid);
+            }
+            explicit.push(m.output.start + c.offset() - m.input.start + c.kind().carrier().len() as u32);
+        }
+        if explicit.len() > limits.points {
+            return Err(Error::Limit);
+        }
         Ok(Self {
             engine,
             prepared,
@@ -323,6 +337,8 @@ impl<'a> TextJob<'a> {
             cancel,
             whitespace,
             next: 0,
+            explicit: explicit.into_boxed_slice(),
+            next_explicit: 0,
             at: 0,
             trailing: None,
             lf_trailing: None,
@@ -365,11 +381,20 @@ impl<'a> TextJob<'a> {
         }
         for _ in 0..budget {
             check(self.cancel)?;
-            let Some(mut next) = self.breaks.get(self.next) else {
-                self.progress.finished = true;
-                break;
+            let unicode = self.breaks.get(self.next);
+            let explicit = self.explicit.get(self.next_explicit).copied();
+            let mut next = match (unicode, explicit) {
+                (Some(u), Some(e)) if e < u.offset => super::linebreak::Opportunity { offset: e, kind: Kind::Allowed },
+                (Some(u), _) => u,
+                (None, Some(e)) => super::linebreak::Opportunity { offset: e, kind: Kind::Allowed },
+                (None, None) => {
+                    self.progress.finished = true;
+                    break;
+                }
             };
-            if !self.whitespace.wrap && next.kind == Kind::Allowed {
+            let is_unicode = unicode.is_some_and(|u| u.offset == next.offset);
+            let is_explicit = explicit == Some(next.offset);
+            if !self.whitespace.wrap && next.kind == Kind::Allowed && !is_explicit {
                 self.next += 1;
                 self.progress.work += 1;
                 if self.progress.work > self.limits.work {
@@ -403,14 +428,15 @@ impl<'a> TextJob<'a> {
                 }
             }
             if offset == next.offset {
-                self.next += 1;
+                self.next += usize::from(is_unicode);
+                self.next_explicit += usize::from(is_explicit);
             }
             let (paint_end, trailing) = if self.last_lf == Some(offset.saturating_sub(1)) { (offset - 1, self.lf_trailing) } else { (offset, self.trailing) };
             let end_byte = if collapses(self.whitespace) { trailing.unwrap_or(paint_end) } else { paint_end };
             let end = self.end(end_byte)?;
             let mut hang = NONE;
             if !collapses(self.whitespace)
-                && self.whitespace.wrap
+                && (self.whitespace.wrap || is_explicit)
                 && self.whitespace.collapse != Collapse::BreakSpaces
                 && let Some(byte) = trailing
             {

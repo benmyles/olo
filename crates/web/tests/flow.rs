@@ -149,6 +149,30 @@ fn inline_sources_survive_wrap_block_splits_and_resize() {
     assert_eq!(l.cache().tree().iter().filter(|(_, b)| matches!(b.kind, BoxKind::InlineContent { .. })).count(), 3);
 }
 
+#[test]
+fn semantic_br_survives_collapsing_and_wbr_wraps_without_a_glyph() {
+    let s = scope();
+    let mut e = Engine::default();
+    for (body, css, width, expected, height) in [
+        ("A<br>B", "", 100., vec![('A', 0., 0.), ('B', 0., 20.)], 40.),
+        ("A <br> B", "", 100., vec![('A', 0., 0.), ('B', 0., 20.)], 40.),
+        ("<br>", "", 100., Vec::new(), 20.),
+        ("<br><br>", "", 100., Vec::new(), 40.),
+        ("A<br>", "", 100., vec![('A', 0., 0.)], 20.),
+        ("A<br>B", "#p{white-space:nowrap}", 100., vec![('A', 0., 0.), ('B', 0., 20.)], 40.),
+        ("A<wbr>B", "", 30., vec![('A', 0., 0.), ('B', 0., 20.)], 40.),
+        ("A<wbr>B", "", 100., vec![('A', 0., 0.), ('B', 20., 0.)], 20.),
+        ("A<wbr>B", "#p{white-space:nowrap}", 30., vec![('A', 0., 0.), ('B', 0., 20.)], 40.),
+        ("A<br hidden>B", "br[hidden]{display:none}", 100., vec![('A', 0., 0.), ('B', 20., 0.)], 20.),
+    ] {
+        let (d, t) = tree(&format!("<div id=p>{body}</div>"), css, &s, 1);
+        let c = cache(&mut e, &s, t);
+        let l = fit(&mut e, &s, c, width, 1);
+        assert_eq!(letters(&l), expected, "{body} {css}");
+        assert_eq!(rect(&d, &l, "p").height, height, "{body} {css}");
+    }
+}
+
 fn letters(l: &layout::Layout) -> Vec<(char, f64, f64)> {
     let mut result = Vec::new();
     for (id, _) in l.cache().tree().iter() {
@@ -239,6 +263,83 @@ fn inline_fragment_storage_is_bounded_even_across_block_interruptions() {
         assert!(matches!(job.step(1), Err(layout::Error::Failed)));
         assert!(matches!(job.finish(), Err(layout::Error::Failed)));
     }
+}
+
+#[test]
+fn independent_chrome_break_controls() {
+    use sha2::{Digest, Sha256};
+    let s = scope();
+    let mut e = Engine::default();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/break-control-fixtures");
+    let metadata: serde_json::Value = serde_json::from_str(include_str!("break-control-fixtures/SOURCE.json")).unwrap();
+    for (name, hash) in metadata["inputs"].as_object().unwrap() {
+        assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join(name)).unwrap())), hash.as_str().unwrap());
+    }
+    for key in ["base", "font"] {
+        assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join(metadata[key]["path"].as_str().unwrap())).unwrap())), metadata[key]["sha256"].as_str().unwrap());
+    }
+    for (_, report) in metadata["reports"].as_object().unwrap() {
+        assert_eq!(format!("{:x}", Sha256::digest(std::fs::read(root.join(report["file"].as_str().unwrap())).unwrap())), report["sha256"].as_str().unwrap());
+    }
+    let known: serde_json::Value = serde_json::from_str(include_str!("break-control-fixtures/known-nonpasses.json")).unwrap();
+    let mut nonpasses = std::collections::BTreeMap::new();
+    let mut failures = Vec::new();
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let report: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join(format!("chrome-{scale}.json"))).unwrap()).unwrap();
+        assert_eq!(report["devicePixelRatio"].as_f64().unwrap(), scale);
+        assert_eq!(report["base"].as_str().unwrap().trim(), BASE.trim());
+        for c in report["rows"].as_array().unwrap() {
+            for budget in [1, 128] {
+                let (d, t) = tree_scaled(c["body"].as_str().unwrap(), c["css"].as_str().unwrap(), &s, budget, scale);
+                let cache = cache(&mut e, &s, t);
+                let mut j = layout::Job::new(&mut e, &s, cache, layout::Viewport { width: c["layoutViewport"]["width"].as_f64().unwrap(), height: 800., scale }, Default::default(), None).unwrap();
+                while !j.step(budget).unwrap().finished {}
+                let l = j.finish().unwrap();
+                let actual = letters(&l);
+                let mut coordinates = Vec::new();
+                let expected = c["letters"].as_array().unwrap();
+                if actual.len() != expected.len() {
+                    failures.push(format!("DPR{scale} {}: {} letters != {}", c["name"], actual.len(), expected.len()));
+                    continue;
+                }
+                for ((letter, x, y), expected) in actual.iter().zip(expected) {
+                    assert_eq!(letter.to_string(), expected["letter"]);
+                    for (key, value) in [("x", *x), ("y", *y)] {
+                        let cssom = f64::from((value * scale) as f32 * (1f32 / scale as f32));
+                        // DOM Range rectangles enclose caret positions on Blink's
+                        // layout grid. They can start one layout unit before
+                        // an exact glyph origin, even with this integer font.
+                        let allowance = if key == "x" { 1. / (64. * scale) + 1e-5 } else { 1e-5 };
+                        if (cssom - expected[key].as_f64().unwrap()).abs() > allowance {
+                            coordinates.push(serde_json::json!({"field":format!("{letter}.{key}"),"native":cssom,"chrome":expected[key]}));
+                        }
+                    }
+                }
+                let height = rect(&d, &l, "p").height;
+                if (height - c["boxes"]["p"]["height"].as_f64().unwrap()).abs() > 1e-5 {
+                    coordinates.push(serde_json::json!({"field":"height","native":height,"chrome":c["boxes"]["p"]["height"]}));
+                }
+                if !coordinates.is_empty() {
+                    let key = format!("{scale}:{}", c["name"].as_str().unwrap());
+                    if let Some(previous) = nonpasses.insert(key, coordinates.clone()) {
+                        assert_eq!(previous, coordinates);
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(nonpasses.keys().collect::<Vec<_>>(), known["expected_nonpasses"].as_object().unwrap().keys().collect::<Vec<_>>(), "Component non-pass cases changed");
+    for (case, coordinates) in nonpasses {
+        let baseline = known["expected_nonpasses"][&case].as_array().unwrap();
+        assert_eq!(coordinates.len(), baseline.len(), "{case}: mismatch count changed");
+        for (actual, expected) in coordinates.iter().zip(baseline) {
+            assert_eq!(actual["field"], expected["field"], "{case}");
+            for field in ["native", "chrome"] {
+                assert!((actual[field].as_f64().unwrap() - expected[field].as_f64().unwrap()).abs() < 1e-9, "{case}: pinned {field} coordinate changed: {actual} != {expected}");
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} mismatches:\n{}", failures.len(), failures.join("\n"));
 }
 
 #[test]
@@ -453,4 +554,19 @@ fn identical_paragraphs_share_glyphs_with_distinct_dom_source_mappings() {
     let c = cache(&mut e, &s, t);
     assert!(!Arc::ptr_eq(c.text(0).unwrap(), c.text(1).unwrap()));
     assert_eq!(c.text(1).unwrap().prepared().spans().len(), 3);
+}
+
+#[test]
+fn semantic_opportunities_cannot_reuse_literal_unicode_nowrap_cache_entries() {
+    let s = scope();
+    let mut e = Engine::default();
+    let (d, t) = tree("<div id=semantic>A<wbr>B</div><div id=literal>A\u{200b}B</div>", "div{white-space:nowrap;width:30px}", &s, 1);
+    assert_eq!(t.text_source(0).unwrap().source, t.text_source(1).unwrap().source);
+    assert_eq!(t.controls(0).len(), 1);
+    assert!(t.controls(1).is_empty());
+    let c = cache(&mut e, &s, t);
+    assert!(!Arc::ptr_eq(c.text(0).unwrap().prepared(), c.text(1).unwrap().prepared()));
+    let l = fit(&mut e, &s, c, 100., 1);
+    assert_eq!(rect(&d, &l, "semantic").height, 40.);
+    assert_eq!(rect(&d, &l, "literal").height, 20.);
 }

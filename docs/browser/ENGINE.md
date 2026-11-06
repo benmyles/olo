@@ -2070,3 +2070,29 @@ pixel or website acceptance. Horizontal inline margins/padding now render in
 the native canvas and existing text-link control, but inline borders,
 backgrounds, decorated vertical padding, bidi edge distribution, full fragment/hit
 geometry and mixed typography remain explicit implementation work.
+
+## Semantic inline breaks
+
+Normal-flow `br` and `wbr` contribute bounded semantic controls to formatting
+sources, with stable ownership by their actual elements. The document is never
+modified. A sparse tree table and an optional shared packed four-byte list in
+prepared text distinguish these carriers from literal DOM LF/ZWSP characters;
+cache keys include that distinction. Forced breaks survive whitespace collapsing.
+Explicit optional points participate in fitting even with `nowrap`/`pre`.
+Text preparation validates carrier offsets/order/overlap and enforces quotas and
+cancellation. Unsupported styled/positioned controls remain explicit failures.
+
+Paint omits standalone semantic carrier glyphs, retains shared real clusters,
+and rejects unsupported control backgrounds. `Scene::text_content(command)`
+returns borrowed text where possible and filters only semantic carriers where
+needed. It finds the next monotone glyph cluster with a binary search, rather
+than scanning the whole run per segment. Shared clusters still have no invented
+DOM click target; complete caret and anchor ownership remain open.
+
+`tests/break-control-fixtures` pins 83 independently measured Chrome cases at
+five scales (two worker budgets). 411/415 combinations match letter positions
+and block heights within the stated DOM Range export allowance; four are
+explicit nonpasses. Two include exact-fit wrapping/height differences from
+fractional font advances; two have RTL horizontal position differences. These
+are component measurements, not full pixels, complete break semantics or website
+acceptance. Images and other replaced/control objects remain unsupported.

@@ -5,7 +5,7 @@ use crate::{
         style::{Keyword, Property, Style, StyleTree, Value, WritingMode},
     },
     dom::{Document, NodeId, NodeType},
-    text::prepare::{Collapse, WhiteSpace},
+    text::prepare::{Collapse, ControlKind, WhiteSpace},
 };
 use std::{
     num::NonZeroU32,
@@ -53,6 +53,12 @@ pub struct InlineBox {
     pub first: bool,
     pub last: bool,
 }
+#[derive(Clone, Copy, Debug)]
+pub struct Control {
+    source: u32,
+    pub offset: u32,
+    pub kind: ControlKind,
+}
 pub struct TextSource {
     pub container: BoxId,
     pub source: Arc<str>,
@@ -69,6 +75,7 @@ pub struct Tree {
     pub(super) sources: Box<[TextSource]>,
     pub(super) styles: Arc<StyleTree>,
     inlines: Box<[InlineBox]>,
+    controls: Box<[Control]>,
     document: u64,
     revision: u64,
     text_bytes: usize,
@@ -99,6 +106,11 @@ impl Tree {
         let range = &self.text_source(source)?.inlines;
         self.inlines.get(range.start as usize..range.end as usize)
     }
+    pub fn controls(&self, source: u32) -> &[Control] {
+        let lo = self.controls.partition_point(|c| c.source < source);
+        let hi = self.controls.partition_point(|c| c.source <= source);
+        &self.controls[lo..hi]
+    }
     pub fn styles(&self) -> &Arc<StyleTree> {
         &self.styles
     }
@@ -109,6 +121,7 @@ impl Tree {
         self.boxes.len() * size_of::<BoxNode>()
             + self.inlines.len() * size_of::<InlineBox>()
             + self.sources.len() * size_of::<Range<u32>>()
+            + self.controls.len() * size_of::<Control>()
             + self.sources.iter().map(|s| s.source.len() + s.spans.len() * size_of::<SourceSpan>()).sum::<usize>()
     }
 }
@@ -147,6 +160,7 @@ struct Pending {
     source: String,
     spans: Vec<SourceSpan>,
     inlines: Vec<InlineBox>,
+    controls: Vec<(u32, ControlKind)>,
 }
 struct OpenInline {
     node: NodeId,
@@ -162,6 +176,7 @@ pub struct BuildJob<'a> {
     boxes: Vec<BoxNode>,
     sources: Vec<TextSource>,
     inlines: Vec<InlineBox>,
+    controls: Vec<Control>,
     open: Vec<OpenInline>,
     stack: Vec<Cursor>,
     pending: Option<Pending>,
@@ -184,6 +199,7 @@ impl<'a> BuildJob<'a> {
             boxes: vec![BoxNode { node: document.root(), style_node: document.root(), kind: BoxKind::Viewport, parent: None, first_child: None, last_child: None, next_sibling: None }],
             sources: Vec::new(),
             inlines: Vec::new(),
+            controls: Vec::new(),
             open: Vec::new(),
             stack: vec![Cursor { next: document.first_child(document.root())?, container: root, style: document.root(), close: false, inline: false }],
             pending: None,
@@ -218,6 +234,7 @@ impl<'a> BuildJob<'a> {
         // Collapsible indentation between blocks generates no anonymous line box.
         if p.source.bytes().all(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
             && p.inlines.is_empty()
+            && p.controls.is_empty()
             && p.spans.iter().all(|s| self.styles.snapshot(s.style_node).and_then(|s| WhiteSpace::for_style(s).ok()).is_some_and(|w| w.collapse == Collapse::Collapse))
         {
             return Ok(());
@@ -228,6 +245,7 @@ impl<'a> BuildJob<'a> {
         let start = u32::try_from(self.inlines.len()).map_err(|_| Error::Limit)?;
         self.inlines.extend(p.inlines);
         let end = u32::try_from(self.inlines.len()).map_err(|_| Error::Limit)?;
+        self.controls.extend(p.controls.into_iter().map(|(offset, kind)| Control { source, offset, kind }));
         self.sources.push(TextSource { container: p.container, source: Arc::from(p.source), spans: p.spans.into_boxed_slice(), inlines: start..end });
         Ok(())
     }
@@ -238,7 +256,7 @@ impl<'a> BuildJob<'a> {
                 open.index = inlines.len();
                 inlines.push(InlineBox { node: open.node, range: 0..0, first: open.first, last: false });
             }
-            self.pending = Some(Pending { container, source: String::new(), spans: Vec::new(), inlines });
+            self.pending = Some(Pending { container, source: String::new(), spans: Vec::new(), inlines, controls: Vec::new() });
         }
         let p = self.pending.as_mut().unwrap();
         if p.inlines.len() > self.limits.inline_boxes.saturating_sub(self.inlines.len()) {
@@ -279,6 +297,9 @@ impl<'a> BuildJob<'a> {
     }
     fn text(&mut self, node: NodeId, container: BoxId, style: NodeId) -> Result<()> {
         let value = self.document.value(node)?.ok_or(Error::Invalid)?;
+        self.append(node, container, style, value, None)
+    }
+    fn append(&mut self, node: NodeId, container: BoxId, style: NodeId, value: &str, control: Option<ControlKind>) -> Result<()> {
         if value.is_empty() {
             return Ok(());
         }
@@ -298,6 +319,9 @@ impl<'a> BuildJob<'a> {
         }
         p.source.push_str(value);
         p.spans.push(SourceSpan { range: from as u32..p.source.len() as u32, node, style_node: style });
+        if let Some(kind) = control {
+            p.controls.push((from as u32, kind));
+        }
         Ok(())
     }
     pub fn step(&mut self, budget: usize) -> Result<BuildProgress> {
@@ -356,7 +380,34 @@ impl<'a> BuildJob<'a> {
                     if self.document.namespace(node)? != Some(crate::dom::Namespace::Html) {
                         return Err(Error::Unsupported("foreign box layout"));
                     }
-                    if matches!(self.document.name(node)?, Some("img" | "input" | "textarea" | "select" | "button" | "video" | "audio" | "iframe" | "object" | "embed" | "canvas" | "br" | "wbr")) {
+                    let name = self.document.name(node)?;
+                    if let Some(name @ ("br" | "wbr")) = name {
+                        if *display == Display::Contents {
+                            continue;
+                        }
+                        if !matches!(*display, Display::Box { outer: Outer::Inline, inner: Inner::Flow, list_item: false })
+                            && !(name == "br" && matches!(*display, Display::Box { outer: Outer::Block, inner: Inner::Flow, list_item: false }))
+                        {
+                            return Err(Error::Unsupported("non-inline break control"));
+                        }
+                        if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static))
+                            || !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline))
+                            || [Property::MarginLeft, Property::MarginRight, Property::PaddingLeft, Property::PaddingRight]
+                                .into_iter()
+                                .any(|p| !matches!(s.value(p), Value::Keyword(Keyword::Auto)) && s.value(p).scalar() != Some(0.))
+                        {
+                            return Err(Error::Unsupported("styled inline break control"));
+                        }
+                        for p in [Property::BorderLeftWidth, Property::BorderRightWidth, Property::BorderTopWidth, Property::BorderBottomWidth] {
+                            if s.used_border_width(p)? != 0. {
+                                return Err(Error::Unsupported("inline break borders"));
+                            }
+                        }
+                        let kind = if name == "br" { ControlKind::Break } else { ControlKind::Opportunity };
+                        self.append(node, container, node, kind.carrier(), Some(kind))?;
+                        continue;
+                    }
+                    if matches!(name, Some("img" | "input" | "textarea" | "select" | "button" | "video" | "audio" | "iframe" | "object" | "embed" | "canvas")) {
                         return Err(Error::Unsupported("replaced/control/forced-break inline object"));
                     }
                     match *display {
@@ -407,6 +458,7 @@ impl<'a> BuildJob<'a> {
             revision: self.document.revision(),
             styles: self.styles,
             inlines: self.inlines.into_boxed_slice(),
+            controls: self.controls.into_boxed_slice(),
             boxes: self.boxes.into_boxed_slice(),
             sources: self.sources.into_boxed_slice(),
         }))

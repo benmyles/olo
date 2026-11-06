@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: semantic forced and optional breaks
+
+*07:10* — The same authored page renders forced and consecutive breaks and an optional break under nowrap. Formatting carriers stay out of agent-visible text; DOM Unicode remains intact. Native link actions and reviews checked across light/dark/night at five live scales. Four of 415 independent Chrome position/height combinations remain nonpasses; website acceptance stays 0/100.
+
+![Browser: semantic forced and optional breaks](2026-11-06/071035-browser-semantic-forced-and-optional-breaks.png)
+
+### Browser before semantic breaks
+
+*07:10* — Frozen f1e462cc rejects the authored br/wbr fixture explicitly; no website acceptance. Own Agent Screen, light mode at 1x.
+
+![Browser before semantic breaks](2026-11-06/071034-browser-before-semantic-breaks.png)
+
 ### Browser: inline spacing in night mode
 
 *06:30* — The same fixture at live 1.5× in night mode. Transparent vertical padding preserves line metrics; inline decoration and complete hit geometry remain open. All fifteen native mode/scale reviews pass; no website acceptance follows.

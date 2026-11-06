@@ -3556,5 +3556,17 @@
     "title": "Browser: inline spacing in night mode",
     "caption": "The same fixture at live 1.5\u00d7 in night mode. Transparent vertical padding preserves line metrics; inline decoration and complete hit geometry remain open. All fifteen native mode/scale reviews pass; no website acceptance follows.",
     "image": "2026-11-06/063053-browser-inline-spacing-in-night-mode.png"
+  },
+  {
+    "time": "2026-11-06T07:10:34",
+    "title": "Browser before semantic breaks",
+    "caption": "Frozen f1e462cc rejects the authored br/wbr fixture explicitly; no website acceptance. Own Agent Screen, light mode at 1x.",
+    "image": "2026-11-06/071034-browser-before-semantic-breaks.png"
+  },
+  {
+    "time": "2026-11-06T07:10:35",
+    "title": "Browser: semantic forced and optional breaks",
+    "caption": "The same authored page renders forced and consecutive breaks and an optional break under nowrap. Formatting carriers stay out of agent-visible text; DOM Unicode remains intact. Native link actions and reviews checked across light/dark/night at five live scales. Four of 415 independent Chrome position/height combinations remain nonpasses; website acceptance stays 0/100.",
+    "image": "2026-11-06/071035-browser-semantic-forced-and-optional-breaks.png"
   }
 ]

@@ -1,0 +1,583 @@
+[
+  {
+    "name": "normal-A<br>B",
+    "body": "<div id=p>A<br>B</div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-A <br> B",
+    "body": "<div id=p>A <br> B</div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-<br>",
+    "body": "<div id=p><br></div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-<br><br>",
+    "body": "<div id=p><br><br></div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-A<br>",
+    "body": "<div id=p>A<br></div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-A<wbr>B",
+    "body": "<div id=p>A<wbr>B</div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-<wbr>",
+    "body": "<div id=p><wbr></div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-A <wbr> B",
+    "body": "<div id=p>A <wbr> B</div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-A<br>\nB",
+    "body": "<div id=p>A<br>\nB</div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "normal-A\n<br>B",
+    "body": "<div id=p>A\n<br>B</div>",
+    "css": "#p{white-space:normal}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-A<br>B",
+    "body": "<div id=p>A<br>B</div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-A <br> B",
+    "body": "<div id=p>A <br> B</div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-<br>",
+    "body": "<div id=p><br></div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-<br><br>",
+    "body": "<div id=p><br><br></div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-A<br>",
+    "body": "<div id=p>A<br></div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-A<wbr>B",
+    "body": "<div id=p>A<wbr>B</div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-<wbr>",
+    "body": "<div id=p><wbr></div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-A <wbr> B",
+    "body": "<div id=p>A <wbr> B</div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-A<br>\nB",
+    "body": "<div id=p>A<br>\nB</div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "nowrap-A\n<br>B",
+    "body": "<div id=p>A\n<br>B</div>",
+    "css": "#p{white-space:nowrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-A<br>B",
+    "body": "<div id=p>A<br>B</div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-A <br> B",
+    "body": "<div id=p>A <br> B</div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-<br>",
+    "body": "<div id=p><br></div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-<br><br>",
+    "body": "<div id=p><br><br></div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-A<br>",
+    "body": "<div id=p>A<br></div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-A<wbr>B",
+    "body": "<div id=p>A<wbr>B</div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-<wbr>",
+    "body": "<div id=p><wbr></div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-A <wbr> B",
+    "body": "<div id=p>A <wbr> B</div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-A<br>\nB",
+    "body": "<div id=p>A<br>\nB</div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-A\n<br>B",
+    "body": "<div id=p>A\n<br>B</div>",
+    "css": "#p{white-space:pre}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-A<br>B",
+    "body": "<div id=p>A<br>B</div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-A <br> B",
+    "body": "<div id=p>A <br> B</div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-<br>",
+    "body": "<div id=p><br></div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-<br><br>",
+    "body": "<div id=p><br><br></div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-A<br>",
+    "body": "<div id=p>A<br></div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-A<wbr>B",
+    "body": "<div id=p>A<wbr>B</div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-<wbr>",
+    "body": "<div id=p><wbr></div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-A <wbr> B",
+    "body": "<div id=p>A <wbr> B</div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-A<br>\nB",
+    "body": "<div id=p>A<br>\nB</div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-wrap-A\n<br>B",
+    "body": "<div id=p>A\n<br>B</div>",
+    "css": "#p{white-space:pre-wrap}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-A<br>B",
+    "body": "<div id=p>A<br>B</div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-A <br> B",
+    "body": "<div id=p>A <br> B</div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-<br>",
+    "body": "<div id=p><br></div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-<br><br>",
+    "body": "<div id=p><br><br></div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-A<br>",
+    "body": "<div id=p>A<br></div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-A<wbr>B",
+    "body": "<div id=p>A<wbr>B</div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-<wbr>",
+    "body": "<div id=p><wbr></div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-A <wbr> B",
+    "body": "<div id=p>A <wbr> B</div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-A<br>\nB",
+    "body": "<div id=p>A<br>\nB</div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "pre-line-A\n<br>B",
+    "body": "<div id=p>A\n<br>B</div>",
+    "css": "#p{white-space:pre-line}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-A<br>B",
+    "body": "<div id=p>A<br>B</div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-A <br> B",
+    "body": "<div id=p>A <br> B</div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-<br>",
+    "body": "<div id=p><br></div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-<br><br>",
+    "body": "<div id=p><br><br></div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-A<br>",
+    "body": "<div id=p>A<br></div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-A<wbr>B",
+    "body": "<div id=p>A<wbr>B</div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-<wbr>",
+    "body": "<div id=p><wbr></div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-A <wbr> B",
+    "body": "<div id=p>A <wbr> B</div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-A<br>\nB",
+    "body": "<div id=p>A<br>\nB</div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "break-spaces-A\n<br>B",
+    "body": "<div id=p>A\n<br>B</div>",
+    "css": "#p{white-space:break-spaces}",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "word-opportunity-20",
+    "body": "<div id=p>AB<wbr>CD</div>",
+    "css": "",
+    "width": 20,
+    "height": 800
+  },
+  {
+    "name": "adjacent-opportunities-20",
+    "body": "<div id=p>A<wbr><wbr>B</div>",
+    "css": "",
+    "width": 20,
+    "height": 800
+  },
+  {
+    "name": "word-opportunity-40",
+    "body": "<div id=p>AB<wbr>CD</div>",
+    "css": "",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "adjacent-opportunities-40",
+    "body": "<div id=p>A<wbr><wbr>B</div>",
+    "css": "",
+    "width": 40,
+    "height": 800
+  },
+  {
+    "name": "word-opportunity-70",
+    "body": "<div id=p>AB<wbr>CD</div>",
+    "css": "",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "adjacent-opportunities-70",
+    "body": "<div id=p>A<wbr><wbr>B</div>",
+    "css": "",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "word-opportunity-100",
+    "body": "<div id=p>AB<wbr>CD</div>",
+    "css": "",
+    "width": 100,
+    "height": 800
+  },
+  {
+    "name": "adjacent-opportunities-100",
+    "body": "<div id=p>A<wbr><wbr>B</div>",
+    "css": "",
+    "width": 100,
+    "height": 800
+  },
+  {
+    "name": "rtl-A<br>B",
+    "body": "<div id=p>A<br>B</div>",
+    "css": "#p{direction:rtl}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "inline-slice-A<br>B",
+    "body": "<div id=p><span id=s>A<br>B</span></div>",
+    "css": "#s{margin-left:5px;padding-left:7px;padding-right:11px;margin-right:3px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "after-inline-A<br>B",
+    "body": "<div id=p><span id=s>A<br>B</span>C</div>",
+    "css": "#s{margin-left:5px;padding-left:7px;padding-right:11px;margin-right:3px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "rtl-A<wbr>B",
+    "body": "<div id=p>A<wbr>B</div>",
+    "css": "#p{direction:rtl}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "inline-slice-A<wbr>B",
+    "body": "<div id=p><span id=s>A<wbr>B</span></div>",
+    "css": "#s{margin-left:5px;padding-left:7px;padding-right:11px;margin-right:3px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "after-inline-A<wbr>B",
+    "body": "<div id=p><span id=s>A<wbr>B</span>C</div>",
+    "css": "#s{margin-left:5px;padding-left:7px;padding-right:11px;margin-right:3px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "trailing-slice-A<br></span>",
+    "body": "<div id=p><span id=s>A<br></span></div>",
+    "css": "#s{padding-left:7px;padding-right:11px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "trailing-slice-A<br><br></span>",
+    "body": "<div id=p><span id=s>A<br><br></span></div>",
+    "css": "#s{padding-left:7px;padding-right:11px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "trailing-slice-A<br> </span>",
+    "body": "<div id=p><span id=s>A<br> </span></div>",
+    "css": "#s{padding-left:7px;padding-right:11px}",
+    "width": 70,
+    "height": 800
+  },
+  {
+    "name": "hidden-br",
+    "body": "<div id=p>A<br style=\"display:none\">B</div>",
+    "css": "",
+    "width": 100,
+    "height": 800
+  },
+  {
+    "name": "hidden-wbr",
+    "body": "<div id=p>A<wbr style=\"display:none\">B</div>",
+    "css": "",
+    "width": 30,
+    "height": 800
+  },
+  {
+    "name": "visibility-br",
+    "body": "<div id=p>A<br style=\"visibility:hidden\">B</div>",
+    "css": "",
+    "width": 100,
+    "height": 800
+  },
+  {
+    "name": "display-contents-br",
+    "body": "<div id=p>A<br style=\"display:contents\">B</div>",
+    "css": "",
+    "width": 100,
+    "height": 800
+  },
+  {
+    "name": "display-block-br",
+    "body": "<div id=p>A<br style=\"display:block\">B</div>",
+    "css": "",
+    "width": 100,
+    "height": 800
+  },
+  {
+    "name": "display-contents-wbr",
+    "body": "<div id=p>A<wbr style=\"display:contents\">B</div>",
+    "css": "",
+    "width": 30,
+    "height": 800
+  }
+]

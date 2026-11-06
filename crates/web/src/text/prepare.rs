@@ -53,6 +53,39 @@ impl WhiteSpace {
         Ok(Self { collapse, wrap })
     }
 }
+/// Semantic controls in a formatting source, never inserted into the DOM.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ControlKind {
+    Break,
+    Opportunity,
+}
+impl ControlKind {
+    pub fn carrier(self) -> &'static str {
+        match self {
+            Self::Break => "\n",
+            Self::Opportunity => "\u{200b}",
+        }
+    }
+}
+/// Four-byte source position and semantic tag. Control-bearing contexts are
+/// limited to the low 30 source-position bits, independently of the byte quota.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Control(u32);
+impl Control {
+    const POSITION: u32 = (1 << 30) - 1;
+    pub fn new(offset: u32, kind: ControlKind) -> Result<Self> {
+        if offset > Self::POSITION {
+            return Err(Error::Limit);
+        }
+        Ok(Self(offset | ((kind as u32) << 30)))
+    }
+    pub fn offset(self) -> u32 {
+        self.0 & Self::POSITION
+    }
+    pub fn kind(self) -> ControlKind {
+        if self.0 >> 30 == 0 { ControlKind::Break } else { ControlKind::Opportunity }
+    }
+}
 /// A nonempty UTF-8 range. Spans partition the source without gaps. The host
 /// keeps each span's DOM node/local offset, font and other style data. A span
 /// boundary is transparent to collapsing; replaced/atomic inlines must split
@@ -138,6 +171,7 @@ pub struct Prepared {
     text: Arc<str>,
     spans: Arc<[Span]>,
     mappings: Box<[EncodedMapping]>,
+    controls: Option<triomphe::ThinArc<(), Control>>,
 }
 impl Prepared {
     pub fn source(&self) -> &Arc<str> {
@@ -148,6 +182,9 @@ impl Prepared {
     }
     pub fn spans(&self) -> &[Span] {
         &self.spans
+    }
+    pub fn controls(&self) -> &[Control] {
+        self.controls.as_ref().map_or(&[], |f| &f.slice)
     }
     pub fn mappings(&self) -> impl ExactSizeIterator<Item = Mapping> + DoubleEndedIterator + '_ {
         (0..self.mappings.len()).map(|i| self.mapping(i).unwrap())
@@ -228,6 +265,7 @@ pub struct Job<'a> {
     mappings: Vec<EncodedMapping>,
     progress: Progress,
     failed: bool,
+    controls: Box<[Control]>,
 }
 impl<'a> Job<'a> {
     pub fn new(source: Arc<str>, spans: Arc<[Span]>, limits: Limits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
@@ -269,7 +307,26 @@ impl<'a> Job<'a> {
             mappings: Vec::new(),
             progress: Progress::default(),
             failed: false,
+            controls: Box::default(),
         })
+    }
+    /// Host-provided semantic controls in the formatting source. Forced breaks
+    /// survive every collapsing mode; optional controls retain an explicit point.
+    pub fn with_controls(mut self, controls: Box<[Control]>) -> Result<Self> {
+        check(self.cancel)?;
+        if self.failed || self.progress.finished || self.progress.scanned_bytes != 0 || !self.controls.is_empty() {
+            return Err(Error::Invalid);
+        }
+        if controls.len() > self.limits.spans {
+            return Err(Error::Limit);
+        }
+        if controls.windows(2).any(|p| p[0].offset() + p[0].kind().carrier().len() as u32 > p[1].offset())
+            || controls.iter().any(|c| !self.source.get(c.offset() as usize..).is_some_and(|s| s.starts_with(c.kind().carrier())))
+        {
+            return Err(Error::Invalid);
+        }
+        self.controls = controls;
+        Ok(self)
     }
     pub fn progress(&self) -> Progress {
         self.progress
@@ -373,6 +430,10 @@ impl<'a> Job<'a> {
                 } else if c == '\n' {
                     self.after_break = true;
                     match collapse {
+                        _ if self.controls.binary_search_by_key(&(self.at as u32), |c| c.offset()).is_ok_and(|i| self.controls[i].kind() == ControlKind::Break) => {
+                            self.previous_space = false;
+                            (MappingKind::Copy, None)
+                        }
                         Collapse::Collapse => {
                             let duplicate = self.previous_space;
                             self.previous_space = true;
@@ -463,6 +524,7 @@ impl<'a> Job<'a> {
             return Err(Error::Incomplete);
         }
         let text = self.output.map_or_else(|| self.source.clone(), Arc::from);
-        Ok(Prepared { source: self.source, text, spans: self.spans, mappings: self.mappings.into_boxed_slice() })
+        let controls = (!self.controls.is_empty()).then(|| triomphe::ThinArc::from_header_and_iter((), self.controls.into_vec().into_iter()));
+        Ok(Prepared { source: self.source, text, spans: self.spans, mappings: self.mappings.into_boxed_slice(), controls })
     }
 }

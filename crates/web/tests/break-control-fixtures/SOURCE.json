@@ -1,0 +1,57 @@
+{
+  "kind": "Authored inputs; independent Chrome measurements; explicit nonpass ledger is not acceptance.",
+  "capture": "Owned browser-break-ref Olo Agent Screen, Wayland olo-chrome, localhost, live scales 1/1.25/1.5/1.75/2. No personal profile/session.",
+  "references": [
+    "https://html.spec.whatwg.org/multipage/rendering.html",
+    "https://html.spec.whatwg.org/multipage/text-level-semantics.html"
+  ],
+  "inputs": {
+    "generate.py": "a332a538d43e5d9de6eaef406061cdb95264160293e4d22e1a478c90b6a80baa",
+    "inputs.json": "105be81adc0a4c0de62e670319ecfb699f51776c4678f5899bc2fd474f50b6a8",
+    "probe.html": "6d3c6b6bf54393515b81cbbf8068f860becb8661d62c07175d0be1551def8787",
+    "serve.py": "f93b10e433a21df9704b7c5bd1c4d72523f99ee28097f26acf6ac0a9decfff19",
+    "known-nonpasses.json": "8138d2aec97b92cb5320dca8c04579cc29c6f8e3da3b72a12f9d8655dccbc984"
+  },
+  "font": {
+    "path": "../inline-fixtures/plain.ttf",
+    "sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb"
+  },
+  "base": {
+    "path": "../flow-fixtures/base.css",
+    "sha256": "d3224fc302c7d78153a09cea76b2406366fa5d60033c5673f0a68a86c8a9a35d"
+  },
+  "reports": {
+    "1": {
+      "file": "chrome-1.json",
+      "sha256": "1b3ca4ebb8713d646fed4e004a0a866855dea895a6b3be41fe67652beba9bc25",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.25": {
+      "file": "chrome-1.25.json",
+      "sha256": "2f7b126a9006697d410393bd9a5f647e4a0ac0e4c3b5bd64c8b2a2df8cd23483",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.5": {
+      "file": "chrome-1.5.json",
+      "sha256": "dd226ca01b6b4df93cdcde3393cbbb7357ba78728684cecc17f789724811def1",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.75": {
+      "file": "chrome-1.75.json",
+      "sha256": "abb98ca997957c2d0e7c17da3f710d2d37c33601c9e57d9cc7336853a6dd08f7",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "2": {
+      "file": "chrome-2.json",
+      "sha256": "3c8667cfbc132556d7a23647204b3b66f44afe63b7420bc96e679fd1d0ef3057",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    }
+  },
+  "coverage": {
+    "total": 415,
+    "matching_within_dom_range_export_unit": 411,
+    "nonpasses": 4,
+    "website_passes": 0
+  },
+  "scope": "83 cases at five scales, budgets 1/128. Letters and block heights only, not full pixels or complete CSS, bidi, controls, replaced objects, scripting, accessibility or websites. X allows one device layout unit for DOM Range enclosure; all other differences are explicit nonpasses."
+}

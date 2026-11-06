@@ -3445,3 +3445,65 @@ all images exist. Full desktop lint was not repeated for this recording-only
 merge; its previous ten findings outside Browser remain open. Evidence:
 `2026-11-06-inline-box-main-integration.json`. No personal session install or
 reload. Website acceptance stays **0/100**, and the full goal remains active.
+
+
+### 2026-11-06 — semantic forced and optional inline breaks
+
+Normal-flow `br`/`wbr` now retain real element ownership and sparse semantic
+metadata without modifying DOM text. Forced breaks survive collapsing;
+optional points participate even under nowrap/pre. Prepared metadata is packed
+into four-byte entries behind an optional shared pointer. Validation bounds
+positions, overlap, count and cancellation; cache sharing distinguishes an
+actual optional-break element from literal DOM ZWSP with identical source bytes.
+Paint omits marker-only glyphs and structured text filters only semantic
+carriers. Shared real clusters stay readable but have no invented click target.
+Styled/positioned control cases and unsupported backgrounds still fail explicitly.
+
+Independent Chrome measurements: **83 cases × five scales = 415 combinations**,
+**411 matching / four explicit nonpasses**, at worker budgets 1/128. Two
+fractional-font exact-fit cases differ in wrapping/height; two RTL cases differ
+in horizontal position. The nonpass ledger pins actual and reference values;
+it does not accept these failures. Literal Unicode, mappings, malformed input,
+quotas/cancellation, cache identity, pixels and text ownership have regression
+checks. Website acceptance remains **0/100**, **0/3000** combinations.
+
+Default release tests: **239 web + 12 browser**, with one ignored browser
+measurement; all-feature web **238**. Strict web/browser clippy passes (existing
+dependency warnings retained), workspace release build passes (**7.10s** for
+final lookup/hash hoisting), thirteen kit/Preferences lint tests pass and
+Browser live lint reports zero errors. Native component link checks: **15
+mode/scale reviews, 36 requests**; navigation: **15 reviews, 61 requests**,
+including history/scroll restoration across owned-session re-exec. Only owned
+Agent Screens were used. Before/after journal images use the same authored
+local fixture. No personal session install/reload.
+
+The first controlled worker sample measured 100/1,000 elements at
+**1055.300/8587.087→1079.078/9001.613 µs**. Hoisted control lookup, skipped empty
+control hashing and reused element-name lookup. Final alternating seven-sample,
+60-round frozen default builds retain equal common source/geometry hashes and
+**80-byte paint commands**: **1048.580/8616.924→1058.642/8936.758 µs**.
+The remaining ~1.0%/~3.7% regressions are open, not performance acceptance.
+New control workload (no passing before counterpart):
+**1495.480/13429.661 µs**. Raster/GPU/presentation are excluded. First sample
+and final raw results are both retained; external desktop load is not fully
+controlled. Own builds and active GUI tests were stopped during final samples.
+
+Evidence: `2026-11-06-break-control-{checks,links,navigation,pipeline-first,
+pipeline-cost,ui-first,ui-cost,keyboard-cost}.json`,
+`tests/break-control-fixtures`, `tools/browser/measure-breaks.py` and
+`links-smoke.py --inline --breaks`. Images/replaced objects, complete CSS,
+JavaScript, passkeys, universal dark mode and the complete browser goal remain
+unfinished.
+
+Final common pipeline peak RSS ranges: **8536–9112→8724–9212 KiB**;
+new-control workload **12072–12264 KiB**. Native common scroll (three replays):
+RSS **84892→85788 KiB**; both variants idle at **zero CPU/wakeups/frames**
+over three seconds. Median first report→moving client frame drag/flick/wheel
+**9.107/9.046/0.381→9.064/8.948/0.522 ms**, zero hitches in final samples.
+Median slowest draw **0.62/0.60/0.58→0.64/0.52/0.60 ms**. The first candidate
+sample had one drag hitch; it is retained, not discarded. The unchanged
+1,001-link keyboard case measures **17.338 ms**, RSS **89008 KiB**, zero idle
+CPU/wakeups/frames; the 8.3 ms frame target remains open. These client marks
+are not compositor presentation or optical latency. Journal: **595** unique
+entries, all PNGs present. Manual lint used owned `/var/tmp` scratch because
+the hook hardcodes RAM `/tmp/olo-dev`; only that duplicate hook lint is skipped.

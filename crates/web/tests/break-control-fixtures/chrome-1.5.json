@@ -1,0 +1,3688 @@
+{
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  "devicePixelRatio": 1.5,
+  "base": "html,body,div,p,section{display:block;margin:0;padding:0;border-width:0;border-style:none}head{display:none}html{font-family:'Olo Inline plain';font-size:20px;line-height:20px}\n",
+  "scope": "Original fixed-metric font; independent Chrome letter ranges and boxes. Component geometry, not pixels or websites.",
+  "rows": [
+    {
+      "name": "normal-A<br>B",
+      "body": "<div id=p>A<br>B</div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "normal-A <br> B",
+      "body": "<div id=p>A <br> B</div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "normal-<br>",
+      "body": "<div id=p><br></div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "normal-<br><br>",
+      "body": "<div id=p><br><br></div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "normal-A<br>",
+      "body": "<div id=p>A<br></div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "normal-A<wbr>B",
+      "body": "<div id=p>A<wbr>B</div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "normal-<wbr>",
+      "body": "<div id=p><wbr></div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "normal-A <wbr> B",
+      "body": "<div id=p>A <wbr> B</div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "normal-A<br>\nB",
+      "body": "<div id=p>A<br>\nB</div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "normal-A\n<br>B",
+      "body": "<div id=p>A\n<br>B</div>",
+      "css": "#p{white-space:normal}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "nowrap-A<br>B",
+      "body": "<div id=p>A<br>B</div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "nowrap-A <br> B",
+      "body": "<div id=p>A <br> B</div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "nowrap-<br>",
+      "body": "<div id=p><br></div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "nowrap-<br><br>",
+      "body": "<div id=p><br><br></div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "nowrap-A<br>",
+      "body": "<div id=p>A<br></div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "nowrap-A<wbr>B",
+      "body": "<div id=p>A<wbr>B</div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "nowrap-<wbr>",
+      "body": "<div id=p><wbr></div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "nowrap-A <wbr> B",
+      "body": "<div id=p>A <wbr> B</div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "nowrap-A<br>\nB",
+      "body": "<div id=p>A<br>\nB</div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "nowrap-A\n<br>B",
+      "body": "<div id=p>A\n<br>B</div>",
+      "css": "#p{white-space:nowrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-A<br>B",
+      "body": "<div id=p>A<br>B</div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-A <br> B",
+      "body": "<div id=p>A <br> B</div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 9.989583969116211,
+          "y": 20,
+          "width": 20.01041603088379,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-<br>",
+      "body": "<div id=p><br></div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-<br><br>",
+      "body": "<div id=p><br><br></div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-A<br>",
+      "body": "<div id=p>A<br></div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-A<wbr>B",
+      "body": "<div id=p>A<wbr>B</div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-<wbr>",
+      "body": "<div id=p><wbr></div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-A <wbr> B",
+      "body": "<div id=p>A <wbr> B</div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 9.989583969116211,
+          "y": 20,
+          "width": 20.01041603088379,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-A<br>\nB",
+      "body": "<div id=p>A<br>\nB</div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 40,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        }
+      }
+    },
+    {
+      "name": "pre-A\n<br>B",
+      "body": "<div id=p>A\n<br>B</div>",
+      "css": "#p{white-space:pre}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 40,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-A<br>B",
+      "body": "<div id=p>A<br>B</div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-A <br> B",
+      "body": "<div id=p>A <br> B</div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 10,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-<br>",
+      "body": "<div id=p><br></div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-<br><br>",
+      "body": "<div id=p><br><br></div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-A<br>",
+      "body": "<div id=p>A<br></div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-A<wbr>B",
+      "body": "<div id=p>A<wbr>B</div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-<wbr>",
+      "body": "<div id=p><wbr></div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-A <wbr> B",
+      "body": "<div id=p>A <wbr> B</div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-A<br>\nB",
+      "body": "<div id=p>A<br>\nB</div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 40,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        }
+      }
+    },
+    {
+      "name": "pre-wrap-A\n<br>B",
+      "body": "<div id=p>A\n<br>B</div>",
+      "css": "#p{white-space:pre-wrap}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 40,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        }
+      }
+    },
+    {
+      "name": "pre-line-A<br>B",
+      "body": "<div id=p>A<br>B</div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-line-A <br> B",
+      "body": "<div id=p>A <br> B</div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-line-<br>",
+      "body": "<div id=p><br></div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-line-<br><br>",
+      "body": "<div id=p><br><br></div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-line-A<br>",
+      "body": "<div id=p>A<br></div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-line-A<wbr>B",
+      "body": "<div id=p>A<wbr>B</div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-line-<wbr>",
+      "body": "<div id=p><wbr></div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "pre-line-A <wbr> B",
+      "body": "<div id=p>A <wbr> B</div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "pre-line-A<br>\nB",
+      "body": "<div id=p>A<br>\nB</div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 40,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        }
+      }
+    },
+    {
+      "name": "pre-line-A\n<br>B",
+      "body": "<div id=p>A\n<br>B</div>",
+      "css": "#p{white-space:pre-line}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 40,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        }
+      }
+    },
+    {
+      "name": "break-spaces-A<br>B",
+      "body": "<div id=p>A<br>B</div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "break-spaces-A <br> B",
+      "body": "<div id=p>A <br> B</div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 10,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "break-spaces-<br>",
+      "body": "<div id=p><br></div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "break-spaces-<br><br>",
+      "body": "<div id=p><br><br></div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "break-spaces-A<br>",
+      "body": "<div id=p>A<br></div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "break-spaces-A<wbr>B",
+      "body": "<div id=p>A<wbr>B</div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "break-spaces-<wbr>",
+      "body": "<div id=p><wbr></div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "break-spaces-A <wbr> B",
+      "body": "<div id=p>A <wbr> B</div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 9.989583969116211,
+          "y": 20,
+          "width": 20.01041603088379,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "break-spaces-A<br>\nB",
+      "body": "<div id=p>A<br>\nB</div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 40,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        }
+      }
+    },
+    {
+      "name": "break-spaces-A\n<br>B",
+      "body": "<div id=p>A\n<br>B</div>",
+      "css": "#p{white-space:break-spaces}",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 40,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 60
+        }
+      }
+    },
+    {
+      "name": "word-opportunity-20",
+      "body": "<div id=p>AB<wbr>CD</div>",
+      "css": "",
+      "width": 20,
+      "height": 800,
+      "layoutViewport": {
+        "width": 20,
+        "height": 784.6666870117188
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 19.98958396911621,
+          "y": 0,
+          "width": 20.01041603088379,
+          "height": 20
+        },
+        {
+          "letter": "C",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "D",
+          "x": 19.98958396911621,
+          "y": 20,
+          "width": 20.01041603088379,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "adjacent-opportunities-20",
+      "body": "<div id=p>A<wbr><wbr>B</div>",
+      "css": "",
+      "width": 20,
+      "height": 800,
+      "layoutViewport": {
+        "width": 20,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "word-opportunity-40",
+      "body": "<div id=p>AB<wbr>CD</div>",
+      "css": "",
+      "width": 40,
+      "height": 800,
+      "layoutViewport": {
+        "width": 40,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 19.98958396911621,
+          "y": 0,
+          "width": 20.01041603088379,
+          "height": 20
+        },
+        {
+          "letter": "C",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "D",
+          "x": 19.98958396911621,
+          "y": 20,
+          "width": 20.01041603088379,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 40,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 40,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 40,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "adjacent-opportunities-40",
+      "body": "<div id=p>A<wbr><wbr>B</div>",
+      "css": "",
+      "width": 40,
+      "height": 800,
+      "layoutViewport": {
+        "width": 40,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 20,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 40,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 40,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 40,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "word-opportunity-70",
+      "body": "<div id=p>AB<wbr>CD</div>",
+      "css": "",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 19.98958396911621,
+          "y": 0,
+          "width": 20.01041603088379,
+          "height": 20
+        },
+        {
+          "letter": "C",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "D",
+          "x": 19.98958396911621,
+          "y": 20,
+          "width": 20.01041603088379,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "adjacent-opportunities-70",
+      "body": "<div id=p>A<wbr><wbr>B</div>",
+      "css": "",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 20,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "word-opportunity-100",
+      "body": "<div id=p>AB<wbr>CD</div>",
+      "css": "",
+      "width": 100,
+      "height": 800,
+      "layoutViewport": {
+        "width": 100,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 19.98958396911621,
+          "y": 0,
+          "width": 20.01041603088379,
+          "height": 20
+        },
+        {
+          "letter": "C",
+          "x": 40,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "D",
+          "x": 59.989585876464844,
+          "y": 0,
+          "width": 20.010414123535156,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "adjacent-opportunities-100",
+      "body": "<div id=p>A<wbr><wbr>B</div>",
+      "css": "",
+      "width": 100,
+      "height": 800,
+      "layoutViewport": {
+        "width": 100,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 20,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "rtl-A<br>B",
+      "body": "<div id=p>A<br>B</div>",
+      "css": "#p{direction:rtl}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 50,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 50,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "inline-slice-A<br>B",
+      "body": "<div id=p><span id=s>A<br>B</span></div>",
+      "css": "#s{margin-left:5px;padding-left:7px;padding-right:11px;margin-right:3px}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 12,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "s": {
+          "x": 0,
+          "y": 0,
+          "width": 32,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "after-inline-A<br>B",
+      "body": "<div id=p><span id=s>A<br>B</span>C</div>",
+      "css": "#s{margin-left:5px;padding-left:7px;padding-right:11px;margin-right:3px}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 12,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "C",
+          "x": 34,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "s": {
+          "x": 0,
+          "y": 0,
+          "width": 32,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "rtl-A<wbr>B",
+      "body": "<div id=p>A<wbr>B</div>",
+      "css": "#p{direction:rtl}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 30,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 50,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "inline-slice-A<wbr>B",
+      "body": "<div id=p><span id=s>A<wbr>B</span></div>",
+      "css": "#s{margin-left:5px;padding-left:7px;padding-right:11px;margin-right:3px}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 12,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 32,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "s": {
+          "x": 5,
+          "y": 0,
+          "width": 58,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "after-inline-A<wbr>B",
+      "body": "<div id=p><span id=s>A<wbr>B</span>C</div>",
+      "css": "#s{margin-left:5px;padding-left:7px;padding-right:11px;margin-right:3px}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 12,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "C",
+          "x": 34,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "s": {
+          "x": 0,
+          "y": 0,
+          "width": 32,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "trailing-slice-A<br></span>",
+      "body": "<div id=p><span id=s>A<br></span></div>",
+      "css": "#s{padding-left:7px;padding-right:11px}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 7,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "s": {
+          "x": 0,
+          "y": 0,
+          "width": 38,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "trailing-slice-A<br><br></span>",
+      "body": "<div id=p><span id=s>A<br><br></span></div>",
+      "css": "#s{padding-left:7px;padding-right:11px}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 7,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 40
+        },
+        "s": {
+          "x": 0,
+          "y": 0,
+          "width": 27,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "trailing-slice-A<br> </span>",
+      "body": "<div id=p><span id=s>A<br> </span></div>",
+      "css": "#s{padding-left:7px;padding-right:11px}",
+      "width": 70,
+      "height": 800,
+      "layoutViewport": {
+        "width": 70,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 7,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 70,
+          "height": 20
+        },
+        "s": {
+          "x": 0,
+          "y": 0,
+          "width": 38,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "hidden-br",
+      "body": "<div id=p>A<br style=\"display:none\">B</div>",
+      "css": "",
+      "width": 100,
+      "height": 800,
+      "layoutViewport": {
+        "width": 100,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 20,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "hidden-wbr",
+      "body": "<div id=p>A<wbr style=\"display:none\">B</div>",
+      "css": "",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 784.6666870117188
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 20,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "visibility-br",
+      "body": "<div id=p>A<br style=\"visibility:hidden\">B</div>",
+      "css": "",
+      "width": 100,
+      "height": 800,
+      "layoutViewport": {
+        "width": 100,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "display-contents-br",
+      "body": "<div id=p>A<br style=\"display:contents\">B</div>",
+      "css": "",
+      "width": 100,
+      "height": 800,
+      "layoutViewport": {
+        "width": 100,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 20,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 20
+        }
+      }
+    },
+    {
+      "name": "display-block-br",
+      "body": "<div id=p>A<br style=\"display:block\">B</div>",
+      "css": "",
+      "width": 100,
+      "height": 800,
+      "layoutViewport": {
+        "width": 100,
+        "height": 800
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 0,
+          "y": 20,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 40
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 40
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 40
+        }
+      }
+    },
+    {
+      "name": "display-contents-wbr",
+      "body": "<div id=p>A<wbr style=\"display:contents\">B</div>",
+      "css": "",
+      "width": 30,
+      "height": 800,
+      "layoutViewport": {
+        "width": 30,
+        "height": 784.6666870117188
+      },
+      "letters": [
+        {
+          "letter": "A",
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        },
+        {
+          "letter": "B",
+          "x": 20,
+          "y": 0,
+          "width": 20,
+          "height": 20
+        }
+      ],
+      "boxes": {
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "body": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        },
+        "p": {
+          "x": 0,
+          "y": 0,
+          "width": 30,
+          "height": 20
+        }
+      }
+    }
+  ]
+}

@@ -238,3 +238,47 @@ fn bulk_scan_boundaries_preserve_all_utf8_and_edit_positions() {
         }
     }
 }
+
+#[test]
+fn semantic_controls_preserve_breaks_without_reinterpreting_dom_characters() {
+    use prep::{Control, ControlKind as K};
+    assert_eq!(size_of::<Control>(), 4);
+    for mode in [C::Collapse, C::Preserve, C::PreserveBreaks, C::PreserveSpaces, C::BreakSpaces] {
+        for budget in [1, 128] {
+            let source: Arc<str> = Arc::from("A\nB\nC\u{200b}D");
+            let spans: Arc<[Span]> = Arc::from([Span { range: 0..source.len() as u32, whitespace: WhiteSpace { collapse: mode, wrap: false } }]);
+            let controls = [Control::new(1, K::Break).unwrap(), Control::new(5, K::Opportunity).unwrap()];
+            let mut job = prep::Job::new(source.clone(), spans, Default::default(), None).unwrap().with_controls(Box::new(controls)).unwrap();
+            while !job.step(budget).unwrap().finished {}
+            let p = job.finish().unwrap();
+            invariants(&p);
+            assert_eq!(p.controls(), controls);
+            assert!(Arc::ptr_eq(p.source(), &source));
+            assert_eq!(&**p.text(), if matches!(mode, C::Collapse | C::PreserveSpaces) { "A\nB C\u{200b}D" } else { &source });
+            assert_eq!(&**uniform(&source, mode, budget).text(), if matches!(mode, C::Collapse | C::PreserveSpaces) { "A B C\u{200b}D" } else { &source });
+        }
+    }
+}
+
+#[test]
+fn semantic_control_metadata_rejects_malformed_late_overlapping_and_over_quota_input() {
+    use prep::{Control, ControlKind as K, Error};
+    let source: Arc<str> = Arc::from("\n\u{200b}\n");
+    let spans: Arc<[Span]> = Arc::from([Span { range: 0..5, whitespace: WhiteSpace::default() }]);
+    let make = || prep::Job::new(source.clone(), spans.clone(), Default::default(), None).unwrap();
+    for entries in [vec![(0, K::Opportunity)], vec![(1, K::Break)], vec![(2, K::Opportunity)], vec![(5, K::Break)], vec![(0, K::Break), (0, K::Break)], vec![(4, K::Break), (0, K::Break)]] {
+        let controls = entries.into_iter().map(|(p, k)| Control::new(p, k).unwrap()).collect();
+        assert!(matches!(make().with_controls(controls), Err(Error::Invalid)));
+    }
+    assert!(matches!(Control::new(1 << 30, K::Break), Err(Error::Limit)));
+    let controls = || Box::new([Control::new(0, K::Break).unwrap(), Control::new(4, K::Break).unwrap()]);
+    let limited = prep::Job::new(source.clone(), spans.clone(), prep::Limits { spans: 1, ..Default::default() }, None).unwrap();
+    assert!(matches!(limited.with_controls(controls()), Err(Error::Limit)));
+    let mut late = make();
+    late.step(1).unwrap();
+    assert!(matches!(late.with_controls(controls()), Err(Error::Invalid)));
+    let cancel = AtomicBool::new(false);
+    let job = prep::Job::new(source, spans, Default::default(), Some(&cancel)).unwrap();
+    cancel.store(true, Ordering::Relaxed);
+    assert!(matches!(job.with_controls(controls()), Err(Error::Cancelled)));
+}

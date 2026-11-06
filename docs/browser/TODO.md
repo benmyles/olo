@@ -364,3 +364,17 @@ this is a harness correction, not a browser speedup.
   frame target; full document restyle/layout/raster is still conservative.
   Keep the merged-desktop sample's drag/flick hitches visible (baseline 2/1,
   candidate 1/0) and control external build load before attributing them.
+
+- [x] Initial semantic `br`/`wbr` formatting sources, preserved forced breaks,
+  optional breaks under nowrap/pre, carrier-free structured text, bounded
+  validated sparse metadata and distinct literal-Unicode cache identity.
+- [ ] Complete inline break behavior: fractional font advances cause four
+  explicit nonpasses among 415 independent Chrome combinations, including two
+  wrap/height failures. Styled/positioned controls, bidi paragraph propagation,
+  caret/anchor ownership of shared clusters and full inline decorations remain
+  required. Image/form/media objects are still unsupported; no website passes.
+
+- [ ] Remove the semantic-control milestone's remaining ordinary-page worker
+  cost regression: 100/1,000 elements 1048.580/8616.924→1058.642/8936.758 µs
+  after lookup/hash hoisting (~1.0%/~3.7%). Profile stages before more changes;
+  retain the original sample and distinguish new-control workloads.
