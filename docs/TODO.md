@@ -17,58 +17,9 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-These two were tabled by Ben on 2026-11-02 ("performance seems pretty
-solid now in olo so you can table the rest of the performance related
-items ... and skip them"); his goal of 2026-11-06, every item done but
-what's truly blocked, takes them up again.
-
-- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
-  frames is never acceptable: olo must be buttery smooth on all
-  displays all the time"; the pointer "definitely way slow/stuttery",
-  worst on the Studio Display; app_server at 20% of a core). Done
-  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
-  measured cost and observed drops; `{"type":"frames"}`,
-  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
-  overlay plane as cursor plane, clipped at the display's edge in
-  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
-  flip and app_server restart eight times; a refused flip no longer
-  kills it); windows as scan-out candidates; Smithay vendored with
-  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
-  all `render_output`, and in it the GPU submit (asahi's
-  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
-  in the kernel; plane assignment and atomic tests cost 0.0 ms.
-  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
-  renderer making a fence per texture drawn (a GPU submit an
-  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
-  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
-  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
-  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
-  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
-  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
-  the radio is the person's to fix (the receiver nearer, its
-  extender, a lower polling rate). **Next**: windows on overlay
-  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
-  agree (a client's cursor on the plane rendered right, or the
-  pointer's plane above every window plane and the window refused
-  while the pointer is drawn in the frame over it); the "draws"
-  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
-  at ~11% with a call on is the tick (now once per 8 ms) and looks;
-  per-display render threads (its own TODO).
-
-- **app_server's critical path on threads of its own** (Ben,
-  2026-11-01: "why run the risk of a blocking call? threads would
-  make sure we don't accidentally block"): input → pointer plane
-  update → commit never shares a thread with anything that can
-  block. Design: an input-and-cursor thread owning libinput and the
-  cursor planes (a pointer move is a plane property commit, no frame);
-  a render-and-commit thread per display owning its GL context, DRM
-  surface and pacing (a slow 5K frame can't delay the built-in
-  display's); the Wayland clients and IPC on the main loop, handing
-  each display's thread a snapshot of what to draw. Our own
-  synchronous work (importing a client's buffer, a fence, a DCP test
-  or commit) is what blocks today, and the heartbeat (`timings`)
-  finds it. After the reliability work.
+Nothing: the two performance items Ben had tabled were taken up again
+(2026-11-06) and are blocked on real displays to try them on (see
+Blocked).
 
 ## Done, waiting for Ben to try or confirm
 
@@ -1379,6 +1330,81 @@ Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
+
+- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
+  frames is never acceptable: olo must be buttery smooth on all
+  displays all the time"; the pointer "definitely way slow/stuttery",
+  worst on the Studio Display; app_server at 20% of a core). Done
+  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
+  measured cost and observed drops; `{"type":"frames"}`,
+  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
+  overlay plane as cursor plane, clipped at the display's edge in
+  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
+  flip and app_server restart eight times; a refused flip no longer
+  kills it); windows as scan-out candidates; Smithay vendored with
+  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
+  all `render_output`, and in it the GPU submit (asahi's
+  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
+  in the kernel; plane assignment and atomic tests cost 0.0 ms.
+  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
+  renderer making a fence per texture drawn (a GPU submit an
+  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
+  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
+  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
+  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
+  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
+  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
+  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  the radio is the person's to fix (the receiver nearer, its
+  extender, a lower polling rate). **Next**: windows on overlay
+  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
+  agree (a client's cursor on the plane rendered right, or the
+  pointer's plane above every window plane and the window refused
+  while the pointer is drawn in the frame over it); the "draws"
+  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
+  at ~11% with a call on is the tick (now once per 8 ms) and looks;
+  per-display render threads (its own TODO).
+  *Taken up again* (2026-11-06, Ben's goal: every item done but what's
+  truly blocked; and his 2026-11-02 word, no optimizing for its own sake
+  without something a person notices). Measured on the ThinkPad's panel
+  (eDP-1, 60 Hz, read from `{"type":"frames"}`, nothing changed): a frame
+  drawn in 0.98 ms (95th percentile 1.32, slowest 1.70) of an 8.75 ms
+  budget; 219 late of 597,686 frames since login (0.04%), 1 in the last
+  minute. Windows on overlay planes need no new rule: Olo's Smithay
+  already keeps a window off a plane while anything drawn in the frame
+  (the pointer among them) lies over it (`try_assign_overlay_plane`'s
+  overlap test); what's left is trying `OLO_OVERLAY_PLANES=1` on real
+  displays (the "all messed up" of 2026-11-01 was on apple-drm, before
+  the ThinkPad), which headless can't (no planes, no vblank). *Blocked
+  on*: Ben trying `OLO_OVERLAY_PLANES=1` on the ThinkPad during a video
+  call (Activity Monitor ▸ Displays says what went to a plane), or a
+  virtual display to test with: `sudo modprobe vkms enable_cursor=1
+  enable_overlay=1` (in this kernel, not loaded; root needed), kept off
+  his session's seat by a udev rule (`ID_SEAT`), so a test app_server
+  could drive planes and vblank without his screen.
+
+- **app_server's critical path on threads of its own** (Ben,
+  2026-11-01: "why run the risk of a blocking call? threads would
+  make sure we don't accidentally block"): input → pointer plane
+  update → commit never shares a thread with anything that can
+  block. Design: an input-and-cursor thread owning libinput and the
+  cursor planes (a pointer move is a plane property commit, no frame);
+  a render-and-commit thread per display owning its GL context, DRM
+  surface and pacing (a slow 5K frame can't delay the built-in
+  display's); the Wayland clients and IPC on the main loop, handing
+  each display's thread a snapshot of what to draw. Our own
+  synchronous work (importing a client's buffer, a fence, a DCP test
+  or commit) is what blocks today, and the heartbeat (`timings`)
+  finds it. After the reliability work.
+  *Taken up again* (2026-11-06) and *blocked*: moving input, the
+  pointer's plane and each display's commits off the main loop rewrites
+  app_server's core around Smithay's single-threaded state, and only
+  real displays and input can show it works and what it buys (latency
+  from a motion event to the plane's move, frames late): headless has
+  neither planes nor vblank nor libinput. Today's numbers (above) show
+  no frame or pointer problem a person would notice on the ThinkPad.
+  Unblocked by the same virtual display (vkms on a seat of its own), or
+  by Ben asking for it with his displays to try it on.
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the
