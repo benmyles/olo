@@ -1,9 +1,11 @@
 //! Original token-preserving CSS custom-property substitution. The caller
 //! supplies a stable cascaded element snapshot; no DOM/cascade is guessed.
 mod compile;
+mod environment;
 mod resolve;
 use super::{Components, Kind, Syntax, syntax::Assembler};
 pub(crate) use compile::inspect;
+pub use environment::Environment;
 pub use resolve::{Binding, Context, Resolver, Rollback, Stats};
 use std::sync::{
     Arc,

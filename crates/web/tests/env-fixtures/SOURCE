@@ -1,0 +1,12 @@
+Original fixtures authored for Olo, 2026-11-06.
+Independent reference: Chrome/157.0.8103.38, revision
+a733b5afbb3ba618844ff8876b89ad1a774b2f18; V8 15.7.112.23.
+CSS Environment Variables specification: https://drafts.csswg.org/css-env-1/
+Captured through CDP on browser-stripe-reference, private disk profile,
+native Olo Wayland scales 1,1.25,1.5,1.75,2 with verified DPR.
+Original capture source is retained in /var/tmp/olo-browser-stripe/env/capture.py;
+the checked-in driver generalizes its screen/profile/output paths and adds the
+same explicit process-title profile guard used by the controls driver.
+The checked-in driver was rerun on the same owned screen/profile and reproduced
+all 115 original observations and the exact pinned browser version/input hash.
+No expected Chrome values were rewritten to match the engine.

@@ -67,6 +67,11 @@ impl Account {
         self.memory.styles_bytes += size_of::<Style>();
         if self.seen.insert(Arc::as_ptr(&style.defaults) as usize) {
             self.memory.defaults_bytes += size_of::<Defaults>() + 2 * size_of::<usize>() + style.defaults.values.len() * size_of::<Entry>() + style.defaults.specified.len() * size_of::<p::Value>();
+            if let Some(environment) = &style.defaults.environment
+                && self.seen.insert(Arc::as_ptr(environment) as usize)
+            {
+                self.memory.defaults_bytes += environment.reserved_bytes() + 2 * size_of::<usize>();
+            }
             for value in &style.defaults.specified {
                 if let p::Value::Families(f) = value {
                     self.families(f);

@@ -11885,6 +11885,13 @@ and file I/O stay on its page worker; the UI composites viewport tiles and
 handles input. `tools/dev/ui-lint Browser --screen 1280x800` covers its native
 window, with owned Agent Screens used for visual and live scale-change checks.
 
+CSS environment values are immutable document snapshots from
+`css::style::Host::environment`, fetched once per `Defaults` generation, with
+shared memory charged once. Change the host revision when the environment
+changes. Native rectangular Browser viewports publish eight zero current/max
+safe-area insets; absent names or index tuples use the CSS fallback. Environment
+names are decoded identifiers, so escaped references find the same binding.
+
 Still images use `olo_images::raster::decode` on the resource worker, then
 immutable premultiplied RGBA8 assets in `olo_web::image`. `page::load_assets`
 distinguishes stylesheet and image resources; its older CSS-only adapter remains

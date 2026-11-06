@@ -4100,3 +4100,58 @@ success latency exists. Evidence:2026-11-06-stripe-main-session-sync.json.
 This is required integration upkeep, not another site milestone. Stripe remains
 active and0/30; corpus0/100,0/3000. Return to CSS env substitution next. Existing
 rendering/performance nonpasses remain open; no personal install or reload.
+
+### 2026-11-06 — Stripe env substitution and the next real failure
+
+Implemented bounded CSS env() substitution over an immutable document-wide host
+snapshot. Names are case-sensitive decoded identifiers (escaped references
+included); nonnegative integer index tuples distinguish bindings. Literal
+invalid indices reject declarations; missing names/tuples select only the needed
+fallback. Defined empty values stay defined. Dynamic arguments, recursive/empty
+fallbacks, custom cycles, taint, cancellation and output/work bounds use the
+existing variable resolver. Host publication rejects pending values/duplicates
+and caps payload. Native rectangular content viewports share eight zero current/
+maximum safe-area insets (<2KiB accounted payload). Defaults freezes the host
+snapshot once per generation; a changed revision rebuilds consumers. Shared
+snapshot storage is charged once; arenas also exported as custom values are
+conservatively charged in both categories, not an exact RSS measurement.
+
+Independent original Chrome fixtures:23 cases ×5 native scales =115 computed
+observations. All match through HTML/style/layout/paint, including Stripe's
+actual calc(env(safe-area-inset-bottom,0px) + var(...)) expression and lazy cycle
+fallbacks. The checked-in owned-screen capture driver was rerun and reproduced
+all115 rows, input hash and pinned Chrome version. This is computed-style
+coverage, not site pixels. A final review corrected decoded host-name handling;
+escaped identifier and publication-bound checks pass.
+
+The actual native HTTPS Stripe retry advances from Unsupported(arbitrary
+substitution function) to **CSS style ContextUnavailable**. Keeping original
+font-loader error detail leaves that diagnostic unchanged. Retained CSS contains
+container-relative units and actual homepage carousel elements match those rule
+classes; this is a candidate, not demonstrated cause. No errors were suppressed,
+no viewport substitute was invented and no site HTML was replaced. There is
+still no useful native Stripe content. Both owned screens were quit with PID/
+window/executable checks and stopped afterward. Five-second idle in the native
+error view:0 CPU/0 wakeups; this is not useful-page idle acceptance.
+
+Full release suites276 default browser/web and262 all-feature web pass before
+the final decoded-host-name-only correction. Final focused environment/variable
+suites15 default +15 all-feature pass, strict all-target clippy and workspace
+release build8.25s pass. An earlier clippy attempt raced a diagnostic source edit
+and used inconsistent artifacts; that failure is not accepted coverage. Final
+checks ran against stable source. Format, Python AST and diff checks pass.
+Fetched origin/main:still c753797c, already merged. No personal install/reload.
+
+Final ordinary cost:CPU0, seven rotated processes/variant,28 samples, no compiler
+waits/discards or Cargo/test context, host load6.47–7.19.100/1000-element pipeline
+**819.16→814.03 /8213.89→8835.89µs**; retained scene
+**208.63→190.04 /2711.48→3395.01µs**. Source/geometry/pixels match. The larger
+pipeline (~7.6%) and scene (~25.2%) regressions remain performance nonpasses;
+scene work does not query env bindings, and no cause is claimed. Initial run
+before the decoded-name correction is retained separately:28 accepted,4 compiler
+overlap discards,11 waits,12 samples with Cargo/test context. Earlier image/
+scene/fuzz nonpasses also remain open. Do not accept performance from small-case
+improvements. Evidence:2026-11-06-stripe-environment-{checks,cost,cost-initial}.json.
+
+**Stripe0/30; corpus0/100,0/3000.** Goal remains active. Next:identify the missing
+CSS context precisely, implement the required semantics, then retry Stripe.

@@ -54,6 +54,7 @@ struct Guard {
 /// snapshot. No timers/threads; changed revisions discard cached results.
 pub struct Resolver<'a, C> {
     context: &'a C,
+    environment: Option<&'a Environment>,
     limits: Limits,
     cancelled: Option<&'a AtomicBool>,
     cache: HashMap<u64, State>,
@@ -65,7 +66,10 @@ pub struct Resolver<'a, C> {
 }
 impl<'a, C: Context> Resolver<'a, C> {
     pub fn new(context: &'a C, limits: Limits, cancelled: Option<&'a AtomicBool>) -> Self {
-        Self { context, limits, cancelled, cache: HashMap::new(), arenas: HashSet::new(), guards: Vec::new(), revision: context.revision(), work: 0, stats: Stats::default() }
+        Self::new_with_environment(context, None, limits, cancelled)
+    }
+    pub fn new_with_environment(context: &'a C, environment: Option<&'a Environment>, limits: Limits, cancelled: Option<&'a AtomicBool>) -> Self {
+        Self { context, environment, limits, cancelled, cache: HashMap::new(), arenas: HashSet::new(), guards: Vec::new(), revision: context.revision(), work: 0, stats: Stats::default() }
     }
     pub fn clear(&mut self) {
         self.cache.clear();
@@ -294,9 +298,9 @@ impl<'a, C: Context> Resolver<'a, C> {
         let mut first = values.clone();
         if let Some(c) = first.next()
             && first.next().is_none()
-            && is_var(c)
+            && is_reference(c)
         {
-            return self.variable(c, depth, allow_tainted);
+            return self.reference(c, depth, allow_tainted);
         }
         let mut out = Assembler::new(self.limits.syntax());
         let Some(tainted) = self.emit(values, &mut out, depth, allow_tainted, &mut true)? else {
@@ -311,8 +315,8 @@ impl<'a, C: Context> Resolver<'a, C> {
         let mut invalid = false;
         for c in values {
             self.tick(1 + (c.span().end - c.span().start) as usize, depth)?;
-            if is_var(c) {
-                let value = self.variable(c, depth, allow_tainted)?;
+            if is_reference(c) {
+                let value = self.reference(c, depth, allow_tainted)?;
                 let Some(raw) = &value.value else {
                     invalid = true;
                     continue;
@@ -346,9 +350,12 @@ impl<'a, C: Context> Resolver<'a, C> {
         }
         Ok((!invalid).then_some(tainted))
     }
-    fn variable(&mut self, c: Component<'_>, depth: usize, allow_tainted: bool) -> Result<Computed> {
+    fn reference(&mut self, c: Component<'_>, depth: usize, allow_tainted: bool) -> Result<Computed> {
         self.tick(1 + (c.span().end - c.span().start) as usize, depth)?;
         let args = compile::arguments(c)?;
+        if c.text().unwrap().eq_ignore_ascii_case("env") {
+            return self.environment_value(args, depth, allow_tainted);
+        }
         let first = self.checked_single(args.first.clone(), depth)?;
         let mut result = if let Some(name) = first.and_then(name_component) {
             self.lookup(name, depth + 1)?
@@ -387,9 +394,33 @@ impl<'a, C: Context> Resolver<'a, C> {
         }
         Ok(result)
     }
+    fn environment_value(&mut self, args: compile::Arguments<'_>, depth: usize, allow_tainted: bool) -> Result<Computed> {
+        let first = self.components(args.first, depth + 1, allow_tainted)?;
+        let Some(value) = &first.value else { return Ok(Computed::invalid()) };
+        let key = match environment::key(value.components(), self.cancelled) {
+            Ok(key) => key,
+            Err(Error::Invalid) => return Ok(Computed::invalid()),
+            Err(error) => return Err(error),
+        };
+        if let Some(value) = key.matchable.then(|| self.environment.and_then(|env| env.get(key.name, &key.indices))).flatten() {
+            let nodes = ((value.end & END) - value.start) as usize;
+            self.tick(nodes, depth)?;
+            if nodes > self.limits.nodes || value.source_spelling().len() > self.limits.bytes {
+                return Ok(Computed::invalid());
+            }
+            return Ok(Computed { value: Some(value.clone()), animation_tainted: first.animation_tainted });
+        }
+        if let Some(fallback) = args.fallback {
+            let mut result = self.components(fallback, depth + 1, allow_tainted)?;
+            result.animation_tainted |= first.animation_tainted;
+            Ok(result)
+        } else {
+            Ok(Computed::invalid())
+        }
+    }
 }
-fn is_var(c: Component<'_>) -> bool {
-    c.kind() == Kind::Function && c.text().unwrap().eq_ignore_ascii_case("var")
+fn is_reference(c: Component<'_>) -> bool {
+    c.kind() == Kind::Function && ["var", "env"].iter().any(|name| c.text().unwrap().eq_ignore_ascii_case(name))
 }
 // Output expansion limits produce guaranteed-invalid, so surrounding var()
 // can use its fallback. Continue visiting remaining references for cycles;

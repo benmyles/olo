@@ -36,8 +36,19 @@ change.
 After that fix, the actual native Stripe startup advances to
 `Property(Variables(Unsupported("arbitrary substitution function")))`.
 The retained stylesheets contain `env(safe-area-inset-bottom, 0px)` inside a
-padding calculation. Implement environment-variable substitution and its host
-context next, with defined/undefined values, fallbacks, invalidation and bounds.
+padding calculation. Environment substitution and its frozen host context are
+now implemented. Independent original fixtures match115 Chrome computed-style
+observations at five native DPRs, including invalid indices, lazy fallbacks,
+custom-property cycles and a changed host generation. Re-running the checked-in
+Chrome capture driver reproduces all115 observations. Rectangular native
+content viewports expose eight zero safe-area/current-maximum insets; hardware
+segment values remain undefined. This is not every possible UA environment.
+
+The live page now advances to **CSS style ContextUnavailable**. Preserving font
+loader error detail leaves that diagnostic unchanged; no font-loader failure
+was observed in that retry. Container-relative units in retained CSS are a
+candidate, not yet the demonstrated cause. Identify the missing context before
+changing its semantics. There is still no useful native Stripe content.
 Do not suppress selector/value failures or replace the site with authored HTML.
 
 ## Work queue
@@ -47,7 +58,8 @@ Do not suppress selector/value failures or replace the site with authored HTML.
 - [x] Implement initial enabled/disabled state and independent Chrome controls.
 - [x] Release state cost/full checks:273 default /259 all-feature web tests,
   strict clippy and workspace build pass. Cost regressions remain explicit.
-- [ ] Implement the required CSS environment substitution; retry the real site.
+- [x] Implement required initial CSS environment substitution; retry the real site.
+- [ ] Identify the new missing CSS context and implement its required semantics.
 - [ ] Pin a complete replay, locale/region/cohort, assets, fonts and dynamic clock
   policy; capture meaningful reference checkpoints. Live changes cannot be
   mistaken for renderer differences, and blank/error views never pass.
@@ -59,6 +71,9 @@ Do not suppress selector/value failures or replace the site with authored HTML.
 - [ ] Exact useful-page geometry/pixel comparisons and visual review in
   light/dark/night, five live scales and desktop/narrow viewports (30 configs).
 - [ ] Chrome-comparative release memory, latency, loading and idle gates.
+  Environment milestone ordinary1000-element cost still regresses: pipeline
+  ~7.6%, retained scene ~25.2%. Source/geometry/pixels match; cause unestablished.
+  These remain nonpasses along with earlier sampling/fuzz findings.
 - [ ] Accept Stripe only when every required assertion/checkpoint passes;
   choose the next site afterward.
 

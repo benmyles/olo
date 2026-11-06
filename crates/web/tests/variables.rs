@@ -98,7 +98,7 @@ fn declaration_grammar_dynamic_names_wrappers_and_lazy_fallbacks() {
         }
     }
     assert!(resolver.resolve(&parse("var(--empty,blue)").unwrap(), true).unwrap().components().unwrap().next().is_none());
-    assert!(matches!(resolver.resolve(&parse("var(--unset,env(foo))").unwrap(), true), Err(Error::Unsupported(_))));
+    assert!(resolver.resolve(&parse("var(--unset,env(foo))").unwrap(), true).unwrap().is_invalid());
     for source in ["var()", "var({})", "var(,red)", "var(--x {--y})", "var({--x} --y)", "var(--x,!)", "var(--x,;)", "var(--x,{red} blue)", "]", "f(])", "a!b", "a;b"] {
         assert_eq!(parse(source).unwrap_err(), Error::Invalid, "{source}");
     }

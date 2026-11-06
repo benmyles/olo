@@ -436,6 +436,9 @@ impl PageHost {
     }
 }
 impl Host for PageHost {
+    fn environment(&self) -> style::Result<Option<Arc<olo_web::css::variables::Environment>>> {
+        olo_web::css::variables::Environment::rectangular().map(Some).map_err(|error| style::Error::Property(olo_web::css::properties::Error::Variables(error)))
+    }
     fn revision(&self) -> u64 {
         self.scope.revision() ^ self.scale.to_bits() ^ self.viewport.width.to_bits().rotate_left(13) ^ self.viewport.height.to_bits().rotate_left(29)
     }
@@ -460,7 +463,7 @@ impl Host for PageHost {
         Ok(Color::new(Space::Srgb, [f64::from(v[0]) / 255., f64::from(v[1]) / 255., f64::from(v[2]) / 255.], f64::from(v[3]) / 255., 0))
     }
     fn font(&self, r: &FontRequest) -> style::Result<FontMetrics> {
-        self.scope.metrics(r, None).map(|m| m.style).map_err(|_| style::Error::ContextUnavailable)
+        self.scope.metrics(r, None).map(|m| m.style).map_err(style::Error::Font)
     }
     fn font_context(&self) -> u64 {
         self.scope.context()

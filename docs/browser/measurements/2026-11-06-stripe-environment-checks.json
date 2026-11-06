@@ -1,0 +1,320 @@
+{
+  "scope": "Initial Stripe env substitution milestone, not website acceptance. All native/reference GUI operations ran on owned Agent Screens, both now stopped. Full 276/262 suites precede the decoded-host-name-only fix, which has final 15/15 targeted default/all-feature coverage and final strict clippy/workspace build. Full real-page retry advanced from arbitrary substitution to ContextUnavailable; cause still under investigation.",
+  "parent": "3c9bc54a13e84e14df98c8d527cab5b52c7c2d41",
+  "checks": {
+    "full_default": {
+      "command": "cargo test --release -p olo-web -p olo-browser",
+      "tests_passed": 276,
+      "log_sha256": "461fe46e8c5ae9573174b541c764329ca4166c8fa202df2cda8d9d81e5952f0e",
+      "tail": [
+        "",
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "full_all_features": {
+      "command": "cargo test --release -p olo-web --all-features",
+      "tests_passed": 262,
+      "log_sha256": "f29b4368919023042eb6aec38d02e1f7b8b04fa7e000de7b139c715458ca3f8f",
+      "tail": [
+        "",
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "final_decoded_names_default": {
+      "command": "cargo test --release -p olo-web --test environment --test variables",
+      "tests_passed": 15,
+      "log_sha256": "7a5650d9b4c14fe3ff16a2b4b622430e39aeab011f3b2f6cbf073cf4c3471360",
+      "tail": [
+        "test generated_static_reference_graphs_match_independent_cycle_reachability ... ok",
+        "test expansion_depth_cancellation_and_hostile_values_are_bounded ... ok",
+        "",
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        ""
+      ]
+    },
+    "final_decoded_names_all_features": {
+      "command": "cargo test --release -p olo-web --all-features --test environment --test variables",
+      "tests_passed": 15,
+      "log_sha256": "06545a818bd0bb51d1e29ac7f4b20a52429807b873255adabe1d82fc27f1cf7f",
+      "tail": [
+        "test expansion_depth_cancellation_and_hostile_values_are_bounded ... ok",
+        "test generated_static_reference_graphs_match_independent_cycle_reachability ... ok",
+        "",
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        ""
+      ]
+    },
+    "final_clippy": {
+      "command": "cargo clippy -p olo-web -p olo-browser --all-targets --no-deps -- -D warnings",
+      "tests_passed": 0,
+      "log_sha256": "f3d3dd0ca5b60ffec8324e9eafdd3c10c9cb38ae14fef8918f43c30c10e9b656",
+      "tail": [
+        "warning: `gpui` (lib) generated 7 warnings (run `cargo clippy --fix --lib -p gpui -- --no-deps -D warnings` to apply 1 suggestion)",
+        "    Checking olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 2.64s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    },
+    "final_workspace": {
+      "command": "cargo build --release --workspace",
+      "tests_passed": 0,
+      "log_sha256": "6426ee54681fff886b904a337bc73264fc4b91e67a865aa767a3f93892ba3d0a",
+      "tail": [
+        "   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)",
+        "   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 8.25s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    }
+  },
+  "reference": {
+    "version": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/157.0.8103.38",
+      "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "jsVersion": "15.7.112.23"
+    },
+    "source_sha256": "498198305976932bd6742f034da33b5ce1f2810d14bceaee694d990c0c400efa",
+    "observations": 115,
+    "recapture_matches": true
+  },
+  "native_pre_names": {
+    "identity": {
+      "pid": 4134983,
+      "binary_sha256": "29a31ae6b4a72d80f456846dbc06e83fee59e5670da5be2f3eca89fba3b93fc6",
+      "windows": [
+        {
+          "id": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "pid": 4134983,
+          "workspace": 0,
+          "minimized": false,
+          "focused": true,
+          "kept": false,
+          "groupable": true,
+          "output": "HEADLESS-1",
+          "frame": {
+            "x": 48,
+            "y": 40,
+            "width": 1010,
+            "height": 731
+          },
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "least": [
+            650,
+            511
+          ],
+          "tab_frame": {
+            "x": 48,
+            "y": 40,
+            "width": 100,
+            "height": 21
+          },
+          "stack": 0,
+          "surface": 32
+        }
+      ]
+    },
+    "result": {
+      "found": {
+        "window": 2,
+        "role": "Label",
+        "name": "CSS style ContextUnavailable",
+        "x": 69.0,
+        "y": 733.5,
+        "width": 968.0,
+        "height": 16.5,
+        "center": [
+          553.0,
+          742.0
+        ]
+      }
+    },
+    "idle": {
+      "seconds": 5.0,
+      "total": {
+        "cpu": 0.0,
+        "wakeups": 0
+      },
+      "threads": [
+        {
+          "tid": 4134983,
+          "name": "browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4134987,
+          "name": "Timer",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4134989,
+          "name": "theme-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4134990,
+          "name": "menus",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4134991,
+          "name": "upgrade-watch",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4134992,
+          "name": "browser:disk$0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4134996,
+          "name": "browse:traceq0",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4135009,
+          "name": "browser-page",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        },
+        {
+          "tid": 4135011,
+          "name": "browser",
+          "cpu": 0.0,
+          "user": 0.0,
+          "sys": 0.0,
+          "wakeups": 0,
+          "preempted": 0
+        }
+      ],
+      "windows": [
+        {
+          "title": "Browser",
+          "frames": 0,
+          "per_second": 0.0,
+          "mean_us": 0,
+          "ui_us": 0,
+          "tessellate_us": 0,
+          "submit_us": 0,
+          "slowest_us": 0
+        }
+      ]
+    }
+  },
+  "native_font_diagnostic_pre_names": {
+    "identity": {
+      "pid": 4161130,
+      "binary_sha256": "f1a2897faa5e33c2b71f4db96fc52f1be5d0e46809eaf5f4506f6939070c507a",
+      "windows": [
+        {
+          "id": 3,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "pid": 4161130,
+          "workspace": 0,
+          "minimized": false,
+          "focused": true,
+          "kept": false,
+          "groupable": true,
+          "output": "HEADLESS-1",
+          "frame": {
+            "x": 48,
+            "y": 40,
+            "width": 1010,
+            "height": 731
+          },
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "least": [
+            650,
+            511
+          ],
+          "tab_frame": {
+            "x": 48,
+            "y": 40,
+            "width": 100,
+            "height": 21
+          },
+          "stack": 0,
+          "surface": 37
+        }
+      ]
+    },
+    "result": {
+      "found": {
+        "window": 3,
+        "role": "Label",
+        "name": "CSS style ContextUnavailable",
+        "x": 69.0,
+        "y": 733.5,
+        "width": 968.0,
+        "height": 16.5,
+        "center": [
+          553.0,
+          742.0
+        ]
+      }
+    }
+  },
+  "known_failures": [
+    "Stripe ContextUnavailable; no useful page content",
+    "Prior rendering, scene, ordinary image cost and fuzz nonpasses remain open",
+    "No JS, full layout, web fonts, SVG or platform integration acceptance"
+  ],
+  "accepted": {
+    "stripe_configurations": 0,
+    "sites": 0,
+    "corpus_configurations": 0
+  }
+}

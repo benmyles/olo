@@ -75,9 +75,12 @@ impl Compiler<'_> {
                 return Err(Error::Invalid);
             }
             if c.is_container() {
-                if c.kind() == Kind::Function && c.text().unwrap().eq_ignore_ascii_case("var") {
+                if c.kind() == Kind::Function && ["var", "env"].iter().any(|name| c.text().unwrap().eq_ignore_ascii_case(name)) {
                     let args = arguments(c)?;
-                    self.scan(args.first, true, depth + 1)?;
+                    let dynamic = self.scan(args.first.clone(), true, depth + 1)?;
+                    if c.text().unwrap().eq_ignore_ascii_case("env") && !dynamic {
+                        environment::key(args.first, self.cancelled)?;
+                    }
                     if let Some(f) = args.fallback {
                         self.scan(f, true, depth + 1)?;
                     }

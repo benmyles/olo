@@ -1,0 +1,94 @@
+[
+  {
+    "id": "stripe-padding",
+    "declaration": "--space:16px;padding-bottom:calc(env(safe-area-inset-bottom, 0px) + var(--space))"
+  },
+  {
+    "id": "safe-area-inset-top",
+    "declaration": "padding-bottom:env(safe-area-inset-top, 13px)"
+  },
+  {
+    "id": "safe-area-inset-right",
+    "declaration": "padding-bottom:env(safe-area-inset-right, 13px)"
+  },
+  {
+    "id": "safe-area-inset-bottom",
+    "declaration": "padding-bottom:env(safe-area-inset-bottom, 13px)"
+  },
+  {
+    "id": "safe-area-inset-left",
+    "declaration": "padding-bottom:env(safe-area-inset-left, 13px)"
+  },
+  {
+    "id": "safe-area-max-inset-top",
+    "declaration": "padding-bottom:env(safe-area-max-inset-top, 13px)"
+  },
+  {
+    "id": "safe-area-max-inset-right",
+    "declaration": "padding-bottom:env(safe-area-max-inset-right, 13px)"
+  },
+  {
+    "id": "safe-area-max-inset-bottom",
+    "declaration": "padding-bottom:env(safe-area-max-inset-bottom, 13px)"
+  },
+  {
+    "id": "safe-area-max-inset-left",
+    "declaration": "padding-bottom:env(safe-area-max-inset-left, 13px)"
+  },
+  {
+    "id": "unknown-fallback",
+    "declaration": "padding-bottom:env(--olo-undefined, 17px)"
+  },
+  {
+    "id": "unknown-no-fallback",
+    "declaration": "padding-bottom:env(--olo-undefined)"
+  },
+  {
+    "id": "empty-fallback",
+    "declaration": "padding-bottom:env(--olo-undefined,)"
+  },
+  {
+    "id": "comma-fallback",
+    "declaration": "padding-bottom:env(--olo-undefined, 2px, 3px)"
+  },
+  {
+    "id": "nested-fallback",
+    "declaration": "padding-bottom:env(--olo-undefined, env(--also-undefined, 19px))"
+  },
+  {
+    "id": "uppercase-function",
+    "declaration": "padding-bottom:ENV(safe-area-inset-bottom, 23px)"
+  },
+  {
+    "id": "case-sensitive-name",
+    "declaration": "padding-bottom:env(SAFE-AREA-INSET-BOTTOM, 23px)"
+  },
+  {
+    "id": "undefined-indexed",
+    "declaration": "padding-bottom:env(viewport-segment-width 0 0, 29px)"
+  },
+  {
+    "id": "invalid-negative-index",
+    "declaration": "padding-bottom:env(viewport-segment-width -1 0, 31px)"
+  },
+  {
+    "id": "invalid-fractional-index",
+    "declaration": "padding-bottom:env(viewport-segment-width .5 0, 37px)"
+  },
+  {
+    "id": "wrong-arity",
+    "declaration": "padding-bottom:env(safe-area-inset-bottom 0, 41px)"
+  },
+  {
+    "id": "var-fallback",
+    "declaration": "padding-bottom:env(--olo-undefined, var(--space, 43px))"
+  },
+  {
+    "id": "cycle-unused-env-fallback",
+    "declaration": "--a:env(safe-area-inset-bottom,var(--a));padding-bottom:var(--a,47px)"
+  },
+  {
+    "id": "cycle-selected-env-fallback",
+    "declaration": "--a:env(--olo-undefined,var(--a));padding-bottom:var(--a,47px)"
+  }
+]

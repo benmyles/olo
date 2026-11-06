@@ -224,7 +224,15 @@ impl<'a> Cascade<'a> {
         if n > self.limits.work { Err(Error::Limit) } else { Ok(()) }
     }
     pub fn resolver(&'a self) -> Resolver<'a> {
-        Resolver { cascade: self, variables: variables::Resolver::new(self, self.limits.variables, self.cancelled), pending: std::collections::HashMap::new(), pending_bytes: 0 }
+        self.resolver_with_environment(None)
+    }
+    pub fn resolver_with_environment(&'a self, environment: Option<&'a variables::Environment>) -> Resolver<'a> {
+        Resolver {
+            cascade: self,
+            variables: variables::Resolver::new_with_environment(self, environment, self.limits.variables, self.cancelled),
+            pending: std::collections::HashMap::new(),
+            pending_bytes: 0,
+        }
     }
     pub fn candidate_count(&self) -> usize {
         self.entries.len()

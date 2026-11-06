@@ -9,7 +9,9 @@ revalidate the merged workspace and push the integration with browser work.
 **Active website: [Stripe](eval/stripe/README.md), selected by the user.**
 Finish its real pages/journeys and all30 configurations before choosing another
 site. Component work now follows observed Stripe blockers. Startup is still a
-nonpass: CSS disabled state is fixed; environment substitution is next.
+nonpass: CSS disabled state and environment substitution are implemented;
+the actual live page now stops at CSS style ContextUnavailable. Identify that
+context precisely and implement the required engine support next.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.

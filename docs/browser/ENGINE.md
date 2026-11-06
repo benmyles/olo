@@ -641,6 +641,24 @@ known arbitrary substitution functions remain pending, and selected
 unimplemented functions return Unsupported rather than masquerading as
 missing custom properties.
 
+`env()` now substitutes case-sensitive names and nonnegative integer indices,
+including empty/recursive fallbacks and names/indices produced by substitution.
+Literal invalid argument syntax rejects the declaration; computed invalidity
+defaults the winning declaration. Missing tuples alone select fallback; defined
+empty values do not. Oversized valid indices are unmatchable, not parse errors.
+`Environment::new` publishes a bounded immutable set of already computed values;
+pending values and duplicate tuples are rejected. `Resolver::new_with_environment`
+borrows that set for its lifetime. `Host::environment` is called once when
+`Defaults` freezes a generation, and changes require a new host revision.
+Each shared environment snapshot is included once in style memory accounting;
+token arenas also exported as computed customs are conservatively charged in
+both categories. This is an upper bound, not measured process RSS.
+The native Browser publishes the eight zero current/maximum safe-area insets
+for its rectangular content viewport; segmented hardware values stay undefined.
+Independent Chrome fixtures check115 computed observations at five native
+scales, including Stripe's actual safe-area padding expression. This does not
+implement foldable hardware, every future UA environment, CSSOM or site acceptance.
+
 `Resolver::new(&Context, Limits, cancellation)` works on a supplied winning
 unregistered-property snapshot. The host provides stable unique property IDs,
 already-computed inherited values and animation-taint metadata. It must keep

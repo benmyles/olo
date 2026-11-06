@@ -28,6 +28,7 @@ pub enum Error {
     Incomplete,
     Failed,
     Dom(crate::dom::Error),
+    Font(crate::font::Error),
     Css(super::Error),
     Cascade(cascade::Error),
     Property(p::Error),
@@ -167,6 +168,11 @@ impl Font {
 /// callbacks are bound to the subject element and enforce its tree scope.
 pub trait Host {
     fn revision(&self) -> u64;
+    /// Document-wide computed environment. Called once when Defaults freezes
+    /// this generation; a changed environment requires a changed revision.
+    fn environment(&self) -> Result<Option<Arc<variables::Environment>>> {
+        Ok(None)
+    }
     fn scheme(&self) -> color::Scheme;
     fn system_color(&self, color: color::SystemColor, scheme: color::Scheme) -> color::Result<color::Color>;
     fn font(&self, request: &FontRequest) -> Result<FontMetrics>;
@@ -188,6 +194,9 @@ pub trait Host {
 impl<H: Host + ?Sized> Host for &H {
     fn revision(&self) -> u64 {
         (**self).revision()
+    }
+    fn environment(&self) -> Result<Option<Arc<variables::Environment>>> {
+        (**self).environment()
     }
     fn scheme(&self) -> color::Scheme {
         (**self).scheme()
@@ -271,6 +280,7 @@ pub struct Defaults {
     initial_font: Arc<Font>,
     device_scale: f64,
     revision: u64,
+    environment: Option<Arc<variables::Environment>>,
     empty: Arc<[Entry]>,
     empty_customs: Arc<Dictionary>,
 }
@@ -304,6 +314,7 @@ impl Defaults {
             initial_font,
             device_scale: host.device_scale(),
             revision,
+            environment: host.environment()?,
             empty: Arc::from([]),
             empty_customs: Arc::new(Dictionary { values: Box::new([]), bytes: 0 }),
         };

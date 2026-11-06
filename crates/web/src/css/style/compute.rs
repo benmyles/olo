@@ -246,7 +246,7 @@ pub(super) fn values(
     if Property::ALL.len() > limits.properties {
         return Err(Error::Limit);
     }
-    let mut resolver = cascade.resolver();
+    let mut resolver = cascade.resolver_with_environment(defaults.environment.as_deref());
     let axes = resolver.axes(parent.map(|p| p.axes), options.allow_animation_tainted).map_err(Error::cascade)?;
     let mut declared = [false; Property::ALL.len()];
     if !cfg!(feature = "baseline-style-dense") {
