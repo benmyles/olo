@@ -18,6 +18,60 @@ pub fn from_markdown(source: &str) -> (String, Vec<Run>, Vec<Para>) {
 /// [`from_markdown`], its pictures' paths (where they're relative) from
 /// folder `dir` (the file's): each one there goes in, its alt text its
 /// description. On a worker (a picture's size is read from it).
+/// What a document shown as Markdown or source code is printed and
+/// exported as (its text is its own; it's set as it looks).
+#[derive(Clone, Debug)]
+pub enum Source {
+    /// Markdown, its pictures from this folder.
+    Markdown(Option<std::path::PathBuf>),
+    /// Source code in this language.
+    Code(&'static olo_ui::code::Language),
+}
+
+/// `text`, shown as `source`, as a styled document: Markdown as it looks
+/// (`from_markdown_in`), code in the monospaced face coloured by its
+/// syntax (the light look's colours, as on paper). On a worker: code is
+/// parsed here (a second for 100,000 lines).
+pub fn styled_copy(text: &str, source: &Source) -> (String, Vec<Run>, Vec<Para>) {
+    match source {
+        Source::Markdown(dir) => from_markdown_in(text, dir.as_deref()),
+        Source::Code(lang) => {
+            let base = Style { family: crate::doc::MONOSPACE.into(), size: 10.0, ..Style::default() };
+            let paper = olo_theme::Palette::light();
+            let mut hl = olo_ui::code::syntax::Highlighter::new(lang);
+            if let Some(job) = hl.job(text) {
+                hl.done(job.run());
+            }
+            let mut runs: Vec<Run> = Vec::new();
+            let mut push = |len: usize, color: Option<[u8; 3]>| {
+                if len == 0 {
+                    return;
+                }
+                match runs.last_mut() {
+                    Some(r) if r.style.color == color => r.len += len,
+                    _ => runs.push(Run { len, style: Style { color, ..base.clone() } }),
+                }
+            };
+            let mut found = Vec::new();
+            let mut at = 0;
+            for line in text.split_inclusive('\n') {
+                hl.classes(text, at..at + line.len(), &mut found);
+                let mut k = 0;
+                for (r, class) in &found {
+                    push(r.start - k, None);
+                    let [cr, cg, cb, _] = paper.syntax(*class);
+                    push(r.len(), Some([cr, cg, cb]));
+                    k = r.end;
+                }
+                push(line.len() - k, None);
+                at += line.len();
+            }
+            let paras = vec![Para::default(); text.split('\n').count()];
+            (text.to_owned(), runs, paras)
+        }
+    }
+}
+
 pub fn from_markdown_in(source: &str, dir: Option<&std::path::Path>) -> (String, Vec<Run>, Vec<Para>) {
     use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
     // The picture being read: its file, and its alt text so far.
@@ -856,6 +910,21 @@ fn escape_html(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn code_and_markdown_set_as_they_look() {
+        let rust = olo_ui::code::by_name("rust").unwrap();
+        let text = "fn main() {}\n// c\n";
+        let (t, runs, paras) = styled_copy(text, &Source::Code(rust));
+        assert_eq!(t, text);
+        assert_eq!(runs.iter().map(|r| r.len).sum::<usize>(), text.len());
+        assert!(runs.iter().all(|r| r.style.family == crate::doc::MONOSPACE));
+        assert!(runs.iter().filter(|r| r.style.color.is_some()).count() >= 2, "{runs:?}");
+        assert_eq!(paras.len(), 3);
+        let (t, _, paras) = styled_copy("# Title\n\n- one\n", &Source::Markdown(None));
+        assert_eq!(t, "Title\none");
+        assert_eq!(paras.len(), 2);
+    }
     use super::*;
     use crate::doc::Doc;
 

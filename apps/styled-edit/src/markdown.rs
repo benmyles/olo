@@ -147,8 +147,9 @@ pub struct Look {
     waiting: bool,
     lines: Vec<Line>,
     blocks: Vec<CodeBlock>,
-    /// Each table's columns' shares of the width (by their longest cell).
-    tables: Vec<Vec<f32>>,
+    /// Each table's columns' shares of the width (by their longest cell),
+    /// and each column's alignment (`:---:`).
+    tables: Vec<(Vec<f32>, Vec<Option<editor::Align>>)>,
     /// Code blocks' syntax by language and text, from the last parse (a
     /// block typed in is coloured again, the rest kept).
     kept: HashMap<(&'static str, u64), (String, Code)>,
@@ -419,7 +420,16 @@ impl Look {
                         }
                     }
                     Tag::HtmlBlock => self.each(&r, |l, _| l.block = Block::Html),
-                    Tag::Table(_) => {
+                    Tag::Table(aligns) => {
+                        let aligns: Vec<Option<editor::Align>> = aligns
+                            .iter()
+                            .map(|a| match a {
+                                pulldown_cmark::Alignment::Center => Some(editor::Align::Center),
+                                pulldown_cmark::Alignment::Right => Some(editor::Align::Right),
+                                pulldown_cmark::Alignment::Left => Some(editor::Align::Left),
+                                pulldown_cmark::Alignment::None => None,
+                            })
+                            .collect();
                         let ls = self.lines_of(&r);
                         let k = self.tables.len();
                         let mut widths: Vec<usize> = Vec::new();
@@ -438,7 +448,7 @@ impl Look {
                                 }
                             }
                         }
-                        self.tables.push(widths.into_iter().map(|w| w.clamp(4, 60) as f32).collect());
+                        self.tables.push((widths.into_iter().map(|w| w.clamp(4, 60) as f32).collect(), aligns));
                     }
                     Tag::TableHead => self.each(&r, |l, _| l.block = Block::Table { header: true }),
                     Tag::MetadataBlock(_) => self.each(&r, |l, all| {
@@ -580,10 +590,10 @@ impl Look {
             }
             Block::Table { header } => {
                 f.verbatim = true;
-                if let Some(columns) = l.table.and_then(|k| self.tables.get(k))
+                if let Some((columns, aligns)) = l.table.and_then(|k| self.tables.get(k))
                     && !l.cells.is_empty()
                 {
-                    f.row = Some(editor::Row { columns: columns.clone(), header, cells: Some(l.cells.clone()) });
+                    f.row = Some(editor::Row { columns: columns.clone(), header, cells: Some(l.cells.clone()), aligns: aligns.clone() });
                 }
             }
             Block::Html | Block::Other | Block::Delimiter => f.verbatim = true,
@@ -807,7 +817,7 @@ struct Job {
 struct Parsed {
     lines: Vec<Line>,
     blocks: Vec<CodeBlock>,
-    tables: Vec<Vec<f32>>,
+    tables: Vec<(Vec<f32>, Vec<Option<editor::Align>>)>,
     generation: u64,
 }
 
@@ -1102,7 +1112,8 @@ mod tests {
         assert_eq!(l.lines[0].block, Block::Table { header: true });
         assert_eq!(l.lines[1].block, Block::Delimiter);
         assert_eq!(l.lines[2].cells, [(2, 1), (9, 1)]);
-        assert_eq!(l.tables[0], [4.0, 5.0]);
+        assert_eq!(l.tables[0].0, [4.0, 5.0]);
+        assert_eq!(l.tables[0].1, [None, Some(editor::Align::Right)]);
     }
 
     #[test]

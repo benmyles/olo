@@ -3249,3 +3249,15 @@ fragments/history/tabs, selection and DOM default actions; incremental state
 invalidation, inline edges/typography/table layout, complete form state and
 runtime/JavaScript isolation. **Goal active: 0/100 sites, 0/3,000 site cases
 accepted.**
+
+Latest-main follow-up: pushed **d5089d10**, then merged main through
+**73f9c492**, including **994d262a**'s StyledEdit printing/export/code-colour
+and Markdown table alignment, plus the auto-fuzz sweep notes. Resolved journal
+conflicts by a three-way entry union and regeneration: **588 entries**, both
+browser captures and the new StyledEdit capture retained; LFS HTML staged as a
+pointer. Browser/web runtime files are unchanged by this merge. Merged checks
+pass **222 web + nine browser release tests**, thirteen kit/Preferences tests,
+workspace release build (**1m42s**) and 1280×800 live Browser/StyledEdit lint.
+Evidence: `2026-11-06-links-main-integration.json`. Earlier full-desktop lint
+and performance observations retain their stated scope and limitations.
+Website acceptance remains **0/100**; no personal session install/reload.
