@@ -13,8 +13,34 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Screen recording: frames to the GPU's encoder as dmabufs** (see Not
-  started: the Intel GPU on battery is done).
+- **StyledEdit: Markdown edited as it looks (and as source), code with
+  highlighting** (Ben, 2026-11-05, lower priority): "when opening a
+  markdown file StyledEdit should natively support the Markdown and be
+  more like Typora WYSIWYG editing, but also have an option to switch
+  back and forth between WYSIWYG mode and source mode and in source mode
+  it should be like a code editor with syntax highlighting and fixed
+  width font. also make it support code/source mode for all major
+  programming/scripting languages with syntax highlighting and fixed
+  width font." Now: Markdown comes in through Import… (`convert.rs`,
+  `from_markdown`) and goes out as Markdown, as a styled document, and
+  the editor has no highlighting. To do: a `.md` opened is a Markdown
+  document, edited as Typora does (headings, emphasis, lists, quotes,
+  links, pictures, tables, code blocks and inline code shown as they
+  look; the marks of the line being edited shown as typed) and saved as
+  Markdown again, keeping what the person wrote (their list markers,
+  emphasis characters, line breaks, front matter, HTML); a View toggle
+  (and a key, ⌘/ say) between that and Source, which shows the Markdown
+  itself in a code editor: the fixed-width font, syntax highlighting,
+  line numbers, the place kept across the switch. Source mode for every
+  major language as well (Rust, C, C++, Go, Python, JavaScript and
+  TypeScript, shell, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML,
+  CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, …), a file opened
+  by its type going straight to it: highlighting from a Rust grammar
+  library (tree-sitter's grammars, in process), colours from the
+  palette in light, dark and night, incremental as it's typed (a file
+  of 100,000 lines opens and scrolls at once: measured). In the kit
+  (the code editor is one any app could use: Terminal's, Viewer's text),
+  documented in HACKING.
 
 ## Not started (highest priority first)
 
@@ -191,44 +217,6 @@ something nobody here has is in "Blocked", with what it waits for.
   group asked for the group's size at its first commit (as `auto_claim`
   asks a tile's), so it never draws the saved size at all.
 
-- **StyledEdit: Markdown edited as it looks (and as source), code with
-  highlighting** (Ben, 2026-11-05, lower priority): "when opening a
-  markdown file StyledEdit should natively support the Markdown and be
-  more like Typora WYSIWYG editing, but also have an option to switch
-  back and forth between WYSIWYG mode and source mode and in source mode
-  it should be like a code editor with syntax highlighting and fixed
-  width font. also make it support code/source mode for all major
-  programming/scripting languages with syntax highlighting and fixed
-  width font." Now: Markdown comes in through Import… (`convert.rs`,
-  `from_markdown`) and goes out as Markdown, as a styled document, and
-  the editor has no highlighting. To do: a `.md` opened is a Markdown
-  document, edited as Typora does (headings, emphasis, lists, quotes,
-  links, pictures, tables, code blocks and inline code shown as they
-  look; the marks of the line being edited shown as typed) and saved as
-  Markdown again, keeping what the person wrote (their list markers,
-  emphasis characters, line breaks, front matter, HTML); a View toggle
-  (and a key, ⌘/ say) between that and Source, which shows the Markdown
-  itself in a code editor: the fixed-width font, syntax highlighting,
-  line numbers, the place kept across the switch. Source mode for every
-  major language as well (Rust, C, C++, Go, Python, JavaScript and
-  TypeScript, shell, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML,
-  CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, …), a file opened
-  by its type going straight to it: highlighting from a Rust grammar
-  library (tree-sitter's grammars, in process), colours from the
-  palette in light, dark and night, incremental as it's typed (a file
-  of 100,000 lines opens and scrolls at once: measured). In the kit
-  (the code editor is one any app could use: Terminal's, Viewer's text),
-  documented in HACKING.
-
-- **Screen recording: frames to the GPU's encoder as dmabufs, and the
-  Intel GPU on battery** (what the screen recording entry below has left;
-  2026-11-06): the captured frames handed to NVENC as CUDA external
-  memory and to VA-API through its DRM PRIME import, its video processor
-  making NV12, rather than copied through the CPU; and `--encoder auto`
-  taking the Intel GPU's AV1 rather than waking the NVIDIA GPU while on
-  battery. *The battery part done* (2026-11-06, `olo_video::on_battery`,
-  unit-tested on made-up supplies; untried unplugged).
-
 - **An app_server restart modesets every display** (seen 2026-11-01
   in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
   for each of the three displays, "Already set to timingID" yet done
@@ -252,174 +240,6 @@ something nobody here has is in "Blocked", with what it waits for.
   modeset needed; and if the driver refuses it, `reset_state` and
   modeset as now. It needs trying on the real displays (an upgrade
   the person agrees to try), so it isn't shipped blind.
-
-- **The kit takes over what every app re-implements** (Ben,
-  2026-11-01: "anything these windows/apps are doing that's reusable
-  should be made reusable so that we aren't reinventing the wheel
-  everywhere"). A pass over the GPUI apps, each pattern moved into
-  olo-ui (documented in HACKING) and every app switched to it: list +
-  search + filter bar wiring (each app's matching and facets are its
-  own; what's shared is a subscription, so not yet worth a kit piece).
-  Done so far (2026-11-01):
-  popups closing in any order, quitting taking windows down, window
-  parts (`part::Part`), secrets on the clipboard (`copy::secret`);
-  2026-11-03, an app's own files read and written whole (`store`:
-  load, save off the thread in order, flushed on quit and upgrade),
-  fourteen apps switched (six wrote straight over the file); one
-  timer for the next thing due and a message that clears itself
-  (`due::{Due, Notice}`: Passwords, Telegram, the only two); a
-  window opened or brought forward (`open_or_raise`, `raise`: nineteen
-  apps); closing with changes not saved asked the same way everywhere
-  (`widgets::ask_to_save`: StyledEdit, Viewer); windows opening at
-  the size they were left at (`WindowOptions::keep_size`, eleven
-  apps; Passwords had its own). Found already the kit's everywhere
-  (2026-11-03): single-instance launches (every windowed app forwards a
-  second launch through `instance`; the rest are services, single by
-  their bus name) and upgrade state (`on_upgrade`, `restored_state` in
-  every app with windows to bring back; the lock screen, the polkit and
-  portal dialogs, the screen saver and the supervisor have none);
-  a window's content scrolling when the window is shorter than it
-  (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
-
-- **Other programs feel like Olo's own: every integration point**
-  (Ben, 2026-10-29): "is there a way where we can make chrome (and any
-  gtk / qt apps) better integrate with olo, e.g. replacing their file
-  picker with olo tracker picker and e.g. in chrome something like show
-  in folder should show in tracker. basically every integration point
-  we can do (whether cleanly through some protocol or 'dirty' through
-  some hack) we should do so that everything feels as seamless as
-  possible". Clean ways first (portals, D-Bus services, settings), a
-  hack where there is none. Each is for Chrome, Electron (Slack,
-  Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
-  - **File pickers** (started 2026-10-30: olo-portal answers the
-    FileChooser portal with the kit's file panel, open, save and folder,
-    several files at once, the app's filters by glob and MIME type as a
-    Show pop-up, the portal's `choices`; Chrome's uploads, GTK 4 and GTK 3
-    tried. The toolkit switches are deliberately not set for everything:
-    they also send GTK's link opening through OpenURI, which asks for an
-    app until one was picked 3 times (HACKING, "Open and Save"); done
-    2026-10-30: the panel's list as Tracker's, Name, Kind, Size and
-    Modified, sorted by a header, Favorites and Recent Folders in its
-    folder pop-up shared with Tracker's Go menu (`olo_kit::places`),
-    and Space for a look at a file in the Viewer): an Olo
-    portal backend
-    (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
-    ScreenCast) showing the kit's file panel (Tracker's columns,
-    favourites, Quick Look, recent places); `olo-portals.conf` sends
-    FileChooser to it. Chrome and Electron use the portal with
-    `--xdg-portal` / `GTK_USE_PORTAL=1`-style switches or by default;
-    GTK 4 apps use it by default, GTK 3 with `GTK_USE_PORTAL=1`, Qt with
-    `QT_QPA_PLATFORMTHEME=xdgdesktopportal`: set these in the session
-    environment. Save dialogs too (name, folder, overwrite).
-  - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
-    serves `org.freedesktop.FileManager1`, each call an Open in
-    Tracker). The OpenURI portal's `OpenDirectory` needs nothing more:
-    xdg-desktop-portal (1.22 here) answers it with FileManager1's
-    `ShowItems`, which Tracker serves, and only without one opens
-    `inode/directory`'s default, which olo-session makes Tracker too.
-  - ~~**Opening things**~~ (done: checked 2026-11-05, GIO opens a folder
-    in Tracker and a link in Chrome from `olo-mimeapps.list`, xdg-open
-    going through GIO on Olo's `XDG_CURRENT_DESKTOP`) (started 2026-10-30: the AppChooser portal is
-    Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
-    writes desktop entries and `olo-mimeapps.list` defaults so GIO,
-    xdg-open and OpenURI open files in Olo's apps as Olo does, links
-    staying with the default browser; Olo's Chrome, once installed, is
-    offered as the default browser by `~/.local/share/applications/
-    olo-mimeapps.list`, behind any browser the person chose and ahead
-    of the system's): the
-    OpenURI portal and `xdg-open`'s MIME
-    defaults resolved by Olo's own (`olo_kit::open`), so links from any
-    app open in Olo's choice, files in Olo's apps; Olo as the default
-    file manager and browser handler (`mimeapps.list`, the `x-scheme-
-    handler`s), Chrome as the default browser offered by Olo.
-  - ~~**Downloads**: Chrome's land in Tracker's Downloads with Olo's own
-    notification (open, show in Tracker) and Deskbar's progress; a
-    download's file shows as being written.~~ (done 2026-10-30: the
-    extension tells olo-chrome's host of Chrome's downloads; Deskbar's
-    progress through LauncherEntry, an Olo notification with Open and
-    Open in Tracker, and Tracker shows a `.crdownload` under its final
-    name with a bar and "3.1 of 10 MB", from `user.olo.expected_size`.)
-  - **Look** (mostly done: app_server's `toolkits.rs` publishes the
-    colour scheme and accent through GSettings, which the GTK portal's
-    Settings serves as `org.freedesktop.appearance`; GTK 3 and 4 themes
-    from Olo's palette, Qt through its GTK 3 platform theme; Olo's fonts;
-    2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
-    Haiku cursors as an XCursor theme for programs that draw their own
-    pointer; Olo's icons in the look as the icon theme, for the
-    freedesktop names it has pictures for). Left, both waiting on Olo
-    itself: `contrast` (once Olo has a high-contrast look) and
-    `text-scaling-factor` (once Olo has a text size of its own; today
-    the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
-    gets as its font size, so there is nothing to scale to).
-  - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
-    once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
-    extensions' shortcuts, Discord's push-to-talk) bound through Olo's
-    keyboard profiles; ~~app menus where a toolkit exports one
-    (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
-    style if worthwhile~~ (not worthwhile, 2026-10-30: Olo's menus are
-    in each window, as BeOS's were, not in a bar at the top of the
-    screen, and GTK 4, Qt and Electron programs already show theirs in
-    their windows; a second copy in Olo's style would only duplicate
-    them. Tray items' menus are Olo's, which is where it helps).
-  - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
-    the StatusNotifierWatcher and host, items in its tray with their
-    menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
-    Discord's tray icons) in Deskbar's tray with their menus~~;
-    ~~the Unity LauncherEntry count (unread badges) on Deskbar's entries;
-    progress on Deskbar (LauncherEntry progress)~~ (done 2026-10-30: the
-    row's dot, shaking when the count rises, and a progress bar).
-  - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
-    Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
-    by app_server's `KeepAwake`), ~~Background~~ (done 2026-10-30, with
-    olo-session starting login items), ~~Print~~ (done 2026-10-30: Olo's Print
-    panel, CUPS over IPP, `olo-print`), ~~Email~~, ~~Account~~ (done 2026-10-30: asked in the permission
-    dialog with your picture), ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
-    ~~Camera/Location as Olo asks permission~~ (xdg-desktop-portal asks
-    them through the Access dialog, Olo's), Secret (Passwords as the
-    Secret Service, so Chrome's and Electron's stored secrets live in
-    Olo's keychain; **held for Ben's go-ahead**, 2026-10-30: Chrome keeps
-    its "Chrome Safe Storage" key in gnome-keyring through libsecret, so
-    taking over `org.freedesktop.secrets` without first moving every
-    existing item across would lose every saved cookie and password in
-    Chrome and Slack. It needs a migration that reads the real keyring,
-    as an explicit step in Preferences ▸ Security, tried on a copy
-    first), and ~~Trash~~ (xdg-desktop-portal trashes through
-    GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
-    Screenshot (Olo's Screenshot app, region when interactive; PickColor
-    with a loupe) and Access (the permission dialog, as Olo's BAlert).
-  - ~~**Drag and drop and the clipboard**: files dragged from Chrome,
-    Slack and GTK into Tracker and back, with the right actions and
-    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).~~
-    (done 2026-10-30, tried with Chrome 156: a picture dragged out of a
-    page lands as its file, a link as a clipping named by its text, files
-    from Tracker open in Chrome; Tracker copies files as file managers do,
-    `x-special/gnome-copied-files` and all, and pastes files, pictures
-    (Chrome's Copy Image) and text; `Cx::paste_data`,
-    `olo_kit::clipboard::files`, `dnd::named_file`, `dnd::moz_url`.)
-  - ~~**Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
-    Chrome's beyond the extension) folded into Olo's widget tree, so
-    agents can drive outside programs as they do Olo's.~~ (done
-    2026-10-30: olo-screen's `tree` reads a non-kit program's windows
-    over AT-SPI, roles named as AccessKit's; tried with GNOME
-    Calculator, driven by name; Qt asked to join with
-    `QT_ACCESSIBILITY=1`. Chrome's pages stay with the extension, which
-    sees more of them.)
-  - Where there's no clean way, a hack is fine if it's reliable: an
-    LD_PRELOAD shim, a launcher wrapper, a policy file or a patched
-    config, documented in HACKING with how it's tested.
-
-- **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
-  "make sure our text system is SOTA -- rivalling apple's or anything
-  else out there. perfect looking, adorably beautiful text is essential";
-  "also the same applies to icons and everything in olo: everything must
-  render absolutely beautifully, good enough that if steve jobs saw it
-  he'd want to fire his team at apple because we put them to shame".
-  *Done so far*: Olo's GPUI draws text as the kit does (hinted Noto,
-  variable weights, the fallback chain; 13e20c7) plus a touch of stem
-  darkening for small text (747a25d; now an emboldened outline, a third
-  of the time a glyph took). Icons in the GPUI kit: the
-  pre-scaled icon for the device size, on whole device pixels, never
-  resampled; checked by the layout review at every scale.
 
 ### Tabled (maybe one day)
 
@@ -480,7 +300,67 @@ any other item; making fast things faster waits here.
   or commit) is what blocks today, and the heartbeat (`timings`)
   finds it. After the reliability work.
 
+- **Screen recording: frames to the GPU's encoder as dmabufs, and the
+  Intel GPU on battery** (what the screen recording entry below has left;
+  2026-11-06): the captured frames handed to NVENC as CUDA external
+  memory and to VA-API through its DRM PRIME import, its video processor
+  making NV12, rather than copied through the CPU; and `--encoder auto`
+  taking the Intel GPU's AV1 rather than waking the NVIDIA GPU while on
+  battery. *The battery part done* (2026-11-06, `olo_video::on_battery`,
+  unit-tested on made-up supplies; untried unplugged).
+  *Tabled* (2026-11-06): recording runs at 8.5 ms a frame at 2560 × 1600
+  on the Intel GPU and 13 ms at 4K on NVIDIA's, frames copied; the
+  zero-copy path (VA-API's video processor, the capture's dmabuf handed
+  across threads) saves CPU nobody notices, so it waits, as Ben asked
+  for performance work.
+
 ## Done, waiting for Ben to try or confirm
+
+- **The kit takes over what every app re-implements** (Ben,
+  2026-11-01: "anything these windows/apps are doing that's reusable
+  should be made reusable so that we aren't reinventing the wheel
+  everywhere"). A pass over the GPUI apps, each pattern moved into
+  olo-ui (documented in HACKING) and every app switched to it: list +
+  search + filter bar wiring (each app's matching and facets are its
+  own; what's shared is a subscription, so not yet worth a kit piece).
+  Done so far (2026-11-01):
+  popups closing in any order, quitting taking windows down, window
+  parts (`part::Part`), secrets on the clipboard (`copy::secret`);
+  2026-11-03, an app's own files read and written whole (`store`:
+  load, save off the thread in order, flushed on quit and upgrade),
+  fourteen apps switched (six wrote straight over the file); one
+  timer for the next thing due and a message that clears itself
+  (`due::{Due, Notice}`: Passwords, Telegram, the only two); a
+  window opened or brought forward (`open_or_raise`, `raise`: nineteen
+  apps); closing with changes not saved asked the same way everywhere
+  (`widgets::ask_to_save`: StyledEdit, Viewer); windows opening at
+  the size they were left at (`WindowOptions::keep_size`, eleven
+  apps; Passwords had its own). Found already the kit's everywhere
+  (2026-11-03): single-instance launches (every windowed app forwards a
+  second launch through `instance`; the rest are services, single by
+  their bus name) and upgrade state (`on_upgrade`, `restored_state` in
+  every app with windows to bring back; the lock screen, the polkit and
+  portal dialogs, the screen saver and the supervisor have none);
+  a window's content scrolling when the window is shorter than it
+  (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
+  *Reviewed* (2026-11-06): what's left (list, search and filter wiring)
+  isn't worth a kit piece yet, as said above: done, for Ben to say
+  otherwise.
+
+- **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
+  "make sure our text system is SOTA -- rivalling apple's or anything
+  else out there. perfect looking, adorably beautiful text is essential";
+  "also the same applies to icons and everything in olo: everything must
+  render absolutely beautifully, good enough that if steve jobs saw it
+  he'd want to fire his team at apple because we put them to shame".
+  *Done so far*: Olo's GPUI draws text as the kit does (hinted Noto,
+  variable weights, the fallback chain; 13e20c7) plus a touch of stem
+  darkening for small text (747a25d; now an emboldened outline, a third
+  of the time a glyph took). Icons in the GPUI kit: the
+  pre-scaled icon for the device size, on whole device pixels, never
+  resampled; checked by the layout review at every scale.
+  *Reviewed* (2026-11-06): a standard to keep rather than a task; done
+  as far as known, for Ben to say what still falls short.
 
 - **Terminal: "please continue" for a coding agent that stopped** (Ben,
   2026-11-06): "when in olo terminal in a tab that has claude code or
@@ -1512,6 +1392,133 @@ Each waits for what its entry's "Left" says: Ben at the machine (a
 password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
+
+- **Other programs feel like Olo's own: every integration point**
+  (Ben, 2026-10-29): "is there a way where we can make chrome (and any
+  gtk / qt apps) better integrate with olo, e.g. replacing their file
+  picker with olo tracker picker and e.g. in chrome something like show
+  in folder should show in tracker. basically every integration point
+  we can do (whether cleanly through some protocol or 'dirty' through
+  some hack) we should do so that everything feels as seamless as
+  possible". Clean ways first (portals, D-Bus services, settings), a
+  hack where there is none. Each is for Chrome, Electron (Slack,
+  Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
+  - **File pickers** (started 2026-10-30: olo-portal answers the
+    FileChooser portal with the kit's file panel, open, save and folder,
+    several files at once, the app's filters by glob and MIME type as a
+    Show pop-up, the portal's `choices`; Chrome's uploads, GTK 4 and GTK 3
+    tried. The toolkit switches are deliberately not set for everything:
+    they also send GTK's link opening through OpenURI, which asks for an
+    app until one was picked 3 times (HACKING, "Open and Save"); done
+    2026-10-30: the panel's list as Tracker's, Name, Kind, Size and
+    Modified, sorted by a header, Favorites and Recent Folders in its
+    folder pop-up shared with Tracker's Go menu (`olo_kit::places`),
+    and Space for a look at a file in the Viewer): an Olo
+    portal backend
+    (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
+    ScreenCast) showing the kit's file panel (Tracker's columns,
+    favourites, Quick Look, recent places); `olo-portals.conf` sends
+    FileChooser to it. Chrome and Electron use the portal with
+    `--xdg-portal` / `GTK_USE_PORTAL=1`-style switches or by default;
+    GTK 4 apps use it by default, GTK 3 with `GTK_USE_PORTAL=1`, Qt with
+    `QT_QPA_PLATFORMTHEME=xdgdesktopportal`: set these in the session
+    environment. Save dialogs too (name, folder, overwrite).
+  - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
+    serves `org.freedesktop.FileManager1`, each call an Open in
+    Tracker). The OpenURI portal's `OpenDirectory` needs nothing more:
+    xdg-desktop-portal (1.22 here) answers it with FileManager1's
+    `ShowItems`, which Tracker serves, and only without one opens
+    `inode/directory`'s default, which olo-session makes Tracker too.
+  - ~~**Opening things**~~ (done: checked 2026-11-05, GIO opens a folder
+    in Tracker and a link in Chrome from `olo-mimeapps.list`, xdg-open
+    going through GIO on Olo's `XDG_CURRENT_DESKTOP`) (started 2026-10-30: the AppChooser portal is
+    Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
+    writes desktop entries and `olo-mimeapps.list` defaults so GIO,
+    xdg-open and OpenURI open files in Olo's apps as Olo does, links
+    staying with the default browser; Olo's Chrome, once installed, is
+    offered as the default browser by `~/.local/share/applications/
+    olo-mimeapps.list`, behind any browser the person chose and ahead
+    of the system's): the
+    OpenURI portal and `xdg-open`'s MIME
+    defaults resolved by Olo's own (`olo_kit::open`), so links from any
+    app open in Olo's choice, files in Olo's apps; Olo as the default
+    file manager and browser handler (`mimeapps.list`, the `x-scheme-
+    handler`s), Chrome as the default browser offered by Olo.
+  - ~~**Downloads**: Chrome's land in Tracker's Downloads with Olo's own
+    notification (open, show in Tracker) and Deskbar's progress; a
+    download's file shows as being written.~~ (done 2026-10-30: the
+    extension tells olo-chrome's host of Chrome's downloads; Deskbar's
+    progress through LauncherEntry, an Olo notification with Open and
+    Open in Tracker, and Tracker shows a `.crdownload` under its final
+    name with a bar and "3.1 of 10 MB", from `user.olo.expected_size`.)
+  - **Look** (mostly done: app_server's `toolkits.rs` publishes the
+    colour scheme and accent through GSettings, which the GTK portal's
+    Settings serves as `org.freedesktop.appearance`; GTK 3 and 4 themes
+    from Olo's palette, Qt through its GTK 3 platform theme; Olo's fonts;
+    2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
+    Haiku cursors as an XCursor theme for programs that draw their own
+    pointer; Olo's icons in the look as the icon theme, for the
+    freedesktop names it has pictures for). Left, both waiting on Olo
+    itself: `contrast` (once Olo has a high-contrast look) and
+    `text-scaling-factor` (once Olo has a text size of its own; today
+    the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
+    gets as its font size, so there is nothing to scale to).
+  - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
+    once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
+    extensions' shortcuts, Discord's push-to-talk) bound through Olo's
+    keyboard profiles; ~~app menus where a toolkit exports one
+    (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
+    style if worthwhile~~ (not worthwhile, 2026-10-30: Olo's menus are
+    in each window, as BeOS's were, not in a bar at the top of the
+    screen, and GTK 4, Qt and Electron programs already show theirs in
+    their windows; a second copy in Olo's style would only duplicate
+    them. Tray items' menus are Olo's, which is where it helps).
+  - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
+    the StatusNotifierWatcher and host, items in its tray with their
+    menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
+    Discord's tray icons) in Deskbar's tray with their menus~~;
+    ~~the Unity LauncherEntry count (unread badges) on Deskbar's entries;
+    progress on Deskbar (LauncherEntry progress)~~ (done 2026-10-30: the
+    row's dot, shaking when the count rises, and a progress bar).
+  - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
+    Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
+    by app_server's `KeepAwake`), ~~Background~~ (done 2026-10-30, with
+    olo-session starting login items), ~~Print~~ (done 2026-10-30: Olo's Print
+    panel, CUPS over IPP, `olo-print`), ~~Email~~, ~~Account~~ (done 2026-10-30: asked in the permission
+    dialog with your picture), ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
+    ~~Camera/Location as Olo asks permission~~ (xdg-desktop-portal asks
+    them through the Access dialog, Olo's), Secret (Passwords as the
+    Secret Service, so Chrome's and Electron's stored secrets live in
+    Olo's keychain; **held for Ben's go-ahead**, 2026-10-30: Chrome keeps
+    its "Chrome Safe Storage" key in gnome-keyring through libsecret, so
+    taking over `org.freedesktop.secrets` without first moving every
+    existing item across would lose every saved cookie and password in
+    Chrome and Slack. It needs a migration that reads the real keyring,
+    as an explicit step in Preferences ▸ Security, tried on a copy
+    first), and ~~Trash~~ (xdg-desktop-portal trashes through
+    GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
+    Screenshot (Olo's Screenshot app, region when interactive; PickColor
+    with a loupe) and Access (the permission dialog, as Olo's BAlert).
+  - ~~**Drag and drop and the clipboard**: files dragged from Chrome,
+    Slack and GTK into Tracker and back, with the right actions and
+    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).~~
+    (done 2026-10-30, tried with Chrome 156: a picture dragged out of a
+    page lands as its file, a link as a clipping named by its text, files
+    from Tracker open in Chrome; Tracker copies files as file managers do,
+    `x-special/gnome-copied-files` and all, and pastes files, pictures
+    (Chrome's Copy Image) and text; `Cx::paste_data`,
+    `olo_kit::clipboard::files`, `dnd::named_file`, `dnd::moz_url`.)
+  - ~~**Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
+    Chrome's beyond the extension) folded into Olo's widget tree, so
+    agents can drive outside programs as they do Olo's.~~ (done
+    2026-10-30: olo-screen's `tree` reads a non-kit program's windows
+    over AT-SPI, roles named as AccessKit's; tried with GNOME
+    Calculator, driven by name; Qt asked to join with
+    `QT_ACCESSIBILITY=1`. Chrome's pages stay with the extension, which
+    sees more of them.)
+  - Where there's no clean way, a hack is fine if it's reliable: an
+    LD_PRELOAD shim, a launcher wrapper, a policy file or a patched
+    config, documented in HACKING with how it's tested.
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the
