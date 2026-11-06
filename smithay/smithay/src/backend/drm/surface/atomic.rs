@@ -209,6 +209,24 @@ impl AtomicDrmSurface {
             vrr: false,
             connectors: connectors.iter().copied().collect(),
         };
+        // Olo: the CRTC already shows this mode on these connectors (an
+        // app_server restarted in place): kept as it is, so the first
+        // commit is a page flip, not a modeset (`keeping_modes`).
+        let pending = if crate::backend::drm::keeping_modes()
+            && state.active
+            && state.connectors == pending.connectors
+            && crate::backend::drm::same_timings(&state.mode, &mode)
+        {
+            info!("keeping the mode the crtc shows");
+            State {
+                mode: state.mode,
+                blob: state.blob.clone(),
+                vrr: state.vrr,
+                ..pending
+            }
+        } else {
+            pending
+        };
 
         drop(_guard);
         let surface = AtomicDrmSurface {

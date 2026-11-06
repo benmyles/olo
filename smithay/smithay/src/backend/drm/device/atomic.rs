@@ -15,7 +15,7 @@ use super::DrmDeviceFd;
 use crate::backend::drm::error::AccessError;
 use crate::{backend::drm::error::Error, utils::DevPath};
 
-use tracing::{debug, error, info_span, trace};
+use tracing::{debug, error, info_span, trace, warn};
 
 type OldState = (
     Vec<(connector::Handle, PropertyValueSet)>,
@@ -155,6 +155,17 @@ impl AtomicDrmDevice {
         if disable_connectors {
             debug!("Resetting drm device to known state");
             dev.reset_state()?;
+        } else if crate::backend::drm::keeping_modes() {
+            // Olo: the modes kept; only what the last compositor had over
+            // them (its pointer, overlays) taken away, no modeset. Refused,
+            // the device is reset as ever.
+            if let Err(e) = dev.release_planes() {
+                warn!(
+                    ?e,
+                    "keeping the modes: the planes couldn't be released; resetting"
+                );
+                dev.reset_state()?;
+            }
         }
 
         drop(_guard);
@@ -236,8 +247,59 @@ impl AtomicDrmDevice {
     }
 }
 
+impl AtomicDrmDevice {
+    /// Olo: every plane but the primary ones switched off, in a commit
+    /// that needs no modeset (`keeping_modes`).
+    fn release_planes(&self) -> Result<(), Error> {
+        let plane_handles = self.fd.plane_handles().map_err(|source| {
+            Error::Access(AccessError {
+                errmsg: "Error loading drm plane resources",
+                dev: self.fd.dev_path(),
+                source,
+            })
+        })?;
+        let prop_mapping = self.prop_mapping.read().unwrap();
+        let mut req = AtomicModeReq::new();
+        let mut any = false;
+        for plane in plane_handles {
+            if super::super::plane_type(&self.fd, plane).is_ok_and(|t| t == drm::control::PlaneType::Primary)
+            {
+                continue;
+            }
+            let (Ok(crtc), Ok(fb)) = (
+                prop_mapping.plane_prop_handle(plane, "CRTC_ID"),
+                prop_mapping.plane_prop_handle(plane, "FB_ID"),
+            ) else {
+                continue;
+            };
+            req.add_property(plane, crtc, property::Value::CRTC(None));
+            req.add_property(plane, fb, property::Value::Framebuffer(None));
+            any = true;
+        }
+        drop(prop_mapping);
+        if !any {
+            return Ok(());
+        }
+        self.fd
+            .atomic_commit(AtomicCommitFlags::empty(), req)
+            .map_err(|source| {
+                Error::Access(AccessError {
+                    errmsg: "Failed to release planes",
+                    dev: self.fd.dev_path(),
+                    source,
+                })
+            })
+    }
+}
+
 impl Drop for AtomicDrmDevice {
     fn drop(&mut self) {
+        // Olo: modes kept, the displays are left as they are for the next
+        // compositor (an app_server restarting in place), not put back as
+        // they were found (a modeset on the way out).
+        if crate::backend::drm::keeping_modes() {
+            return;
+        }
         if self.active.load(Ordering::SeqCst) {
             let _guard = self.span.enter();
 

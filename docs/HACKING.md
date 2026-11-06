@@ -2431,6 +2431,21 @@ Olo upgrades without logging out. `olo-session` (what the login
 screen runs) owns the Wayland socket (`wayland-N`) and the IPC socket and
 hands both to app_server, so clients never see the sockets disappear.
 
+**The displays' modes at a restart** (`display.keep_modes` in
+app_server.json, or `OLO_KEEP_MODES=1`; off unless set, until tried on
+the real displays). As ever, app_server opens each GPU with every
+connector switched off (Smithay's `reset_state`) and modesets each
+display from dark, and the app_server going puts back the state it
+found: each display dark a second or two, twice, at every upgrade.
+Kept, in Olo's Smithay (`backend::drm::keep_current_modes`): the
+device isn't reset, only its cursor and overlay planes switched off in
+a commit that needs no modeset (refused, it's reset as ever); a surface
+whose CRTC already shows the mode asked for (`same_timings`: a CRTC's
+mode and its connector's listed one differ in their type bits and
+name) on the connectors asked for starts from that state, so its first
+commit is a page flip; and the app_server going leaves its displays
+as they are for the next. Rescue modesets as ever.
+
 While a restarted app_server brings the windows back, every display shows
 the **upgrade's veil** (app_server's `veil.rs`), an homage to BeOS's boot
 screen: Olo's wordmark on dark and a row of icons from the set, dim until
