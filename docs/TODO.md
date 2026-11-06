@@ -14,8 +14,9 @@ something nobody here has is in "Blocked", with what it waits for.
 ## Working on now
 
 - **Screen recording in Screenshot** (below, in Not started): the
-  control bar is done; next the thumbnail after, the export pipeline,
-  the editor and the library.
+  control bar, the card after, the export, the editor and the library are
+  done; next Start's options (sizes and shapes for a region), Do Not
+  Disturb while recording, the skill.
 
 ## Not started (highest priority first)
 
@@ -37,15 +38,48 @@ something nobody here has is in "Blocked", with what it waits for.
     `--restart` for agents, and in Deskbar's menu; `--stop` waits for
     the recording to finish, not the recorder (0.13 s, was 30).
   - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
-    Edit and Delete, dragged out as the file.
-  - **Library**: every recording with its picture, length, size and date:
-    play, edit, show, rename, delete, search.
+    Edit and Delete, dragged out as the file. Done (HACKING, "After"):
+    it's saved already (in Videos), so there's no Save.
+  - ~~**Library**: every recording with its picture, length, size and
+    date: play, edit, show, rename, delete, search.~~ Done (HACKING,
+    "Recordings").
   - **Editor**: a timeline (pictures along it, the sound's waveform),
     trim, cut out a stretch, crop, the zooms and marks edited, sound
     muted, and Export (MP4 or GIF, size, frame rate, quality) on a worker
-    with progress and Cancel.
+    with progress and Cancel. Done (HACKING, "Editing" and "Exporting
+    with edits"): in the Viewer (Edit Video…, `--edit`, the card's
+    Edit), all but the zooms (a recording's zooms are drawn into its
+    pictures as it records: there's nothing to move afterwards).
   - Agent-native throughout (the kit's tree, `--json`), and the skill
     says how.
+
+- **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
+  2026-11-06): "the viewer app can't even play 4k video at 60fps
+  smoothly. idk if it's currently being hardware accelerated but it must
+  use hardware acceleration for all common formats including av1, vp9,
+  h264/5 etc. and it must be accelerated on cpu (simd), intel xe and
+  nvidia". Today every picture is decoded in software on the CPU
+  (`olo-preview`'s `video.rs`: OpenH264, rav1d, filmcraft-vp9,
+  rust_h265), converted YUV to RGB on the CPU and uploaded. To do: decode
+  on the GPU where there is one, NVIDIA's NVDEC (CUVID, loaded at run
+  time as NVENC already is for recording) and Intel Xe's VA-API (as
+  `olo_vaapi` already encodes AV1), for AV1, VP9, H.264 and HEVC (8- and
+  10-bit), picked per file and machine with the CPU as the fallback;
+  keep the pictures on the GPU (dmabuf or the decoder's surface imported
+  as a texture, YUV to RGB in a shader) rather than copying them back;
+  and make the CPU path itself fast (SIMD in the YUV conversion and
+  scaling, the decoders' own SIMD turned on, threads). Measured on 4K60
+  samples of each format on this machine's Intel GPU and its NVIDIA, and
+  CPU only: every frame shown on time (no drops over a minute), the
+  cost per frame, and seeking. Everything native (no ffmpeg or GStreamer).
+  Ben, 2026-11-06: "make it so that you can choose the decoding device in
+  the viewer menu and also set the default decoding device in preferences
+  somewhere. please priotize this todo after what you're currently doing":
+  the Viewer's View menu (or a Video menu) chooses the device for the
+  video showing (Automatic, NVIDIA's GPU, the Intel GPU, the processor),
+  saying which is decoding now; Preferences (a Video or Media pane) sets
+  the default every app's playing uses (the Viewer, Quick Look). Next
+  after the screen recording work.
 
 - **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
   blocked: "neither of those are blocked on me", 2026-11-06). A display

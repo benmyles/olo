@@ -10,11 +10,13 @@
 //! (⌘⇧4) lets you drag out part of the screen first (region.rs). However
 //! it is saved, the file's path goes on the clipboard.
 
+mod after;
 mod backdrop;
 mod bubble;
 mod capture;
 mod controls;
 mod inset;
+mod library;
 mod recording;
 mod region;
 mod sound;
@@ -382,6 +384,8 @@ impl Screenshot {
                     .separator()
                     .item("Save as GIF", "gif")
                     .checked(r.gif)
+                    .separator()
+                    .item("Recordings…", "library")
             }
         }
     }
@@ -391,6 +395,13 @@ impl Screenshot {
             "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" | "camera" => {
                 self.toggle(command);
                 cx.notify();
+                return;
+            }
+            // The recordings made (library.rs, a window of its own).
+            "library" => {
+                if let Ok(exe) = std::env::current_exe() {
+                    let _ = olo_xdg::open::spawn(&[exe.into_os_string(), "--library".into()]);
+                }
                 return;
             }
             "screen" => Record::Screen,
@@ -814,6 +825,9 @@ fn main() -> std::process::ExitCode {
     if args.iter().any(|a| a == "--gif") {
         std::process::exit(recording::gif(&args));
     }
+    if args.iter().any(|a| a == "--export") {
+        std::process::exit(recording::export(&args));
+    }
     if args.iter().any(|a| a == "--trim") {
         std::process::exit(recording::trim(&args));
     }
@@ -831,6 +845,15 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--controls") {
         return controls::run();
+    }
+    if args.iter().any(|a| a == "--after") {
+        return after::run(&args);
+    }
+    if args.iter().any(|a| a == "--library") {
+        return library::run(&args);
+    }
+    if args.iter().any(|a| a == "--recordings") {
+        std::process::exit(library::print());
     }
     if args.iter().any(|a| a == "--resume") {
         std::process::exit(recording::pause(false));

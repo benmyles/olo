@@ -2185,7 +2185,7 @@ impl Deskbar {
             let menu = if paused { menu.item("Resume Recording", "record:resume") } else { menu.item("Pause Recording", "record:pause") };
             // (What the controls on the screen have.)
             let menu = menu.item("Mark This Moment", "record:mark").item("Restart Recording", "record:restart").item("Discard Recording", "record:discard");
-            let menu = menu.item("Stop Recording", "record:stop").separator().item("Open Screenshot", "run:olo-screenshot");
+            let menu = menu.item("Stop Recording", "record:stop").separator().item("Recordings…", "run:olo-screenshot --library").item("Open Screenshot", "run:olo-screenshot");
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {
                     if matches!(button(e), MouseButton::Left | MouseButton::Right) {

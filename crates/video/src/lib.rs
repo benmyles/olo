@@ -7,8 +7,10 @@
 
 pub mod aac;
 pub mod config;
+pub mod export;
 pub mod gif;
 pub mod nvenc;
+pub mod read;
 pub use olo_vaapi as vaapi;
 pub mod trim;
 
@@ -72,6 +74,28 @@ pub enum Order {
     /// in memory: what screen capture gives).
     Bgra,
     Rgba,
+}
+
+/// The box in an MP4's `udta` (and what it says) marking it Olo's screen
+/// recording; in a GIF, a comment saying the same.
+const OLO_MARK: &[u8; 4] = b"oloR";
+const OLO_SAYS: &[u8] = b"Olo screen recording";
+
+/// Whether the video at `path` is a screen recording Olo made (or made
+/// again: an export of one), by its mark, whatever it's named.
+pub fn made_by_olo(path: &std::path::Path) -> bool {
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gif")) {
+        // (The comment comes before the first frame.)
+        let mut head = vec![0u8; 4096];
+        let n = std::fs::File::open(path).and_then(|mut f| std::io::Read::read(&mut f, &mut head)).unwrap_or(0);
+        return head[..n].windows(OLO_SAYS.len()).any(|w| w == OLO_SAYS);
+    }
+    trim::moov(path).is_some_and(|moov| trim::find(&moov, b"udta").and_then(|u| trim::find(u, OLO_MARK)).is_some())
+}
+
+/// The comment marking a GIF Olo's (for `gif::from_mp4`).
+pub(crate) fn olo_gif_comment() -> &'static [u8] {
+    OLO_SAYS
 }
 
 /// The bitrate a screen's video is given: about a tenth of a bit a pixel
@@ -146,13 +170,48 @@ impl Codec {
 /// in fewer bytes: H.264 at 20, 190 KB for 3 s where the bitrate spent
 /// 277; HEVC at 26, 105 (P6) or 145 KB (P4); AV1 at 28, about 220 (no
 /// smaller than H.264 on screens: it lacks the screen content tools).
-fn quality(codec: Codec, bps: u32) -> nvenc::Rate {
-    let q = match codec {
+fn quality(codec: Codec, bps: u32, q: Quality) -> nvenc::Rate {
+    let at = match codec {
         Codec::H264 => 20,
         Codec::Hevc => 26,
         Codec::Av1 => 28,
     };
-    nvenc::Rate::Quality(q, bps.saturating_mul(2))
+    // (Each step down a third or so of the bits.)
+    let (more, share) = match q {
+        Quality::High => (0, 1.0),
+        Quality::Medium => (4, 0.6),
+        Quality::Low => (8, 0.35),
+    };
+    nvenc::Rate::Quality(at + more, (f64::from(bps.saturating_mul(2)) * share) as u32)
+}
+
+/// How finely a video is coded: a recording's own (`High`), or smaller
+/// (an export's Medium and Low: about 60% and 35% of its bits).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Quality {
+    #[default]
+    High,
+    Medium,
+    Low,
+}
+
+impl Quality {
+    pub fn parse(s: &str) -> Option<Quality> {
+        match s {
+            "high" => Some(Quality::High),
+            "medium" => Some(Quality::Medium),
+            "low" => Some(Quality::Low),
+            _ => None,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Quality::High => "high",
+            Quality::Medium => "medium",
+            Quality::Low => "low",
+        }
+    }
 }
 
 /// Which encoder a recording uses.
@@ -207,18 +266,34 @@ impl Encoder {
     /// H.264 ([`Encoder::codec`] says which); the processor asked for
     /// another codec is an error, as VA-API asked for other than AV1.
     pub fn new(width: u32, height: u32, fps: u32, choice: Choice, codec: Codec) -> Result<Encoder, String> {
-        let nvidia = || nvenc::Nvenc::with_rate(width, height, fps.clamp(1, 120), quality(codec, bitrate(width, height, fps)), codec).map(|e| Encoder::Nvidia(e, Vec::new()));
+        Encoder::with_quality(width, height, fps, choice, codec, Quality::High)
+    }
+
+    /// [`new`](Self::new), coded as finely as `q` says.
+    pub fn with_quality(width: u32, height: u32, fps: u32, choice: Choice, codec: Codec, q: Quality) -> Result<Encoder, String> {
+        let bps = bitrate(width, height, fps);
+        let nvidia = || nvenc::Nvenc::with_rate(width, height, fps.clamp(1, 120), quality(codec, bps, q), codec).map(|e| Encoder::Nvidia(e, Vec::new()));
         let cpu = || {
             if choice == Choice::Cpu && codec != Codec::H264 {
                 return Err(format!("the processor encodes H.264 only, not {}", codec.name()));
             }
-            H264::new(width, height, fps).map(Encoder::Cpu)
+            let share = match q {
+                Quality::High => 1.0,
+                Quality::Medium => 0.6,
+                Quality::Low => 0.35,
+            };
+            H264::with_bitrate(width, height, fps, (f64::from(bps) * share) as u32).map(Encoder::Cpu)
         };
         let vaapi = || {
             if codec != Codec::Av1 {
                 return Err(format!("the GPU's driver encodes AV1 only here, not {}", codec.name()));
             }
-            vaapi::Av1::new(None, width, height, fps, vaapi::QUALITY).map(Encoder::Vaapi)
+            let more = match q {
+                Quality::High => 0,
+                Quality::Medium => 30,
+                Quality::Low => 60,
+            };
+            vaapi::Av1::new(None, width, height, fps, vaapi::QUALITY.saturating_add(more)).map(Encoder::Vaapi)
         };
         match choice {
             Choice::Cpu => cpu(),
@@ -366,12 +441,16 @@ impl H264 {
     /// size: a 4K screen 25 Mbit/s at 30 a second), a key frame every
     /// two seconds so it seeks.
     pub fn new(width: u32, height: u32, fps: u32) -> Result<H264, String> {
+        H264::with_bitrate(width, height, fps, bitrate(width, height, fps.clamp(1, 120)))
+    }
+
+    /// [`new`](Self::new) at `bps` bits a second.
+    pub fn with_bitrate(width: u32, height: u32, fps: u32, bps: u32) -> Result<H264, String> {
         let (w, h) = (width as usize, height as usize);
         if w == 0 || h == 0 || w % 2 == 1 || h % 2 == 1 {
             return Err(format!("{w}×{h} isn't an even size"));
         }
         let fps = fps.clamp(1, 120);
-        let bps = bitrate(width, height, fps);
         let config = EncoderConfig::new()
             .usage_type(UsageType::ScreenContentRealTime)
             .rate_control_mode(RateControlMode::Quality)
@@ -450,6 +529,8 @@ pub struct Mp4 {
     /// Chapters (`chapters`): where each starts (milliseconds) and its
     /// title.
     chapters: Vec<(u64, String)>,
+    /// Marked as Olo's recording (`mark_olo`).
+    olo: bool,
 }
 
 impl Mp4 {
@@ -548,6 +629,7 @@ impl Mp4 {
             audio: None,
             start: 0,
             chapters: Vec::new(),
+            olo: false,
         })
     }
 
@@ -691,6 +773,12 @@ impl Mp4 {
         Ok(())
     }
 
+    /// Marked as Olo's screen recording (a box of Olo's own in `udta`:
+    /// [`made_by_olo`]), so a library knows it whatever it's named.
+    pub fn mark_olo(&mut self) {
+        self.olo = true;
+    }
+
     /// Played from `ticks` into the video (an edit list), what's before
     /// kept only to decode from (a trimmed recording starts at its key
     /// frame before).
@@ -777,7 +865,10 @@ impl Mp4 {
             (Some(a), Some(length)) => sound_track(a, length, &matrix),
             _ => Vec::new(),
         };
-        let udta = if self.chapters.is_empty() {
+        // Olo's own mark (`made_by_olo`), so its recordings are known
+        // whatever they're named.
+        let mark = if self.olo { bx(OLO_MARK, OLO_SAYS) } else { Vec::new() };
+        let chpl = if self.chapters.is_empty() {
             Vec::new()
         } else {
             let mut body = vec![0u8; 4];
@@ -793,8 +884,9 @@ impl Mp4 {
                 body.push(end as u8);
                 body.extend_from_slice(&title.as_bytes()[..end]);
             }
-            bx(b"udta", &full(b"chpl", 0x0100_0000, &body))
+            full(b"chpl", 0x0100_0000, &body)
         };
+        let udta = if mark.is_empty() && chpl.is_empty() { Vec::new() } else { bx(b"udta", &[chpl, mark].concat()) };
         let moov = bx(b"moov", &[mvhd, trak, sound_trak, udta].concat());
         self.file.write_all(&moov)?;
         // `mdat`'s size: its header (16) and every sample.
@@ -991,7 +1083,7 @@ mod tests {
         mp4.finish().unwrap();
         let entries = trim::video_entries(&path).unwrap();
         assert_eq!(entries.iter().map(|(from, _)| *from).collect::<Vec<_>>(), [1, 31]);
-        let v = gif::tests_open(&path).unwrap();
+        let v = read::tests_open(&path).unwrap();
         let mut seen = 0;
         v.each_decoded(&mut |_| {
             seen += 1;
@@ -1176,7 +1268,7 @@ mod tests {
             let entry = trim::video_entry(&path).unwrap();
             assert_eq!(&entry[4..8], codec.entry());
             // Decoded back, every picture.
-            let v = gif::tests_open(&path).unwrap();
+            let v = read::tests_open(&path).unwrap();
             let mut seen = 0;
             v.each_decoded(&mut |rgb| {
                 seen += 1;
@@ -1298,7 +1390,7 @@ mod tests {
     /// how many decoded.
     fn mp4_psnr(file: &std::path::Path, w: u32, h: u32, frames: &[Vec<u8>]) -> (f64, usize) {
         let luma = |p: &[u8], o: usize| 0.299 * f64::from(p[o + 2]) + 0.587 * f64::from(p[o + 1]) + 0.114 * f64::from(p[o]);
-        let v = gif::tests_open(file).unwrap();
+        let v = read::tests_open(file).unwrap();
         let (mut n, mut mse_sum) = (0usize, 0f64);
         v.each_decoded(&mut |rgb| {
             let src = &frames[n];

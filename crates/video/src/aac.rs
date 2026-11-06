@@ -68,6 +68,8 @@ const ENCODE_EOF: i32 = 0x80;
 
 /// Samples a channel in each frame.
 pub const FRAME: usize = 1024;
+/// A recording's sound: 160 kbit/s (stereo AAC-LC, transparent).
+pub const SOUND_BITRATE: u32 = 160_000;
 
 /// An AAC-LC encoder.
 pub struct Aac {

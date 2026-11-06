@@ -6776,6 +6776,32 @@ Screens' Export Video uses too).
   region's part of it) before the recording's clock starts, and the
   recorder waits for it (`ready`); the sound's description reaches the
   file once the sound has started.
+- **Exporting with edits** (`olo_video::export`; `olo-screenshot
+  --export VIDEO [--to PATH] [--keep A-B,…] [--cut A-B,…] [--crop
+  X,Y,W,H] [--mute] [--format mp4|gif] [--width N] [--fps N] [--quality
+  high|medium|low] [--encoder …] [--codec …] [--progress]`): a recording
+  made again with what's kept (a trim is one stretch, each cut splits
+  one), each picture cropped (its pixels) and made smaller (area
+  averages, the crop's shape kept, never larger, even), at most so many
+  pictures a second, as finely as asked (`Quality`: the recording's own,
+  or about 60% and 35% of its bits: NVENC's quality level up 4 and 8,
+  OpenH264's bitrate, VA-API's AV1 quantizer up 30 and 60), its sound
+  kept or left out, its marks kept where their moments are (`marks_of`
+  reads `chpl`). The pictures come in order from `read::Video` (the
+  reader `gif.rs` had, now shared: `each_picture` gives each with when
+  it shows from and till); each is shown for as long as it was in
+  what's kept (`kept_time` collapses what's cut, so a picture across a
+  cut joins up with itself, one wholly cut is left out), its times put
+  on the frame rate's grid when there is one. The sound (AAC) is
+  decoded by symphonia (its priming dropped as its edit list says), the
+  stretches kept taken to the sample, and coded again by libfdk-aac (a
+  test cuts half of each of a 440 Hz and an 880 Hz second: a second
+  comes out, 440 then 880). A GIF is made of the edited video
+  (`gif::from_mp4`). On the caller's worker, `progress` told 0 to 1,
+  `cancel` checked between any two pictures (SIGINT or SIGTERM for the
+  command), written as `PATH.part` and put in place when whole. A 3 s
+  1280 × 800 recording cut, cropped and made 320 wide: 2.6 s, most of it
+  NVENC waking.
 - **Trimming** (`olo_video::trim`; the Viewer's Edit ▸ Trim…, ⌘T;
   `olo-screenshot --trim VIDEO --start S --end E [--to PATH]`): nothing
   encoded again. The pictures are copied from the key frame at or
@@ -6975,6 +7001,89 @@ Screens' Export Video uses too).
   1.5× and 2×, light and dark (`tsession review --all`: nothing found);
   each button clicked; a frame of the video decoded where the bar was
   shows the wallpaper.
+- **After** (`after.rs`, `olo-screenshot --after PATH`, which
+  `--toggle-record` starts once the file is whole, in the saved
+  notification's place; the notification only when it can't start, or
+  when the recording has something to say: an encoder that failed, a
+  recording stopped early): a card in the screen's lower left, as
+  CleanShot X's quick-access overlay, on the Top layer (never in front of
+  a full-screen app's Overlay) and never taking the keyboard. The
+  recording's picture (a tenth of the way in, at most a second: past a
+  countdown; decoded by `olo_preview::video::picture_at` on a worker,
+  made at the window's scale with `preview_of`, one pixel to a device
+  pixel, again when the scale changes), its name, then its length, its
+  size in pixels and its bytes, and Show in Tracker (`tracker::open`,
+  the file selected), Copy (the file as file managers copy one,
+  `clipboard::files`, served by `clipboard::hold` with no window until
+  something else is copied) and Delete (to the freedesktop Trash, which
+  Tracker restores from), Edit (the recording in the Viewer's editor,
+  `olo-viewer --edit`, below), with a close box. The picture pressed and
+  moved 4 points drags the file out (`dnd::files`: a folder copies it, a
+  chat or a mail attaches it); dropped somewhere, the card goes. It goes
+  by itself 20 s after the pointer left it, the window asked then
+  whether the pointer is over it (`is_window_hovered`: a drag out of it
+  takes the pointer without the leaving being told), and stays while it
+  is. Checked headless at 1×, 1.5× and 2×, light and dark (`tsession
+  review --all`: nothing found); dragged into a Tracker window (the file
+  copied there), Copy pasted as the path, Delete in the Trash, Show in
+  Tracker its folder; idle, 0 wakeups.
+- **Recordings** (`library.rs`, `olo-screenshot --library`; Record ▸
+  Recordings…, Deskbar's recording menu; one window, a second
+  `--library` brings it forward): every screen recording in the Videos
+  folder, as CleanShot X's history, in the kit's BColumnListView: its
+  picture (a tenth in, at most a second, at the row's size for the
+  window's scale, one pixel a device pixel), name, length ("GIF" for a
+  GIF), size and date, newest first (a header click sorts), found by
+  name as it's typed ("1 of 4 recordings"). Play and a double click (the
+  Viewer), Edit (the Viewer's editor), Show in Tracker, Rename… (a
+  dialog; the extension kept, a name taken refused) and Delete (to the
+  Trash). What each is and its picture are read on a worker, 64 at a
+  time, as they're needed, and kept; the folder is followed (inotify),
+  so a recording made, renamed or deleted anywhere shows at once. A
+  recording is known by Olo's mark, not its name: the recorder, the trim
+  and the export write a box of Olo's own in the MP4's `udta` (`oloR`,
+  `Mp4::mark_olo`), a GIF a comment (`olo_video::made_by_olo` reads
+  either), so one renamed stays; files named "Screen Recording …" (from
+  before the mark) are listed too. `olo-screenshot --recordings` prints
+  the list as JSON for agents (path, name, seconds, width, height,
+  bytes, modified). Checked headless at 1×, 1.5× and 2×, light and dark
+  (`tsession review`: no errors); searched, renamed (still listed),
+  deleted (in the Trash, gone from the list at once).
+- **Editing** (the Viewer's `video_edit.rs`: Edit ▸ Edit Video…, ⌘E;
+  `olo-viewer --edit PATH`, the card's Edit, which a running Viewer is
+  handed): CleanShot X's editor, under the playing video (the window
+  grown by it, within its screen). A timeline: pictures along it (48
+  made in one pass by `olo_video::read::Video::pictures_near`, at the
+  timeline's height for the window's scale, each tile the one made
+  nearest its middle, one pixel a device pixel; made again when the
+  scale changes), the sound's waveform (`olo_video::export::peaks`, the
+  AAC decoded on a worker; greyed when muted), the marks as flags with
+  their titles (before the flag where they'd pass the end), a handle at
+  each end of what's kept, the cuts dimmed, the playhead. A press on it
+  plays from there; a drag picks a stretch; a handle dragged trims,
+  the picture there shown. Its bar: Cut (the stretch picked, or the
+  mark chosen; Delete too), Add Mark (at the playhead, "Mark N"), Crop
+  (the Viewer's crop frame, `crop.rs`, dragged over the video's
+  picture: `PreviewView::video_picture` says where it was drawn; Crop
+  again or Return takes it, Escape puts it away; the crop chosen shows
+  as what goes dimmed), Mute, what's kept ("0:10 kept of 0:12") or how
+  the export goes, Export…, Done. Every step can be undone and done
+  again (Edit ▸ Undo, Redo); playing, what's cut is skipped and what's
+  past the trim stops it (paused: the player stops only to let the
+  video go). Export… asks Format (MP4 or GIF), Size (whole, three
+  quarters, half, a quarter of the crop), Frame rate (as recorded, 60
+  down to 10) and Quality, then makes "NAME (edited).mp4" (or .gif,
+  "edited 2" if that's taken) beside it on a worker
+  (`olo_video::export`), its percentage and Cancel in the bar, then
+  "Exported …" and Show in Tracker. Done with edits not exported asks
+  first. Nothing changes the video itself. Agents read the timeline
+  (`Slider` Timeline, Trim Start, Trim End; each mark a `Button`; the
+  cuts, the stretch picked and the crop as labels) and drive the same
+  through `olo-screenshot --export`. Checked headless at 1×, 1.5× and 2×,
+  light and dark (`tsession review`: nothing found); a 12 s video with
+  sound and two marks cut, marked, cropped, muted and exported at half
+  size: 200 × 130 (half the 400 × 260 crop), no sound, the marks moved
+  back by the cut.
 - **For agents**, on their screen: `olo-screen record-video NAME
   [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
   [--no-pointer] [--to PATH]` starts it on the screen's display and

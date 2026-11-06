@@ -7838,6 +7838,7 @@ dependencies = [
  "olo-camera",
  "olo-capture",
  "olo-crash",
+ "olo-preview",
  "olo-protocol",
  "olo-sync",
  "olo-system",
@@ -8218,6 +8219,7 @@ dependencies = [
  "olo-vaapi",
  "openh264",
  "png 0.18.1",
+ "symphonia",
 ]
 
 [[package]]
