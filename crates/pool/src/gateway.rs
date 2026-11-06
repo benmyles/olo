@@ -196,6 +196,10 @@ impl Shared {
             loop {
                 std::thread::sleep(Duration::from_secs(60));
                 let Some(s) = weak.upgrade() else { break };
+                // (Handed over: the new copy keeps the day's activity.)
+                if s.drain.retired() {
+                    continue;
+                }
                 let mut activity = {
                     let mut p = s.pool.lock().unwrap();
                     p.activity.prune(now());
@@ -275,7 +279,12 @@ impl Shared {
                 std::thread::sleep(Duration::from_millis(300));
                 while rx.try_recv().is_ok() {}
                 let Some(s) = weak.upgrade() else { break };
-                let snapshot = {
+                // Handed over: the new copy owns the file (a sign-in renewed
+                // here is written in on its own: `fresh`).
+                if s.drain.retired() {
+                    continue;
+                }
+                let mut snapshot = {
                     let p = s.pool.lock().unwrap();
                     if !p.loaded {
                         continue;
@@ -283,6 +292,18 @@ impl Shared {
                     p.saved.clone()
                 };
                 let mut store = s.store.lock().unwrap();
+                // The copy this one took over from still finishing: a
+                // sign-in it renewed meanwhile is kept, not written over.
+                let _held = match store.as_ref().filter(|_| s.drain.overlapping()) {
+                    Some(st) => {
+                        let held = st.lock();
+                        if let Ok(disk) = st.read() {
+                            s.adopt_newer(&disk, &mut snapshot);
+                        }
+                        held
+                    }
+                    None => None,
+                };
                 // The first account made: the sealed file (and its key) now.
                 if store.is_none() && s.lazy {
                     match Store::open() {
@@ -454,16 +475,35 @@ impl Shared {
     async fn fresh(&self, id: &str, provider: Provider, force: bool, within: i64) -> Result<Credential, Failure> {
         let lock = self.lock_for(id);
         let _held = lock.lock().await;
+        // Another copy of the pool at work beside this one (an upgrade
+        // handing over): renewed under the store's lock, after reading what
+        // the other may have renewed already.
+        let shared_file = if self.drain.overlapping() { tokio::task::block_in_place(|| self.store_lock_and_adopt(id)) } else { None };
+        let renewed_there = shared_file.as_ref().is_some_and(|(_, adopted)| *adopted);
         // Someone else may have refreshed it while we waited.
         let current = self.pool.lock().unwrap().saved.credentials.get(id).cloned().ok_or_else(|| Failure::Refused("No sign-in".into()))?;
         let due = current.expires_at.is_some_and(|e| e - now() < within);
-        if !force && !due {
+        // (Refused, but the other copy renewed it since: that one, then.)
+        if (!force || renewed_there) && !due {
             return Ok(current);
         }
         match upstream::refresh(&self.client, &self.up, provider, &current).await {
             Ok(c) => {
                 self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), c.clone());
-                self.touch();
+                if self.drain.retired() {
+                    // (Handed over: only this sign-in goes into the file.)
+                    let written = tokio::task::block_in_place(|| self.store.lock().unwrap().as_ref().map(|st| st.put_credential(id, &c)));
+                    if let Some(Err(e)) = written {
+                        tracing::warn!("pool: {e}");
+                    }
+                } else if shared_file.is_some() {
+                    // Written before the store's lock goes, so the other
+                    // copy reads it.
+                    self.save_now().await;
+                } else {
+                    self.touch();
+                }
+                drop(shared_file);
                 Ok(c)
             }
             Err(Failure::Refused(why)) => {
@@ -476,6 +516,50 @@ impl Shared {
                 Ok(current)
             }
             Err(e) => Err(e),
+        }
+    }
+
+    /// Account `id`'s sign-in, renewed first if it's due within ten minutes
+    /// (as a quota read does).
+    pub async fn renewed(&self, id: &str, provider: Provider) -> Result<Credential, Failure> {
+        self.fresh(id, provider, false, 600).await
+    }
+
+    /// The store's lock (see `Store::lock`), and whether the file had a
+    /// newer sign-in for `id` than this copy's, taken in (the other copy
+    /// renewed it). Blocks.
+    fn store_lock_and_adopt(&self, id: &str) -> Option<(std::fs::File, bool)> {
+        let store = self.store.lock().unwrap();
+        let st = store.as_ref()?;
+        let held = st.lock()?;
+        let adopted = match st.read() {
+            Ok(disk) => {
+                let mut p = self.pool.lock().unwrap();
+                match (disk.credentials.get(id), p.saved.credentials.get(id)) {
+                    (Some(theirs), Some(ours)) if newer(theirs, ours) => {
+                        p.saved.credentials.insert(id.to_owned(), theirs.clone());
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            Err(e) => {
+                tracing::warn!("pool: {e}");
+                false
+            }
+        };
+        Some((held, adopted))
+    }
+
+    /// The sign-ins in `disk` newer than `snapshot`'s (another copy renewed
+    /// them) taken into it and into this copy's own.
+    fn adopt_newer(&self, disk: &Saved, snapshot: &mut Saved) {
+        let mut p = self.pool.lock().unwrap();
+        for (id, theirs) in &disk.credentials {
+            if snapshot.credentials.get(id).is_some_and(|ours| newer(theirs, ours)) {
+                snapshot.credentials.insert(id.clone(), theirs.clone());
+                p.saved.credentials.insert(id.clone(), theirs.clone());
+            }
         }
     }
 
@@ -608,6 +692,10 @@ impl Shared {
     /// every enabled account due a read (every `SYNC_EVERY`, longer after
     /// the provider asks the pool to slow down), or just `only`'s, now.
     pub async fn sync(&self, only: Option<&str>) {
+        // (Handed over: the new copy reads quotas and renews sign-ins.)
+        if self.drain.retired() {
+            return;
+        }
         let t = now();
         let accounts: Vec<(String, Provider)> = {
             let p = self.pool.lock().unwrap();
@@ -874,7 +962,11 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
     if let Err(r) = local_only(&headers, ctx.port) {
         return *r;
     }
-    serve(ctx.shared, provider, rest, query, method, headers, body).await
+    // Under way until its answer has gone (an upgrade waits for it), as a
+    // request through the clients' proxy is (`intercept`).
+    let underway = crate::drain::Underway::new(&ctx.shared);
+    let (parts, body) = serve(ctx.shared, provider, rest, query, method, headers, body).await.into_parts();
+    Response::from_parts(parts, axum::body::Body::new(crate::drain::Counted { inner: body, underway }))
 }
 
 /// The most a request body is taken to be, decompressed, for a look
@@ -1236,6 +1328,12 @@ impl Scan {
         self.pending.clear();
         self.usage.clone()
     }
+}
+
+/// Whether sign-in `theirs` is a renewal of `ours`: a different one that
+/// lasts longer (a renewal's always does).
+fn newer(theirs: &Credential, ours: &Credential) -> bool {
+    theirs.access != ours.access && theirs.expires_at.unwrap_or(0) > ours.expires_at.unwrap_or(0)
 }
 
 #[cfg(test)]

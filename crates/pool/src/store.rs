@@ -178,6 +178,34 @@ impl Store {
         let plain = Zeroizing::new(serde_json::to_vec(saved).map_err(|e| e.to_string())?);
         write_private(&self.path, &seal(&self.key, &plain)).map_err(|e| format!("Couldn’t save the pool: {e}"))
     }
+
+    /// What the file holds now (another copy of the pool, the one an
+    /// upgrade handed over to or from, may have written it since).
+    pub fn read(&self) -> Result<Saved, String> {
+        let bytes = std::fs::read(&self.path).map_err(|e| format!("Couldn’t read the pool: {e}"))?;
+        let plain = open(&self.key, &bytes)?;
+        serde_json::from_slice(&plain).map_err(|_| "The pool’s file is damaged.".to_owned())
+    }
+
+    /// Account `id`'s sign-in written in, the rest of the file as it is:
+    /// what a copy of the pool finishing its last requests keeps (the new
+    /// one owns everything else).
+    pub fn put_credential(&self, id: &str, credential: &Credential) -> Result<(), String> {
+        let mut saved = self.read()?;
+        saved.credentials.insert(id.to_owned(), credential.clone());
+        self.save(&saved)
+    }
+
+    /// Held while a sign-in is renewed or written: two copies of the pool
+    /// live at once (an upgrade handing over) never renew one twice, which
+    /// would sign it out where the provider rotates its refresh token.
+    /// Blocks: off the async threads.
+    pub fn lock(&self) -> Option<std::fs::File> {
+        use std::os::fd::AsRawFd as _;
+        let f = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(self.path.with_extension("lock")).ok()?;
+        // SAFETY: flock on a file we hold open.
+        (unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX) } == 0).then_some(f)
+    }
 }
 
 #[cfg(test)]

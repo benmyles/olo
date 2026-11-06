@@ -840,7 +840,17 @@ impl Session {
             }
         }
         let Some(w) = &self.upgrades else { return };
-        let stale = w.stale(&skip, &self.display);
+        let mut stale = w.stale(&skip, &self.display);
+        // A program finishing what it has under way before it becomes the
+        // new version (olo_kit_base::restore::mark_waiting: Token Pool
+        // streaming an answer) is left to it.
+        stale.retain(|(pid, name)| {
+            let waits = runtime_dir().join("olo-upgrade-waits").join(pid.to_string()).exists();
+            if waits && stage == 1 {
+                log(format!("{name} (pid {pid}) is still the old version; left to finish what it has under way"));
+            }
+            !waits
+        });
         if stale.is_empty() {
             if stage == 0 {
                 log("every program is the new version");
@@ -855,6 +865,10 @@ impl Session {
                 unsafe { libc::kill(pid, libc::SIGURG) };
             } else if name == "olo-portal" {
                 log(format!("{name} (pid {pid}) is still the old version; left alone (it may be sharing a screen)"));
+            } else if name == "olo-pool" {
+                // (One from before the waiting marker drains, then becomes
+                // the new version by itself: its 10-minute limit is its own.)
+                log(format!("{name} (pid {pid}) is still the old version; left alone (it finishes the requests under way first)"));
             } else if let Some(by) = upgrade::started_by_another(pid) {
                 log(format!("{name} (pid {pid}) is still the old version; left alone (started by {by}, which wouldn't start it again)"));
             } else if self.shell.iter().any(|c| c.pid == pid) {

@@ -17,7 +17,63 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
+- **Screen Recorder: the app, as CleanShot X is** (Ben, 2026-11-04,
+  again 2026-11-06: "where is the screen recording app?"). The
+  recording itself is built (the "Screen recording, for people and
+  agents" entry below: `olo-screenshot --record` and Screenshot's
+  Record… menu), but there is no app around it. An Olo app of its own:
+  - **Start**: Screen, Window or Region (the region picker, with sizes
+    and aspect ratios to snap to), and its options in one place: sound
+    (computer, microphone), camera, clicks and keys shown, pointer size
+    and smoothing, zoom on clicks, countdown, MP4 or GIF, quality.
+  - **While recording**: a small control bar on screen (never in the
+    recording): the time, pause and resume, stop, restart, discard, mark.
+  - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
+    Edit and Delete, dragged out as the file.
+  - **Library**: every recording with its picture, length, size and date:
+    play, edit, show, rename, delete, search.
+  - **Editor**: a timeline (pictures along it, the sound's waveform),
+    trim, cut out a stretch, crop, the zooms and marks edited, sound
+    muted, and Export (MP4 or GIF, size, frame rate, quality) on a worker
+    with progress and Cancel.
+  - Agent-native throughout (the kit's tree, `--json`), and the skill
+    says how.
+
+- **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
+  blocked: "neither of those are blocked on me", 2026-11-06). A display
+  manager in GDM's place (a daemon owning the seat, PAM and logind's
+  session, a greeter on the kit: the person, their picture, the
+  password, Touch ID and face, the sessions) and the boot in Plymouth's
+  (the start-up screen's picture as a theme), built and tried headless
+  and on a vkms seat; switching the machine over is Ben's to say.
+
+- **olo-slack: its status follows Olo's** (Ben, 2026-11-04): away when
+  the screen locks, Do Not Disturb with Olo's, in a meeting during a
+  call; through Slack's web API from its signed-in page.
+
+- **StyledEdit: ⌘-click opens a link; pictures on the web shown** (from
+  the StyledEdit entry: "Not done").
+
 ## Done, waiting for Ben to try or confirm
+
+- **Token Pool upgrades seamlessly** (Ben, 2026-11-06): "make it so that
+  on an upgrade token pool app is seamless, i.e. it should serve new
+  requests in the new process but allow old requests to finish in their
+  existing process so that nothing errors". On an upgrade, the new Token
+  Pool takes every new connection and request from the moment it's up,
+  while the old one finishes what it's answering (streams included) and
+  then goes; no request sees an error or a refused connection.
+  *Done* (2026-11-06, HACKING's "Upgrades of the pool itself, without a
+  gap"): a copy of the new version starts with the listening sockets and
+  answers every new request at once; the old finishes its own (streams
+  too) saving nothing, a sign-in renewed by either only once (the store's
+  lock, read again first), then the pid olo-session follows stays as a
+  keeper of the new copies (no restart, no error). olo-session no longer
+  stops a program still finishing for an upgrade 90 s in (the kit's
+  waiting marker); the gateway's own API counts its requests as under way
+  too (a stream there used to be cut). Tested with a fake provider and end
+  to end with real processes: a 20 s stream finished whole while new
+  requests were answered in a second.
 
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
@@ -1533,7 +1589,12 @@ people.
   full-speed connect, whether `power/control` on (Ben's to try) or the
   USB4 router's own state brings it, and fix or work around it in Olo
   (a udev rule keeping it awake costs power: measure), with Olo Doctor
-  saying so meanwhile.
+  saying so meanwhile. *Doctor says so* (2026-11-06): advice where the
+  Barlow Ridge controller is, use another port meanwhile, and Keep It
+  Awake for Now (the controller and its root hubs' `power/control` on
+  until the next restart) to try with the key: seen then, the sleeping
+  controller misses the plug, and a rule keeping it awake (measured) is
+  the fix. *Left*: that try, with the key (Ben's), or any USB 2 device.
 
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in
@@ -1548,7 +1609,12 @@ people.
   their card with no audio profile up (A2DP failing, AAC say, or the
   profile left `off`): to see with them connected (`pactl list cards`,
   WirePlumber's log), then fixed at the cause, and Sound saying so
-  (their output named, with why it isn't there) rather than nothing.
+  (their output named, with why it isn't there) rather than nothing. *Sound
+  says so* (2026-11-06): a Bluetooth device connected with no output is
+  named under Output with why (its sound turned off, no way to play
+  offered, or not started) and Play Sound Through It where a profile
+  plays (`audio::Devices::unplayable`). *Left*: with the AirPods
+  connected, which of those it is, and the cause fixed.
 
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing

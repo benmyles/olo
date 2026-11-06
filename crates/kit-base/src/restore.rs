@@ -111,6 +111,31 @@ pub fn upgrade_signal() -> Option<std::fs::File> {
     }
 }
 
+/// While an upgrade waits for what this process has under way (its
+/// `upgrade_waits_while`, or a hand-over to a new copy of itself), it says
+/// so in `$XDG_RUNTIME_DIR/olo-upgrade-waits/PID`, which olo-session reads
+/// (its `check_stale`, under the same name): a process still on its old
+/// version then isn't stopped 90 s after the upgrade (Token Pool streaming
+/// an answer for minutes).
+pub fn waiting_marker(pid: u32) -> PathBuf {
+    let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    rt.join("olo-upgrade-waits").join(pid.to_string())
+}
+
+/// Says this process waits for what it has under way before it becomes
+/// the new version (`on`), or no longer does.
+pub fn mark_waiting(on: bool) {
+    let path = waiting_marker(std::process::id());
+    if on {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&path, b"");
+    } else {
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
 /// Becomes the new version of this program, with the same arguments
 /// and what's open without close-on-exec (stdin, stdout and stderr: a
 /// server over them carries on); returns only if it couldn't.

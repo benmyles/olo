@@ -423,7 +423,10 @@ fn browser(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwords>
     .flex_1()
     .min_w_0()
     .h_full();
-    let mut status = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(STATUS_HEIGHT)).px(px(m::SPACING)).flex_shrink_0().child(status_left);
+    // A bar of its own along the bottom (painted, as Tracker's count bar
+    // is: its text sits on the bar, not on the window's edge).
+    let bar = canvas(|_, _, _| {}, |b, _, window, cx| style::fill_rect(window, b, c(theme::palette(cx).panel_background))).absolute().inset_0();
+    let mut status = div().relative().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(STATUS_HEIGHT)).px(px(m::SPACING)).flex_shrink_0().child(bar).child(status_left);
     if let Some((text, bad, more)) = right {
         let color = if bad { c(p.failure) } else { dim(&p) };
         let clickable = more.is_some() || review_click;

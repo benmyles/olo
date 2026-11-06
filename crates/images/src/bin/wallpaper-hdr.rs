@@ -36,6 +36,7 @@ fn newer(a: &Path, b: &Path) -> bool {
 }
 
 fn main() {
+    olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let preview = args.iter().position(|a| a == "--preview").and_then(|i| args.get(i + 1)).map(PathBuf::from);
     let dir = args.iter().enumerate().find(|(i, a)| !a.starts_with("--") && (*i == 0 || args[i - 1] != "--preview")).map(|(_, a)| PathBuf::from(a)).unwrap_or_else(|| PathBuf::from("data/wallpapers"));

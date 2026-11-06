@@ -125,6 +125,9 @@ const USAGE: &str = "usage: olo-fuzz wm|auto|mode [--seed N] [--steps N] [--only
        olo-fuzz sandbox-probe";
 
 fn main() {
+    olo_crash::install();
+    // (That was a panic hook and signal handlers, no thread: the sandbox
+    // is still made before any.)
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Every run in a sandbox: this process makes it (before any thread)
     // and waits; the work is done by olo-fuzz again, inside.
@@ -139,7 +142,6 @@ fn main() {
         }
         std::process::exit(sandbox::run(&args));
     }
-    olo_crash::install();
     catch_signals();
     let code = match args.first().map(String::as_str) {
         Some(kind @ ("wm" | "auto" | "mode")) => sweep::single(kind, &args[1..]),

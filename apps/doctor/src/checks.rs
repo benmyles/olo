@@ -457,6 +457,7 @@ pub fn scan(roots: &Roots) -> Report {
     gpu_driver(roots, &gpus, &mut r);
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
+    thunderbolt_usb2(&gpus, &mut r);
     login_keyring(roots, &mut r);
     secrets_store(roots, &procs, &mut r);
     presence_rule(roots, &mut r);
@@ -1529,6 +1530,42 @@ fn thunderbolt(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// Intel's Thunderbolt 5 controller (Barlow Ridge) has a USB controller
+/// of its own (8086:5782) for its USB-C ports. A USB 2 device in such a
+/// port (Ben's YubiKey, 2026-11-04) wasn't seen at all, the kernel hearing
+/// nothing, while USB 3 drives were and the key worked at once in another
+/// port: so said, with what to do meanwhile. Whether the controller,
+/// asleep, misses a USB 2 plug is still to find; the fix keeps it awake
+/// until the next restart, so plugging the device in again tells.
+fn thunderbolt_usb2(pcis: &[Pci], r: &mut Report) {
+    let Some(xhci) = pcis.iter().find(|p| p.vendor == 0x8086 && read(&p.dir.join("device")).is_some_and(|d| d.trim().trim_start_matches("0x").eq_ignore_ascii_case("5782"))) else { return };
+    // Its root hubs (usbN), kept awake with it.
+    let mut hubs: Vec<String> = std::fs::read_dir(&xhci.dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str().filter(|n| n.starts_with("usb") && n[3..].parse::<u32>().is_ok()).map(str::to_owned))
+        .collect();
+    hubs.sort();
+    let sys = PathBuf::from("/sys/bus/pci/devices").join(&xhci.address);
+    if xhci.power_control.as_deref() == Some("on") {
+        r.fine.push(Fine {
+            title: "The Thunderbolt 5 ports' USB is kept awake".into(),
+            detail: "Plug a USB 2 device (a security key, a keyboard) into a Thunderbolt 5 port: if it's seen now, its controller was missing the plug while asleep. Until the next restart.".into(),
+        });
+        return;
+    }
+    let mut steps = vec![Step::WriteSysfs { path: sys.join("power/control"), value: "on".into() }];
+    steps.extend(hubs.iter().map(|h| Step::WriteSysfs { path: sys.join(h).join("power/control"), value: "on".into() }));
+    r.findings.push(Finding {
+        id: format!("usb2:thunderbolt5:{}", xhci.address),
+        severity: Severity::Advice,
+        title: "A USB 2 device in a Thunderbolt 5 port may go unseen".into(),
+        detail: "This computer's Thunderbolt 5 ports have a USB controller of their own, and a USB 2 device in one (a security key, a keyboard, a mouse's receiver) wasn't seen at all here, though USB 3 drives were and the same key worked at once in another port. Meanwhile, plug such devices into another USB-C port. To find out whether the controller misses the plug while it sleeps, the fix keeps it awake until the next restart (a little power): then plug the device in again.".into(),
+        fix: Some(Fix { label: "Keep It Awake for Now".into(), root: true, steps }),
+    });
+}
+
 /// The built-in sound chips found, but no sound card made of them: the
 /// kernel's driver (Intel's SOF) doesn't know how this computer wires
 /// them (a new laptop's SoundWire codecs).
@@ -1773,6 +1810,42 @@ mod tests {
         assert!(f.fix.is_none() && f.detail.contains("“Login”"), "{}", f.detail);
         std::fs::remove_file(fs.join("home/me/.local/share/keyrings/Login.keyring")).unwrap();
         assert!(scan(&roots).find("secrets:gnome-two-logins").is_none());
+    }
+
+    /// Barlow Ridge's USB controller found: said, with a fix keeping it and
+    /// its root hubs awake; once awake, fine.
+    #[test]
+    fn thunderbolt5_usb2() {
+        let (fs, roots) = machine("tb5");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let dev = "sys/bus/pci/devices/0000:a9:00.0";
+        for (f, v) in [("vendor", "0x8086"), ("device", "0x5782"), ("class", "0x0c0330"), ("power/control", "auto")] {
+            w(&format!("{dev}/{f}"), v);
+        }
+        w(&format!("{dev}/usb5/speed"), "480");
+        w(&format!("{dev}/usb6/speed"), "20000");
+        let r = scan(&roots);
+        let f = r.find("usb2:thunderbolt5:0000:a9:00.0").expect("said");
+        let paths: Vec<String> = f
+            .fix
+            .as_ref()
+            .unwrap()
+            .steps
+            .iter()
+            .map(|s| match s {
+                Step::WriteSysfs { path, value } => format!("{}={value}", path.display()),
+                other => format!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(paths, ["/sys/bus/pci/devices/0000:a9:00.0/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb5/power/control=on", "/sys/bus/pci/devices/0000:a9:00.0/usb6/power/control=on"]);
+        w(&format!("{dev}/power/control"), "on");
+        let r = scan(&roots);
+        assert!(r.find("usb2:thunderbolt5:0000:a9:00.0").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "The Thunderbolt 5 ports' USB is kept awake"));
     }
 
     #[test]

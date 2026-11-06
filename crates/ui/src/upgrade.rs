@@ -379,12 +379,21 @@ pub(crate) fn init(cx: &mut App) {
                         cx.global_mut::<Waiting>().due = Some(due);
                     }
                 });
+                let mut marked = false;
                 loop {
                     let busy = cx.update(|cx| cx.try_global::<Waiting>().and_then(|w| w.busy.as_ref()).is_some_and(|busy| busy(cx))).unwrap_or(false);
                     if !busy {
                         break;
                     }
+                    // (Said, so olo-session doesn't stop it for being old.)
+                    if !marked {
+                        olo_kit_base::restore::mark_waiting(true);
+                        marked = true;
+                    }
                     cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
+                }
+                if marked {
+                    olo_kit_base::restore::mark_waiting(false);
                 }
             }
             let state = cx

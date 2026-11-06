@@ -2538,7 +2538,10 @@ stopped: a service of the session's is restarted by it, an app starts
 as the new version when next opened. The proxies are never touched
 (a retired one serves the outside programs it had until they close),
 nor olo-portal (it may be waiting out a screen share,
-`upgrade_waits_while`), which is only named. Programs of ours left
+`upgrade_waits_while`), which is only named, nor olo-pool (one from
+before the waiting marker drains, then becomes the new version by itself
+within its own 10 minutes), nor a program marked waiting for what it has
+under way (`olo_kit_base::restore::mark_waiting`). Programs of ours left
 from a session that has gone (their `WAYLAND_DISPLAY`'s socket no
 longer exists: a login before, a test session or Agent Screen stopped
 without them; `upgrade::leftovers`, none younger than 30 s, none with
@@ -7806,6 +7809,14 @@ scan made for the sudo user). What it looks for:
   advertisement monitor is. Fixed by a drop-in
   (`/etc/systemd/system/bluetooth.service.d/olo.conf`, `--experimental`)
   and Bluetooth restarted.
+- **A USB 2 device in a Thunderbolt 5 port may go unseen** (advice, where
+  Intel's Barlow Ridge USB controller, 8086:5782, is present): Ben's
+  YubiKey in such a port wasn't seen at all (2026-11-04; the kernel heard
+  nothing) while USB 3 drives were and the key worked in another port.
+  It says to use another port meanwhile, and Keep It Awake for Now writes
+  `on` to the controller's and its root hubs' `power/control` until the
+  next restart, so plugging the device in again tells whether the
+  sleeping controller misses the plug; once awake, it's fine.
 - **Voice processing's sound not realtime**: a voice service's PipeWire
   thread that rtkit refused (its processes-per-user limit reached).
   Fixed by an rtkit drop-in (`/etc/systemd/system/rtkit-daemon.service.d/olo.conf`:
@@ -8200,6 +8211,16 @@ one are always told apart:
   the default, never listed as a device (`Devices::no_output`).
   `olo_protocol::sound::SoundChoice` remembers it, and Deskbar makes it
   again at login (the sound server forgets it).
+- **A Bluetooth device that plays nothing** (Ben's AirPods, 2026-11-04:
+  an input, but no output): `Devices::unplayable` lists each Bluetooth
+  card (`api.bluez5.address`) with no output of its own, why
+  (`Silence`: its profile `off`; no music or call profile available, its
+  Bluetooth audio not connected; or one chosen yet no output) and the
+  profile that plays (an available `a2dp-sink*`, else
+  `headset-head-unit*`). Preferences ▸ Sound names it under Output ("…
+  is connected but plays no sound: its sound is turned off.") with Play
+  Sound Through It (`set_card_profile`). The watcher follows cards too
+  (`SubscriptionMask::CARD`), so it goes as the profile comes up.
 - **UI**: Preferences ▸ Sound's Voice Processing box (and what it's
   doing in a line); Deskbar's speaker menu: "Clean Up Microphone Sound"
   and a Voice Processing submenu.
@@ -11545,26 +11566,60 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `initialize`, `thread/loaded/list`, `thread/read`: `threads()`).
   Since unchecking only pauses, a restart is needed only when `.env`
   first points Codex at the proxy (or `--put-back` takes it off).
-- **Upgrades of the pool itself** (`drain.rs`): olo-ui tells the app a
-  new olo-pool is installed (`olo_ui::on_upgrade_due`) and becomes it
-  once it isn't busy (`olo_ui::upgrade_waits_while`). Meanwhile the pool takes no new connections
-  (the proxy's accept loop and the gateway's axum server stop, the
-  sockets left listening, so a new connection waits in the kernel's
-  queue as if the pool were only slow), each request under way runs to
-  its end (`Underway`, held by its answer's body until that has gone:
-  `Counted`), each connection closes once its request has (hyper's
-  graceful shutdown; a client opens another for its next, which waits
-  too), and a tunnel counts as under way while bytes cross it (10 s
-  idle and it doesn't). Then the listening sockets (copies kept at bind,
-  `Drain::keep`) lose their close-on-exec and are named in
-  `OLO_POOL_LISTENERS` (`PORT=FD`), and the new version takes them over
-  (`drain::listen`) and answers what waited. Waiting gives up after 10
-  minutes; an upgrade that still hasn't come a minute later (the new
-  binary wouldn't start) ends the drain and connections are taken again
-  (`Drain::end`). `/pool/status` says so (`drain`). Tested against a
-  fake provider (`tests/drain.rs`) and end to end: a stream under way
-  finished whole, and a client that connected mid-drain was answered by
-  the new version on the same pid.
+- **Upgrades of the pool itself, without a gap** (`ui::hand_over`,
+  `drain.rs`; Ben, 2026-11-06: "it should serve new requests in the new
+  process but allow old requests to finish in their existing process so
+  that nothing errors"). olo-ui tells the app a new olo-pool is installed
+  (`olo_ui::on_upgrade_due`). The app starts a copy of the new version
+  beside itself with the listening sockets (copies kept at bind,
+  `Drain::keep`; made inheritable for it alone, `Drain::for_a_copy`, and
+  named in `OLO_POOL_LISTENERS`, `PORT=FD`), the windows' state (the
+  kit's `restore::hand_over`; its own windows close and the copy opens
+  them), its launches (`instance::close`, then the copy listens:
+  `OLO_NEW_INSTANCE=1`) and its pid (`OLO_POOL_PREDECESSOR`). The kernel
+  gives each new connection to whichever process accepts on the shared
+  socket, and the old one stops (`Drain::retire`), so the copy answers
+  every new request at once. The old one finishes what it has under way
+  (`Underway`, held by an answer's body until it has gone: `Counted`;
+  the proxy's requests and the gateway's own `/claude/v1`, `/codex/v1`
+  alike), closes connections as they fall idle (a client's next request
+  opens one to the copy), and saves nothing (no quota reads, no activity,
+  no whole-file writes: the copy owns the file). A sign-in either renews
+  meanwhile goes under the store's lock file (`Store::lock`), after
+  reading the file again for one the other renewed (`newer`: another
+  token lasting longer), so it's renewed once; the old writes only that
+  sign-in in (`Store::put_credential`), and the copy's saves keep a newer
+  one from the file (`adopt_newer`) while its predecessor lives
+  (`Drain::overlapping`). Claude rotates refresh tokens: renewing twice
+  would sign the account out. Once nothing is under way (20 minutes at
+  most: past the provider's read timeout), the old one goes: the
+  olo-pool olo-session started becomes the **keeper** in place (same pid:
+  `OLO_POOL_KEEPER`, `main`'s `keeper`), a subreaper (`PR_SET_CHILD_
+  SUBREAPER`) asleep in `sigwaitinfo`, about 8 MB, that passes SIGTERM,
+  SIGINT and SIGHUP on to the copies that serve and ends as the last
+  does, with how it ended (so a crash restarts the pool as before); an
+  upgrade makes it the new version's keeper in place. A later copy
+  (`OLO_POOL_KEPT`) just exits, and its successor goes to the keeper.
+  While the old one finishes, the kit marks it waiting
+  (`restore::mark_waiting`: `$XDG_RUNTIME_DIR/olo-upgrade-waits/PID`),
+  and olo-session's stale check leaves it alone rather than stopping it
+  90 s after the upgrade. If no copy can be started, the old way: no new
+  connections (they wait in the kernel's queue), what's under way
+  finishes, then the process becomes the new version with the sockets
+  (`hand_over`, `drain::listen`); 10 minutes at most, and an upgrade that
+  never comes ends the drain (`Drain::end`). `/pool/status` says which
+  (`drain`: `draining`, `retired`). Tested against a fake provider
+  (`tests/drain.rs`: a new copy answering at once while the old streams;
+  two copies renewing a sign-in once against a provider that refuses a
+  reused refresh token) and end to end, real processes in a test session
+  (`examples/seed_vault.rs` makes a made-up account; `OLO_POOL_UPSTREAM`,
+  `OLO_POOL_PORT`, `OLO_POOL_PROXY_PORT` keep it apart from the person's
+  pool; the binary run from a scratch copy, replaced and sent SIGURG as
+  olo-session would): a 20 s stream under way finished whole while new
+  requests were answered in the fake's own second; the old pid became the
+  keeper; a second upgrade went to a third copy under the keeper; the
+  window came back once; SIGTERM to the keeper ended all; a copy killed
+  ended the keeper with it.
 - **The Clients window** (Pool ▸ Clients, ⌘L, or the Clients button;
   `apps/pool/src/clients_window.rs`): the pool's activity over time, a
   line each for Claude Code and Codex in requests a minute over the last
