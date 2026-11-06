@@ -3089,3 +3089,17 @@ actual document input/navigation and the network/runtime path. Full CSS,
 interaction, networking/V8, universal dark mode, sandboxing and native
 credential/desktop integrations remain required. **Goal active, 0/100 websites
 and 0/3,000 site combinations accepted.**
+
+Latest-main follow-up: renderer milestone **c2a34fad** is pushed. Merged main
+through **7bf605ea**, including **5288fa00**'s grouped-window first-configure
+size fix and StyledEdit's link/undo changes. Web runtime source is unchanged.
+Merged validation passes **218 web release tests** (one known pixel-gap test
+ignored), the browser release regression, the **12** shared kit/Preferences
+layout tests, full workspace release build (**10.15 s**) and 1280×800 live
+Browser/StyledEdit lint. All fifteen mode/scale reviews pass again. For this
+integration screen, put `target/release` first on PATH and verify `/proc`
+executable paths: both session and app_server are the new worktree binaries.
+Restarting that new owned app_server restores Browser's document and scroll.
+Evidence is in `2026-11-06-edge-main-integration.json`. No personal desktop
+was installed, upgraded or reloaded. Historical full-desktop findings are
+not a new passing global result; site acceptance remains **0/100**.

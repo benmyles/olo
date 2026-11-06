@@ -13,6 +13,7 @@ olo-crash.workspace = true
 olo-ui.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true
+tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 pulldown-cmark = { version = "0.13", default-features = false }

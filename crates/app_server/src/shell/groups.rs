@@ -466,6 +466,28 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.all_windows().into_iter().filter(|o| o != w && self.shows(o) && !o.meta().minimized.get() && self.display_of(o) == display && self.group_key(o).as_ref() == Some(&key)).collect()
     }
 
+    /// The size (of its content) a window coming back from a restart with
+    /// `grouping` is to be asked at its first commit, if it comes back
+    /// into a group on screen on `display`: the group's as it is now (on
+    /// its way, mid-drag), not the size it was saved at, so it never draws
+    /// another first (auto-fuzz seed 16: a StyledEdit back during a drag,
+    /// drawn in front at 290 px for a look while its group was 533).
+    pub(crate) fn returning_group_size(&self, w: &WindowElement, grouping: &Grouping, display: Option<&smithay::output::Output>) -> Option<Size<i32, Logical>> {
+        let app = w.app_id();
+        let key = match grouping {
+            Grouping::With(k) => k.clone(),
+            Grouping::Auto if !app.is_empty() && (self.groups_app(&app) || self.in_focus_mode(w)) => GroupKey::App(app),
+            _ => return None,
+        };
+        let lead = self
+            .space
+            .elements()
+            .rev()
+            .find(|o| *o != w && self.groupable(o) && !o.meta().minimized.get() && self.group_key(o).as_ref() == Some(&key) && display.is_none_or(|d| self.window_output(o).as_ref() == Some(d)))?;
+        let WindowSurface::Wayland(t) = lead.0.underlying_surface();
+        t.with_pending_state(|s| s.size).or_else(|| t.with_committed_state(|s| s.and_then(|s| s.size)))
+    }
+
     /// What `w` groups by, if anything. In Focus mode (`modes`) an app's
     /// windows are always grouped.
     pub fn group_key(&self, w: &WindowElement) -> Option<GroupKey> {

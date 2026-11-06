@@ -1,0 +1,2992 @@
+{
+  "main": "7bf605ea4c19f6750297447952b0af7c9120ead7",
+  "milestone": "c2a34fad",
+  "programs": {
+    "session_pid": 2374452,
+    "session_exe": "/home/ben/worktrees/olo/browser/target/release/olo-session",
+    "children": [
+      {
+        "pid": 2374457,
+        "comm": "olo-bus",
+        "exe": "/home/ben/worktrees/olo/browser/target/release/olo-bus"
+      },
+      {
+        "pid": 2374467,
+        "comm": "olo-wlproxy",
+        "exe": "/home/ben/worktrees/olo/browser/target/release/olo-wlproxy"
+      },
+      {
+        "pid": 2374468,
+        "comm": "olo-app-server",
+        "exe": "/home/ben/worktrees/olo/browser/target/release/olo-app-server"
+      },
+      {
+        "pid": 2374472,
+        "comm": "olo-deskbar",
+        "exe": "/home/ben/worktrees/olo/browser/target/release/olo-deskbar"
+      },
+      {
+        "pid": 2374473,
+        "comm": "olo-tracker",
+        "exe": "/home/ben/worktrees/olo/browser/target/release/olo-tracker"
+      },
+      {
+        "pid": 2374474,
+        "comm": "olo-notificatio",
+        "exe": "/home/ben/worktrees/olo/browser/target/release/olo-notifications"
+      },
+      {
+        "pid": 2374475,
+        "comm": "olo-portal",
+        "exe": "/home/ben/worktrees/olo/browser/target/release/olo-portal"
+      },
+      {
+        "pid": 2374476,
+        "comm": "xdg-desktop-por",
+        "exe": "/usr/libexec/xdg-desktop-portal-gtk"
+      },
+      {
+        "pid": 2374477,
+        "comm": "xdg-desktop-por",
+        "exe": "/usr/libexec/xdg-desktop-portal"
+      }
+    ]
+  },
+  "reviews": [
+    {
+      "scale": 1,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 167.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 520.76,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.26404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 167.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 520.76,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.26404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 167.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 520.76,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.26404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.25,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.4,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.64,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 517.16003,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 520.664,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.25,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.4,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.64,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 517.16003,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 520.664,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.25,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.4,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.64,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 517.16003,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 520.664,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.5,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.06934,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 518.0933,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 521.5973,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.5,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.06934,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 518.0933,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 521.5973,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.5,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.06934,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 518.0933,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 521.5973,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.75,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.28571,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.16457,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.41144,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 519.3314,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 522.83545,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.75,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.28571,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.16457,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.41144,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 519.3314,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 522.83545,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.75,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.28571,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.16457,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.41144,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 519.3314,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 522.83545,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.236,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.34,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 521.26,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.76404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.236,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.34,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 521.26,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.76404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 1,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.236,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.34,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 521.26,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.76404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "before_reload": [
+    {
+      "window": 1,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 54,
+        "y": 67,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 54.0,
+          "y": 67.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 62.0,
+          "y": 68.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "/home/ben/worktrees/olo/browser/crates/web/tests/paint-fixtures/scroll.html",
+          "x": 66.0,
+          "y": 105.0,
+          "width": 792.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 870.0,
+          "y": 105.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 962.0,
+          "y": 105.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "x": 54.0,
+          "y": 141.0,
+          "width": 1000.0,
+          "height": 577.5,
+          "enabled": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 19: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 152.76001,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 20: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 194.76,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 21: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 236.76001,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 22: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 278.76,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 11,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 23: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 320.76,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 12,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 24: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 362.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 13,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 25: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 404.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 14,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 26: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 446.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 15,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 27: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 488.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 16,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 28: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 530.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 17,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 29: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 572.76,
+          "width": 251.51999,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 18,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 30: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 614.76,
+          "width": 251.51999,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 19,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 31: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 656.76,
+          "width": 251.51999,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 20,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 32: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 698.76,
+          "width": 251.51999,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 21,
+          "parent": 1,
+          "role": "Label",
+          "name": "Scroll fixture",
+          "x": 70.0,
+          "y": 734.5,
+          "width": 968.0,
+          "height": 16.5,
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "after_reload": [
+    {
+      "window": 1,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 54,
+        "y": 67,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 54.0,
+          "y": 67.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 62.0,
+          "y": 68.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "/home/ben/worktrees/olo/browser/crates/web/tests/paint-fixtures/scroll.html",
+          "x": 66.0,
+          "y": 105.0,
+          "width": 792.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 870.0,
+          "y": 105.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 962.0,
+          "y": 105.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "x": 54.0,
+          "y": 141.0,
+          "width": 1000.0,
+          "height": 577.5,
+          "enabled": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 19: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 152.76001,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 20: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 194.76,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 21: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 236.76001,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 22: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 278.76,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 11,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 23: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 320.76,
+          "width": 251.51999,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 12,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 24: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 362.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 13,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 25: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 404.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 14,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 26: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 446.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 15,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 27: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 488.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 16,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 28: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 530.76,
+          "width": 251.51999,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 17,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 29: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 572.76,
+          "width": 251.51999,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 18,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 30: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 614.76,
+          "width": 251.51999,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 19,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 31: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 656.76,
+          "width": 251.51999,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 20,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 32: office alpha beta gamma.",
+          "x": 64.552,
+          "y": 698.76,
+          "width": 251.51999,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 21,
+          "parent": 1,
+          "role": "Label",
+          "name": "Scroll fixture",
+          "x": 70.0,
+          "y": 734.5,
+          "width": 968.0,
+          "height": 16.5,
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "workspace": "italic: bool,\n   |     ^^^^^^\n\nwarning: methods `set_theme` and `set_size` are never used\n  --> gpui/gpui/src/platform/linux/wayland/cursor.rs:76:12\n   |\n33 | impl Cursor {\n   | ----------- methods in this implementation\n...\n76 |     pub fn set_theme(&mut self, theme_name: String) {\n   |            ^^^^^^^^^\n...\n89 |     pub fn set_size(&mut self, size: u32) {\n   |            ^^^^^^^^\n\nwarning: method `set_appearance` is never used\n    --> gpui/gpui/src/platform/linux/wayland/window.rs:1947:12\n     |\n1038 | impl WaylandWindowStatePtr {\n     | -------------------------- method in this implementation\n...\n1947 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {\n     |            ^^^^^^^^^^^^^^\n\nwarning: `gpui` (lib) generated 7 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)\n   Compiling app_server v0.1.0 (/home/ben/worktrees/olo/browser/crates/app_server)\n   Compiling olo-wifi-heal v0.1.0 (/home/ben/worktrees/olo/browser/apps/wifi-heal)\n   Compiling olo-styled-edit v0.1.0 (/home/ben/worktrees/olo/browser/apps/styled-edit)\n    Finished `release` profile [optimized + debuginfo] target(s) in 10.15s\nwarning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1\nnote: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`\n",
+  "kit_preferences_lint": "------ method in this trait\n...\n269 |     fn holds_clipboard(&self) -> bool {\n    |        ^^^^^^^^^^^^^^^\n    |\n    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: method `selected_text_range` is never used\n    --> gpui/gpui/src/platform.rs:1249:8\n     |\n1244 | impl PlatformInputHandler {\n     | ------------------------- method in this implementation\n...\n1249 |     fn selected_text_range(&mut self, ignore_disabled_input: bool) -> Option<UTF16Selection> {\n     |        ^^^^^^^^^^^^^^^^^^^\n\nwarning: method `holds_clipboard` is never used\n  --> gpui/gpui/src/platform/linux/platform.rs:80:8\n   |\n46 | pub trait LinuxClient {\n   |           ----------- method in this trait\n...\n80 |     fn holds_clipboard(&self) -> bool {\n   |        ^^^^^^^^^^^^^^^\n\nwarning: field `italic` is never read\n  --> gpui/gpui/src/platform/linux/text_system.rs:38:5\n   |\n34 | struct Source {\n   |        ------ field in this struct\n...\n38 |     italic: bool,\n   |     ^^^^^^\n\nwarning: methods `set_theme` and `set_size` are never used\n  --> gpui/gpui/src/platform/linux/wayland/cursor.rs:76:12\n   |\n33 | impl Cursor {\n   | ----------- methods in this implementation\n...\n76 |     pub fn set_theme(&mut self, theme_name: String) {\n   |            ^^^^^^^^^\n...\n89 |     pub fn set_size(&mut self, size: u32) {\n   |            ^^^^^^^^\n\nwarning: method `set_appearance` is never used\n    --> gpui/gpui/src/platform/linux/wayland/window.rs:1947:12\n     |\n1038 | impl WaylandWindowStatePtr {\n     | -------------------------- method in this implementation\n...\n1947 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {\n     |            ^^^^^^^^^^^^^^\n\nwarning: `gpui` (lib) generated 7 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.26s\nwarning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1\nnote: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`\n     Running unittests src/main.rs (target/release/deps/olo_preferences-ba4824c12fd86874)\n\nrunning 7 tests\ntest lint::ui_lint_display_colour ... ok\ntest lint::ui_lint_keyboards_tab ... ok\ntest lint::ui_lint_try_voice ... ok\ntest lint::ui_lint_command_suggestions ... ok\ntest lint::ui_lint_settings_index ... ok\ntest lint::ui_lint_every_panel ... ok\ntest lint::ui_lint_the_palm_trainer ... ok\n\ntest result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out; finished in 2.74s\n\n     Running unittests src/lib.rs (target/release/deps/olo_ui-500be1d4eed3dc39)\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out; finished in 0.00s\n\n     Running tests/lint.rs (target/release/deps/lint-d5799d4c74980367)\n\nrunning 5 tests\ntest ui_lint_due_wakes_once_at_its_time ... ok\ntest ui_lint_cut_gpui_text_is_read_whole ... ok\ntest ui_lint_a_kit_form_is_clean ... ok\ntest ui_lint_finds_controls_over_each_other ... ok\ntest ui_lint_a_tab_strip_is_clean ... ok\n\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s\n\n",
+  "browser_test": "his implementation\n...\n1947 |     pub fn set_appearance(&mut self, appearance: WindowAppearance) {\n     |            ^^^^^^^^^^^^^^\n\nwarning: `gpui` (lib) generated 7 warnings (run `cargo fix --lib -p gpui` to apply 1 suggestion)\n   Compiling olo-web v0.1.0 (/home/ben/worktrees/olo/browser/crates/web)\n   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)\n    Finished `release` profile [optimized + debuginfo] target(s) in 4.97s\nwarning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1\nnote: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`\n     Running unittests src/main.rs (target/release/deps/olo_browser-f954b99ce420f6ff)\n\nrunning 1 test\ntest worker::tests::extreme_document_scroll_still_leaves_room_for_viewport_and_tile ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+  "live_lint": "StyledEdit: 0 errors\nBrowser: 0 errors\nui-lint: 0 errors\n",
+  "web_runtime_source_hashes": {
+    "crates/web/src/dom.rs": "bddbff22aa0ea8864ad1041fb3f3458bf33500afc0430b0bdd442b9455e915ef",
+    "crates/web/src/text.rs": "8a7f92bb22cca69f97264ecd49585240c2330ee729385e6bc325546501702640",
+    "crates/web/src/lib.rs": "03c0fa2a3d0986600b9505a7c506eb14e67cd3fae0d0781e9f89d5471966abdf",
+    "crates/web/src/page.rs": "dfd0589ddbe0a6c6c433efa53c0e3bfe20ddb0a5d0e8e17bfc3b133c34a68df6",
+    "crates/web/src/html/mod.rs": "6fd07edc09c6e330aa90b1330363085c9432a54c89f58d37bd2b00e4b57158d0",
+    "crates/web/src/html/tokenizer.rs": "014d26eed6edc6941ecaf21e7f2b5bd269a09a95278761a0bd6a62085565e4a2",
+    "crates/web/src/html/entities.rs": "2878e4c1132bc2e817cf5fae0692c8177f6b310fb2a3823a5f915530a622a7d1",
+    "crates/web/src/html/tree.rs": "12838d5f0ab42dc66843e87c13e9d84c686240b3e5d43b0ebb866f1c7025bf6d",
+    "crates/web/src/css/mod.rs": "4758645db033e66e9c2fa40966525ce0f5b678adf7467aca3d3fbdf6fb9c5c1d",
+    "crates/web/src/css/tokenizer.rs": "3c203695445f4b580cdbf1709b7118856ab432122e0ce9a86b5b933a9bbfda38",
+    "crates/web/src/css/syntax.rs": "6c9d09aa4735133f544d731ccd300cef33f255718f8e6bd871573c3e6284db1c",
+    "crates/web/src/css/parser.rs": "82f03333b442c63276f2a46dd562c9ac004b5f76031f2de2a69165eac5b34a63",
+    "crates/web/src/css/bytes.rs": "be4382f384276b1c884f63360b28bc2b3a450753df360c30487827e3ffd26e34",
+    "crates/web/src/font/casefold.rs": "cff7f67d5fd17960b64457158d57d0e22cc15d677bd9806dd545f83dd7791ba7",
+    "crates/web/src/font/mod.rs": "cc4fe0eafd4e64595c1903469edb157a0faa653f423578950b5ebc24275fa300",
+    "crates/web/src/font/casefold_data.rs": "ae7e61fbed916829ed32c92ace1572e11ec830805623e8f82de6aa63867cfe52",
+    "crates/web/src/font/catalog.rs": "8e7babd25cb50fa08c3b06e2be7ebe3c16549fef659e805e6fb0daa8a0e00c2a",
+    "crates/web/src/font/matching.rs": "239fd395644ff6f109ad6c73b0d6de7495211ecdfb6362ded427ca7d9b6c86fe",
+    "crates/web/src/font/scope.rs": "86d29e94955edff272ff4ed9fbd004eb4115a424663dcd4cea80fa09004068d5",
+    "crates/web/src/font/metrics.rs": "c012a859f28eb2aecd22ea144ecef0d9488d676a188438c4daa6b581433683e9",
+    "crates/web/src/text/shaping.rs": "cde4e5534b349b750737855483a2503c94c8b39bc4373da7ceada00e5173dbb9",
+    "crates/web/src/text/unicode_data.rs": "80556edad9be21f4222888e6c2cb56c76619b5cf92f6fdbf66e12a9d377ce201",
+    "crates/web/src/text/unicode.rs": "0a8ed2c2c794fa4c2c55ff6f815e72662783c5e1ffd970c7e0db60a1ddbf76d5",
+    "crates/web/src/text/prepare.rs": "936e21bde61c2f63b031f595dae28df574d6c0d5809d3e6524292b9a84e82e67",
+    "crates/web/src/text/linebreak_data.rs": "12f977dfbc1373f4316fa464abe9b2ee75e42e1fb48bf839d42c2bf83fe5e3c7",
+    "crates/web/src/text/linebreak.rs": "85b0fd0bd24485a8b0c411e0a4113cd0f9da0d0c2f0d8a829f74cd7d537cbc0d",
+    "crates/web/src/text/layout.rs": "833201b4dbbcc14673c13f043e924752d5369328b116a584947d95adfa5c6642",
+    "crates/web/src/layout/flow.rs": "66449f3397856a620d99837734be6daa835ec1099faaa1f1cd97034bf75757cf",
+    "crates/web/src/layout/mod.rs": "20198785e18107f65d6124e5f1856cca2a1d1789d5df89de866c77ca8a7a49ca",
+    "crates/web/src/layout/tree.rs": "f94c2eb4597efe062516633d43fdf65ea439b9907933404dd1c8df9140afa042",
+    "crates/web/src/layout/used.rs": "53e095a095520d356c016303c2ef81b86056cab5b96f8f98b19b72594d884ab3",
+    "crates/web/src/paint/mod.rs": "efc3807e7aca0e77767703515838a96c71abdbc4cb15e50d0296c81d0dee2e23",
+    "crates/web/src/paint/glyph.rs": "c90fc0bdc1e5f6a412299f7064fd31432357f4cc1c3f5225d2ffa17083a02a46",
+    "crates/web/src/paint/index.rs": "6c9be7a1de8e234e80556caaa77623f1c59415f59dfad18ccb0ccb6d7424ef4b",
+    "crates/web/src/paint/scene.rs": "52df25a9c73e63d52bb0d4d74f3a07052756ddfa6551b2ef3d14745ac0ec0ad2",
+    "crates/web/src/paint/raster.rs": "9116d3ae38ad20b4d075cfea5c1a67cec38584d8b74dcdd4b2929efa6db5a1e9",
+    "crates/web/src/paint/border.rs": "3431d7ffb3dc1f5e860410bf5bc00d7818e9a62bb1ae746bbf27c73bd5e0c586",
+    "crates/web/src/text/shaping/paragraph.rs": "7d3cb518f8b8b3fa48dbfcbc861c88ce965da0593162277df2f32d3a2e66aa7f",
+    "crates/web/src/text/layout/index.rs": "e9de451b0f0e9dc2e30f408c1358c863bfeb4e71e4db45300c988a8e5b4c71a8",
+    "crates/web/src/css/selectors/mod.rs": "a0aef167ac8999946b4c72a0a7ca0c6246e5c4e7a899f9364e40361d52624c0e",
+    "crates/web/src/css/selectors/anb.rs": "37b213707a7579b711d7bff4656886cbf3fd82de0d6518606e4e30998dd8b12c",
+    "crates/web/src/css/selectors/compile.rs": "109c763d78e111479e348df4abeaa9cda54f3bf363454d28d639e8aaf671ef0e",
+    "crates/web/src/css/selectors/matching.rs": "1b3a06178df453b6c111d630c12c79218a3f1853d3f5f3fcd7285f79c60ff216",
+    "crates/web/src/css/color/mod.rs": "da511c63fe860559ed70549460bff65752d3485ac61b739133f56af71a0e593e",
+    "crates/web/src/css/color/named.rs": "6958596a5aea786c365ccc092f37e83b3ae9a5919a563a8c7ce15a1a0ff598e0",
+    "crates/web/src/css/color/parse.rs": "9094982af95c5625ee85367ca646ac987567142d46f0ec39880d75cdf192cb07",
+    "crates/web/src/css/color/matrices.rs": "33328e8d17676b33931aadaf47b1a4cbe56ae6701227f0c9353f4f8643d810f8",
+    "crates/web/src/css/color/convert.rs": "2eef89e99719ee8683b98157763b8fdc833ba3da1e92dca788ae76a982cedcac",
+    "crates/web/src/css/color/functional.rs": "7ef26acb6812221e222707ae9191709b9468cec18e61c7c7a9d3635558910a89",
+    "crates/web/src/css/color/compute.rs": "70f97f30b8edcbb80f654493ca63b49d3e1e126465c30037337774e3caff3ab8",
+    "crates/web/src/css/math/mod.rs": "6fa561f6a5ca6be4a08fad7fc4559ccfa826cbf8c6fc67f4b9826ff1dedeff29",
+    "crates/web/src/css/math/units.rs": "9bf28bc5cc1bb7df96d0735d852c9ffcb191b6b9e9ac2b4bbe4ea948b9b42110",
+    "crates/web/src/css/math/ops.rs": "3efa991a803cf1e970c28939b34a4a881ebba050f53a1c453b7b1ac4f5c12a7b",
+    "crates/web/src/css/math/parse.rs": "80e2076c438e4f550c4be2a2fcbcc04fccab80be11e8f0d30660077759f309eb",
+    "crates/web/src/css/math/compute.rs": "3cb056f19047fa041bb127e5a42779be0c84ace01552628adca0f3ee46b40ad0",
+    "crates/web/src/css/syntax/assemble.rs": "9c0265a7334bd2b7f182a23f8f0f09445e9f53d35cecbca75d58745ea5a8bab0",
+    "crates/web/src/css/variables/mod.rs": "b06c26c6c9c943f2c0eb6553158096fb517623231cd0daa2127aa86fc63f5260",
+    "crates/web/src/css/variables/compile.rs": "d368470bc1cbb9a07336afd3e6a1efbf3325dbd974ac82cf9f1e8e0e5d7738ba",
+    "crates/web/src/css/variables/resolve.rs": "7111cc09fcc9b896917ec4d6473d1e75129d7e13424a61a09a9d2010cc3d5791",
+    "crates/web/src/css/properties/mod.rs": "71fd24e2956ff5d217742d2764562935e78ba9f1521d64237d455e11507a523a",
+    "crates/web/src/css/properties/numeric.rs": "9a7d270327b30f32ef276f167dc04035bcce93b655a50655de35852f5f5d4cb1",
+    "crates/web/src/css/properties/display.rs": "8a28fbf0c684d43417ebd315559073ab5a71825049402e292ccc1fa3707b72e6",
+    "crates/web/src/css/properties/registry.rs": "7370b666d0cf005b66781cc49d167f6acc1d6362a639e4fa15b5a6ad6579386d",
+    "crates/web/src/css/properties/parse.rs": "018ce4d335b9259032ef2ff5b0955d0472f22b9fe31dd1d5c4c0faee4969870a",
+    "crates/web/src/css/properties/font.rs": "6abb46fa8c1f6152a6f22cef9a7d71a161eb0077a28bdcfb8513804d19523424",
+    "crates/web/src/css/cascade/mod.rs": "ae8ef5ab0f0d75248fae30d7a96d7d873db84d121be82e31e4dc16d9a2af3fc2",
+    "crates/web/src/css/cascade/priority.rs": "cb872a9199486f139c09abb6f11f6d1dc428ad21bf1ad47446ee4be9224a8863",
+    "crates/web/src/css/cascade/sheets.rs": "e07deef24c4b7bfa9626e78feaa60a932b424855e8431566301426d4b3a720b2",
+    "crates/web/src/css/cascade/axes.rs": "4fde16bf08cb4dc0842ca75a3aa9384aed6dbd7ba150aa7f1cb4239bea3fd63d",
+    "crates/web/src/css/style/context.rs": "6931b74cb52fcca3ae22a334bdc7390138d86de29c1e7b1988ec74a0ebc38067",
+    "crates/web/src/css/style/coupled.rs": "6e7d274e67085630ef8cb90f2ade74c0827e2a1093df526aab1a6106d28d1710",
+    "crates/web/src/css/style/compute.rs": "0ca66ee495a2b50257a3d22e9462febc8ba57cabf64df57669595e1e98a77552",
+    "crates/web/src/css/style/memory.rs": "3ed7aa97f7bad64e33f1822d7e4c96224f0ca8f052e08de7a1ed1f1aa3f6501a",
+    "crates/web/src/css/style/font_pool.rs": "f87279f7944679d1417d57bc31b144cc54427f2370a090bf734f3b68fdbd071f",
+    "crates/web/src/css/style/job.rs": "7a7c93e742651fa01ac5d3e91c3b014c4695abcf013f16b6f27bf5a28f253db9",
+    "crates/web/src/css/style/mod.rs": "c73ef15f838b16cb6d41164c69024483886ae6e0f096d59c993855c03061851d",
+    "crates/web/src/html/tree/tables.rs": "0d91b1e648ab5f53c1f5146bd73799024e5f2f7b4e626c39d1ce6b6c5a381d82",
+    "crates/web/src/html/tree/foreign.rs": "1c6b2ce0f9ade035e59d1b17d15637902170f05ca4fdb0b5f7282ae6fc6a5c50",
+    "crates/web/src/html/tree/templates.rs": "bd7afa6690ad706c25c29edc7f655aaa9296f683b882477cedb374ed9a83eed9",
+    "crates/web/src/html/tree/fragments.rs": "fb0a1d2f661dcba87276112fd3b37fbae2f47ea8b3651cc80f6224b04149f67d"
+  },
+  "web_tests": {
+    "passed": 218,
+    "failed": 0,
+    "ignored": 1
+  }
+}
