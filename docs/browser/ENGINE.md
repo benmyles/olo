@@ -2096,3 +2096,12 @@ explicit nonpasses. Two include exact-fit wrapping/height differences from
 fractional font advances; two have RTL horizontal position differences. These
 are component measurements, not full pixels, complete break semantics or website
 acceptance. Images and other replaced/control objects remain unsupported.
+
+For integration checks against a newly built desktop, start the Agent Screen
+with this worktree's **absolute `target/release/olo-screen` path**. Its program
+lookup first finds sibling `olo-session`/`app_server` binaries. The installed
+`olo-screen` starts the installed desktop, even when the browser argument names
+a development build. Both are isolated from the person's display, but their
+compositor/build scope differs. Record which was used; use a fresh owned screen
+for merged-desktop checks and frozen comparisons. Set its initial scale to 2
+before the 1/1.25/1.5/1.75/2 live matrix, then resize the window per case.

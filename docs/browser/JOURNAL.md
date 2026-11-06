@@ -3507,3 +3507,38 @@ CPU/wakeups/frames; the 8.3 ms frame target remains open. These client marks
 are not compositor presentation or optical latency. Journal: **595** unique
 entries, all PNGs present. Manual lint used owned `/var/tmp` scratch because
 the hook hardcodes RAM `/tmp/olo-dev`; only that duplicate hook lint is skipped.
+
+
+Latest-main integration: pushed **0b412305**, then merged main through
+**bdc8036a**, including opt-in native Programs' Secrets and window restoration/
+settling fixes. Merged workspace release build passes (**115s**), as do **251
+browser/web release tests**, **238 all-feature web tests**, strict browser/web
+clippy and thirteen kit/Preferences lint tests. Browser and the newly changed
+Preferences Security panel each pass live lint at 1280×800. Full desktop lint
+was not repeated; its ten earlier findings outside Browser remain open.
+
+The prior component/native samples ran the development browser on the installed
+Agent Screen desktop. For merged integration, started a fresh screen with this
+worktree's absolute `target/release/olo-screen`; verified both `olo-session` and
+`olo-app-server` execute from this worktree. Repeated **15 link/break reviews /
+36 requests** and **15 navigation reviews / 61 requests**, including history and
+scroll restoration after re-exec. Browser/web runtime source is unchanged by
+main, but shared protocol/system changes alter the linked browser's SHA-256 to
+`affb7455e90e9185b7c94e3c2864ec405d47494288ca14854ef034f385664398`.
+
+Repeated frozen before/merged-after native costs on the same newly built
+compositor (three replays each): RSS **84628→85776 KiB**; both idle at **zero
+CPU/wakeups/frames** for three seconds. Median first report→moving client frame
+D/F/W **9.157/9.053/0.416→9.086/8.907/0.224 ms**, no hitches. Median slowest
+draw **0.61/0.60/0.59→0.50/0.39/0.40 ms**. Keyboard 1,001 links:
+**17.276 ms**, RSS **88724 KiB**, zero idle CPU/wakeups/frames. These compare
+the feature plus imported shared libraries; they do not isolate the feature's
+cost or measure compositor presentation. The pure engine pipeline regression
+and frame target remain open. Build/active GUI checks stopped during samples;
+external desktop load remains uncontrolled.
+
+Evidence: `2026-11-06-break-control-main-{integration,ui-cost,keyboard-cost}.json`.
+Journal stays **595** unique entries, all images present. No personal session
+install/reload or secret-service takeover. Website acceptance **0/100**, goal
+still active. Next: profile the measured ordinary-page regression, then continue
+images/replaced controls, inline decorations and table layout.

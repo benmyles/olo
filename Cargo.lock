@@ -7843,6 +7843,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-secrets"
+version = "0.1.0"
+dependencies = [
+ "aes 0.9.3",
+ "base64 0.22.1",
+ "cbc 0.2.1",
+ "chacha20poly1305",
+ "enumflags2",
+ "getrandom 0.3.4",
+ "hkdf 0.13.0",
+ "libc",
+ "num-bigint 0.4.8",
+ "olo-crash",
+ "olo-protocol",
+ "olo-system",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tracing",
+ "tracing-subscriber",
+ "zbus",
+ "zeroize",
+ "zvariant",
+]
+
+[[package]]
 name = "olo-session"
 version = "0.1.0"
 dependencies = [
@@ -7996,6 +8023,7 @@ dependencies = [
  "sha2 0.11.1",
  "tracing",
  "zbus",
+ "zeroize",
  "zvariant",
 ]
 

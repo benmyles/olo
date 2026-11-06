@@ -609,8 +609,12 @@ impl<B: Backend + 'static> AnvilState<B> {
             info.frame = Some(frame(smithay::utils::Rectangle::new(at, geo.size)));
             let least = crate::shell::groups::least_frame(w);
             info.least = Some([least.w, least.h]);
+            // (And one not drawn at all yet, a window just opened: on its
+            // way to its first frame, not a window shrunk to nothing.)
             info.settling = match w.0.underlying_surface() {
-                smithay::desktop::WindowSurface::Wayland(t) => crate::shell::settling(t),
+                smithay::desktop::WindowSurface::Wayland(t) => {
+                    crate::shell::settling(t) || !smithay::backend::renderer::utils::with_renderer_surface_state(t.wl_surface(), |s| s.buffer().is_some()).unwrap_or(false)
+                }
             };
             // As screenshots find it: where the element draws from, then
             // past the tab and border.

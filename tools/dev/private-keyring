@@ -14,14 +14,19 @@ start)
     chmod 700 "$DIR/run"
     export DBUS_SESSION_BUS_ADDRESS="unix:path=$DIR/bus" HOME="$DIR/home" \
         XDG_DATA_HOME="$DIR/home/.local/share" XDG_RUNTIME_DIR="$DIR/run"
-    unset GNOME_KEYRING_CONTROL
-    # busd: a D-Bus broker that runs on its own (dbus-broker needs a
-    # systemd user manager). Install once:
-    #   cargo install busd --root /tmp/olo-dev/busd
+    # Nothing it starts (the bus activating GNOME Keyring, gcr's prompter
+    # if no test prompter answers) may reach the person's display.
+    unset GNOME_KEYRING_CONTROL WAYLAND_DISPLAY DISPLAY
+    # A bus of its own: busd if installed (`cargo install busd --root
+    # /tmp/olo-dev/busd`), else dbus-daemon with the session's rules
+    # (dbus-broker needs a systemd user manager).
     BUSD=${BUSD:-/tmp/olo-dev/busd/bin/busd}
-    [ -x "$BUSD" ] || { echo "no busd: cargo install busd --root /tmp/olo-dev/busd" >&2; exit 1; }
-    setsid "$BUSD" --address "unix:path=$DIR/bus" >"$DIR/bus.log" 2>&1 < /dev/null &
-    echo $! > "$DIR/bus.pid"
+    if [ -x "$BUSD" ]; then
+        setsid "$BUSD" --address "unix:path=$DIR/bus" >"$DIR/bus.log" 2>&1 < /dev/null &
+        echo $! > "$DIR/bus.pid"
+    else
+        dbus-daemon --config-file=/usr/share/dbus-1/session.conf --address="unix:path=$DIR/bus" --fork --print-pid > "$DIR/bus.pid"
+    fi
     for _ in $(seq 50); do [ -S "$DIR/bus" ] && break; sleep 0.1; done
     printf test | gnome-keyring-daemon --unlock --components=secrets --daemonize > "$DIR/keyring.env"
     # The daemon claims org.freedesktop.secrets a moment after it starts.

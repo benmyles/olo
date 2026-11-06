@@ -95,7 +95,7 @@ const LEFT_OUT: &[&str] = &["state/backups", "state/screens"];
 const ARRIVED: &str = "config/pool-arrived.json";
 /// The vaults whose keys are in the keyring: on another computer, one
 /// comes only with its key.
-const VAULTS: &[(&str, secrets::Kept)] = &[("config/passwords.vault", secrets::PASSWORDS_KEY), ("config/pool.vault", secrets::POOL_KEY)];
+const VAULTS: &[(&str, secrets::Kept)] = &[("config/passwords.vault", secrets::PASSWORDS_KEY), ("config/pool.vault", secrets::POOL_KEY), ("config/secrets.store", secrets::SECRETS_KEY)];
 
 /// What a backup holds.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -437,6 +437,8 @@ fn app_of(path: &str) -> String {
             "signatures" => return "Viewer".into(),
             "desktop" => return "Tracker".into(),
             "palette" => return "Palette".into(),
+            // (olo-secrets' store, in the part its key is.)
+            "secrets" => return secrets::SECRETS_KEY.what.into(),
             _ => {}
         }
         if let Some((name, _)) = olo_xdg::apps::our_app(stem) {
@@ -2116,7 +2118,7 @@ mod tests {
         let parts = parts_here(&roots);
         let names: Vec<&str> = parts.iter().map(|p| p.0.as_str()).collect();
         // Its apps' files, and what goes only in a sealed backup.
-        assert_eq!(names, ["GitHub", "Passwords", "Telegram", "Terminal", "Token Pool", WIFI_PART]);
+        assert_eq!(names, ["GitHub", "Passwords", "Programs’ Secrets", "Telegram", "Terminal", "Token Pool", WIFI_PART]);
         assert_eq!(parts.iter().find(|p| p.0 == "Terminal").map(|p| (p.1, p.2)), Some((1, 2)));
         let _ = std::fs::remove_dir_all(&base);
     }

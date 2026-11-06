@@ -26,6 +26,8 @@ hkdf = "0.13"
 sha2 = "0.11"
 base64 = "0.22"
 getrandom = "0.3"
+# Passwords asked for ([`keyring_prompt::ask_password`]), wiped after.
+zeroize = "1"
 futures-lite = "2"
 # udisks-fake's jobs.
 async-io = "2"

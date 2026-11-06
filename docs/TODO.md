@@ -17,60 +17,152 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-These two were tabled by Ben on 2026-11-02 ("performance seems pretty
-solid now in olo so you can table the rest of the performance related
-items ... and skip them"); his goal of 2026-11-06, every item done but
-what's truly blocked, takes them up again.
-
-- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
-  frames is never acceptable: olo must be buttery smooth on all
-  displays all the time"; the pointer "definitely way slow/stuttery",
-  worst on the Studio Display; app_server at 20% of a core). Done
-  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
-  measured cost and observed drops; `{"type":"frames"}`,
-  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
-  overlay plane as cursor plane, clipped at the display's edge in
-  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
-  flip and app_server restart eight times; a refused flip no longer
-  kills it); windows as scan-out candidates; Smithay vendored with
-  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
-  all `render_output`, and in it the GPU submit (asahi's
-  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
-  in the kernel; plane assignment and atomic tests cost 0.0 ms.
-  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
-  renderer making a fence per texture drawn (a GPU submit an
-  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
-  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
-  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
-  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
-  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
-  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
-  the radio is the person's to fix (the receiver nearer, its
-  extender, a lower polling rate). **Next**: windows on overlay
-  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
-  agree (a client's cursor on the plane rendered right, or the
-  pointer's plane above every window plane and the window refused
-  while the pointer is drawn in the frame over it); the "draws"
-  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
-  at ~11% with a call on is the tick (now once per 8 ms) and looks;
-  per-display render threads (its own TODO).
-
-- **app_server's critical path on threads of its own** (Ben,
-  2026-11-01: "why run the risk of a blocking call? threads would
-  make sure we don't accidentally block"): input → pointer plane
-  update → commit never shares a thread with anything that can
-  block. Design: an input-and-cursor thread owning libinput and the
-  cursor planes (a pointer move is a plane property commit, no frame);
-  a render-and-commit thread per display owning its GL context, DRM
-  surface and pacing (a slow 5K frame can't delay the built-in
-  display's); the Wayland clients and IPC on the main loop, handing
-  each display's thread a snapshot of what to draw. Our own
-  synchronous work (importing a client's buffer, a fence, a DCP test
-  or commit) is what blocks today, and the heartbeat (`timings`)
-  finds it. After the reliability work.
+Nothing: the two performance items Ben had tabled were taken up again
+(2026-11-06) and are blocked on real displays to try them on (see
+Blocked).
 
 ## Done, waiting for Ben to try or confirm
+
+- **Other programs feel like Olo's own: every integration point**
+  (Ben, 2026-10-29): "is there a way where we can make chrome (and any
+  gtk / qt apps) better integrate with olo, e.g. replacing their file
+  picker with olo tracker picker and e.g. in chrome something like show
+  in folder should show in tracker. basically every integration point
+  we can do (whether cleanly through some protocol or 'dirty' through
+  some hack) we should do so that everything feels as seamless as
+  possible". Clean ways first (portals, D-Bus services, settings), a
+  hack where there is none. Each is for Chrome, Electron (Slack,
+  Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
+  - **File pickers** (started 2026-10-30: olo-portal answers the
+    FileChooser portal with the kit's file panel, open, save and folder,
+    several files at once, the app's filters by glob and MIME type as a
+    Show pop-up, the portal's `choices`; Chrome's uploads, GTK 4 and GTK 3
+    tried. The toolkit switches are deliberately not set for everything:
+    they also send GTK's link opening through OpenURI, which asks for an
+    app until one was picked 3 times (HACKING, "Open and Save"); done
+    2026-10-30: the panel's list as Tracker's, Name, Kind, Size and
+    Modified, sorted by a header, Favorites and Recent Folders in its
+    folder pop-up shared with Tracker's Go menu (`olo_kit::places`),
+    and Space for a look at a file in the Viewer): an Olo
+    portal backend
+    (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
+    ScreenCast) showing the kit's file panel (Tracker's columns,
+    favourites, Quick Look, recent places); `olo-portals.conf` sends
+    FileChooser to it. Chrome and Electron use the portal with
+    `--xdg-portal` / `GTK_USE_PORTAL=1`-style switches or by default;
+    GTK 4 apps use it by default, GTK 3 with `GTK_USE_PORTAL=1`, Qt with
+    `QT_QPA_PLATFORMTHEME=xdgdesktopportal`: set these in the session
+    environment. Save dialogs too (name, folder, overwrite).
+  - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
+    serves `org.freedesktop.FileManager1`, each call an Open in
+    Tracker). The OpenURI portal's `OpenDirectory` needs nothing more:
+    xdg-desktop-portal (1.22 here) answers it with FileManager1's
+    `ShowItems`, which Tracker serves, and only without one opens
+    `inode/directory`'s default, which olo-session makes Tracker too.
+  - ~~**Opening things**~~ (done: checked 2026-11-05, GIO opens a folder
+    in Tracker and a link in Chrome from `olo-mimeapps.list`, xdg-open
+    going through GIO on Olo's `XDG_CURRENT_DESKTOP`) (started 2026-10-30: the AppChooser portal is
+    Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
+    writes desktop entries and `olo-mimeapps.list` defaults so GIO,
+    xdg-open and OpenURI open files in Olo's apps as Olo does, links
+    staying with the default browser; Olo's Chrome, once installed, is
+    offered as the default browser by `~/.local/share/applications/
+    olo-mimeapps.list`, behind any browser the person chose and ahead
+    of the system's): the
+    OpenURI portal and `xdg-open`'s MIME
+    defaults resolved by Olo's own (`olo_kit::open`), so links from any
+    app open in Olo's choice, files in Olo's apps; Olo as the default
+    file manager and browser handler (`mimeapps.list`, the `x-scheme-
+    handler`s), Chrome as the default browser offered by Olo.
+  - ~~**Downloads**: Chrome's land in Tracker's Downloads with Olo's own
+    notification (open, show in Tracker) and Deskbar's progress; a
+    download's file shows as being written.~~ (done 2026-10-30: the
+    extension tells olo-chrome's host of Chrome's downloads; Deskbar's
+    progress through LauncherEntry, an Olo notification with Open and
+    Open in Tracker, and Tracker shows a `.crdownload` under its final
+    name with a bar and "3.1 of 10 MB", from `user.olo.expected_size`.)
+  - **Look** (mostly done: app_server's `toolkits.rs` publishes the
+    colour scheme and accent through GSettings, which the GTK portal's
+    Settings serves as `org.freedesktop.appearance`; GTK 3 and 4 themes
+    from Olo's palette, Qt through its GTK 3 platform theme; Olo's fonts;
+    2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
+    Haiku cursors as an XCursor theme for programs that draw their own
+    pointer; Olo's icons in the look as the icon theme, for the
+    freedesktop names it has pictures for). Left, both waiting on Olo
+    itself: `contrast` (once Olo has a high-contrast look) and
+    `text-scaling-factor` (once Olo has a text size of its own; today
+    the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
+    gets as its font size, so there is nothing to scale to).
+  - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
+    once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
+    extensions' shortcuts, Discord's push-to-talk) bound through Olo's
+    keyboard profiles; ~~app menus where a toolkit exports one
+    (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
+    style if worthwhile~~ (not worthwhile, 2026-10-30: Olo's menus are
+    in each window, as BeOS's were, not in a bar at the top of the
+    screen, and GTK 4, Qt and Electron programs already show theirs in
+    their windows; a second copy in Olo's style would only duplicate
+    them. Tray items' menus are Olo's, which is where it helps).
+  - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
+    the StatusNotifierWatcher and host, items in its tray with their
+    menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
+    Discord's tray icons) in Deskbar's tray with their menus~~;
+    ~~the Unity LauncherEntry count (unread badges) on Deskbar's entries;
+    progress on Deskbar (LauncherEntry progress)~~ (done 2026-10-30: the
+    row's dot, shaking when the count rises, and a progress bar).
+  - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
+    Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
+    by app_server's `KeepAwake`), ~~Background~~ (done 2026-10-30, with
+    olo-session starting login items), ~~Print~~ (done 2026-10-30: Olo's Print
+    panel, CUPS over IPP, `olo-print`), ~~Email~~, ~~Account~~ (done 2026-10-30: asked in the permission
+    dialog with your picture), ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
+    ~~Camera/Location as Olo asks permission~~ (xdg-desktop-portal asks
+    them through the Access dialog, Olo's), ~~Secret~~ (Olo as the
+    Secret Service, so Chrome's and Electron's stored secrets live in
+    Olo's keychain; Chrome keeps its "Chrome Safe Storage" key in
+    gnome-keyring through libsecret, so taking over
+    `org.freedesktop.secrets` without first moving every existing item
+    across would lose every saved cookie and password in Chrome and
+    Slack. *Done, opt-in* (2026-11-06; HACKING's "Programs' secrets"):
+    `olo-secrets`, Preferences ▸ Security ▸ Programs' Secrets, off by
+    default. Switched on it copies every GNOME Keyring item in (each
+    login, what's new or changed there), waits in line for the name and
+    asks GNOME Keyring to quit (it can't be replaced); switched off it
+    writes back what changed and deletes what was deleted. Its store is
+    sealed with a key kept in the login keyring (PAM still unlocks it at
+    login) and, for the login, in the kernel's keyring, so an upgrade
+    needs no password. Plain and libsecret's DH sessions, Lock and an
+    Unlock prompt in Olo's window checked by PAM. Tested against a real
+    GNOME Keyring on a private bus with `secret-tool` (300 encrypted
+    lookups, store, replace, search, clear, lock, unlock, hand back, take
+    over again, restart). The keyring prompter's DH key now pads the
+    shared secret as gcr does (one prompt in 256 read a right password
+    as wrong). *Left* (Ben): switch it on, then see Chrome and Slack
+    still signed in and their passwords there, and that switching it
+    off leaves them so too), and ~~Trash~~ (xdg-desktop-portal trashes through
+    GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
+    Screenshot (Olo's Screenshot app, region when interactive; PickColor
+    with a loupe) and Access (the permission dialog, as Olo's BAlert).
+  - ~~**Drag and drop and the clipboard**: files dragged from Chrome,
+    Slack and GTK into Tracker and back, with the right actions and
+    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).~~
+    (done 2026-10-30, tried with Chrome 156: a picture dragged out of a
+    page lands as its file, a link as a clipping named by its text, files
+    from Tracker open in Chrome; Tracker copies files as file managers do,
+    `x-special/gnome-copied-files` and all, and pastes files, pictures
+    (Chrome's Copy Image) and text; `Cx::paste_data`,
+    `olo_kit::clipboard::files`, `dnd::named_file`, `dnd::moz_url`.)
+  - ~~**Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
+    Chrome's beyond the extension) folded into Olo's widget tree, so
+    agents can drive outside programs as they do Olo's.~~ (done
+    2026-10-30: olo-screen's `tree` reads a non-kit program's windows
+    over AT-SPI, roles named as AccessKit's; tried with GNOME
+    Calculator, driven by name; Qt asked to join with
+    `QT_ACCESSIBILITY=1`. Chrome's pages stay with the extension, which
+    sees more of them.)
+  - Where there's no clean way, a hack is fine if it's reliable: an
+    LD_PRELOAD shim, a launcher wrapper, a policy file or a patched
+    config, documented in HACKING with how it's tested.
 
 - **An app_server restart modesets every display** (seen 2026-11-01
   in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
@@ -1239,132 +1331,80 @@ password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
 
-- **Other programs feel like Olo's own: every integration point**
-  (Ben, 2026-10-29): "is there a way where we can make chrome (and any
-  gtk / qt apps) better integrate with olo, e.g. replacing their file
-  picker with olo tracker picker and e.g. in chrome something like show
-  in folder should show in tracker. basically every integration point
-  we can do (whether cleanly through some protocol or 'dirty' through
-  some hack) we should do so that everything feels as seamless as
-  possible". Clean ways first (portals, D-Bus services, settings), a
-  hack where there is none. Each is for Chrome, Electron (Slack,
-  Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
-  - **File pickers** (started 2026-10-30: olo-portal answers the
-    FileChooser portal with the kit's file panel, open, save and folder,
-    several files at once, the app's filters by glob and MIME type as a
-    Show pop-up, the portal's `choices`; Chrome's uploads, GTK 4 and GTK 3
-    tried. The toolkit switches are deliberately not set for everything:
-    they also send GTK's link opening through OpenURI, which asks for an
-    app until one was picked 3 times (HACKING, "Open and Save"); done
-    2026-10-30: the panel's list as Tracker's, Name, Kind, Size and
-    Modified, sorted by a header, Favorites and Recent Folders in its
-    folder pop-up shared with Tracker's Go menu (`olo_kit::places`),
-    and Space for a look at a file in the Viewer): an Olo
-    portal backend
-    (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
-    ScreenCast) showing the kit's file panel (Tracker's columns,
-    favourites, Quick Look, recent places); `olo-portals.conf` sends
-    FileChooser to it. Chrome and Electron use the portal with
-    `--xdg-portal` / `GTK_USE_PORTAL=1`-style switches or by default;
-    GTK 4 apps use it by default, GTK 3 with `GTK_USE_PORTAL=1`, Qt with
-    `QT_QPA_PLATFORMTHEME=xdgdesktopportal`: set these in the session
-    environment. Save dialogs too (name, folder, overwrite).
-  - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
-    serves `org.freedesktop.FileManager1`, each call an Open in
-    Tracker). The OpenURI portal's `OpenDirectory` needs nothing more:
-    xdg-desktop-portal (1.22 here) answers it with FileManager1's
-    `ShowItems`, which Tracker serves, and only without one opens
-    `inode/directory`'s default, which olo-session makes Tracker too.
-  - ~~**Opening things**~~ (done: checked 2026-11-05, GIO opens a folder
-    in Tracker and a link in Chrome from `olo-mimeapps.list`, xdg-open
-    going through GIO on Olo's `XDG_CURRENT_DESKTOP`) (started 2026-10-30: the AppChooser portal is
-    Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
-    writes desktop entries and `olo-mimeapps.list` defaults so GIO,
-    xdg-open and OpenURI open files in Olo's apps as Olo does, links
-    staying with the default browser; Olo's Chrome, once installed, is
-    offered as the default browser by `~/.local/share/applications/
-    olo-mimeapps.list`, behind any browser the person chose and ahead
-    of the system's): the
-    OpenURI portal and `xdg-open`'s MIME
-    defaults resolved by Olo's own (`olo_kit::open`), so links from any
-    app open in Olo's choice, files in Olo's apps; Olo as the default
-    file manager and browser handler (`mimeapps.list`, the `x-scheme-
-    handler`s), Chrome as the default browser offered by Olo.
-  - ~~**Downloads**: Chrome's land in Tracker's Downloads with Olo's own
-    notification (open, show in Tracker) and Deskbar's progress; a
-    download's file shows as being written.~~ (done 2026-10-30: the
-    extension tells olo-chrome's host of Chrome's downloads; Deskbar's
-    progress through LauncherEntry, an Olo notification with Open and
-    Open in Tracker, and Tracker shows a `.crdownload` under its final
-    name with a bar and "3.1 of 10 MB", from `user.olo.expected_size`.)
-  - **Look** (mostly done: app_server's `toolkits.rs` publishes the
-    colour scheme and accent through GSettings, which the GTK portal's
-    Settings serves as `org.freedesktop.appearance`; GTK 3 and 4 themes
-    from Olo's palette, Qt through its GTK 3 platform theme; Olo's fonts;
-    2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
-    Haiku cursors as an XCursor theme for programs that draw their own
-    pointer; Olo's icons in the look as the icon theme, for the
-    freedesktop names it has pictures for). Left, both waiting on Olo
-    itself: `contrast` (once Olo has a high-contrast look) and
-    `text-scaling-factor` (once Olo has a text size of its own; today
-    the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
-    gets as its font size, so there is nothing to scale to).
-  - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
-    once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
-    extensions' shortcuts, Discord's push-to-talk) bound through Olo's
-    keyboard profiles; ~~app menus where a toolkit exports one
-    (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
-    style if worthwhile~~ (not worthwhile, 2026-10-30: Olo's menus are
-    in each window, as BeOS's were, not in a bar at the top of the
-    screen, and GTK 4, Qt and Electron programs already show theirs in
-    their windows; a second copy in Olo's style would only duplicate
-    them. Tray items' menus are Olo's, which is where it helps).
-  - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
-    the StatusNotifierWatcher and host, items in its tray with their
-    menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
-    Discord's tray icons) in Deskbar's tray with their menus~~;
-    ~~the Unity LauncherEntry count (unread badges) on Deskbar's entries;
-    progress on Deskbar (LauncherEntry progress)~~ (done 2026-10-30: the
-    row's dot, shaking when the count rises, and a progress bar).
-  - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
-    Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
-    by app_server's `KeepAwake`), ~~Background~~ (done 2026-10-30, with
-    olo-session starting login items), ~~Print~~ (done 2026-10-30: Olo's Print
-    panel, CUPS over IPP, `olo-print`), ~~Email~~, ~~Account~~ (done 2026-10-30: asked in the permission
-    dialog with your picture), ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
-    ~~Camera/Location as Olo asks permission~~ (xdg-desktop-portal asks
-    them through the Access dialog, Olo's), Secret (Passwords as the
-    Secret Service, so Chrome's and Electron's stored secrets live in
-    Olo's keychain; **held for Ben's go-ahead**, 2026-10-30: Chrome keeps
-    its "Chrome Safe Storage" key in gnome-keyring through libsecret, so
-    taking over `org.freedesktop.secrets` without first moving every
-    existing item across would lose every saved cookie and password in
-    Chrome and Slack. It needs a migration that reads the real keyring,
-    as an explicit step in Preferences ▸ Security, tried on a copy
-    first), and ~~Trash~~ (xdg-desktop-portal trashes through
-    GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
-    Screenshot (Olo's Screenshot app, region when interactive; PickColor
-    with a loupe) and Access (the permission dialog, as Olo's BAlert).
-  - ~~**Drag and drop and the clipboard**: files dragged from Chrome,
-    Slack and GTK into Tracker and back, with the right actions and
-    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).~~
-    (done 2026-10-30, tried with Chrome 156: a picture dragged out of a
-    page lands as its file, a link as a clipping named by its text, files
-    from Tracker open in Chrome; Tracker copies files as file managers do,
-    `x-special/gnome-copied-files` and all, and pastes files, pictures
-    (Chrome's Copy Image) and text; `Cx::paste_data`,
-    `olo_kit::clipboard::files`, `dnd::named_file`, `dnd::moz_url`.)
-  - ~~**Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
-    Chrome's beyond the extension) folded into Olo's widget tree, so
-    agents can drive outside programs as they do Olo's.~~ (done
-    2026-10-30: olo-screen's `tree` reads a non-kit program's windows
-    over AT-SPI, roles named as AccessKit's; tried with GNOME
-    Calculator, driven by name; Qt asked to join with
-    `QT_ACCESSIBILITY=1`. Chrome's pages stay with the extension, which
-    sees more of them.)
-  - Where there's no clean way, a hack is fine if it's reliable: an
-    LD_PRELOAD shim, a launcher wrapper, a policy file or a patched
-    config, documented in HACKING with how it's tested.
+- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
+  frames is never acceptable: olo must be buttery smooth on all
+  displays all the time"; the pointer "definitely way slow/stuttery",
+  worst on the Studio Display; app_server at 20% of a core). Done
+  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
+  measured cost and observed drops; `{"type":"frames"}`,
+  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
+  overlay plane as cursor plane, clipped at the display's edge in
+  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
+  flip and app_server restart eight times; a refused flip no longer
+  kills it); windows as scan-out candidates; Smithay vendored with
+  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
+  all `render_output`, and in it the GPU submit (asahi's
+  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
+  in the kernel; plane assignment and atomic tests cost 0.0 ms.
+  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
+  renderer making a fence per texture drawn (a GPU submit an
+  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
+  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
+  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
+  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
+  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
+  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
+  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  the radio is the person's to fix (the receiver nearer, its
+  extender, a lower polling rate). **Next**: windows on overlay
+  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
+  agree (a client's cursor on the plane rendered right, or the
+  pointer's plane above every window plane and the window refused
+  while the pointer is drawn in the frame over it); the "draws"
+  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
+  at ~11% with a call on is the tick (now once per 8 ms) and looks;
+  per-display render threads (its own TODO).
+  *Taken up again* (2026-11-06, Ben's goal: every item done but what's
+  truly blocked; and his 2026-11-02 word, no optimizing for its own sake
+  without something a person notices). Measured on the ThinkPad's panel
+  (eDP-1, 60 Hz, read from `{"type":"frames"}`, nothing changed): a frame
+  drawn in 0.98 ms (95th percentile 1.32, slowest 1.70) of an 8.75 ms
+  budget; 219 late of 597,686 frames since login (0.04%), 1 in the last
+  minute. Windows on overlay planes need no new rule: Olo's Smithay
+  already keeps a window off a plane while anything drawn in the frame
+  (the pointer among them) lies over it (`try_assign_overlay_plane`'s
+  overlap test); what's left is trying `OLO_OVERLAY_PLANES=1` on real
+  displays (the "all messed up" of 2026-11-01 was on apple-drm, before
+  the ThinkPad), which headless can't (no planes, no vblank). *Blocked
+  on*: Ben trying `OLO_OVERLAY_PLANES=1` on the ThinkPad during a video
+  call (Activity Monitor ▸ Displays says what went to a plane), or a
+  virtual display to test with: `sudo modprobe vkms enable_cursor=1
+  enable_overlay=1` (in this kernel, not loaded; root needed), kept off
+  his session's seat by a udev rule (`ID_SEAT`), so a test app_server
+  could drive planes and vblank without his screen.
+
+- **app_server's critical path on threads of its own** (Ben,
+  2026-11-01: "why run the risk of a blocking call? threads would
+  make sure we don't accidentally block"): input → pointer plane
+  update → commit never shares a thread with anything that can
+  block. Design: an input-and-cursor thread owning libinput and the
+  cursor planes (a pointer move is a plane property commit, no frame);
+  a render-and-commit thread per display owning its GL context, DRM
+  surface and pacing (a slow 5K frame can't delay the built-in
+  display's); the Wayland clients and IPC on the main loop, handing
+  each display's thread a snapshot of what to draw. Our own
+  synchronous work (importing a client's buffer, a fence, a DCP test
+  or commit) is what blocks today, and the heartbeat (`timings`)
+  finds it. After the reliability work.
+  *Taken up again* (2026-11-06) and *blocked*: moving input, the
+  pointer's plane and each display's commits off the main loop rewrites
+  app_server's core around Smithay's single-threaded state, and only
+  real displays and input can show it works and what it buys (latency
+  from a motion event to the plane's move, frames late): headless has
+  neither planes nor vblank nor libinput. Today's numbers (above) show
+  no frame or pointer problem a person would notice on the ThinkPad.
+  Unblocked by the same virtual display (vkms on a seat of its own), or
+  by Ben asking for it with his displays to try it on.
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the
