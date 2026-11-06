@@ -22,7 +22,11 @@ of Finished; a new one goes where its priority puts it.
   Going"); on, Terminal watches the tab for 60 s with nothing at all
   happening (no output, no screen change, no spinner or timer ticking,
   no input typed: any change restarts the count) and then types
-  "please continue" and Return into it, at most once an hour per tab;
+  "please continue" and Return into it, at most once an hour per tab
+  (Ben, a moment later: "in codex ignore `Pursuing goal (17h 52m)` when
+  assessing whether anything has changed b/c that will just keep counting
+  forever every minute regardless": a clock that counts on its own, as
+  Codex's goal line's elapsed time, isn't activity);
   the tab shows that it's on (a small mark beside its title, in the
   palette's colours, at every scale and in light, dark and night). For
   agents too: the setting readable and settable over Terminal's
