@@ -13,6 +13,11 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+- **Screen recording: frames to the GPU's encoder as dmabufs** (see Not
+  started: the Intel GPU on battery is done).
+
+## Not started (highest priority first)
+
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
   NAME --steps 80 --seed 7` on a `--session --shell` session at 3024×1890,
@@ -186,8 +191,6 @@ something nobody here has is in "Blocked", with what it waits for.
   group asked for the group's size at its first commit (as `auto_claim`
   asks a tile's), so it never draws the saved size at all.
 
-## Not started (highest priority first)
-
 - **StyledEdit: Markdown edited as it looks (and as source), code with
   highlighting** (Ben, 2026-11-05, lower priority): "when opening a
   markdown file StyledEdit should natively support the Markdown and be
@@ -223,7 +226,8 @@ something nobody here has is in "Blocked", with what it waits for.
   memory and to VA-API through its DRM PRIME import, its video processor
   making NV12, rather than copied through the CPU; and `--encoder auto`
   taking the Intel GPU's AV1 rather than waking the NVIDIA GPU while on
-  battery.
+  battery. *The battery part done* (2026-11-06, `olo_video::on_battery`,
+  unit-tested on made-up supplies; untried unplugged).
 
 - **An app_server restart modesets every display** (seen 2026-11-01
   in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`

@@ -6391,7 +6391,10 @@ Screens' Export Video uses too).
   (iHD, Mesa) leave out the patented codecs, so on the ThinkPad's Intel
   GPU (xe) they encode AV1 profile 0 and VP9 but no H.264 or HEVC: a
   recording through VA-API is AV1 (asked for anything else, an error;
-  `--encoder auto` takes it for AV1 when there's no NVIDIA encoder).
+  `--encoder auto` takes it for AV1 when there's no NVIDIA encoder, and
+  first while the computer is on its battery, so the NVIDIA GPU isn't
+  woken for it: `olo_video::on_battery`, a battery and no mains or USB-C
+  supply online, a mouse's battery not counting).
   libva is opened at run time (`libva.so.2`, `libva-drm.so.2`; vendor/
   va-sys holds bindgen's declarations from libva 2.24's headers), the
   render node is the first whose driver offers `VAProfileAV1Profile0`
