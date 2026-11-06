@@ -1,0 +1,68 @@
+--- a/crates/web/src/css/cascade/mod.rs
++++ b/crates/web/src/css/cascade/mod.rs
+@@ -70,17 +70,11 @@
+ pub trait Inherited {
+     fn custom(&self, name: &str) -> Option<variables::Computed>;
+ }
+-#[derive(Clone, Copy)]
+-struct KnownRange {
+-    property: p::Property,
+-    start: u32,
+-    end: u32,
+-}
+ /// Frozen candidates for one element. Typed programs/token arenas remain shared
+ /// with their stylesheet. A snapshot belongs to one node/tree/style generation.
+ pub struct Cascade<'a> {
+     entries: Vec<Entry<'a>>,
+-    known: smallvec::SmallVec<[KnownRange; 8]>,
++    known: Vec<std::ops::Range<usize>>,
+     custom: BTreeMap<&'a str, std::ops::Range<usize>>,
+     parent: Option<&'a dyn Inherited>,
+     has_parent: bool,
+@@ -129,7 +123,7 @@
+         // Bottom-up merging checks cancellation/work between comparisons;
+         // no partially sorted/published element state can escape on failure.
+         let mut work = 0usize;
+-        let mut spare = if self.entries.len() > 1 { self.entries.clone() } else { Vec::new() };
++        let mut spare = self.entries.clone();
+         let mut width = 1usize;
+         while width < self.entries.len() {
+             let mut start = 0;
+@@ -158,7 +152,7 @@
+             std::mem::swap(&mut self.entries, &mut spare);
+             width = width.saturating_mul(2);
+         }
+-        let mut known = smallvec::SmallVec::new();
++        let mut known = vec![0..0; p::Property::ALL.len()];
+         let mut custom = BTreeMap::new();
+         let mut start = 0;
+         while start < self.entries.len() {
+@@ -168,7 +162,7 @@
+                 end += 1;
+             }
+             match self.entries[start].data {
+-                Data::Known(property, _) => known.push(KnownRange { property, start: start as u32, end: end as u32 }),
++                Data::Known(property, _) => known[property as usize]=start..end,
+                 Data::Custom(name, _) => {
+                     custom.insert(name, start..end);
+                 }
+@@ -188,9 +182,7 @@
+     }
+ }
+ impl<'a> Cascade<'a> {
+-    fn known_range(&self, property: p::Property) -> std::ops::Range<usize> {
+-        self.known.binary_search_by_key(&(property as u16), |r| r.property as u16).ok().map_or(0..0, |i| self.known[i].start as usize..self.known[i].end as usize)
+-    }
++    fn known_range(&self,property:p::Property)->std::ops::Range<usize> {self.known[property as usize].clone()}
+     fn tick(&self) -> Result<()> {
+         check(self.cancelled)?;
+         let n = self.work.get().saturating_add(1);
+@@ -206,7 +198,7 @@
+     /// Candidate/range payload capacities; borrowed typed programs and
+     /// BTreeMap/control/allocator bookkeeping are excluded.
+     pub fn reserved_payload_bytes(&self) -> usize {
+-        self.entries.capacity() * size_of::<Entry<'_>>() + self.known.capacity() * size_of::<KnownRange>()
++        self.entries.capacity() * size_of::<Entry<'_>>() + self.known.capacity() * size_of::<std::ops::Range<usize>>()
+     }
+ 
+     pub fn custom_names(&self) -> impl Iterator<Item = &str> {

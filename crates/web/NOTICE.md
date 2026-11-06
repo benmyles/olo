@@ -102,3 +102,9 @@ The 126 property grammar/expansion/computed-reference WPT resources in
 `tests/property-fixtures/SOURCE.json`. The BSD license is reproduced beside
 them. Literal extraction/native adapters are original Olo code; these ports
 do not execute WPT's JS, CSSOM, style or layout drivers.
+
+The 19 cascade test/reference resources in `tests/cascade-fixtures/wpt` are
+unmodified WPT data at the revision in `tests/cascade-fixtures/SOURCE.json`.
+Their BSD license is reproduced there. Native literal ports explicitly omit
+JS/CSSOM, animations, layout and rasterization; a reftest's background-color
+component does not establish that its rendered reference matches.

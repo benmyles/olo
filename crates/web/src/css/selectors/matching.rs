@@ -191,6 +191,40 @@ impl Selectors {
         }
         machine.list(self.root, node, Context { anchor: None, pseudo: options.pseudo, depth: 0 }, true)
     }
+    // Mirror only setup/validation; all matching logic stays in Machine.
+    // The public path retains its original return ABI and pays no accounting
+    // result/copy overhead. Release comparisons cover both paths.
+    pub(crate) fn matches_root_accounted<T: Tree>(
+        &self,
+        root: u32,
+        tree: &T,
+        node: T::Node,
+        options: MatchOptions<'_, T::Node>,
+        limits: MatchLimits,
+        cancelled: Option<&AtomicBool>,
+    ) -> Result<(Option<Specificity>, usize)> {
+        let mut machine = Machine {
+            selectors: self,
+            tree,
+            options,
+            limits,
+            cancelled,
+            progress: MatchProgress::default(),
+            stack: SmallVec::new(),
+            indices: HashMap::new(),
+            pending_indices: 0,
+            cache_indices: false,
+        };
+        machine.tick(1)?;
+        if let Some(scope) = options.scope {
+            tree.content(scope)?;
+        }
+        if !matches!(tree.content(node)?, Content::Element(_)) {
+            return Ok((None, machine.progress.work));
+        }
+        let result = machine.list(root, node, Context { anchor: None, pseudo: options.pseudo, depth: 0 }, true)?;
+        Ok((result, machine.progress.work))
+    }
     /// Stream document-order results without building an unbounded result
     /// vector. Use include_root for an inclusive subtree scan; DOM element
     /// querySelectorAll uses false. This visits the light tree only.

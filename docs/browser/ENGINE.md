@@ -727,7 +727,7 @@ connects the generic declaration parser to original typed grammars. The
 standalone `parse(decoded_name, Components, important, ...)` API takes an
 already-decoded CSS property name; it is not a CSSOM setProperty/string-name
 parser. Static ASCII case-insensitive binary lookup covers **88 longhands
-and 15 shorthands**, with canonical names, inherited flags and initial-value
+and 16 shorthands**, with canonical names, inherited flags and initial-value
 spellings. The registry intentionally exposes its implemented scope; fonts,
 background images/layers, border-image/radius, transforms, grid templates,
 alignment, animations, transitions, many shorthands and descriptors remain.
@@ -753,7 +753,10 @@ unbounded literal overflow is accepted and materialized to finite f64 bounds.
 Line-height numbers remain multipliers, distinct from length calculations;
 actual used line metrics are not computed here.
 
-Quad/pair shorthands expand atomically in physical/logical order; flex-flow
+The all shorthand expands over the 87 implemented resettable longhands,
+excluding direction and custom properties. Unicode-bidi is not implemented.
+This does not imply complete property coverage. Quad/pair shorthands expand
+atomically in physical/logical order; flex-flow
 accepts its direction/wrap keywords in either order and fills omitted initial
 values. Importance comes from the original declaration and applies to all
 assignments. CSS-wide keywords expand over every implemented member. Display
@@ -774,7 +777,8 @@ case-sensitive names, importance and distinct valid empty token values.
 
 Limits preflight the flat node ranges and source spans, then bound the generic
 scanner and each nested math/color/token compiler. These are per-invocation
-bounds with fixed extra passes: at most four shorthand members. They are not
+bounds with fixed extra passes: at most four numeric/color shorthand members, or the fixed all reset list
+for CSS-wide keywords/pending values. They are not
 one exact combined instruction counter or a whole-stylesheet memory budget.
 Default input is 1 MiB/65,536 nodes, work 1,000,000, nesting 64. The original
 math/color/variable hard caps also apply. Cancellation is checked while
@@ -817,3 +821,136 @@ Primary grammar references consulted 2026-11-05:
 [CSS Cascade 5](https://drafts.csswg.org/css-cascade-5/) and
 [CSS Values 4](https://drafts.csswg.org/css-values-4/) and
 [CSS Values 5 substitution](https://drafts.csswg.org/css-values-5/#arbitrary-substitution).
+
+## Frozen stylesheet sets and cascade
+
+`css::cascade::SheetBuilder` compiles ordered sheets over the supported
+property/selector engine. Named, nested and anonymous layers are ordered
+across sheets within each origin; unlayered declarations use the implicit
+outer layer. Layer names validate completely before changing layer order.
+Namespaces are stylesheet-local, reset between sheets, and passed to every
+selector root in that sheet. Resource failures poison a builder; finish
+cannot publish its partial state. Invalid CSS is recorded/ignored, while
+unimplemented properties, selectors, at-rules and nesting remain visible
+issues. Imports, conditional rules, scope and keyframes are not implemented.
+Callers/evaluators must inspect issues instead of treating partial sheets
+as complete compatibility.
+
+All rule roots share one original flat selector collection, symbol table and
+arena capacities. A rejected root rewinds only its unpublished tail. Namespace
+and cancellation borrows exist only during add(), avoiding self-referential
+state; shared compiler quotas span the collection. Frozen declaration slices
+retain their actual lengths instead of small Vec growth capacity. Original
+CSS Syntax/source can be released after compilation. This does not implement
+author stylesheet text, CSSOM rule identity or mutation APIs.
+
+The conservative rule index selects a necessary subject ID, class or type
+per root branch, otherwise universal. Logical-only subjects stay universal;
+indexing never decides a match or substitutes maximum possible specificity
+for the highest matching branch. ASCII folding admits harmless false positives
+for quirks/HTML/XML cases; the existing matcher decides actual semantics.
+One worker's MatchScratch reuses generation stamps/candidate capacities, with
+explicit rollover clearing. baseline-cascade-index disables the index and
+scans every rule as a measurement control, absent by default. Live state still
+requires a coherent Tree/StateSource; selected missing state is an explicit
+error. A private visited-paint path is not implemented or exposed.
+
+`RuleSet::match_element(...)` produces a frozen candidate Cascade, retaining
+borrowed typed programs from the rule set and optional inline declarations.
+The caller must keep the tree/state/parent inputs coherent for the operation
+and discard results when their document/style generation changes. This is
+not automatic event invalidation, a persistent computed-style cache or a
+complete live style job. No polling, threads, I/O, clocks or idle work are
+added. All long APIs, large drops and host integration belong on workers;
+progress/batching/lifecycle control belong to the future style job.
+
+Priority records origin/importance, encapsulation, inline attachment, layer,
+actual matched specificity, supplied proximity, source/declaration order and
+rule identity. UA/user/author importance reversal and presentational-hint/
+animation/transition positions are explicit. Scope/encapsulation fields are
+host metadata, not parsed @scope or shadow-tree support. Encapsulation rollback
+and transition rollback are explicit unsupported contexts. Animation origin
+ordering is not animation execution.
+
+Candidates stay available for revert-family processing. Origin rollback
+accounts for author hints/animation; layer rollback uses normal layer
+boundaries even for important declarations, with the important-inline
+exception. Rule rollback moves to lower-priority candidates outside that
+rule. This strict descent fixes a chain found in the imported WPT resources.
+Layer/rule combinations can re-enter a prior candidate; cycle guards default
+to unset instead of recursing indefinitely.
+
+`Cascade::resolver()` retains variable results and typed pending expansions.
+A custom property's rollback callback selects lower bindings inside the same
+variable dependency guards; callbacks cannot hide self/merged var() cycles.
+A cycle made only from rollback keywords defaults to inherited/initial custom
+behavior, distinct from a cyclic var()'s guaranteed-invalid result. Pending
+shorthand expansion is shared once per pending identity and animation-taint
+policy; different policies cannot reuse one another's result. The host may
+supply taint metadata, but keyframes/registrations are still absent.
+
+`Resolver::property(property, allow_animation_tainted)` returns a defaulted
+Specified value, Initial marker or Inherit marker. Inheritance must copy the
+parent's computed value, never rerun its specified font/unit expression in
+the child's context. The parent callback supplies already-computed inherited
+custom tokens; no whole parent style map is cloned by production code.
+Invalid computed substitution becomes unset without exposing an older rule.
+The all shorthand resets the implemented 87 resettable longhands, excluding
+direction and custom properties; it does not complete the property registry.
+
+Logical/physical groups remain separate declared identities. Their actual
+writing-mode projection and paired-property rollback are **not implemented**.
+Neither are computed fonts/percentages/line metrics, used sizing, coupled
+property transforms, UA defaults/presentational-hint generation, flattened
+inheritance, CSSOM, animation/transition execution or live invalidation. The
+API is a cascade/defaulting stage, not a complete computed style or a browser.
+These missing hosts remain acceptance work even when a native port passes.
+
+Candidate, compile/rule/declaration/layer/issue, nesting and retained pending
+limits bound work/storage. Private bottom-up merging checks work/cancellation
+between comparisons, so sort failure cannot publish partially sorted state.
+Matching sums actual selected-rule work against its operation budget; nested
+property/math/color/variable compilers also enforce their own bounds. These
+are bounded phases, not one exact combined instruction/memory counter for a
+whole style job. Default cascade limits: 65,536 candidates, work 4,000,000,
+rollback depth 128 (hard 256), typed pending reservation 16 MiB, plus the
+original variable limits. Typed reservation is conservative: shared programs
+may be counted repeatedly, while allocator/hash controls are separately
+count-bounded. Rule and snapshot payload metrics explicitly exclude those
+controls and borrowed Syntax/DOM/host state; they are not browser RSS.
+
+The public Selectors::matches setup/return path remains identical to the
+parent implementation. A shared accounting return initially introduced a
+measured 4–13% slowdown; a generic output experiment only partly recovered it.
+Keeping the original public path and a private accounted root path removes
+unused result transport. Both use the same Machine matching algorithms.
+The release artifact retains the failed experiments and final direct-match
+checks, rather than silently discarding a regression.
+
+Independent evidence: 19 unchanged pinned WPT resources, **136 inventoried
+native cases: 128 passes, eight explicit unsupported rendering drivers**.
+The adapter runs original inert HTML, stylesheet compilation, actual selector
+matching/cascade/defaulting and supplied inherited custom/color contexts.
+It independently reads literal RGB/decimal/identifier references, with Light
+CanvasText/Canvas and an explicit 16px rem fixture basis. Reftest ports check
+only their background-color component; geometry/rasterization stay unported.
+No JS, CSSOM, animation, layout, screenshot or website execution is implied.
+The evaluator exits 1, and the unpooled prototype has the same 128/8 outcomes.
+Ten native groups check ranking, rollback chains/cycles, namespaces/layers,
+real DOM/inline styles, taint-policy cache isolation, all exceptions and quotas.
+Default/full-scan/all-feature modes pass the same native checks.
+
+```sh
+cargo test --release -p olo-web --test cascade
+cargo test --release -p olo-web --test cascade --features baseline-cascade-index
+cargo run --release -p olo-web --example cascade_eval -- /var/tmp/cascade-report.json
+cargo run --release -p olo-web --example cascade_bench -- 3
+cargo run --release -p olo-web --example selector_match_bench -- 200000
+```
+
+Primary references:
+[CSS Cascade 5](https://drafts.csswg.org/css-cascade-5/),
+[CSS Cascade 6](https://drafts.csswg.org/css-cascade-6/),
+[CSS Namespaces](https://www.w3.org/TR/css-namespaces-3/) and the unchanged
+WPT sources/metadata in tests/cascade-fixtures. Scope, identities and raw
+measurements are recorded in the journal and release artifacts.

@@ -31,6 +31,9 @@ baseline-math-folding = []
 # Operator-order control without combining canonical constant sum terms.
 baseline-math-sums = []
 
+# Full rule-scan measurement control, same match/cascade semantics.
+baseline-cascade-index = []
+
 [dependencies]
 memchr = "2"
 encoding_rs = "0.8"

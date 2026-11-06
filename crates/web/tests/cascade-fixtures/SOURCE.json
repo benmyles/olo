@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "d7bb5bb848fcd304c10669288a211dbafd106d90",
+  "files": {
+    ".gitattributes": "c6a6c303cfda51673d39df3addb42834783bf6f675b033f963d7eff77600d8c0",
+    "LICENSE.md": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
+    "README.md": "439f5f2f84dfc3ce9928f4fd731e000aa5fb82c177d877152a1bfdaef966bb62",
+    "derived.json": "e594cdc30668a2b991d13f8a934f8b9ec841d207c23decd8a4b0141463f62ebc",
+    "extract.py": "2cf312504f6bfe7ecd2ce96093f4cc3abf03a67ee749dd873bab74b8462cbf3c",
+    "wpt/layer-basic.html": "03af0e7afcc5b1b7a39657f61e49fd9f898b3e60bfd8760bec22a7bf50cb1b75",
+    "wpt/layer-important.html": "10bf97f54563b7db36c600c3ad6e18243dba0a9204b60b4a10fda5e9de2b0096",
+    "wpt/layer-vs-inline-style.html": "3d6d5789b9d017c7c4b6a5625eed7393c7393713ff24435437a192b60c478984",
+    "wpt/layers-basic.html": "0199736f190abaf7b17efa8969d332a92a8baa51c3864e05c3e31b91f68f2d8c",
+    "wpt/reference/ref-filled-green-100px-square.xht": "b7d98bb3f8b7b70e8f76f0b7e99566bc09ca5e5cbae1cef571d7843be87da4f0",
+    "wpt/revert-layer-001.html": "977d67ad0ff9facaf9ba4d028992c3696cf7699c55ed15970c607a8e0c1fc957",
+    "wpt/revert-layer-002.html": "6b738a81e6ffb0ab10a63f7d2fcccb4bed717e1d7bfa7bdb6366e6233eea632f",
+    "wpt/revert-layer-003.html": "f7377df38c5b1f3f9c6a43bb1b77fd27f3a890899a514b43fa2e3cf7da489c31",
+    "wpt/revert-layer-005.html": "cc4f81677b47a7bb0e85bcb1b27c056fbede22fb979c57eb364d325b2a0d0074",
+    "wpt/revert-layer-006.html": "6e3400db120eb99e564401b81afed8507a60e604f2b4eabaf86088c69d03dd30",
+    "wpt/revert-layer-007.html": "5ef1f0365a943753f1e0316417b2e81c246bf4ffff13613a1a957b403977512e",
+    "wpt/revert-layer-009.html": "b97c2e4de92e27af2bad8e1aed94b65bf58c283ff61574fb4b06fa030a30f0c0",
+    "wpt/revert-layer-012.html": "6145b5b34446efcdae76f58d04ad15af4b9b0066bd2a21f6433a0084d298c879",
+    "wpt/revert-rule-basic.html": "3bdef7872b874f145e750a5f5d884d597e16498a6c18ae000c970d69b789faaa",
+    "wpt/revert-rule-custom-property.html": "8c432843528bbff2b67ecdd8f09b7448e3b427317108e0926c311a9c0bc6b0a9",
+    "wpt/revert-rule-cycle.tentative.html": "3965ba24545990ef13de4de17bfb6aad537e5fb2e6622121ee610658a6530019",
+    "wpt/revert-rule-important.html": "793f831ec42c5d8b04651368e3e9b3caa1a839bbe33eb46777aa69f342eee3db",
+    "wpt/revert-rule-layer.html": "182b0ff4e329ff0f87e09f4aa3ec05d240daf06e26f83c1302fe70bfc6a191ef",
+    "wpt/revert-rule-revert-layer.html": "e3c56d0e428370a16e1ba0bcf51b47c23b5e642bb8e04bc404c4e0c747b31751"
+  },
+  "resource_directory": "css/css-cascade"
+}

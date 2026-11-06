@@ -17,6 +17,7 @@ pub(super) enum Grammar {
 }
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
+    WideOnly,
     Quad,
     Repeat,
     Unordered,
@@ -248,6 +249,9 @@ macro_rules! shorthand_registry {
     }
 }
 shorthand_registry! {
+    // all resets every implemented longhand except direction. Custom properties
+    // and the not-yet-implemented unicode-bidi are excluded by definition.
+    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontSize,FontWeight,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,Top,VerticalAlign,Visibility,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;

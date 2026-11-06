@@ -1,0 +1,140 @@
+{
+  "scope": "Native stylesheet/selector/cascade/defaulting/custom-token and isolated color/numeric ports over inert HTML. Not JS/CSSOM/animation/layout/rendering/page execution; reftest colors exclude geometry/rasterization.",
+  "base_commit": "9cf442d2ff5445c4ac9ef427bec4ced5bcc7e056",
+  "total": 136,
+  "counts": {
+    "passed": 128,
+    "unsupported": 8
+  },
+  "unchanged_resource_files": 19,
+  "literal_native_cases": 128,
+  "unported_rendering_drivers": 8,
+  "fixture_manifest_sha256": "03c45b039c9ade93e97b2b7efbc63d698fba16a09e8bd304f4c1913747259b6a",
+  "full_report_sha256": "ba72930425bb64c31de0b50410040c6ba3a84810ec14ec6ab82d33933b9773c6",
+  "unpooled_report_sha256": "ba72930425bb64c31de0b50410040c6ba3a84810ec14ec6ab82d33933b9773c6",
+  "commands": [
+    "/usr/bin/python3 crates/web/tests/cascade-fixtures/extract.py",
+    "cargo run --release -p olo-web --example cascade_eval -- /var/tmp/olo-browser-research/cascade/final-report.json"
+  ],
+  "extraction_reproduces_exact_bytes": true,
+  "evaluator_exit_code": 1,
+  "unexpected_mismatches_errors_panics": 0,
+  "per_file_counts": {
+    "layer-basic.html": {
+      "passed": 68
+    },
+    "layer-important.html": {
+      "passed": 18
+    },
+    "layer-vs-inline-style.html": {
+      "passed": 4
+    },
+    "layers-basic.html": {
+      "passed": 3
+    },
+    "revert-layer-001.html": {
+      "passed": 1,
+      "unsupported": 1
+    },
+    "revert-layer-002.html": {
+      "passed": 1,
+      "unsupported": 1
+    },
+    "revert-layer-003.html": {
+      "passed": 1,
+      "unsupported": 1
+    },
+    "revert-layer-005.html": {
+      "passed": 1,
+      "unsupported": 1
+    },
+    "revert-layer-006.html": {
+      "passed": 1,
+      "unsupported": 1
+    },
+    "revert-layer-007.html": {
+      "passed": 1,
+      "unsupported": 1
+    },
+    "revert-layer-009.html": {
+      "passed": 1,
+      "unsupported": 1
+    },
+    "revert-layer-012.html": {
+      "passed": 1,
+      "unsupported": 1
+    },
+    "revert-rule-basic.html": {
+      "passed": 4
+    },
+    "revert-rule-custom-property.html": {
+      "passed": 2
+    },
+    "revert-rule-cycle.tentative.html": {
+      "passed": 6
+    },
+    "revert-rule-important.html": {
+      "passed": 3
+    },
+    "revert-rule-layer.html": {
+      "passed": 2
+    },
+    "revert-rule-revert-layer.html": {
+      "passed": 10
+    }
+  },
+  "nonpasses": [
+    {
+      "file": "revert-layer-001.html",
+      "helper": "reftest",
+      "outcome": "unsupported",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-002.html",
+      "helper": "reftest",
+      "outcome": "unsupported",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-003.html",
+      "helper": "reftest",
+      "outcome": "unsupported",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-005.html",
+      "helper": "reftest",
+      "outcome": "unsupported",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-006.html",
+      "helper": "reftest",
+      "outcome": "unsupported",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-007.html",
+      "helper": "reftest",
+      "outcome": "unsupported",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-009.html",
+      "helper": "reftest",
+      "outcome": "unsupported",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-012.html",
+      "helper": "reftest",
+      "outcome": "unsupported",
+      "reason": "geometry/rasterization reference driver not executed"
+    }
+  ],
+  "website_cases_passed": 0,
+  "website_cases_total": 3000,
+  "website_sites_passed": 0,
+  "website_sites_total": 100
+}

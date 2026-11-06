@@ -48,6 +48,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             let properties = s.properties();
             let mut parsed = SmallVec::<[Value; 4]>::new();
             match s.expansion() {
+                Expansion::WideOnly => Err(Error::Invalid),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {
                         return Err(Error::Invalid);

@@ -1,0 +1,520 @@
+--- a/crates/web/src/css/cascade/mod.rs
++++ b/crates/web/src/css/cascade/mod.rs
+@@ -17,13 +17,12 @@
+     pub candidates: usize,
+     pub work: usize,
+     pub depth: usize,
+-    pub typed_retained_bytes: usize,
+     pub properties: p::Limits,
+     pub variables: variables::Limits,
+ }
+ impl Default for Limits {
+     fn default() -> Self {
+-        Self { candidates: 65536, work: 4_000_000, depth: 128, typed_retained_bytes: 16 * 1024 * 1024, properties: Default::default(), variables: Default::default() }
++        Self { candidates: 65536, work: 4_000_000, depth: 128, properties: Default::default(), variables: Default::default() }
+     }
+ }
+ #[derive(Debug)]
+@@ -70,17 +69,11 @@
+ pub trait Inherited {
+     fn custom(&self, name: &str) -> Option<variables::Computed>;
+ }
+-#[derive(Clone, Copy)]
+-struct KnownRange {
+-    property: p::Property,
+-    start: u32,
+-    end: u32,
+-}
+ /// Frozen candidates for one element. Typed programs/token arenas remain shared
+ /// with their stylesheet. A snapshot belongs to one node/tree/style generation.
+ pub struct Cascade<'a> {
+     entries: Vec<Entry<'a>>,
+-    known: smallvec::SmallVec<[KnownRange; 8]>,
++    known: Vec<std::ops::Range<usize>>,
+     custom: BTreeMap<&'a str, std::ops::Range<usize>>,
+     parent: Option<&'a dyn Inherited>,
+     has_parent: bool,
+@@ -111,7 +104,7 @@
+             p::Declaration::Known { values, .. } => values.len(),
+             p::Declaration::Custom { .. } => 1,
+         };
+-        if count > self.limits.candidates.min(u32::MAX as usize).saturating_sub(self.entries.len()) {
++        if count > self.limits.candidates.saturating_sub(self.entries.len()) {
+             return Err(Error::Limit);
+         }
+         match declaration {
+@@ -129,7 +122,7 @@
+         // Bottom-up merging checks cancellation/work between comparisons;
+         // no partially sorted/published element state can escape on failure.
+         let mut work = 0usize;
+-        let mut spare = if self.entries.len() > 1 { self.entries.clone() } else { Vec::new() };
++        let mut spare = self.entries.clone();
+         let mut width = 1usize;
+         while width < self.entries.len() {
+             let mut start = 0;
+@@ -158,7 +151,7 @@
+             std::mem::swap(&mut self.entries, &mut spare);
+             width = width.saturating_mul(2);
+         }
+-        let mut known = smallvec::SmallVec::new();
++        let mut known = vec![0..0; p::Property::ALL.len()];
+         let mut custom = BTreeMap::new();
+         let mut start = 0;
+         while start < self.entries.len() {
+@@ -168,7 +161,7 @@
+                 end += 1;
+             }
+             match self.entries[start].data {
+-                Data::Known(property, _) => known.push(KnownRange { property, start: start as u32, end: end as u32 }),
++                Data::Known(p, _) => known[p as usize] = start..end,
+                 Data::Custom(name, _) => {
+                     custom.insert(name, start..end);
+                 }
+@@ -188,9 +181,6 @@
+     }
+ }
+ impl<'a> Cascade<'a> {
+-    fn known_range(&self, property: p::Property) -> std::ops::Range<usize> {
+-        self.known.binary_search_by_key(&(property as u16), |r| r.property as u16).ok().map_or(0..0, |i| self.known[i].start as usize..self.known[i].end as usize)
+-    }
+     fn tick(&self) -> Result<()> {
+         check(self.cancelled)?;
+         let n = self.work.get().saturating_add(1);
+@@ -198,7 +188,7 @@
+         if n > self.limits.work { Err(Error::Limit) } else { Ok(()) }
+     }
+     pub fn resolver(&'a self) -> Resolver<'a> {
+-        Resolver { cascade: self, variables: variables::Resolver::new(self, self.limits.variables, self.cancelled), pending: std::collections::HashMap::new(), pending_bytes: 0 }
++        Resolver { cascade: self, variables: variables::Resolver::new(self, self.limits.variables, self.cancelled), pending: std::collections::HashMap::new() }
+     }
+     pub fn candidate_count(&self) -> usize {
+         self.entries.len()
+@@ -206,7 +196,7 @@
+     /// Candidate/range payload capacities; borrowed typed programs and
+     /// BTreeMap/control/allocator bookkeeping are excluded.
+     pub fn reserved_payload_bytes(&self) -> usize {
+-        self.entries.capacity() * size_of::<Entry<'_>>() + self.known.capacity() * size_of::<KnownRange>()
++        self.entries.capacity() * size_of::<Entry<'_>>() + self.known.capacity() * size_of::<std::ops::Range<usize>>()
+     }
+ 
+     pub fn custom_names(&self) -> impl Iterator<Item = &str> {
+@@ -214,7 +204,7 @@
+     }
+     fn range(&self, index: usize) -> std::ops::Range<usize> {
+         match self.entries[index].data {
+-            Data::Known(p, _) => self.known_range(p),
++            Data::Known(p, _) => self.known[p as usize].clone(),
+             Data::Custom(name, _) => self.custom[name].clone(),
+         }
+     }
+@@ -242,13 +232,12 @@
+     cascade: &'a Cascade<'a>,
+     variables: variables::Resolver<'a, Cascade<'a>>,
+     pending: std::collections::HashMap<(usize, bool), p::Assignments>,
+-    pending_bytes: usize,
+ }
+ impl Resolver<'_> {
+     pub fn property(&mut self, property: p::Property, allow_animation_tainted: bool) -> Result<Defaulted> {
+         self.cascade.work.set(0);
+         self.cascade.tick()?;
+-        let range = self.cascade.known_range(property);
++        let range = self.cascade.known[property as usize].clone();
+         let mut at = (!range.is_empty()).then_some(range.start);
+         let mut seen = smallvec::SmallVec::<[usize; 8]>::new();
+         while let Some(i) = at {
+@@ -265,20 +254,6 @@
+                 let key = (Arc::as_ptr(pending) as usize, allow_animation_tainted);
+                 if !self.pending.contains_key(&key) {
+                     let values = pending.resolve(&mut self.variables, allow_animation_tainted, self.cascade.limits.properties, self.cascade.cancelled).map_err(Error::Property)?;
+-                    // Conservative retained accounting: shared programs may be
+-                    // counted more than once. Hash/allocator controls are count-
+-                    // bounded separately; this is not total process memory.
+-                    let mut bytes = size_of::<((usize, bool), p::Assignments)>();
+-                    if values.spilled() {
+-                        bytes = bytes.saturating_add(values.capacity() * size_of::<p::Assignment>());
+-                    }
+-                    for a in &values {
+-                        bytes = bytes.saturating_add(a.value.reserved_bytes());
+-                    }
+-                    if bytes > self.cascade.limits.typed_retained_bytes.saturating_sub(self.pending_bytes) {
+-                        return Err(Error::Limit);
+-                    }
+-                    self.pending_bytes += bytes;
+                     self.pending.insert(key, values);
+                 }
+                 &self.pending[&key].iter().find(|a| a.property == property).ok_or(Error::Invalid)?.value
+--- a/crates/web/src/css/cascade/sheets.rs
++++ b/crates/web/src/css/cascade/sheets.rs
+@@ -13,8 +13,8 @@
+     Nesting,
+ }
+ struct Rule {
+-    selector: u32,
+-    declarations: Box<[p::Declaration]>,
++    selectors: Selectors,
++    declarations: Vec<p::Declaration>,
+     origin: Origin,
+     layer: u32,
+     order: u64,
+@@ -32,7 +32,6 @@
+ /// Immutable ordered stylesheet set. Layer order is shared across sheets of
+ /// each origin, with named/nested/anonymous layers and implicit outer layers.
+ pub struct RuleSet {
+-    selectors: Selectors,
+     rules: Vec<Rule>,
+     index: Index,
+     issues: Vec<Issue>,
+@@ -42,7 +41,6 @@
+     pub rules: usize,
+     pub declarations: usize,
+     pub layers: usize,
+-    pub issues: usize,
+     pub work: usize,
+     pub depth: usize,
+     pub properties: p::Limits,
+@@ -50,7 +48,7 @@
+ }
+ impl Default for CompileLimits {
+     fn default() -> Self {
+-        Self { rules: 100000, declarations: 1_000_000, layers: 65536, issues: 65536, work: 16_000_000, depth: 64, properties: Default::default(), selectors: Default::default() }
++        Self { rules: 100000, declarations: 1_000_000, layers: 65536, work: 16_000_000, depth: 64, properties: Default::default(), selectors: Default::default() }
+     }
+ }
+ pub struct SheetBuilder {
+@@ -61,29 +59,11 @@
+     limits: CompileLimits,
+     work: usize,
+     declarations: usize,
+-    selector_compiler: selectors::RuleCompiler,
+     failed: bool,
+ }
+ impl SheetBuilder {
+     pub fn new(limits: CompileLimits) -> Self {
+-        Self {
+-            rules: Vec::new(),
+-            issues: Vec::new(),
+-            layers: (0..6).map(|_| Layer { children: Vec::new() }).collect(),
+-            names: HashMap::new(),
+-            limits,
+-            work: 0,
+-            declarations: 0,
+-            selector_compiler: selectors::RuleCompiler::new(),
+-            failed: false,
+-        }
+-    }
+-    fn issue(&mut self, issue: Issue) -> Result<()> {
+-        if self.issues.len() >= self.limits.issues {
+-            return Err(Error::Limit);
+-        }
+-        self.issues.push(issue);
+-        Ok(())
++        Self { rules: Vec::new(), issues: Vec::new(), layers: (0..6).map(|_| Layer { children: Vec::new() }).collect(), names: HashMap::new(), limits, work: 0, declarations: 0, failed: false }
+     }
+     fn tick(&mut self, n: usize, cancelled: Option<&AtomicBool>) -> Result<()> {
+         check(cancelled)?;
+@@ -115,7 +95,7 @@
+             let name = rule.name().unwrap_or("");
+             if rule.kind() == StatementKind::AtRule && name.eq_ignore_ascii_case("namespace") {
+                 if phase > 2 || rule.block().is_some() {
+-                    self.issue(Issue::Invalid)?;
++                    self.issues.push(Issue::Invalid);
+                     continue;
+                 }
+                 match namespace(rule.value()) {
+@@ -127,7 +107,7 @@
+                             default_namespace = Some(Arc::from(uri));
+                         }
+                     }
+-                    None => self.issue(Issue::Invalid)?,
++                    None => self.issues.push(Issue::Invalid),
+                 }
+             } else {
+                 if rule.kind() == StatementKind::AtRule && name.eq_ignore_ascii_case("charset") {
+@@ -218,14 +198,14 @@
+             self.tick(1, cancelled)?;
+             match rule.kind() {
+                 StatementKind::QualifiedRule => {
+-                    let selector = match self.selector_compiler.add(rule.value(), options, self.limits.selectors, cancelled) {
++                    let selectors = match Selectors::compile(rule.value(), options, self.limits.selectors, cancelled) {
+                         Ok(s) => s,
+                         Err(selectors::Error::Invalid) => {
+-                            self.issue(Issue::Invalid)?;
++                            self.issues.push(Issue::Invalid);
+                             continue;
+                         }
+                         Err(e @ selectors::Error::Unsupported(_)) => {
+-                            self.issue(Issue::Selector(e))?;
++                            self.issues.push(Issue::Selector(e));
+                             continue;
+                         }
+                         Err(e) => return Err(Error::Selectors(e)),
+@@ -234,7 +214,7 @@
+                     for d in rule.block_contents(cancelled).map_err(syntax_error)? {
+                         self.tick(1, cancelled)?;
+                         if d.kind() != StatementKind::Declaration {
+-                            self.issue(Issue::Nesting)?;
++                            self.issues.push(Issue::Nesting);
+                             continue;
+                         }
+                         self.declarations += 1;
+@@ -243,7 +223,7 @@
+                         }
+                         match p::Declaration::compile(&d, self.limits.properties, cancelled) {
+                             Ok(d) => declarations.push(d),
+-                            Err(e @ (p::Error::Invalid | p::Error::UnknownProperty | p::Error::Unsupported(_))) => self.issue(Issue::Property(e))?,
++                            Err(e @ (p::Error::Invalid | p::Error::UnknownProperty | p::Error::Unsupported(_))) => self.issues.push(Issue::Property(e)),
+                             Err(e) => return Err(Error::Property(e)),
+                         }
+                     }
+@@ -251,7 +231,7 @@
+                         return Err(Error::Limit);
+                     }
+                     let order = self.rules.len() as u64;
+-                    self.rules.push(Rule { selector, declarations: declarations.into_boxed_slice(), origin, layer: parent, order });
++                    self.rules.push(Rule { selectors, declarations, origin, layer: parent, order });
+                 }
+                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("layer")) => {
+                     let empty = rule.value().all(|c| c.kind() == Kind::Whitespace);
+@@ -261,7 +241,7 @@
+                         match self.layer_names(rule.value(), parent, rule.block().is_none(), cancelled) {
+                             Ok(l) => l,
+                             Err(Error::Invalid) => {
+-                                self.issue(Issue::Invalid)?;
++                                self.issues.push(Issue::Invalid);
+                                 continue;
+                             }
+                             Err(e) => return Err(e),
+@@ -272,9 +252,8 @@
+                     }
+                 }
+                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("charset")) => {}
+-                StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("namespace")) => self.issue(Issue::Invalid)?,
+-                StatementKind::AtRule => self.issue(Issue::AtRule(Arc::from(rule.name().unwrap_or(""))))?,
+-                _ => self.issue(Issue::Invalid)?,
++                StatementKind::AtRule => self.issues.push(Issue::AtRule(Arc::from(rule.name().unwrap_or("")))),
++                _ => self.issues.push(Issue::Invalid),
+             }
+         }
+         Ok(())
+@@ -301,13 +280,12 @@
+                 }
+             }
+         }
+-        let selectors = self.selector_compiler.finish();
+         let mut index = Index::default();
+         for (i, rule) in self.rules.iter_mut().enumerate() {
+             check(cancelled)?;
+             rule.layer = if rule.layer < 6 { u32::MAX } else { ranks[rule.layer as usize] };
+             if !cfg!(feature = "baseline-cascade-index") {
+-                for key in selectors.subject_keys(rule.selector) {
++                for key in rule.selectors.subject_keys() {
+                     let (map, key) = match key {
+                         SubjectKey::Universal => {
+                             index.universal.push(i as u32);
+@@ -322,7 +300,7 @@
+                 }
+             }
+         }
+-        Ok(RuleSet { selectors, rules: self.rules, index, issues: self.issues })
++        Ok(RuleSet { rules: self.rules, index, issues: self.issues })
+     }
+ }
+ fn fold_arc(s: Arc<str>) -> Arc<str> {
+@@ -412,7 +390,7 @@
+                 if a.local_name.eq_ignore_ascii_case("id") {
+                     add(self.index.ids.get(folded(a.value).as_ref()), &mut work)?;
+                 } else if a.local_name.eq_ignore_ascii_case("class") {
+-                    for class in a.value.split([' ', '\t', '\n', '\r', '\x0c']).filter(|s| !s.is_empty()) {
++                    for class in a.value.split(|c| matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c')).filter(|s| !s.is_empty()) {
+                         add(self.index.classes.get(folded(class).as_ref()), &mut work)?;
+                     }
+                 }
+@@ -434,8 +412,8 @@
+             check(cancelled)?;
+             let rule = &self.rules[id as usize];
+             let bounded = selectors::MatchLimits { work: match_limits.work.min(limits.work.saturating_sub(work)), ..match_limits };
+-            let (matched, progress) = self.selectors.matches_root_accounted(rule.selector, tree, node, options, bounded, cancelled).map_err(Error::Selectors)?;
+-            work = work.checked_add(progress).ok_or(Error::Limit)?;
++            let (matched, progress) = rule.selectors.matches_accounted(tree, node, options, bounded, cancelled).map_err(Error::Selectors)?;
++            work = work.checked_add(progress.work).ok_or(Error::Limit)?;
+             if let Some(specificity) = matched {
+                 for (declaration, d) in rule.declarations.iter().enumerate() {
+                     builder.add(d, Priority { origin: rule.origin, layer: rule.layer, specificity, order: rule.order, declaration: declaration as u32, rule: id as u64 + 1, ..Default::default() })?;
+@@ -503,9 +481,9 @@
+         };
+         for rule in &self.rules {
+             m.declarations += rule.declarations.len();
+-            m.declaration_array_bytes += rule.declarations.len() * size_of::<p::Declaration>();
+-        }
+-        m.selector_reserved_bytes = self.selectors.memory().accounted_reserved_bytes;
++            m.declaration_array_bytes += rule.declarations.capacity() * size_of::<p::Declaration>();
++            m.selector_reserved_bytes += rule.selectors.memory().accounted_reserved_bytes;
++        }
+         for map in [&self.index.ids, &self.index.classes, &self.index.types] {
+             m.index_key_value_capacity_bytes += map.capacity() * size_of::<(Arc<str>, Vec<u32>)>();
+             for list in map.values() {
+--- a/crates/web/src/css/selectors/mod.rs
++++ b/crates/web/src/css/selectors/mod.rs
+@@ -3,7 +3,6 @@
+ mod anb;
+ pub use anb::AnB;
+ mod compile;
+-pub(crate) use compile::RuleCompiler;
+ mod matching;
+ use super::Components;
+ pub use matching::{Attribute, Content, DomTree, ElementName, MatchLimits, MatchOptions, MatchProgress, StateSource, Tree};
+@@ -303,8 +302,8 @@
+     Type(Arc<str>),
+ }
+ impl Selectors {
+-    pub(crate) fn subject_keys(&self, root: u32) -> Vec<SubjectKey> {
+-        self.links[self.lists[root as usize].links.start as usize..self.lists[root as usize].links.end as usize]
++    pub(crate) fn subject_keys(&self) -> Vec<SubjectKey> {
++        self.links[self.lists[self.root as usize].links.start as usize..self.lists[self.root as usize].links.end as usize]
+             .iter()
+             .map(|&i| {
+                 let complex = &self.complexes[i as usize];
+--- a/crates/web/src/css/selectors/matching.rs
++++ b/crates/web/src/css/selectors/matching.rs
+@@ -170,6 +170,16 @@
+     /// Highest specificity among matching branches, or None. Tree/state
+     /// errors are explicit failures, not false matches or ignored branches.
+     pub fn matches<T: Tree>(&self, tree: &T, node: T::Node, options: MatchOptions<'_, T::Node>, limits: MatchLimits, cancelled: Option<&AtomicBool>) -> Result<Option<Specificity>> {
++        self.matches_accounted(tree, node, options, limits, cancelled).map(|r| r.0)
++    }
++    pub(crate) fn matches_accounted<T: Tree>(
++        &self,
++        tree: &T,
++        node: T::Node,
++        options: MatchOptions<'_, T::Node>,
++        limits: MatchLimits,
++        cancelled: Option<&AtomicBool>,
++    ) -> Result<(Option<Specificity>, MatchProgress)> {
+         let mut machine = Machine {
+             selectors: self,
+             tree,
+@@ -187,43 +197,10 @@
+             tree.content(scope)?;
+         }
+         if !matches!(tree.content(node)?, Content::Element(_)) {
+-            return Ok(None);
+-        }
+-        machine.list(self.root, node, Context { anchor: None, pseudo: options.pseudo, depth: 0 }, true)
+-    }
+-    // Mirror only setup/validation; all matching logic stays in Machine.
+-    // The public path retains its original return ABI and pays no accounting
+-    // result/copy overhead. Release comparisons cover both paths.
+-    pub(crate) fn matches_root_accounted<T: Tree>(
+-        &self,
+-        root: u32,
+-        tree: &T,
+-        node: T::Node,
+-        options: MatchOptions<'_, T::Node>,
+-        limits: MatchLimits,
+-        cancelled: Option<&AtomicBool>,
+-    ) -> Result<(Option<Specificity>, usize)> {
+-        let mut machine = Machine {
+-            selectors: self,
+-            tree,
+-            options,
+-            limits,
+-            cancelled,
+-            progress: MatchProgress::default(),
+-            stack: SmallVec::new(),
+-            indices: HashMap::new(),
+-            pending_indices: 0,
+-            cache_indices: false,
+-        };
+-        machine.tick(1)?;
+-        if let Some(scope) = options.scope {
+-            tree.content(scope)?;
+-        }
+-        if !matches!(tree.content(node)?, Content::Element(_)) {
+-            return Ok((None, machine.progress.work));
+-        }
+-        let result = machine.list(root, node, Context { anchor: None, pseudo: options.pseudo, depth: 0 }, true)?;
+-        Ok((result, machine.progress.work))
++            return Ok((None, machine.progress));
++        }
++        let result = machine.list(self.root, node, Context { anchor: None, pseudo: options.pseudo, depth: 0 }, true)?;
++        Ok((result, machine.progress))
+     }
+     /// Stream document-order results without building an unbounded result
+     /// vector. Use include_root for an inclusive subtree scan; DOM element
+--- a/crates/web/src/css/selectors/compile.rs
++++ b/crates/web/src/css/selectors/compile.rs
+@@ -674,74 +674,3 @@
+         _ => return None,
+     })
+ }
+-
+-/// Shared flat arenas for all stylesheet rule roots. The borrowing compiler
+-/// exists only for add(); namespace/cancellation inputs never self-reference
+-/// a retained builder. Rejected roots rewind their unpublished arena tail.
+-pub(crate) struct RuleCompiler {
+-    out: Option<Selectors>,
+-    symbols: HashMap<Arc<str>, u32>,
+-    work: usize,
+-    tests: usize,
+-    steps: usize,
+-    selectors: usize,
+-}
+-impl RuleCompiler {
+-    pub(crate) fn new() -> Self {
+-        Self {
+-            out: Some(Selectors {
+-                lists: Vec::new(),
+-                links: Vec::new(),
+-                complexes: Vec::new(),
+-                steps: Vec::new(),
+-                tests: Vec::new(),
+-                nth: Vec::new(),
+-                symbols: Vec::new(),
+-                symbol_bytes: 0,
+-                failures: Vec::new(),
+-                languages: Vec::new(),
+-                root: 0,
+-            }),
+-            symbols: HashMap::new(),
+-            work: 0,
+-            tests: 0,
+-            steps: 0,
+-            selectors: 0,
+-        }
+-    }
+-    pub(crate) fn add(&mut self, values: Components<'_>, options: CompileOptions<'_>, limits: CompileLimits, cancelled: Option<&AtomicBool>) -> Result<u32> {
+-        check(cancelled)?;
+-        let mut c = Compiler {
+-            out: self.out.take().unwrap(),
+-            symbol_index: std::mem::take(&mut self.symbols),
+-            options,
+-            limits,
+-            cancelled,
+-            work: self.work,
+-            test_count: self.tests,
+-            step_count: self.steps,
+-            selector_count: self.selectors,
+-            default_ns: ANY,
+-        };
+-        let mark = c.mark();
+-        let result = (|| {
+-            if let Some(ns) = options.default_namespace {
+-                c.default_ns = c.namespace(ns)?;
+-            }
+-            c.list(values, Context::default(), false)
+-        })();
+-        if result.is_err() {
+-            c.rewind(mark);
+-        }
+-        self.work = c.work;
+-        self.tests = c.test_count;
+-        self.steps = c.step_count;
+-        self.selectors = c.selector_count;
+-        self.symbols = c.symbol_index;
+-        self.out = Some(c.out);
+-        result
+-    }
+-    pub(crate) fn finish(self) -> Selectors {
+-        self.out.unwrap()
+-    }
+-}

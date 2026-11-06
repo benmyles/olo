@@ -1,0 +1,2031 @@
+{
+  "scope": "Native stylesheet/selector/cascade/defaulting/custom-token and isolated color/numeric ports over inert HTML. Not JS/CSSOM/animation/layout/rendering/page execution; reftest colors exclude geometry/rasterization.",
+  "cases": [
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 0,
+      "title": "A1 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer { }\n            target { color: green; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 0,
+      "title": "A1 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer { }\n            target { color: green; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 1,
+      "title": "A2 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            target { color: green; }\n            @layer {\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 1,
+      "title": "A2 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            target { color: green; }\n            @layer {\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 2,
+      "title": "A3 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                target { color: red; }\n            }\n            target { color: green; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 2,
+      "title": "A3 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                target { color: red; }\n            }\n            target { color: green; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 3,
+      "title": "A4 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                target { color: red; }\n            }\n            @layer {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 3,
+      "title": "A4 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                target { color: red; }\n            }\n            @layer {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 4,
+      "title": "A5 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                target { color: green; }\n                @layer {\n                    target { color: red; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 4,
+      "title": "A5 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                target { color: green; }\n                @layer {\n                    target { color: red; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 5,
+      "title": "A6 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 5,
+      "title": "A6 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 6,
+      "title": "A7 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: red; }\n            }\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 6,
+      "title": "A7 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: red; }\n            }\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 7,
+      "title": "A8 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer {\n                    @layer {\n                        target { color: red; }\n                    }\n                }\n                target { color: red; }\n            }\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 7,
+      "title": "A8 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer {\n                    @layer {\n                        target { color: red; }\n                    }\n                }\n                target { color: red; }\n            }\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 8,
+      "title": "A9 Anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: red; }\n            }\n            @layer {\n                @layer {\n                    @layer {\n                        target { color: red; }\n                    }\n                }\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 8,
+      "title": "A9 Anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer {\n                    target { color: red; }\n                }\n                target { color: red; }\n            }\n            @layer {\n                @layer {\n                    @layer {\n                        target { color: red; }\n                    }\n                }\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 9,
+      "title": "B1 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n            }\n            target { color: green; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 9,
+      "title": "B1 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n            }\n            target { color: green; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 10,
+      "title": "B2 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n            }\n            target { color: green; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 10,
+      "title": "B2 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n            }\n            target { color: green; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 11,
+      "title": "B3 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n            }\n            @layer A {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 11,
+      "title": "B3 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n            }\n            @layer A {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 12,
+      "title": "B4 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n            }\n            @layer B {\n                target { color: green; }\n            }\n            @layer A {\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 12,
+      "title": "B4 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n            }\n            @layer B {\n                target { color: green; }\n            }\n            @layer A {\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 13,
+      "title": "B5 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: green; }\n                @layer A {\n                    target { color: red; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 13,
+      "title": "B5 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: green; }\n                @layer A {\n                    target { color: red; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 14,
+      "title": "B6 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer A {\n                @layer A {\n                    target { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 14,
+      "title": "B6 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer A {\n                @layer A {\n                    target { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 15,
+      "title": "B7 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B {\n                target { color: green; }\n            }\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 15,
+      "title": "B7 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B {\n                target { color: green; }\n            }\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 16,
+      "title": "B8 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B {\n                @layer A {\n                    target { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 16,
+      "title": "B8 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B {\n                @layer A {\n                    target { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 17,
+      "title": "B9 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B {\n                @layer A {\n                    target.first { color: green; }\n                }\n            }\n           @layer A {\n                @layer A {\n                    target.first { color: red; }\n                    target.second { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 17,
+      "title": "B9 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B {\n                @layer A {\n                    target.first { color: green; }\n                }\n            }\n           @layer A {\n                @layer A {\n                    target.first { color: red; }\n                    target.second { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 18,
+      "title": "B10 Named layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B {\n                @layer A {\n                    target.first { color: green; }\n                }\n            }\n           @layer A {\n                @layer B {\n                    target.first { color: red; }\n                    target.second { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 18,
+      "title": "B10 Named layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B {\n                @layer A {\n                    target.first { color: green; }\n                }\n            }\n           @layer A {\n                @layer B {\n                    target.first { color: red; }\n                    target.second { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 19,
+      "title": "C1 Named layers shorthand",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A.A {\n                target { color: red; }\n            }\n            @layer B.A {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 19,
+      "title": "C1 Named layers shorthand",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A.A {\n                target { color: red; }\n            }\n            @layer B.A {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 20,
+      "title": "C2 Named layers shorthand",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A.A {\n                target { color: red; }\n            }\n            @layer B.A {\n                target.first { color: green; }\n            }\n            @layer A.A {\n                target.first { color: red; }\n                target.second { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 20,
+      "title": "C2 Named layers shorthand",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A.A {\n                target { color: red; }\n            }\n            @layer B.A {\n                target.first { color: green; }\n            }\n            @layer A.A {\n                target.first { color: red; }\n                target.second { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 21,
+      "title": "C3 Named layers shorthand",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A.A {\n                target { color: red; }\n            }\n            @layer B.A {\n                target.first { color: green; }\n            }\n            @layer A.B {\n                target.first { color: red; }\n                target.second { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 21,
+      "title": "C3 Named layers shorthand",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A.A {\n                target { color: red; }\n            }\n            @layer B.A {\n                target.first { color: green; }\n            }\n            @layer A.B {\n                target.first { color: red; }\n                target.second { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 22,
+      "title": "C4 Named layers shorthand",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B.A {\n                target { color: green; }\n            }\n            @layer A.A\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 22,
+      "title": "C4 Named layers shorthand",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B.A {\n                target { color: green; }\n            }\n            @layer A.A\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 23,
+      "title": "C5 Named layers shorthand",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B.A {\n                target { color: green; }\n            }\n            @layer A.B {\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 23,
+      "title": "C5 Named layers shorthand",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer B.A {\n                target { color: green; }\n            }\n            @layer A.B {\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 24,
+      "title": "D1 Mixed named and anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n            }\n            @layer {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 24,
+      "title": "D1 Mixed named and anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                target { color: red; }\n            }\n            @layer {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 25,
+      "title": "D2 Mixed named and anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer {\n                    target { color: red; }\n                }\n            }\n            @layer A {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 25,
+      "title": "D2 Mixed named and anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer {\n                    target { color: red; }\n                }\n            }\n            @layer A {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 26,
+      "title": "D3 Mixed named and anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer {\n                    target { color: red; }\n                }\n            }\n            @layer A {\n                @layer {\n                    target { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 26,
+      "title": "D3 Mixed named and anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer {\n                    target { color: red; }\n                }\n            }\n            @layer A {\n                @layer {\n                    target { color: green; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 27,
+      "title": "D4 Mixed named and anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer {\n                    target { color: red; }\n                }\n            }\n            @layer {\n                target { color: green; }\n            }\n            @layer A {\n                @layer {\n                    target { color: red; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 27,
+      "title": "D4 Mixed named and anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A {\n                @layer {\n                    target { color: red; }\n                }\n            }\n            @layer {\n                target { color: green; }\n            }\n            @layer A {\n                @layer {\n                    target { color: red; }\n                }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 28,
+      "title": "D5 Mixed named and anonymous layers",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 28,
+      "title": "D5 Mixed named and anonymous layers",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer {\n                @layer A {\n                    target { color: red; }\n                }\n            }\n            @layer {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 29,
+      "title": "E1 Statement syntax",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A, B, C;\n            @layer A {\n                target.first { color: red; }\n                target.second { color: red; }\n            }\n            @layer B {\n                target.first { color: red; }\n            }\n            @layer C {\n                target.first { color: green; }\n                target.second { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 29,
+      "title": "E1 Statement syntax",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A, B, C;\n            @layer A {\n                target.first { color: red; }\n                target.second { color: red; }\n            }\n            @layer B {\n                target.first { color: red; }\n            }\n            @layer C {\n                target.first { color: green; }\n                target.second { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 30,
+      "title": "E2 Statement syntax",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A, C, B;\n            @layer A {\n                target.first { color: red; }\n                target.second { color: red; }\n            }\n            @layer B {\n                target.first { color: green; }\n            }\n            @layer C {\n                target.first { color: red; }\n                target.second { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 30,
+      "title": "E2 Statement syntax",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A, C, B;\n            @layer A {\n                target.first { color: red; }\n                target.second { color: red; }\n            }\n            @layer B {\n                target.first { color: green; }\n            }\n            @layer C {\n                target.first { color: red; }\n                target.second { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 31,
+      "title": "E3 Statement syntax",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer C, B, A;\n            @layer A {\n                target.first { color: green; }\n                target.second { color: green; }\n            }\n            @layer B {\n                target.first { color: red; }\n            }\n            @layer C {\n                target.first { color: red; }\n                target.second { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 31,
+      "title": "E3 Statement syntax",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer C, B, A;\n            @layer A {\n                target.first { color: green; }\n                target.second { color: green; }\n            }\n            @layer B {\n                target.first { color: red; }\n            }\n            @layer C {\n                target.first { color: red; }\n                target.second { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 32,
+      "title": "E4 Statement syntax",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer B, A.B, A.A;\n            @layer A {\n                @layer A {\n                    target.first { color: green; }\n                }\n                @layer B {\n                    target.first { color: red; }\n                    target.second { color: green; }\n                }\n            }\n            @layer B {\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 32,
+      "title": "E4 Statement syntax",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer B, A.B, A.A;\n            @layer A {\n                @layer A {\n                    target.first { color: green; }\n                }\n                @layer B {\n                    target.first { color: red; }\n                    target.second { color: green; }\n                }\n            }\n            @layer B {\n                target { color: red; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 33,
+      "title": "E5 Statement syntax",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A.B, B, A.A;\n            @layer A {\n                @layer A {\n                    target.first { color: red; }\n                }\n                @layer B {\n                    target.first { color: red; }\n                    target.second { color: red; }\n                }\n            }\n            @layer B {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-basic.html",
+      "line": 18,
+      "offset": 594,
+      "helper": "testCases",
+      "case": 33,
+      "title": "E5 Statement syntax",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A.B, B, A.A;\n            @layer A {\n                @layer A {\n                    target.first { color: red; }\n                }\n                @layer B {\n                    target.first { color: red; }\n                    target.second { color: red; }\n                }\n            }\n            @layer B {\n                target { color: green; }\n            }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 0,
+      "title": "A1 Unlayered !important style",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            target { color: green !important; }\n            target { color: red; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 0,
+      "title": "A1 Unlayered !important style",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            target { color: green !important; }\n            target { color: red; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 1,
+      "title": "B1 Same specificity, layered !important first",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            target { color: red; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 1,
+      "title": "B1 Same specificity, layered !important first",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            target { color: red; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 2,
+      "title": "C1 Same specificity, layered !important second",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            target { color: red; }\n            @layer { target { color: green !important; } }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 2,
+      "title": "C1 Same specificity, layered !important second",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            target { color: red; }\n            @layer { target { color: green !important; } }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 3,
+      "title": "D1 Same specificity, all !important",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            @layer { target { color: red !important; } }\n            target { color: red !important; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 3,
+      "title": "D1 Same specificity, all !important",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            @layer { target { color: red !important; } }\n            target { color: red !important; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 4,
+      "title": "D2 Same specificity, all !important",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            target { color: red !important; }\n            @layer { target { color: red !important; } }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 4,
+      "title": "D2 Same specificity, all !important",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            target { color: red !important; }\n            @layer { target { color: red !important; } }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 5,
+      "title": "D3 Same specificity, all !important",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            target { color: red !important; }\n            @layer { target { color: green !important; } }\n            @layer { target { color: red !important; } }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 5,
+      "title": "D3 Same specificity, all !important",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            target { color: red !important; }\n            @layer { target { color: green !important; } }\n            @layer { target { color: red !important; } }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 6,
+      "title": "D4 Same specificity, all !important",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer A, B;\n            @layer B { target { color: red !important; } }\n            @layer A { target { color: green !important; } }\n            target { color: red !important; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 6,
+      "title": "D4 Same specificity, all !important",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer A, B;\n            @layer B { target { color: red !important; } }\n            @layer A { target { color: green !important; } }\n            target { color: red !important; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 7,
+      "title": "E1 Different specificity, all !important",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            @layer { target { color: red !important; } }\n            target.first { color: red !important; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 7,
+      "title": "E1 Different specificity, all !important",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            @layer { target { color: red !important; } }\n            target.first { color: red !important; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 8,
+      "title": "E2 Different specificity, all !important",
+      "target": "target.first",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            @layer { target.first { color: red !important; } }\n            target { color: red !important; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-important.html",
+      "line": 18,
+      "offset": 603,
+      "helper": "testCases",
+      "case": 8,
+      "title": "E2 Different specificity, all !important",
+      "target": "target.second",
+      "property": "color",
+      "styles": [
+        "\n            @layer { target { color: green !important; } }\n            @layer { target.first { color: red !important; } }\n            target { color: red !important; }\n        "
+      ],
+      "inline": null,
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-vs-inline-style.html",
+      "line": 23,
+      "offset": 545,
+      "helper": "testCases",
+      "case": 0,
+      "title": "Normal inline style > normal layered style",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target, #reference {\n  width: 100px;\n  height: 100px;\n}\n\n#reference {\n  background-color: green;\n}\n",
+        "@layer { #target { background-color: red; }}"
+      ],
+      "inline": "background-color: green",
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-vs-inline-style.html",
+      "line": 23,
+      "offset": 545,
+      "helper": "testCases",
+      "case": 1,
+      "title": "Normal inline style < important layered style",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target, #reference {\n  width: 100px;\n  height: 100px;\n}\n\n#reference {\n  background-color: green;\n}\n",
+        "@layer { #target { background-color: green !important; }}"
+      ],
+      "inline": "background-color: red",
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-vs-inline-style.html",
+      "line": 23,
+      "offset": 545,
+      "helper": "testCases",
+      "case": 2,
+      "title": "Important inline style > normal layered style",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target, #reference {\n  width: 100px;\n  height: 100px;\n}\n\n#reference {\n  background-color: green;\n}\n",
+        "@layer { #target { background-color: red; }}"
+      ],
+      "inline": "background-color: green !important",
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layer-vs-inline-style.html",
+      "line": 23,
+      "offset": 545,
+      "helper": "testCases",
+      "case": 3,
+      "title": "Important inline style > important layered style",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target, #reference {\n  width: 100px;\n  height: 100px;\n}\n\n#reference {\n  background-color: green;\n}\n",
+        "@layer { #target { background-color: red !important; }}"
+      ],
+      "inline": "background-color: green !important",
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layers-basic.html",
+      "helper": "assert_equals/styles alias",
+      "target": "#testP",
+      "property": "color",
+      "styles": [
+        "\n  @layer foo, bar;\n  @layer foo {\n    p {\n      color: yellow;\n    }\n  }\n\n  @layer bar {\n    p {\n      background-color: black;\n    }\n  }\n\n  p {\n    font-size: 4rem;\n  }\n"
+      ],
+      "expected": "rgb(255, 255, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layers-basic.html",
+      "helper": "assert_equals/styles alias",
+      "target": "#testP",
+      "property": "background-color",
+      "styles": [
+        "\n  @layer foo, bar;\n  @layer foo {\n    p {\n      color: yellow;\n    }\n  }\n\n  @layer bar {\n    p {\n      background-color: black;\n    }\n  }\n\n  p {\n    font-size: 4rem;\n  }\n"
+      ],
+      "expected": "rgb(0, 0, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "layers-basic.html",
+      "helper": "assert_equals/styles alias",
+      "target": "#testP",
+      "property": "font-size",
+      "styles": [
+        "\n  @layer foo, bar;\n  @layer foo {\n    p {\n      color: yellow;\n    }\n  }\n\n  @layer bar {\n    p {\n      background-color: black;\n    }\n  }\n\n  p {\n    font-size: 4rem;\n  }\n"
+      ],
+      "expected": "64px",
+      "mode": "numeric"
+    },
+    {
+      "file": "revert-layer-001.html",
+      "helper": "green-square reference/color component only",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target {\n  width: 100px;\n  height: 100px;\n}\n\n@layer {\n  #target { background-color: green; }\n}\n\n@layer {\n  #target {\n    background-color: red;\n    background-color: revert-layer;\n  }\n}\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color",
+      "reference": "reference/ref-filled-green-100px-square.xht"
+    },
+    {
+      "file": "revert-layer-002.html",
+      "helper": "green-square reference/color component only",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target {\n  width: 100px;\n  height: 100px;\n}\n\n@layer {\n  #target { background-color: green; }\n}\n\n#target {\n  background-color: red;\n  background-color: revert-layer;\n}\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color",
+      "reference": "reference/ref-filled-green-100px-square.xht"
+    },
+    {
+      "file": "revert-layer-003.html",
+      "helper": "green-square reference/color component only",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n@layer {\n  #target {\n    width: 100px;\n    height: 100px;\n    background-color: green;\n  }\n}\n\n@layer {\n  #target {\n    width: 200px;\n    height: 200px;\n    background-color: red;\n  }\n\n  #target {\n    all: revert-layer;\n  }\n}\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color",
+      "reference": "reference/ref-filled-green-100px-square.xht"
+    },
+    {
+      "file": "revert-layer-005.html",
+      "helper": "green-square reference/color component only",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target {\n  width: 100px;\n  height: 100px;\n}\n\n@layer {\n  #target { background-color: green; }\n}\n\n@layer {\n  #target {\n    background-color: red;\n    background-color: red !important;\n    background-color: revert-layer !important;\n  }\n}\n\n@layer {\n  #target {\n    background-color: red;\n    background-color: red !important;\n  }\n}\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color",
+      "reference": "reference/ref-filled-green-100px-square.xht"
+    },
+    {
+      "file": "revert-layer-006.html",
+      "helper": "green-square reference/color component only",
+      "target": "#inner",
+      "property": "background-color",
+      "styles": [
+        "\n#outer {\n  background-color: red;\n  width: 100px;\n  height: 100px;\n  overflow: hidden;\n}\n#inner {\n  color: green;\n  background-color: green;\n  display: inline;\n  display: revert-layer; /* This should behave as 'revert', setting 'display' to 'block' */\n}\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color",
+      "reference": "reference/ref-filled-green-100px-square.xht"
+    },
+    {
+      "file": "revert-layer-007.html",
+      "helper": "green-square reference/color component only",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target {\n  width: 100px;\n  height: 100px;\n}\n\n@layer {\n  #target { background-color: green; }\n}\n\n@layer {\n  #target {\n    background-color: red;\n    background-color: revert-layer;\n  }\n}\n\n@layer {\n  #target {\n    background-color: red;\n    background-color: revert-layer;\n  }\n}\n\n@layer {\n  #target {\n    background-color: red;\n    background-color: revert-layer;\n  }\n}\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color",
+      "reference": "reference/ref-filled-green-100px-square.xht"
+    },
+    {
+      "file": "revert-layer-009.html",
+      "helper": "green-square reference/color component only",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target {\n  width: 100px;\n  height: 100px;\n  background-color: green;\n}\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color",
+      "reference": "reference/ref-filled-green-100px-square.xht"
+    },
+    {
+      "file": "revert-layer-012.html",
+      "helper": "green-square reference/color component only",
+      "target": "#target",
+      "property": "background-color",
+      "styles": [
+        "\n#target {\n  width: 100px;\n  height: 100px;\n  background-color: green !important;\n}\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color",
+      "reference": "reference/ref-filled-green-100px-square.xht"
+    },
+    {
+      "file": "revert-rule-basic.html",
+      "line": 20,
+      "offset": 469,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test1",
+      "property": "color",
+      "styles": [
+        "\n  #test1 {\n    color: green;\n  }\n  #test1 {\n    color: red;\n    color: revert-rule;\n  }\n",
+        "\n  #test2 { /* Specificity: (0, 0, 1) */\n    color: red;\n  }\n  #test2#test2#test2 { /* Specificity: (0, 0, 3) */\n    color: red;\n    color: revert-rule;\n  }\n  #test2#test2 { /* Specificity: (0, 0, 2) */\n    color: green;\n  }\n",
+        "\n  #test3 {\n    color: red;\n  }\n  #test3 {\n    color: green;\n  }\n",
+        "\n  #test4 {              z-index: 1; }\n  #test4 {              z-index: 2; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-basic.html",
+      "line": 41,
+      "offset": 951,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test2",
+      "property": "color",
+      "styles": [
+        "\n  #test1 {\n    color: green;\n  }\n  #test1 {\n    color: red;\n    color: revert-rule;\n  }\n",
+        "\n  #test2 { /* Specificity: (0, 0, 1) */\n    color: red;\n  }\n  #test2#test2#test2 { /* Specificity: (0, 0, 3) */\n    color: red;\n    color: revert-rule;\n  }\n  #test2#test2 { /* Specificity: (0, 0, 2) */\n    color: green;\n  }\n",
+        "\n  #test3 {\n    color: red;\n  }\n  #test3 {\n    color: green;\n  }\n",
+        "\n  #test4 {              z-index: 1; }\n  #test4 {              z-index: 2; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-basic.html",
+      "line": 58,
+      "offset": 1322,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test3",
+      "property": "color",
+      "styles": [
+        "\n  #test1 {\n    color: green;\n  }\n  #test1 {\n    color: red;\n    color: revert-rule;\n  }\n",
+        "\n  #test2 { /* Specificity: (0, 0, 1) */\n    color: red;\n  }\n  #test2#test2#test2 { /* Specificity: (0, 0, 3) */\n    color: red;\n    color: revert-rule;\n  }\n  #test2#test2 { /* Specificity: (0, 0, 2) */\n    color: green;\n  }\n",
+        "\n  #test3 {\n    color: red;\n  }\n  #test3 {\n    color: green;\n  }\n",
+        "\n  #test4 {              z-index: 1; }\n  #test4 {              z-index: 2; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-basic.html",
+      "line": 74,
+      "offset": 1802,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test4",
+      "property": "z-index",
+      "styles": [
+        "\n  #test1 {\n    color: green;\n  }\n  #test1 {\n    color: red;\n    color: revert-rule;\n  }\n",
+        "\n  #test2 { /* Specificity: (0, 0, 1) */\n    color: red;\n  }\n  #test2#test2#test2 { /* Specificity: (0, 0, 3) */\n    color: red;\n    color: revert-rule;\n  }\n  #test2#test2 { /* Specificity: (0, 0, 2) */\n    color: green;\n  }\n",
+        "\n  #test3 {\n    color: red;\n  }\n  #test3 {\n    color: green;\n  }\n",
+        "\n  #test4 {              z-index: 1; }\n  #test4 {              z-index: 2; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n  #test4 { z-index: -1; z-index: revert-rule; }\n"
+      ],
+      "expected": "2",
+      "mode": "numeric"
+    },
+    {
+      "file": "revert-rule-custom-property.html",
+      "line": 25,
+      "offset": 517,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test1",
+      "property": "--a",
+      "styles": [
+        "\n#test1 {\n  --a: red;\n  --b: green;\n}\n#test1 {\n  --a: green;\n  --b: revert-rule;\n}\n#test1 {\n  --a: revert-rule;\n  --b: revert-rule;\n}\n"
+      ],
+      "expected": "green",
+      "mode": "custom"
+    },
+    {
+      "file": "revert-rule-custom-property.html",
+      "line": 26,
+      "offset": 593,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test1",
+      "property": "--b",
+      "styles": [
+        "\n#test1 {\n  --a: red;\n  --b: green;\n}\n#test1 {\n  --a: green;\n  --b: revert-rule;\n}\n#test1 {\n  --a: revert-rule;\n  --b: revert-rule;\n}\n"
+      ],
+      "expected": "green",
+      "mode": "custom"
+    },
+    {
+      "file": "revert-rule-cycle.tentative.html",
+      "line": 72,
+      "offset": 1534,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#target1",
+      "property": "color",
+      "styles": [
+        "\n  .container {\n    color: green;\n    margin-left: 100px;\n    --x: green;\n  }\n\n  @layer base {\n    #target1, #target2 {\n      color: red;\n      margin-left: 50px;\n      --x: red;\n    }\n  }\n\n  /* Test Case 1: 2-layer cycle */\n  @layer a {\n    #target1 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target1 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n\n  /* Test Case 2: Multi-layer chain cycle */\n  @layer a {\n    #target2 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n  @layer c {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-cycle.tentative.html",
+      "line": 74,
+      "offset": 1698,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#target1",
+      "property": "margin-left",
+      "styles": [
+        "\n  .container {\n    color: green;\n    margin-left: 100px;\n    --x: green;\n  }\n\n  @layer base {\n    #target1, #target2 {\n      color: red;\n      margin-left: 50px;\n      --x: red;\n    }\n  }\n\n  /* Test Case 1: 2-layer cycle */\n  @layer a {\n    #target1 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target1 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n\n  /* Test Case 2: Multi-layer chain cycle */\n  @layer a {\n    #target2 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n  @layer c {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n"
+      ],
+      "expected": "0px",
+      "mode": "numeric"
+    },
+    {
+      "file": "revert-rule-cycle.tentative.html",
+      "line": 76,
+      "offset": 1851,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#target1",
+      "property": "--x",
+      "styles": [
+        "\n  .container {\n    color: green;\n    margin-left: 100px;\n    --x: green;\n  }\n\n  @layer base {\n    #target1, #target2 {\n      color: red;\n      margin-left: 50px;\n      --x: red;\n    }\n  }\n\n  /* Test Case 1: 2-layer cycle */\n  @layer a {\n    #target1 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target1 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n\n  /* Test Case 2: Multi-layer chain cycle */\n  @layer a {\n    #target2 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n  @layer c {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n"
+      ],
+      "expected": "green",
+      "mode": "custom"
+    },
+    {
+      "file": "revert-rule-cycle.tentative.html",
+      "line": 81,
+      "offset": 2145,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#target2",
+      "property": "color",
+      "styles": [
+        "\n  .container {\n    color: green;\n    margin-left: 100px;\n    --x: green;\n  }\n\n  @layer base {\n    #target1, #target2 {\n      color: red;\n      margin-left: 50px;\n      --x: red;\n    }\n  }\n\n  /* Test Case 1: 2-layer cycle */\n  @layer a {\n    #target1 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target1 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n\n  /* Test Case 2: Multi-layer chain cycle */\n  @layer a {\n    #target2 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n  @layer c {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-cycle.tentative.html",
+      "line": 83,
+      "offset": 2296,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#target2",
+      "property": "margin-left",
+      "styles": [
+        "\n  .container {\n    color: green;\n    margin-left: 100px;\n    --x: green;\n  }\n\n  @layer base {\n    #target1, #target2 {\n      color: red;\n      margin-left: 50px;\n      --x: red;\n    }\n  }\n\n  /* Test Case 1: 2-layer cycle */\n  @layer a {\n    #target1 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target1 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n\n  /* Test Case 2: Multi-layer chain cycle */\n  @layer a {\n    #target2 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n  @layer c {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n"
+      ],
+      "expected": "0px",
+      "mode": "numeric"
+    },
+    {
+      "file": "revert-rule-cycle.tentative.html",
+      "line": 85,
+      "offset": 2445,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#target2",
+      "property": "--x",
+      "styles": [
+        "\n  .container {\n    color: green;\n    margin-left: 100px;\n    --x: green;\n  }\n\n  @layer base {\n    #target1, #target2 {\n      color: red;\n      margin-left: 50px;\n      --x: red;\n    }\n  }\n\n  /* Test Case 1: 2-layer cycle */\n  @layer a {\n    #target1 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target1 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n\n  /* Test Case 2: Multi-layer chain cycle */\n  @layer a {\n    #target2 {\n      color: revert-rule !important;\n      margin-left: revert-rule !important;\n      --x: revert-rule !important;\n    }\n  }\n  @layer b {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n  @layer c {\n    #target2 {\n      color: revert-layer;\n      margin-left: revert-layer;\n      --x: revert-layer;\n    }\n  }\n"
+      ],
+      "expected": "green",
+      "mode": "custom"
+    },
+    {
+      "file": "revert-rule-important.html",
+      "line": 18,
+      "offset": 478,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test1",
+      "property": "color",
+      "styles": [
+        "\n  #test1 {\n    color: revert-rule !important;\n  }\n  #test1 {\n    color: green;\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: revert-rule !important;\n    }\n  }\n  #test2 {\n    color: green;\n  }\n",
+        "\n  #test3 {\n    color: green;\n  }\n  #test3 {\n    color: revert-rule !important;\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-important.html",
+      "line": 35,
+      "offset": 836,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test2",
+      "property": "color",
+      "styles": [
+        "\n  #test1 {\n    color: revert-rule !important;\n  }\n  #test1 {\n    color: green;\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: revert-rule !important;\n    }\n  }\n  #test2 {\n    color: green;\n  }\n",
+        "\n  #test3 {\n    color: green;\n  }\n  #test3 {\n    color: revert-rule !important;\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-important.html",
+      "line": 50,
+      "offset": 1131,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test3",
+      "property": "color",
+      "styles": [
+        "\n  #test1 {\n    color: revert-rule !important;\n  }\n  #test1 {\n    color: green;\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: revert-rule !important;\n    }\n  }\n  #test2 {\n    color: green;\n  }\n",
+        "\n  #test3 {\n    color: green;\n  }\n  #test3 {\n    color: revert-rule !important;\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-layer.html",
+      "line": 24,
+      "offset": 522,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test1",
+      "property": "color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n      color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: red;\n    }\n  }\n  @layer {\n    #test2 {\n      color: green;\n    }\n    #test2 {\n      color: red;\n      color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-layer.html",
+      "line": 49,
+      "offset": 934,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test2",
+      "property": "color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n      color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: red;\n    }\n  }\n  @layer {\n    #test2 {\n      color: green;\n    }\n    #test2 {\n      color: red;\n      color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 32,
+      "offset": 639,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test1",
+      "property": "color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 33,
+      "offset": 706,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test1",
+      "property": "background-color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 63,
+      "offset": 1241,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test2",
+      "property": "color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 64,
+      "offset": 1308,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test2",
+      "property": "background-color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 99,
+      "offset": 1903,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test3",
+      "property": "color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 100,
+      "offset": 1970,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test3",
+      "property": "background-color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 136,
+      "offset": 2595,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test4",
+      "property": "color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 137,
+      "offset": 2662,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test4",
+      "property": "background-color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 172,
+      "offset": 3263,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test5",
+      "property": "color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    },
+    {
+      "file": "revert-rule-revert-layer.html",
+      "line": 173,
+      "offset": 3330,
+      "helper": "assert_equals/getComputedStyle",
+      "target": "#test5",
+      "property": "background-color",
+      "styles": [
+        "\n  @layer {\n    #test1 {\n      color: green;\n    }\n  }\n  @layer {\n    #test1 {\n      color: red;\n    }\n    #test1 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test1 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n",
+        "\n  @layer {\n    #test2 {\n      color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test2 {\n      color: red;\n    }\n    #test2 {\n      color: revert-layer;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test3 {\n      color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: red;\n    }\n    #test3 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test3 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test4 {\n      color: green;\n    }\n  }\n  @layer {\n    #test4 {\n      color: red;\n    }\n    #test4 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test4 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test4 {\n        color: red;\n        color: revert-layer;\n        background-color: revert-rule;\n    }\n  }\n",
+        "\n  @layer {\n    #test5 {\n      color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: green;\n    }\n  }\n  @layer {\n    #test5 {\n      color: red;\n    }\n    #test5 {\n      color: revert-layer;\n    }\n  }\n  @layer {\n    #test5 {\n      color: revert-rule;\n      background-color: revert-rule;\n    }\n  }\n"
+      ],
+      "expected": "rgb(0, 128, 0)",
+      "mode": "color"
+    }
+  ],
+  "unported": [
+    {
+      "file": "revert-layer-001.html",
+      "helper": "reftest",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-002.html",
+      "helper": "reftest",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-003.html",
+      "helper": "reftest",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-005.html",
+      "helper": "reftest",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-006.html",
+      "helper": "reftest",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-007.html",
+      "helper": "reftest",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-009.html",
+      "helper": "reftest",
+      "reason": "geometry/rasterization reference driver not executed"
+    },
+    {
+      "file": "revert-layer-012.html",
+      "helper": "reftest",
+      "reason": "geometry/rasterization reference driver not executed"
+    }
+  ]
+}

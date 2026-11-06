@@ -56,10 +56,21 @@ item means implemented and verified; a partial implementation stays open.
   remain unimplemented.
 - [ ] Implement CSS property grammars, cascade, media queries and real
   element/style invalidation.
-- [x] Core typed declaration compilation: 88 longhands and 15 shorthands,
+- [x] Core typed declaration compilation: 88 longhands and 16 shorthands (including
+  all over implemented resettable properties),
   dimensional/range rules, structured display values, shared pending shorthand
   substitution and invalid-at-computed-value unset; independent native ports
   821/1,109 pass, 288 explicit non-passes. No actual style/layout execution.
+- [x] Core frozen stylesheet sets/cascade over typed declarations: shared
+  selector arenas and rule index, stylesheet-local namespaces, nested/anonymous/
+  ordered layers, origin/importance/inline/specificity/proximity/source sorting,
+  defaulting/revert-family traversal, guarded custom rollback and shared pending
+  expansion. Native ports 128/136 pass; eight rendering drivers remain unported.
+- [ ] Complete cascade/style integration: media/supports/container/import/scope
+  conditions, logical/physical group projection and rollback, actual flattened
+  inheritance, UA defaults/presentational hints, computed font/color/size hosts,
+  CSSOM, animations/transitions/registrations, live state and generation-aware
+  invalidation/style sharing. Frozen candidate snapshots are not computed styles.
 - [ ] Complete property registry/grammars (fonts/families, backgrounds/images,
   border-image/radius, grid/alignment, transforms, animations/transitions,
   aliases/descriptors), CSSOM, computed/used-value contexts and style hosts.
@@ -102,6 +113,9 @@ item means implemented and verified; a partial implementation stays open.
   layout and visual differentials.
 - [ ] Capture pinned Chrome baselines and execute every corpus journey;
   all scales/themes and scale changes; no missing/blocked case counted passed.
+- [ ] Profile compound/common subject-key selectivity beyond the selective
+  cascade benchmark; the necessary-key index is conservative, not universally
+  optimal.
 - [ ] Profile ownership preflight costs, the template-milestone fostered-row
   regression and fragment-milestone foreign dispatch costs (raw release
   comparisons in JOURNAL.md); performance acceptance is still open.
@@ -112,7 +126,8 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Demonstrate >=99% compatibility on a defined independent sample,
   with sample size, uncertainty, scope and exclusions reported.
 
-Next: actual cascade and element/style snapshots using typed declarations;
+Next: logical-group projection, computed/inherited style and UA defaults;
+conditional stylesheet contexts and actual live element/style invalidation;
 stylesheet contexts/rule indexing, property coverage and computed-value hosts,
 remaining selector integrations, descriptor-aware parsing and
 HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics

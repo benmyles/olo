@@ -1616,3 +1616,181 @@ Remaining property grammars include fonts/families, backgrounds/images,
 border-image/radius, transforms, grid/alignment, animation/transition and
 aliases/descriptors. HTML/encoding/Web IDL, networking, layout, GPU painting,
 V8, native shell/Olo integrations and executable site journeys remain required.
+
+
+## 2026-11-05 — original frozen cascade and stylesheet contexts
+
+Connected original typed declarations/selectors into frozen stylesheet sets
+and per-element cascade/defaulting snapshots. Named/nested/anonymous layers
+share ordering across sheets of each origin; namespaces reset per stylesheet.
+Layer names validate atomically before adding order. Resource failures poison
+builders so partial state cannot be finished/published. Invalid syntax remains
+recorded/ignored; unimplemented properties/selectors/at-rules/nesting remain
+observable issues. No imports, media/supports/container/scope or keyframes yet.
+
+All rule roots now share one flat selector collection and interned symbols.
+Rejected roots rewind their unpublished tail. Borrowed namespace/cancellation
+inputs exist only during compilation calls, so retained compiler state does
+not self-reference a stylesheet. Frozen declaration slices avoid small Vec
+capacity waste. Original CSS Syntax/source is released after compilation.
+There is no author-text/CSSOM rule mutation host behind this representation.
+
+A necessary subject ID/class/type index admits candidates, including universal
+fallbacks for logical-only branches. Actual matching still decides every
+branch and its highest matching specificity. ASCII folding can admit false
+positives across HTML/quirks/XML but cannot replace the matcher. Reusable
+worker stamps deduplicate rule branches/candidate keys. The separate
+baseline-cascade-index feature scans all rules without retaining index data;
+default builds index them. Private visited painting is explicitly unsupported.
+
+Priority uses origin/importance, supplied encapsulation, inline attachment,
+layer, matched specificity, supplied proximity, source/declaration order and
+rule identity. Presentational/animation/transition ordering is represented,
+not their actual execution or source generation. Namespace/inline/layer cases
+run through the native DOM. Scope/shadow/encapsulation hosts remain incomplete.
+
+The cascade keeps lower candidates for defaulting and revert-family traversal.
+Dynamic custom rollback remains inside the variable resolver's active guards,
+so a lower declaration cannot hide self/dependency cycles. A rollback-only
+cycle defaults to unset, distinct from cyclic var()'s guaranteed-invalid result.
+Independent upstream source inspection found an initial rule-chain bug:
+revert-rule must descend to a lower priority outside the current rule. That
+fix handles chains; layer/rule combinations can re-enter a candidate and need
+an explicit cycle guard. The tentative upstream cycle case stays identified.
+
+Pending shorthand expansions are shared per identity and animation-taint
+policy, with conservative retained typed-memory limits. Invalid computed
+output becomes unset, without revealing an older declaration. Results remain
+Specified/Initial/Inherit markers; a style host must copy inherited computed
+values instead of evaluating a parent's specified font expression in its child.
+Only inherited custom tokens have a concrete already-computed parent callback.
+Added all over the 87 implemented resettable properties (16 shorthands total),
+excluding direction/custom properties. This does not complete the registry.
+
+Limits bound candidates/phase work/rollback depth, compiled rules/declarations/
+layers/issues, typed pending retention and nested compilers. Default cascade:
+65,536 candidates, 4,000,000 work, depth 128 (hard 256), typed pending 16 MiB
+plus original variable bounds. A private bottom-up merge checks cancellation/
+work between comparisons; matching sums actual selected-rule work. These are
+bounded phases, not one exact whole-style-job instruction/memory counter.
+Typed accounting may count shared programs repeatedly; controls/allocator
+metadata are count-bounded separately. No thread, clock, I/O, polling or idle
+work is introduced. Long work/drops/progress belong to future worker jobs.
+
+Independent evidence: **19 unchanged pinned WPT resources, 136 inventoried
+native cases, 128 passes and eight explicit non-passes**. All eight are
+unexecuted geometry/rasterization drivers. The adapter parses inert original
+HTML, compiles literal sheets/inline declarations, selects actual target nodes,
+runs cascade/defaulting and supplied inherited custom/color contexts, and
+independently decodes RGB/decimal/identifier references. One rem reference
+uses an explicit 16px root factor; the native palette is fixed Light, not the
+person's session or all-theme evidence. Reftest background components are
+checked separately from geometry; a green color is not a rendered green square.
+JS, CSSOM, animations, layout/screenshots and websites remain unexecuted.
+Evaluator exit stays 1. Extraction reproduces exact derived bytes and manifest
+hashes match; the unpooled control has the same independent 128/8 outcomes.
+
+Ten native groups cover ranking/defaulting, real DOM/inline/nested sheets,
+namespaces, atomic invalid layers, rollback chains/cycles, all exclusions,
+shared typed expansion, taint-policy isolation and work/retained/cancellation
+bounds. Default/full-scan/all-feature modes pass. These are supported-token/
+selector/cascade ports, not complete style or web-platform execution.
+
+Release measurements: Core Ultra 7 356H, CPU 0, rustc 1.99.1. Three sequential
+unpooled/pooled-dense/final storage runs (middle reversed), then three
+alternating full-scan/indexed pairs. Each sample has three compile/drop or
+whole-document match/default/numeric-width rounds; figures are medians of
+three run means. Source/HTML parsing is excluded. Every generated node width
+is independently verified in an untimed pass; bulk buffers/node/rule data are
+warm and first calls separate. No concurrent checks launched by this session;
+other load, clocks/thermals, allocator/hash/code layout remain uncontrolled.
+These compare initial prototypes/new-API modes, not old production cascade.
+
+| Rules/elements | Unpooled rule payload | Pooled rule payload | Compile/drop, unpooled → final | Match/default/resolve, unpooled → final |
+| --- | --- | --- | --- | --- |
+| 1,000 | 1,080,098 B | 358,909 B | 0.8812 → 0.6021 ms | 0.2848 → 0.2723 ms |
+| 2,000 | 2,161,306 B | 718,909 B | 1.6688 → 1.1653 ms | 0.5720 → 0.5517 ms |
+| 4,000 | 4,323,722 B | 1,438,909 B | 3.4987 → 2.2327 ms | 1.1306 → 1.0965 ms |
+
+Pooling changes rule/declaration/selector capacities and shared symbols; the
+index still costs memory. The isolated final pooled-dense control restores
+only dense property ranges and unconditional merge-buffer cloning. Sparse
+ranges stay inline for up to eight declared properties and do not allocate
+all 88 ranges for an element with one candidate. One-candidate payload
+**1,728 → 416 bytes** (candidate/range capacities, including inline ranges;
+not the entire snapshot/allocator). A one-candidate sort avoids an unnecessary
+merge allocation. Pooled-dense → final match/resolve at 1k/2k/4k:
+**0.2921 → 0.2723 ms**, **0.6145 → 0.5517 ms**, **1.1679 → 1.0965 ms**.
+No universal latency claim; some storage-only cases vary in the other direction.
+
+| Rules/elements | Full rule scan | Indexed | Candidate visits, scan → index | Extra retained index payload |
+| --- | --- | --- | --- | --- |
+| 1,000 | 55.4663 ms | 0.2711 ms | 1,000,000 → 1,000 | 87,680 B |
+| 2,000 | 222.5767 ms | 0.5606 ms | 4,000,000 → 2,000 | 175,360 B |
+| 4,000 | 911.5985 ms | 1.1147 ms | 16,000,000 → 4,000 | 350,720 B |
+
+These are deliberately selective descendant-class rules; universal/common-key
+styles may have many candidates. This proves this workload's scaling, not all
+site selector performance. Index building adds compilation/storage cost.
+The full-scan/default native outcomes and generated expected widths match.
+Payload sums include rule/declaration/selector/index capacities; exclude the
+RuleSet header, hash controls, allocator metadata, borrowed Syntax/DOM and
+host state. Benchmark values are scalar widths, with no typed heap programs.
+First-compile final medians **0.633–1.981 ms**, largest sampled **1.982 ms**.
+First-match/default/resolve final medians **1.943–4.622 µs**, largest sampled **5.156 µs**.
+Synthetic worker observations, not UI/worst-case guarantees.
+Whole storage benchmark peak RSS, unpooled: **14,680–14,780 KiB**.
+Whole storage benchmark peak RSS, pooled-dense: **8,144–8,476 KiB**.
+Whole storage benchmark peak RSS, indexed: **8,244–8,512 KiB**.
+RSS includes original buffers/DOM, compiler temporaries, libraries and
+allocator retention. The scan control's lower RSS includes its missing index;
+none of these numbers establishes page/browser/Chrome memory.
+
+A common-path check found an initial **4–13% public selector-match slowdown**
+when accounting results shared a return path. Returning only work and a generic
+output specialization partly recovered it, but extra cost remained. Restored
+the original public setup/body/return path exactly and kept a private accounted
+root setup; matching algorithms remain shared in Machine. The public method's
+source hash is byte-identical to the parent. The final paired direct-match
+check no longer reproduces the regression; failed and intermediate raw data
+remain in the artifact instead of being discarded.
+
+Captured exact `9cf442d2` touched production/package files for parent builds,
+then restored working bytes in finally. Other reachable production and common
+benchmark sources match that parent; the identical new direct-matches benchmark
+uses only existing public APIs. Three alternating parent → final common runs:
+CSS stylesheet **8.1068 → 8.1935** ms, declarations
+**7.7761 → 7.8464** ms, 8,000 mixed rules
+**2.2304 → 2.2562** ms. Color parse, RGB
+**78.481 → 80.997** ns, keyword **105.441 → 108.369** ns,
+OKLCH **84.395 → 83.409** ns. Warm variable alias
+**0.0538 → 0.0549** µs, cached 1,000-reference expansion
+**0.0686 → 0.0663** µs. Direct matches: ID
+**42.595 → 42.229** ns, class
+**50.137 → 49.124** ns, descendant
+**100.899 → 101.003** ns, has/ancestor
+**177.786 → 178.359** ns. Small mixed variations do not
+establish uniform improvement or regression guarantees.
+
+Auditable storage control patches, source/binary/check identities and all raw
+samples: `measurements/2026-11-05-cascade.json` and
+`measurements/2026-11-05-cascade-controls/`. Full per-file outcomes/non-passes:
+`measurements/2026-11-05-cascade-coverage.json`. No new SIMD/GPU code; original
+native token/math/color machinery is reused. No per-frame parsing or polling
+is introduced; future style hosts must retain computed results by generation.
+
+All **106 engine release tests** pass; ten cascade groups pass in default,
+full-scan and all-feature builds. Default/all-feature strict release clippy,
+package formatting and diff checks pass. Full workspace release build passes
+(**2.36 s**, existing GPUI warnings and proc-macro-error2 future-compatibility
+notice). No GUI launched, no personal session changed, no visible UI change
+to screenshot-journal.
+
+Full browser goal remains active: **0/3,000 website cases, 0/100 sites**, no
+usable browser. Required next work includes logical/physical projection and
+paired rollback, computed/inherited fonts/colors/used values, UA defaults and
+hints, media/supports/import/scope/container contexts, live state/invalidation/
+style sharing and actual lifecycle jobs. Profile compound/common subject-key
+selectivity beyond this deliberately selective index workload. Full property/
+selector/HTML/Web IDL, networking, layout/GPU painting, V8, native shell/Olo
+integrations and executable site journeys remain acceptance work.

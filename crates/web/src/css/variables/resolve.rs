@@ -8,6 +8,11 @@ pub struct Binding<'a> {
     pub value: &'a Value,
     pub animation_tainted: bool,
 }
+/// Continue a cascade rollback inside the same variable dependency guards.
+pub enum Rollback<'a> {
+    Binding(Binding<'a>),
+    Computed(Computed),
+}
 pub trait Context {
     fn lookup(&self, name: &str) -> Option<Binding<'_>>;
     fn inherited(&self, _name: &str) -> Option<Computed> {
@@ -16,6 +21,11 @@ pub trait Context {
     /// Revert-family keywords need the actual origin/layer/rule cascade.
     fn revert(&self, _name: &str, _keyword: Wide) -> Result<Computed> {
         Err(Error::RequiresCascade)
+    }
+    /// Return the next cascaded binding for this property, or an already
+    /// defaulted value. IDs must remain unique across all rollback candidates.
+    fn rollback(&self, name: &str, _from_id: u64, keyword: Wide) -> Result<Rollback<'_>> {
+        self.revert(name, keyword).map(Rollback::Computed)
     }
     /// Increment when any lookup/inheritance/taint/cascade result changes.
     /// Keep the snapshot stable for an operation. Read only on requests.
@@ -116,6 +126,9 @@ impl<'a, C: Context> Resolver<'a, C> {
             }
             return Ok(value);
         };
+        self.bound(name, binding, depth)
+    }
+    fn bound(&mut self, name: &str, binding: Binding<'_>, depth: usize) -> Result<Computed> {
         if binding.animation_tainted {
             self.mark_taint();
         }
@@ -171,12 +184,12 @@ impl<'a, C: Context> Resolver<'a, C> {
         self.cache.insert(binding.id, State::Active(self.guards.len()));
         self.guards.push(Guard { id: binding.id, cyclic: None, animation_tainted: binding.animation_tainted });
         let result = self.sequence(binding.value, depth + 1, true);
-        let guard = self.guards.pop().unwrap();
-        debug_assert_eq!(guard.id, binding.id);
-        let cyclic_root = guard.cyclic.map(|start| if start < self.guards.len() { self.guards[start].id } else { guard.id });
+        // Keep the property guard active through keyword/cascade processing.
+        // A lower declaration can itself reference this property or roll back
+        // to an earlier binding; neither may escape dependency/cycle checks.
         let result = result.and_then(|mut value| {
-            if guard.cyclic.is_some() {
-                return Ok(Computed { value: None, animation_tainted: guard.animation_tainted });
+            if self.guards.last().unwrap().cyclic.is_some() {
+                return Ok(value);
             }
             if let Some(raw) = &value.value
                 && let Some(wide) = self.checked_single(raw.components(), depth)?.and_then(wide_component)
@@ -184,14 +197,35 @@ impl<'a, C: Context> Resolver<'a, C> {
                 value = match wide {
                     Wide::Initial => Computed::invalid(),
                     Wide::Inherit | Wide::Unset => self.context.inherited(name).unwrap_or_else(Computed::invalid),
-                    _ => self.context.revert(name, wide)?,
+                    _ => match self.context.rollback(name, binding.id, wide)? {
+                        Rollback::Computed(value) => value,
+                        Rollback::Binding(next) => {
+                            self.tick(1, depth + 1)?;
+                            if matches!(self.cache.get(&next.id), Some(State::Active(_))) {
+                                // A cycle made only by rollback keywords defaults
+                                // to unset; this is distinct from a var() cycle.
+                                self.context.inherited(name).unwrap_or_else(Computed::invalid)
+                            } else {
+                                self.bound(name, next, depth + 1)?
+                            }
+                        }
+                    },
                 };
+            }
+            Ok(value)
+        });
+        let guard = self.guards.pop().unwrap();
+        debug_assert_eq!(guard.id, binding.id);
+        let cyclic_root = guard.cyclic.map(|start| if start < self.guards.len() { self.guards[start].id } else { guard.id });
+        let result = result.map(|mut value| {
+            if guard.cyclic.is_some() {
+                value.value = None;
             }
             value.animation_tainted |= guard.animation_tainted;
             if value.animation_tainted {
                 self.mark_taint();
             }
-            Ok(value)
+            value
         });
         let result = result.and_then(|value| {
             if let Some(raw) = &value.value {

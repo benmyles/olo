@@ -4,7 +4,7 @@ mod compile;
 mod resolve;
 use super::{Components, Kind, Syntax, syntax::Assembler};
 pub(crate) use compile::inspect;
-pub use resolve::{Binding, Context, Resolver, Stats};
+pub use resolve::{Binding, Context, Resolver, Rollback, Stats};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},

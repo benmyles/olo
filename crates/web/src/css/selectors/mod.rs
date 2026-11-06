@@ -3,6 +3,7 @@
 mod anb;
 pub use anb::AnB;
 mod compile;
+pub(crate) use compile::RuleCompiler;
 mod matching;
 use super::Components;
 pub use matching::{Attribute, Content, DomTree, ElementName, MatchLimits, MatchOptions, MatchProgress, StateSource, Tree};
@@ -290,4 +291,37 @@ fn check(cancelled: Option<&AtomicBool>) -> Result<()> {
 }
 fn white(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\r' | '\n' | '\x0c')
+}
+
+/// Conservative necessary subject keys, one per root branch. A logical-only
+/// subject stays universal. Indexing may admit false positives; matching still
+/// decides every branch and its actual specificity.
+pub(crate) enum SubjectKey {
+    Universal,
+    Id(Arc<str>),
+    Class(Arc<str>),
+    Type(Arc<str>),
+}
+impl Selectors {
+    pub(crate) fn subject_keys(&self, root: u32) -> Vec<SubjectKey> {
+        self.links[self.lists[root as usize].links.start as usize..self.lists[root as usize].links.end as usize]
+            .iter()
+            .map(|&i| {
+                let complex = &self.complexes[i as usize];
+                let step = &self.steps[(complex.steps.end - 1) as usize];
+                let tests = &self.tests[step.tests.start as usize..step.tests.end as usize];
+                for choose in 0..3 {
+                    for test in tests {
+                        match (choose, test) {
+                            (0, Test::Id(n)) => return SubjectKey::Id(self.symbols[*n as usize].clone()),
+                            (1, Test::Class(n)) => return SubjectKey::Class(self.symbols[*n as usize].clone()),
+                            (2, Test::Type { name, .. }) if *name != ANY => return SubjectKey::Type(self.symbols[*name as usize].clone()),
+                            _ => {}
+                        }
+                    }
+                }
+                SubjectKey::Universal
+            })
+            .collect()
+    }
 }

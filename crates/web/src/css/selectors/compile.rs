@@ -674,3 +674,74 @@ fn state(name: &str) -> Option<State> {
         _ => return None,
     })
 }
+
+/// Shared flat arenas for all stylesheet rule roots. The borrowing compiler
+/// exists only for add(); namespace/cancellation inputs never self-reference
+/// a retained builder. Rejected roots rewind their unpublished arena tail.
+pub(crate) struct RuleCompiler {
+    out: Option<Selectors>,
+    symbols: HashMap<Arc<str>, u32>,
+    work: usize,
+    tests: usize,
+    steps: usize,
+    selectors: usize,
+}
+impl RuleCompiler {
+    pub(crate) fn new() -> Self {
+        Self {
+            out: Some(Selectors {
+                lists: Vec::new(),
+                links: Vec::new(),
+                complexes: Vec::new(),
+                steps: Vec::new(),
+                tests: Vec::new(),
+                nth: Vec::new(),
+                symbols: Vec::new(),
+                symbol_bytes: 0,
+                failures: Vec::new(),
+                languages: Vec::new(),
+                root: 0,
+            }),
+            symbols: HashMap::new(),
+            work: 0,
+            tests: 0,
+            steps: 0,
+            selectors: 0,
+        }
+    }
+    pub(crate) fn add(&mut self, values: Components<'_>, options: CompileOptions<'_>, limits: CompileLimits, cancelled: Option<&AtomicBool>) -> Result<u32> {
+        check(cancelled)?;
+        let mut c = Compiler {
+            out: self.out.take().unwrap(),
+            symbol_index: std::mem::take(&mut self.symbols),
+            options,
+            limits,
+            cancelled,
+            work: self.work,
+            test_count: self.tests,
+            step_count: self.steps,
+            selector_count: self.selectors,
+            default_ns: ANY,
+        };
+        let mark = c.mark();
+        let result = (|| {
+            if let Some(ns) = options.default_namespace {
+                c.default_ns = c.namespace(ns)?;
+            }
+            c.list(values, Context::default(), false)
+        })();
+        if result.is_err() {
+            c.rewind(mark);
+        }
+        self.work = c.work;
+        self.tests = c.test_count;
+        self.steps = c.step_count;
+        self.selectors = c.selector_count;
+        self.symbols = c.symbol_index;
+        self.out = Some(c.out);
+        result
+    }
+    pub(crate) fn finish(self) -> Selectors {
+        self.out.unwrap()
+    }
+}
