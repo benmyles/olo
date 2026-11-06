@@ -30,6 +30,28 @@ pub const SESSION: &str = "session";
 /// The collection made first, the `default` alias's.
 pub const LOGIN: &str = "login";
 
+/// The `xdg:schema` GNOME Keyring gives an item made without one; Olo's
+/// do too, so an item looks the same here as there (and is replaced
+/// alike: `put`).
+pub const GENERIC: &str = "org.freedesktop.Secret.Generic";
+
+/// What `Store::heal` mended.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Healed {
+    /// Collections merged into the login one (a second "Login").
+    pub merged: Vec<String>,
+    /// Items that were another's copy (the newest of each kept).
+    pub duplicates: usize,
+    /// Items given GNOME's `xdg:schema`.
+    pub schemas: usize,
+}
+
+impl Healed {
+    pub fn is_empty(&self) -> bool {
+        self.merged.is_empty() && self.duplicates == 0 && self.schemas == 0
+    }
+}
+
 pub fn path() -> PathBuf {
     olo_xdg::config_dir().join("secrets.store")
 }
@@ -243,11 +265,20 @@ impl Store {
     /// Put `item` in `collection` (made if missing, `label` its label):
     /// replacing one with the same attributes if `replace` (CreateItem's
     /// `replace`), else as a new item. The item's id.
+    ///
+    /// As GNOME Keyring does: an item made without `xdg:schema` gets the
+    /// generic one, and `replace` replaces an item that has every one of
+    /// the new item's attributes (`gkm_secret_fields_match`), not only
+    /// one with exactly them. (Matching exactly, gh's token written again
+    /// over one copied from GNOME Keyring, which had GNOME's `xdg:schema`,
+    /// was added beside it; go-keyring then read the old one: Ben,
+    /// 2026-11-06.)
     pub fn put(&mut self, collection: &str, mut item: Item, replace: bool) -> Option<u64> {
+        item.attributes.entry("xdg:schema".into()).or_insert_with(|| GENERIC.into());
         let c = self.collection_mut(collection)?;
         let t = now();
         c.modified = t;
-        if replace && let Some(old) = c.items.iter_mut().find(|i| i.attributes == item.attributes) {
+        if replace && let Some(old) = c.items.iter_mut().find(|i| i.matches(&item.attributes)) {
             old.label = item.label;
             old.secret = item.secret;
             old.content_type = item.content_type;
@@ -261,6 +292,74 @@ impl Store {
         let id = item.id;
         c.items.push(item);
         Some(id)
+    }
+}
+
+impl Store {
+    /// Mend what earlier versions left, each time the store is opened to
+    /// serve (so an upgrade mends it): every item with GNOME's
+    /// `xdg:schema`; a second login collection (GNOME Keyring's "Login",
+    /// which Olo's own client made beside its `login` on a computer with no
+    /// default alias, 2026-11-04) merged into `login`, aliases following;
+    /// and in each collection, items that are copies of one another (the
+    /// same attributes) kept once, the newest, and first, as a program
+    /// taking the first found gets the newest. What it did.
+    pub fn heal(&mut self) -> Healed {
+        let mut h = Healed::default();
+        for i in self.data.collections.iter_mut().flat_map(|c| c.items.iter_mut()) {
+            if !i.attributes.contains_key("xdg:schema") {
+                i.attributes.insert("xdg:schema".into(), GENERIC.into());
+                h.schemas += 1;
+            }
+        }
+        let others: Vec<String> = self.data.collections.iter().filter(|c| c.id != LOGIN && c.id.eq_ignore_ascii_case(LOGIN)).map(|c| c.id.clone()).collect();
+        for id in others {
+            let Some(at) = self.data.collections.iter().position(|c| c.id == id) else { continue };
+            let gone = self.data.collections.remove(at);
+            let mut moved = Vec::new();
+            if let Some(login) = self.collection_mut(LOGIN) {
+                for mut item in gone.items {
+                    item.id = login.next;
+                    login.next += 1;
+                    moved.push(item.id);
+                    login.items.push(item);
+                }
+                login.modified = now();
+            }
+            for n in moved {
+                self.note_changed(LOGIN, n);
+            }
+            for target in self.data.aliases.values_mut() {
+                if *target == id {
+                    *target = LOGIN.into();
+                }
+            }
+            h.merged.push(id);
+        }
+        let mut kept: Vec<(String, u64)> = Vec::new();
+        for c in &mut self.data.collections {
+            // Newest first, then the first of each kept.
+            c.items.sort_by_key(|i| std::cmp::Reverse((i.modified, i.created, i.id)));
+            let mut seen: std::collections::BTreeMap<BTreeMap<String, String>, (u64, bool)> = Default::default();
+            let before = c.items.len();
+            c.items.retain(|i| match seen.get_mut(&i.attributes) {
+                Some((_, copies)) => {
+                    *copies = true;
+                    false
+                }
+                None => {
+                    seen.insert(i.attributes.clone(), (i.id, false));
+                    true
+                }
+            });
+            h.duplicates += before - c.items.len();
+            kept.extend(seen.into_values().filter(|(_, copies)| *copies).map(|(id, _)| (c.id.clone(), id)));
+        }
+        // (What was kept goes back to GNOME Keyring as the one to keep.)
+        for (c, id) in kept {
+            self.note_changed(&c, id);
+        }
+        h
     }
 }
 
@@ -349,6 +448,67 @@ mod tests {
         let wanted: BTreeMap<String, String> = [("k".to_string(), "1".to_string())].into();
         assert!(s.collection(LOGIN).unwrap().items.iter().all(|i| i.matches(&wanted)));
         assert!(s.collection(LOGIN).unwrap().items.iter().all(|i| i.matches(&BTreeMap::new())));
+    }
+
+    /// gh (go-keyring) writing its token again over one copied from GNOME
+    /// Keyring, which has GNOME's `xdg:schema`: replaced, as GNOME does,
+    /// not added beside it; and its item gets the schema too.
+    #[test]
+    fn replacing_as_gnome_keyring_does() {
+        let mut s = Store { path: PathBuf::new(), key: new_key(), data: Data::default() };
+        s.data.collections.push(Collection::new(LOGIN, "Login"));
+        let copied = s.put(LOGIN, item(&[("service", "gh:github.com"), ("username", "ben"), ("xdg:schema", GENERIC)], b"old"), true).unwrap();
+        let again = s.put(LOGIN, item(&[("service", "gh:github.com"), ("username", "ben")], b"new"), true).unwrap();
+        assert_eq!(copied, again);
+        let c = s.collection(LOGIN).unwrap();
+        assert_eq!(c.items.len(), 1);
+        assert_eq!(c.item(copied).unwrap().secret.as_slice(), b"new");
+        // The active account's (username "") is another item.
+        let active = s.put(LOGIN, item(&[("service", "gh:github.com"), ("username", "")], b"new"), true).unwrap();
+        assert_ne!(active, copied);
+        assert!(s.collection(LOGIN).unwrap().items.iter().all(|i| i.attributes.get("xdg:schema").map(String::as_str) == Some(GENERIC)));
+    }
+
+    /// What Ben's store had (2026-11-06): GNOME's second "Login" copied in
+    /// beside `login`, the same token item in both and twice in one (one
+    /// without the schema): one collection, each item once, the newest
+    /// kept and first, the default alias on `login`.
+    #[test]
+    fn healed() {
+        let mut s = Store { path: PathBuf::new(), key: new_key(), data: Data::default() };
+        s.data.serving_since = Some(1);
+        s.data.collections.push(Collection::new(LOGIN, "Login"));
+        s.data.collections.push(Collection::new("Login", "Login"));
+        s.data.aliases.insert("default".into(), "Login".into());
+        let at = |mut i: Item, t: u64| {
+            i.modified = t;
+            i.created = t;
+            i
+        };
+        let gh = [("service", "gh:github.com"), ("username", "ben")];
+        let gh_schema = [("service", "gh:github.com"), ("username", "ben"), ("xdg:schema", GENERIC)];
+        s.put_copy(LOGIN, at(item(&gh_schema, b"older"), 20));
+        s.data.collections[0].items.push(Item { id: 9, ..at(item(&gh, b"newest"), 30) });
+        s.put_copy("Login", at(item(&gh_schema, b"oldest"), 10));
+        s.put_copy("Login", at(item(&[("service", "gh:github.com"), ("username", ""), ("xdg:schema", GENERIC)], b"active"), 15));
+        s.put_copy("Login", at(item(&[("application", "chrome"), ("xdg:schema", GENERIC)], b"chrome"), 5));
+        let h = s.heal();
+        assert_eq!(h.merged, ["Login"]);
+        assert_eq!((h.duplicates, h.schemas), (2, 1));
+        assert_eq!(s.data.collections.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), [LOGIN]);
+        assert_eq!(s.alias("default"), Some(LOGIN));
+        let c = s.collection(LOGIN).unwrap();
+        assert_eq!(c.items.len(), 3, "{:?}", c.items.iter().map(|i| &i.attributes).collect::<Vec<_>>());
+        let wanted: BTreeMap<String, String> = gh.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let found: Vec<&Item> = c.items.iter().filter(|i| i.matches(&wanted)).collect();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].secret.as_slice(), b"newest");
+        // Ids stay unique; nothing more to mend the next time.
+        let mut ids: Vec<u64> = c.items.iter().map(|i| i.id).collect();
+        ids.dedup();
+        assert_eq!(ids.len(), 3);
+        assert!(s.heal().is_empty());
+        assert!(!s.data.changed.is_empty(), "what was kept goes back to GNOME Keyring");
     }
 
     #[test]

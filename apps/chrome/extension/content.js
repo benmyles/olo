@@ -1,5 +1,7 @@
 // In every frame: tells the extension when a text field gets the focus
-// (so the context menu holds this page's logins), says which of a
+// (so the context menu holds this page's logins, and a card form's field
+// Passwords' cards), fills a card it's given into the frame's card
+// fields, says which of a
 // login's usernames the page shows (an account chooser, "signed in as"),
 // fills what Passwords gives as typing does, carries a sign-in split over
 // steps on to its password and one-time code fields as they come, reports
@@ -174,6 +176,104 @@
     return did;
   }
 
+  // ---- Credit cards ----
+
+  // What a field of a card form takes: its autocomplete token (cc-number,
+  // cc-name, cc-given-name, cc-family-name, cc-exp, cc-exp-month,
+  // cc-exp-year, cc-csc), else what it says (a card form that doesn't).
+  function cardKind(e) {
+    if (!(e instanceof HTMLInputElement || e instanceof HTMLSelectElement)) return null;
+    if (e instanceof HTMLInputElement && !/^(text|tel|number|search|password)$/.test(e.type || "text")) return null;
+    const ac = (e.getAttribute("autocomplete") || "").toLowerCase();
+    const token = ac.match(/\bcc-(number|name|given-name|family-name|exp-month|exp-year|exp|csc)\b/);
+    if (token) return token[1];
+    if (/\b(username|email|current-password|new-password|one-time-code|postal-code|tel)\b/.test(ac)) return null;
+    const s = says(e);
+    if (/card.?(number|num\b|no\b)|\bccnum|cc-?number|cardnumber|número de (la )?tarjeta|kartennummer|numéro de (la )?carte/.test(s)) return "number";
+    if (/\b(cvc|cvv2?|csc|cvn|cid)\b|security.?code|card.?code|card.?verification/.test(s)) return "csc";
+    if (/(exp|expir|valid).{0,20}(month|\bmm\b)|cc-?month|exp-?month/.test(s)) return "exp-month";
+    if (/(exp|expir|valid).{0,20}(year|\byy)|cc-?year|exp-?year/.test(s)) return "exp-year";
+    if (/expir|exp.?date|valid.?(thru|through|until)|\bmm\s*\/\s*yy/.test(s)) return "exp";
+    if (/name.?on.?card|card.?holder|holder.?name|nameoncard|cc-?name/.test(s)) return "name";
+    return null;
+  }
+
+  // The card fields beside `e` (in its form, else the frame), by kind.
+  function cardFields(e) {
+    const scope = e && e.form ? e.form : document;
+    const kinds = new Map();
+    for (const f of deep(scope, "input,select").filter(usable)) {
+      const k = cardKind(f);
+      if (k) kinds.set(k, [...(kinds.get(k) || []), f]);
+    }
+    return kinds;
+  }
+
+  // Choose the option of `sel` that is one of `wanted` (by value or text,
+  // a month as "08", "8", "Aug" or "August", ignoring case).
+  function choose(sel, wanted) {
+    const norm = (v) => (v || "").trim().toLowerCase();
+    const want = wanted.map(norm);
+    const opt = [...sel.options].find((o) => want.includes(norm(o.value)) || want.includes(norm(o.text)) || want.some((w) => w.length > 2 && norm(o.text).startsWith(w)));
+    if (!opt) return false;
+    sel.focus();
+    sel.value = opt.value;
+    sel.dispatchEvent(new Event("input", { bubbles: true }));
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  // A card into the frame's card fields, as typing would: its number,
+  // the name (split where the form asks for given and family names), the
+  // expiry in the form's shape (one field, "MM/YY" or as long as it takes,
+  // or month and year, typed or chosen) and the security code. Says what
+  // it filled.
+  function fillCard(c) {
+    // (The field the menu was opened on, not what has the focus now:
+    // another frame's fill may have taken it.)
+    const anchor = lastOver && lastOver.isConnected && cardKind(lastOver) ? lastOver : active();
+    const kinds = cardFields(anchor);
+    const did = [];
+    const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+    const m = parseInt(c.expiry_month, 10);
+    const mm = c.expiry_month ? String(m).padStart(2, "0") : "";
+    const yyyy = c.expiry_year || "";
+    const yy = yyyy.slice(-2);
+    const put = (kind, value, choices) => {
+      if (!value) return;
+      for (const f of kinds.get(kind) || []) {
+        if (f instanceof HTMLSelectElement) {
+          if (choose(f, choices || [value])) did.push(kind);
+        } else {
+          set(f, value);
+          did.push(kind);
+        }
+      }
+    };
+    put("number", c.number);
+    put("name", c.cardholder);
+    const [given, ...rest] = (c.cardholder || "").trim().split(/\s+/);
+    put("given-name", given);
+    put("family-name", rest.join(" "));
+    if (mm && yyyy) {
+      for (const f of kinds.get("exp") || []) {
+        // Its shape as it says it ("MM / YY", "MM/YYYY"), else as long
+        // as it takes (4: MMYY, 6: MMYYYY), else MM/YY, the usual.
+        const said = [f.placeholder, f.getAttribute("aria-label"), f.title].join(" ").toLowerCase();
+        const sep = /mm\s+\/\s+[ya]/.test(said) ? " / " : "/";
+        const value = /(yyyy|aaaa|jjjj)/.test(said) ? `${mm}${sep}${yyyy}` : /\b(yy|aa|jj)\b/.test(said) ? `${mm}${sep}${yy}` : f.maxLength === 4 ? mm + yy : f.maxLength === 6 ? mm + yyyy : `${mm}/${yy}`;
+        set(f, value);
+        did.push("exp");
+      }
+      put("exp-month", mm, [mm, String(m), months[m - 1], months[m - 1].slice(0, 3)]);
+      put("exp-year", yyyy, [yyyy, yy]);
+    }
+    put("csc", c.code);
+    // (The number's field keeps the focus, as a person's fill would.)
+    (kinds.get("number") || [])[0]?.focus();
+    return { filled: did };
+  }
+
   // Which of `names` (a login's usernames) the page shows: in its text,
   // or in a field's value (the account a two-step sign-in asked for).
   function seen(names) {
@@ -194,6 +294,8 @@
       if (editable(e) && !e.disabled && !e.readOnly) set(e, m.value);
     } else if (m.type === "fill") {
       reply(fill(m));
+    } else if (m.type === "fill-card") {
+      reply(fillCard(m));
     } else if (m.type === "next-step") {
       // A sign-in carried on from its first step: what comes now.
       reply(nextStep(m));
@@ -253,7 +355,8 @@
     if (e.type === "pointerover" && t === lastOver && Date.now() - lastAt < 2000) return;
     lastOver = t;
     lastAt = Date.now();
-    tell({ type: "focus" });
+    // (A card form's field: the menu offers Passwords' cards.)
+    tell({ type: "focus", card: !!cardKind(t) });
   };
   document.addEventListener("focusin", focused, true);
   document.addEventListener("pointerover", focused, true);

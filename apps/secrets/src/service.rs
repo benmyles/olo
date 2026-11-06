@@ -545,8 +545,12 @@ impl ItemObj {
         Ok(none())
     }
 
-    fn get_secret(&self, session: OwnedObjectPath, #[zbus(header)] header: Header<'_>) -> Result<Secret> {
-        self.state.secret_of(&self.collection, self.id, &session, &header)
+    /// One struct, `(oayays)`, as the spec has it: a tuple returned is
+    /// zbus's several out arguments (`oayays`), which go-keyring (gh's)
+    /// can't read, so gh found no token (Ben, 2026-11-06; libsecret reads
+    /// through `GetSecrets`, whose dictionary holds structs).
+    fn get_secret(&self, session: OwnedObjectPath, #[zbus(header)] header: Header<'_>) -> Result<(Secret,)> {
+        self.state.secret_of(&self.collection, self.id, &session, &header).map(|s| (s,))
     }
 
     async fn set_secret(&self, secret: Secret, #[zbus(header)] header: Header<'_>, #[zbus(connection)] conn: &Connection) -> Result<()> {

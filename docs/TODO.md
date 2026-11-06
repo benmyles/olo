@@ -17,6 +17,8 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
+## Done, waiting for Ben to try or confirm
+
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
@@ -24,8 +26,47 @@ Nothing: what's left is waiting for Ben or blocked.
   code, by their `autocomplete` tokens, names and labels), and Olo's
   context menu there lists Passwords' cards to fill them with, as it
   lists logins for a sign-in form.
+  *Done* (2026-11-06): a card form's field (its `autocomplete` token,
+  else its label) gives "Autofill Card (Travel Visa •••• 1111)" and every
+  card under Passwords ▸ in Olo's menu; choosing one fills the number,
+  name, expiry (in the form's own shape, or its month and year selects)
+  and security code into the form the person was in, the same site's
+  frames and payment providers' (Stripe's and the like), never another
+  site's. The menu never gets a number or code; Passwords gives them
+  only for a card the person chose. Tested end to end in a test session
+  with the fake 1Password's card, over DevTools and through the menu.
 
-## Done, waiting for Ben to try or confirm
+- **Switching to olo-secrets broke gh's login** (Ben, 2026-11-06,
+  urgent): "i tried switching to olo-secrets and now it broke everything
+  and e.g. gh won't even auth" ("no token found for benmyles", then "The
+  token in default is invalid"); "this has to just work seamlessly so it
+  doesn't break like this next time and olo doctor needs to repair/heal
+  it on the next upgrade"; "can you also heal my keyring for me right
+  now". *Found*: two login keyrings, `login` and "Login" (Olo's own
+  Secret Service client made "Login" beside GNOME's `login` on
+  2026-11-04, when the new computer had no default alias), both copied
+  in; and olo-secrets' `replace` matched attributes exactly where GNOME
+  Keyring matches those given, so gh's new token went in beside the
+  copied old one (which had GNOME's `xdg:schema`), go-keyring read the
+  old one first, and gh's active-account item was in the other keyring.
+  *Fixed*: olo-secrets answers as GNOME Keyring does (`xdg:schema`
+  given, replace by the attributes given) and mends its store at every
+  take-over (so every upgrade): the second login keyring merged in, each
+  secret once, the newest first; Doctor says what it mended, offers Merge
+  Them if two are ever listed, and says when GNOME Keyring has two; the
+  hand-back and Olo's client use `login`. *Ben's keyring healed*
+  (11:31): the store backed up (/var/tmp/olo-secrets-backup), the fixed
+  olo-secrets installed and started again: "Login" merged, 2 duplicates
+  gone; gh's active-account item set to the token of his 11:21 login, as
+  gh's own login would have (nothing printed). *Then* (Ben: "did you
+  fix it yet it still doesn't work"): gh still found no token, because
+  `Item.GetSecret` replied with four values, not the spec's one struct
+  (zbus makes a returned tuple several out arguments), which go-keyring
+  can't read; Python and libsecret took it, so the replays passed.
+  *Fixed* (one struct, checked on the wire and in the take-over test),
+  installed again (store backed up), and gh's own login run with the
+  token from his 11:21 login (piped, never shown): `gh auth status`
+  says "Logged in to github.com account benmyles (keyring)".
 
 - **Olo Doctor's "Voice processing's sound isn't realtime" comes back
   after Fix** (Ben, 2026-11-06): "i press fix it, it says it's fixed,
@@ -1084,8 +1125,12 @@ Nothing: what's left is waiting for Ben or blocked.
     default, named; the NVIDIA GPU; the processor). *Then*
     (2026-11-05): HEVC and AV1 on NVENC, each codec at a measured
     constant quality; an encoder failing mid-recording opened again,
-    else the recording kept to there (not yet falling back to another
-    encoder: the file's sample entry describes one stream).
+    else the recording kept to there. *Then* (2026-11-06): falling back
+    to the next encoder of the codec (NVENC to the processor for H.264,
+    NVENC and the Intel GPU's for AV1), saying so (`encoder_note`, the
+    saved notification), its stream in a sample entry of its own that
+    the Viewer, GIF export and Trim follow; checked headless (NVENC
+    failing at picture 30, OpenH264 finishing it).
     *Found* (2026-11-05), for Intel's and AMD's: Fedora's own VA-API
     drivers (iHD from Fedora, Mesa's) leave out the patented codecs: on
     this ThinkPad's Intel GPU (xe, renderD128) iHD encodes only JPEG,

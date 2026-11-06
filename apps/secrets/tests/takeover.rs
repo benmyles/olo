@@ -174,6 +174,31 @@ fn takes_over_and_hands_back() {
         assert!(ok && out == "chrome-key", "lookup: {out}");
     }
     eprintln!("300 lookups in {:?}", t.elapsed());
+    // As go-keyring (gh's) does it: written twice to `collection/login`
+    // with only its two attributes (replacing), then read through
+    // Item.GetSecret, whose reply must be one struct, `(oayays)`.
+    {
+        use zbus::zvariant::{OwnedObjectPath, Value};
+        let conn = zbus::blocking::Connection::session().unwrap();
+        let svc = zbus::blocking::Proxy::new(&conn, "org.freedesktop.secrets", "/org/freedesktop/secrets", "org.freedesktop.Secret.Service").unwrap();
+        let (_, session): (zbus::zvariant::OwnedValue, OwnedObjectPath) = svc.call("OpenSession", &("plain", Value::from(""))).unwrap();
+        let login = zbus::blocking::Proxy::new(&conn, "org.freedesktop.secrets", "/org/freedesktop/secrets/collection/login", "org.freedesktop.Secret.Collection").unwrap();
+        for token in ["one", "two"] {
+            let attrs: std::collections::HashMap<&str, &str> = [("service", "gh:github.com"), ("username", "test")].into();
+            let mut props: std::collections::HashMap<&str, Value> = std::collections::HashMap::new();
+            props.insert("org.freedesktop.Secret.Item.Label", Value::from("Password for 'test' on 'gh:github.com'"));
+            props.insert("org.freedesktop.Secret.Item.Attributes", Value::from(attrs));
+            let secret = (session.clone(), Vec::<u8>::new(), token.as_bytes().to_vec(), "text/plain; charset=utf8");
+            let _: (OwnedObjectPath, OwnedObjectPath) = login.call("CreateItem", &(props, secret, true)).unwrap();
+        }
+        let attrs: std::collections::HashMap<&str, &str> = [("service", "gh:github.com"), ("username", "test")].into();
+        let found: Vec<OwnedObjectPath> = login.call("SearchItems", &(attrs,)).unwrap();
+        assert_eq!(found.len(), 1, "replaced, not added: {found:?}");
+        let reply = conn.call_method(Some("org.freedesktop.secrets"), found[0].as_str(), Some("org.freedesktop.Secret.Item"), "GetSecret", &(&session,)).unwrap();
+        assert_eq!(reply.body().signature().to_string(), "(oayays)", "GetSecret's reply is one struct");
+        let (secret,): ((OwnedObjectPath, Vec<u8>, Vec<u8>, String),) = reply.body().deserialize().unwrap();
+        assert_eq!(secret.2, b"two");
+    }
     // Stored, searched, replaced, cleared.
     assert!(tool(&bus, &["store", "--label=New", "application", "olo-test", "kind", "new"], Some("new-value")).0);
     assert_eq!(tool(&bus, &["lookup", "application", "olo-test", "kind", "new"], None).1, "new-value");
@@ -195,10 +220,10 @@ fn takes_over_and_hands_back() {
     assert_eq!(status["serving"], true);
     assert!(status["programs"].as_array().unwrap().iter().any(|p| p == "chrome"), "{status}");
 
-    // Handed back: the new one written into GNOME Keyring (started again,
+    // Handed back: the new one and gh's written into GNOME Keyring (started again,
     // unlocked through the prompter), the deleted one deleted there.
     s.say("off");
-    s.wait_for("handed back to GNOME Keyring (1 written, 1 deleted");
+    s.wait_for("handed back to GNOME Keyring (2 written, 1 deleted");
     assert_eq!(keyring_daemons().len(), 1, "GNOME Keyring again");
     assert_eq!(tool(&bus, &["lookup", "application", "olo-test", "kind", "new"], None).1, "newer");
     assert!(!tool(&bus, &["lookup", "application", "olo-test", "kind", "old"], None).0);
@@ -208,7 +233,7 @@ fn takes_over_and_hands_back() {
     assert!(tool(&bus, &["store", "--label=Chrome Safe Storage", "application", "chrome"], Some("chrome-key-2")).0);
     s.say("on");
     let said = s.wait_for("answering for the keyring");
-    assert!(said.contains("2 copied"), "the changed one and the one handed back: {said}");
+    assert!(said.contains("3 copied"), "the changed one and the two handed back: {said}");
     assert_eq!(tool(&bus, &["lookup", "application", "chrome"], None).1, "chrome-key-2");
 
     // Started again (an upgrade): no GNOME Keyring to ask, nothing asked.

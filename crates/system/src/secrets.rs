@@ -150,10 +150,20 @@ pub fn store(label: &str, attributes: &[(&str, &str)], secret: &[u8]) -> Result<
     let svc = service(conn)?;
     let session = open_session(&svc)?;
     let alias: OwnedObjectPath = svc.call("ReadAlias", &("default",))?;
-    // No login keyring yet (a new computer whose login didn't make one):
-    // made, as GNOME makes it, the keyring asking for its password (with
-    // Olo's prompter).
-    let collection = if alias.as_str() == "/" { create_login(conn, &svc)? } else { alias.as_str().to_string() };
+    // No default: the login keyring made the default (a new computer's
+    // login made one without saying so), else, with none at all, made,
+    // as GNOME makes it, the keyring asking for its password (with
+    // Olo's prompter). (Made beside an existing `login`, 2026-11-04, a
+    // second "Login" took programs' secrets that go-keyring, gh's, never
+    // looks in.)
+    let collection = if alias.as_str() != "/" {
+        alias.as_str().to_string()
+    } else if let Some(login) = existing_login(&svc) {
+        let _ = svc.call::<_, _, ()>("SetAlias", &("default", &login));
+        login.as_str().to_string()
+    } else {
+        create_login(conn, &svc)?
+    };
     let col = Proxy::new(conn, DEST, collection.as_str(), COLLECTION)?;
     let attrs: HashMap<&str, &str> = attributes.iter().copied().collect();
     let mut props: HashMap<&str, Value> = HashMap::new();
@@ -165,6 +175,12 @@ pub fn store(label: &str, attributes: &[(&str, &str)], secret: &[u8]) -> Result<
         return Err(zbus::Error::Failure("the keyring stayed locked".into()));
     }
     Ok(())
+}
+
+/// The login keyring (`…/collection/login`), if there is one.
+fn existing_login(svc: &Proxy<'_>) -> Option<OwnedObjectPath> {
+    let collections: Vec<OwnedObjectPath> = svc.get_property("Collections").ok()?;
+    collections.into_iter().find(|p| p.as_str().rsplit('/').next() == Some("login"))
 }
 
 /// The login keyring made (`CreateCollection`, as the default): its

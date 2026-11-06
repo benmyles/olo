@@ -6656,17 +6656,35 @@ Screens' Export Video uses too).
   back (54 dB). NVIDIA's encoder can't take them: app_server draws on
   the Intel GPU, and CUDA imports no other GPU's memory.
 - **An encoder that fails mid-recording** is opened again once (its
-  first picture a key frame), and the file goes on if the new one's
-  parameter sets are the same (NVENC's and OpenH264's are, opened with
-  the same settings; `Mp4::add` refuses ones that differ, as the file's
-  sample entry describes one). Failing again, or the file refusing (a
-  full disk), the recording stops there and what was recorded is kept:
-  the file finished, `stopped_early` saying why, the recorder stopped
-  (before, an encoder's error left an unplayable `.part`).
+  first picture a key frame), the stream going on in the same file.
+  Failing again, the next encoder that makes the same codec takes over
+  (`Encoder::others`, best first: NVIDIA's then the processor for H.264;
+  NVIDIA's and the Intel GPU's for AV1, the Intel GPU first on battery;
+  none for HEVC), and the recording says so: `encoder_note` in what it
+  prints, and the saved notification's "An encoder failed; finished on
+  …". Another encoder's parameter sets differ, so its stream goes in a
+  sample entry of its own (`Mp4::new_entry` before its first picture,
+  which must be a key frame): `stsd` lists each, `stsc` maps each run
+  of samples to its entry, and an entry the same as the one before is
+  joined to it (an encoder opened again usually makes the same sets).
+  The readers follow: the Viewer gives each key frame its entry's sets
+  (`media::mp4_later_entries`; the mp4 crate reads only the first
+  entry), GIF export gives the decoder a later entry's sets at its first
+  sample, and Trim copies every entry and switches at the same samples
+  (`trim::video_entries`, which reads `moov` alone rather than the
+  whole file). With no other encoder, or the file refusing (a full
+  disk), the recording stops there and what was recorded is kept: the
+  file finished, `stopped_early` saying why, the recorder stopped.
   `OLO_RECORDING_FAIL_AT=N` makes picture N fail (`N!`: the encoder
-  opened again too), for tests: checked on the processor (carried on;
-  stopped at 1.76 s with 21 frames kept, playable) and on NVENC (opened
-  again in 2.5 s, carried on in the same file, decoded past the gap).
+  opened again too, so the next takes over; `N!!`: every other too, so
+  it stops): checked headless with `--encoder nvidia` and `30!` (NVENC
+  to picture 30, then OpenH264, 33 frames; the Viewer seeking past the
+  switch, a GIF of it, a trim across it). Tests: `olo-video`'s
+  `another_encoders_stream_gets_its_own_sample_entry` (the file's
+  structure, joining, Trim) and `a_recording_goes_on_with_another_encoder`
+  (NVENC then OpenH264, every picture decoded); `olo-preview`'s ignored
+  `plays_across_another_encoders_entry` (`OLO_FALLBACK_MP4`,
+  `OLO_FALLBACK_SEEKS`).
 - **H.264, HEVC or AV1** (`--codec`, `Settings::screen_recording.codec`,
   Preferences ▸ GPUs ▸ Format, which offers H.264 and HEVC;
   `olo_video::Codec`): HEVC and AV1 on NVIDIA's encoder only (the
@@ -9240,6 +9258,38 @@ wakeups) and follows the switch live.
   while Olo answered written into GNOME Keyring (D-Bus starts it again;
   it asks for the password to unlock through Olo's prompter) and what was
   deleted deleted there; the kernel's copy of the key forgotten.
+- **As GNOME Keyring answers** (Ben, 2026-11-06: gh lost its token
+  just after he switched): an item made without `xdg:schema` gets
+  `org.freedesktop.Secret.Generic`, as GNOME Keyring gives it; and
+  `CreateItem`'s `replace` replaces an item that has every one of the new
+  one's attributes (GNOME's `gkm_secret_fields_match`), not only one with
+  exactly them. Matching exactly, gh's token written again (go-keyring
+  sends `service` and `username` only) went in beside the copy of
+  GNOME's, which had its `xdg:schema`, and go-keyring reads the first it
+  finds: the old one. go-keyring (gh's) reads and writes
+  `…/collection/login` whenever the service lists it, whatever the
+  default alias says. And `Item.GetSecret` replies with one struct,
+  `(oayays)`, as the spec has it (a tuple returned from a zbus method is
+  several out arguments, `oayays`, though the introspection says the
+  struct; Python and libsecret, which reads through `GetSecrets`, took
+  it, go-keyring couldn't, and gh found no token). The take-over test
+  writes and reads as go-keyring does and checks the reply's signature.
+- **Mending** (`Store::heal`, every take-over, so every upgrade, which
+  starts it again): every item given GNOME's `xdg:schema`; a second login
+  collection (an id `login` but for its case: GNOME Keyring's "Login",
+  which Olo's own client made beside `login` on a computer with no
+  default alias, 2026-11-04) merged into `login`, aliases following, and
+  GNOME's "Login" copied into `login` from then on; in each collection
+  one item per set of attributes, the newest, kept first (as go-keyring
+  takes the first found). What it did is in the status (`healed`) and
+  Olo Doctor says so ("Programs' secrets are in one login keyring"); if
+  two login keyrings are ever listed, Doctor's Merge Them starts
+  olo-secrets again. With GNOME Keyring answering, Doctor says when it
+  has a second "Login" keyring. Handing back writes the login
+  collection's items into GNOME's `login` (not the default alias's,
+  which may be "Login"), making `login` the default again there; and
+  `olo_system::secrets` (Passwords' key) makes an existing `login` the
+  default rather than creating another.
 - **Status** for Preferences and agents: `$XDG_RUNTIME_DIR/olo-secrets.json`
   (serving, since, each collection's count, the programs with secrets by
   their `application` attribute or schema, the last copy, collections
@@ -10524,6 +10574,41 @@ waiting app from the keychain caller's program (`Incoming::from`). Test
 with a throwaway `--user-data-dir` (DevTools needs a non-default one:
 `--remote-debugging-port`), the fake 1Password and a localhost page; the
 fake's "Olo Test Site" login (`http://localhost`, jane) has a TOTP.
+
+**Credit cards** (keychain `Cards` and `FillCard`; `card_fields` in
+Passwords' `store.rs`; `cardKind`, `fillCard` in `content.js`). A card
+form's field (by its `autocomplete` token, `cc-number`, `cc-name`,
+`cc-given-name`, `cc-family-name`, `cc-exp`, `cc-exp-month`,
+`cc-exp-year`, `cc-csc`, else by what it says: "card number", "CVC",
+"expiry month", "name on card"…) tells the menu so as it gets the focus
+or the pointer: "Autofill Card (Travel Visa •••• 1111)" on top, and under
+Passwords ▸ every card ("Travel Visa (•••• 1111, 08/2029)"), then the
+logins as ever. `Cards` gives what may be said of each card (title,
+name, brand, last four digits, expiry; never the number or the code),
+doesn't wait, and is kept like a page's logins; it is every active
+Credit Card item, as a card isn't kept for a site. `FillCard` waits
+for an unlock and answers only for a card (the candidates are the one
+chosen, if it is one): the number (digits), name, month, year and code,
+from 1Password's built-in fields (`ccnum`, `cardholder`, `type`,
+`expiry`, `cvv`), else by their types and labels; wiped from the
+response once sent. So any page can be given a card, but only by the
+person choosing it in Chrome's menu, which a page can't trigger. The fill
+goes to the frame the menu was opened in and to the tab's frames that
+are the same site's or a payment provider's (Stripe, Braintree, Adyen,
+Checkout.com, Square, PayPal and others, whose fields shops put in
+frames of their own: `PAYMENT_HOSTS`), never another site's; each fills
+the card fields of the form the person was in (else its own), typed as
+a person would, selects chosen by value or text ("8", "08", "Aug",
+"August"; "29" or "2029"), an expiry field in its own shape (its
+placeholder's "MM / YY" or "MM/YYYY", else 4 or 6 long, else "MM/YY"),
+a name split where the form asks for given and family names; the frame
+the menu was opened in is filled last, so its field keeps the focus.
+Tested end to end in a test session: the fake 1Password's Travel Visa
+into a checkout page (one form by `autocomplete`, one by its labels with
+month and year selects, a same-site frame and another site's frame),
+through DevTools (`Runtime.evaluate` in the extension's worker: `cards`,
+`buildMenu`, `fillCard`) and through the real menu: only the form the
+person was in filled, the same-site frame too, the other site's never.
 
 **Passkeys** (`extension/passkeys.js`, `relay.js`; Passwords'
 `passkey.rs`; the keychain's `Passkeys`, `PasskeyCreate`, `PasskeySign`).

@@ -180,6 +180,16 @@ impl Choice {
             _ => None,
         }
     }
+
+    /// As `--encoder` takes it.
+    pub fn id(self) -> &'static str {
+        match self {
+            Choice::Auto => "auto",
+            Choice::Cpu => "cpu",
+            Choice::Nvidia => "nvidia",
+            Choice::Vaapi => "vaapi",
+        }
+    }
 }
 
 /// An encoder: the GPU's (any [`Codec`]) or the processor's (H.264)
@@ -219,6 +229,27 @@ impl Encoder {
             Choice::Auto if codec == Codec::Av1 && on_battery() => vaapi().or_else(|_| nvidia()).or_else(|_| cpu()),
             Choice::Auto => nvidia().or_else(|_| vaapi()).or_else(|_| cpu()),
         }
+    }
+
+    /// Which encoder it is.
+    pub fn choice(&self) -> Choice {
+        match self {
+            Encoder::Cpu(_) => Choice::Cpu,
+            Encoder::Nvidia(..) => Choice::Nvidia,
+            Encoder::Vaapi(_) => Choice::Vaapi,
+        }
+    }
+
+    /// The other encoders that make what this one does, best first (as
+    /// `Auto` takes them): where a recording goes on if this one fails.
+    pub fn others(&self) -> Vec<Choice> {
+        let all: &[Choice] = match self.codec() {
+            Codec::H264 => &[Choice::Nvidia, Choice::Cpu],
+            Codec::Hevc => &[Choice::Nvidia],
+            Codec::Av1 if on_battery() => &[Choice::Vaapi, Choice::Nvidia],
+            Codec::Av1 => &[Choice::Nvidia, Choice::Vaapi],
+        };
+        all.iter().copied().filter(|c| *c != self.choice()).collect()
     }
 
     /// What it codes as.
@@ -398,6 +429,11 @@ pub struct Mp4 {
     /// The sample entry as given (a trimmed copy's, its source's), in
     /// place of one made from the stream.
     entry: Option<Vec<u8>>,
+    /// Sample entries before this one (another encoder's stream before,
+    /// `new_entry`), each with its first sample (from 0).
+    entries: Vec<(u32, Vec<u8>)>,
+    /// This entry's first sample.
+    entry_from: u32,
     /// Each sample's place in the file, size and duration.
     offsets: Vec<u64>,
     sizes: Vec<u32>,
@@ -501,6 +537,8 @@ impl Mp4 {
             sps: None,
             pps: None,
             entry: None,
+            entries: Vec::new(),
+            entry_from: 0,
             offsets: Vec::new(),
             sizes: Vec::new(),
             durations: Vec::new(),
@@ -535,6 +573,37 @@ impl Mp4 {
         let mut mp4 = Mp4::create_for(path, width, height, timescale, codec)?;
         mp4.entry = Some(entry);
         Ok(mp4)
+    }
+
+    /// Another encoder's stream from here on (one opened after the last
+    /// failed): its parameter sets, which may differ, go in a sample entry
+    /// of their own, from its first picture (a key frame). The same sets
+    /// again make no new one (`finish` joins them).
+    pub fn new_entry(&mut self) -> std::io::Result<()> {
+        self.close_entry(None)
+    }
+
+    /// A copy's next sample entry (`copying`): another of its source's,
+    /// from the next sample on.
+    pub fn next_entry(&mut self, entry: Vec<u8>) -> std::io::Result<()> {
+        self.close_entry(Some(entry))
+    }
+
+    fn close_entry(&mut self, next: Option<Vec<u8>>) -> std::io::Result<()> {
+        let here = self.sizes.len() as u32;
+        if here > self.entry_from {
+            let done = match self.entry.take() {
+                Some(e) => e,
+                None => self.sample_entry().ok_or_else(|| std::io::Error::other("the encoder gave no parameter sets"))?,
+            };
+            self.entries.push((self.entry_from, done));
+            self.entry_from = here;
+        }
+        (self.vps, self.sps, self.pps) = (None, None, None);
+        if next.is_some() {
+            self.entry = next;
+        }
+        Ok(())
     }
 
     /// One encoded picture shown for `duration` ticks, as its encoder gave
@@ -591,6 +660,10 @@ impl Mp4 {
         if sample.is_empty() {
             return Ok(());
         }
+        // (A later sample entry's stream starts at a key frame.)
+        if !key && self.entry_from > 0 && self.sizes.len() as u32 == self.entry_from {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "another encoder's stream must start with a key frame"));
+        }
         self.file.write_all(sample)?;
         self.offsets.push(self.at);
         self.sizes.push(sample.len() as u32);
@@ -642,10 +715,17 @@ impl Mp4 {
 
     /// The index written, the file whole and playable.
     pub fn finish(mut self) -> std::io::Result<()> {
-        let entry = match self.entry.take() {
-            Some(e) => e,
-            None => self.sample_entry().ok_or_else(|| std::io::Error::other("the encoder gave no parameter sets"))?,
-        };
+        // Each sample entry from its first sample (one with none left out),
+        // one the same as the one before joined to it.
+        let mut entries = std::mem::take(&mut self.entries);
+        if self.sizes.len() as u32 > self.entry_from || entries.is_empty() {
+            let last = match self.entry.take() {
+                Some(e) => e,
+                None => self.sample_entry().ok_or_else(|| std::io::Error::other("the encoder gave no parameter sets"))?,
+            };
+            entries.push((self.entry_from, last));
+        }
+        entries.dedup_by(|later, earlier| later.1 == earlier.1);
         let n = self.sizes.len() as u32;
         let duration: u64 = self.durations.iter().map(|&d| u64::from(d)).sum();
         let duration = duration.min(u64::from(u32::MAX)) as u32;
@@ -669,7 +749,7 @@ impl Mp4 {
         );
         let mdhd = full(b"mdhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(duration), u16b(0x55c4), u16b(0)].concat());
         let hdlr = full(b"hdlr", 0, &[u32b(0), b"vide".to_vec(), vec![0; 12], b"Olo video\0".to_vec()].concat());
-        let stsd = full(b"stsd", 0, &[u32b(1), entry].concat());
+        let stsd = full(b"stsd", 0, &[u32b(entries.len() as u32), entries.iter().flat_map(|(_, e)| e.clone()).collect()].concat());
         // Durations, run by run.
         let mut runs: Vec<(u32, u32)> = Vec::new();
         for &d in &self.durations {
@@ -680,8 +760,10 @@ impl Mp4 {
         }
         let stts = full(b"stts", 0, &[u32b(runs.len() as u32), runs.iter().flat_map(|(c, d)| [c.to_be_bytes(), d.to_be_bytes()].concat()).collect()].concat());
         let stss = full(b"stss", 0, &[u32b(self.keys.len() as u32), self.keys.iter().flat_map(|k| k.to_be_bytes()).collect()].concat());
-        // Each sample a chunk of its own, where it is in the file.
-        let stsc = full(b"stsc", 0, &[u32b(1), u32b(1), u32b(1), u32b(1)].concat());
+        // Each sample a chunk of its own, where it is in the file; each
+        // entry's from its first.
+        let rows: Vec<u8> = entries.iter().enumerate().flat_map(|(i, (from, _))| [u32b(from + 1), u32b(1), u32b(i as u32 + 1)].concat()).collect();
+        let stsc = full(b"stsc", 0, &[u32b(entries.len() as u32), rows].concat());
         let stsz = full(b"stsz", 0, &[u32b(0), u32b(n), self.sizes.iter().flat_map(|s| s.to_be_bytes()).collect()].concat());
         let co64 = full(b"co64", 0, &[u32b(n), self.offsets.iter().flat_map(|o| o.to_be_bytes()).collect()].concat());
         let stbl = bx(b"stbl", &[stsd, stts, stss, stsc, stsz, co64].concat());
@@ -836,6 +918,91 @@ mod tests {
         let secs = sound.duration().as_secs_f64();
         assert!((1.9..2.2).contains(&secs), "{secs} s of sound");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Another encoder's stream after `new_entry`: its parameter sets in a
+    /// sample entry of their own from its first picture, mapped by
+    /// `stsc`; the same sets again join the entry before; Trim across the
+    /// switch keeps both. (Made-up NAL units: the file's structure only.)
+    #[test]
+    fn another_encoders_stream_gets_its_own_sample_entry() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-entries-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let annex = |units: &[&[u8]]| units.iter().flat_map(|u| [&[0u8, 0, 0, 1][..], u].concat()).collect::<Vec<u8>>();
+        let (sps_a, sps_b, pps): (&[u8], &[u8], &[u8]) = (&[0x67, 0x42, 0xc0, 0x1e, 1], &[0x67, 0x64, 0x00, 0x28, 2], &[0x68, 0xce]);
+        let (idr, p): (&[u8], &[u8]) = (&[0x65, 0x88, 1], &[0x41, 0x9a, 2]);
+        let path = dir.join("two.mp4");
+        let mut mp4 = Mp4::create(&path, 64, 48, 1000).unwrap();
+        mp4.add(&annex(&[sps_a, pps, idr]), true, 100).unwrap();
+        mp4.add(&annex(&[p]), false, 100).unwrap();
+        // The same encoder opened again: the same sets, no new entry.
+        mp4.new_entry().unwrap();
+        mp4.add(&annex(&[sps_a, pps, idr]), true, 100).unwrap();
+        // Another: its first picture must be a key frame.
+        mp4.new_entry().unwrap();
+        assert!(mp4.add(&annex(&[sps_b, pps, p]), false, 100).is_err());
+        mp4.add(&annex(&[sps_b, pps, idr]), true, 100).unwrap();
+        mp4.add(&annex(&[p]), false, 100).unwrap();
+        mp4.finish().unwrap();
+        let entries = trim::video_entries(&path).unwrap();
+        assert_eq!(entries.iter().map(|(from, _)| *from).collect::<Vec<_>>(), [1, 4]);
+        assert_ne!(entries[0].1, entries[1].1);
+        assert!(entries[1].1.windows(sps_b.len()).any(|w| w == sps_b), "the second entry's avcC has the new SPS");
+        let f = std::fs::File::open(&path).unwrap();
+        let size = f.metadata().unwrap().len();
+        let r = mp4::Mp4Reader::read_header(std::io::BufReader::new(f), size).unwrap();
+        assert_eq!(r.tracks().values().next().unwrap().sample_count(), 5);
+        // Trimmed across the switch: both entries, from their samples.
+        let cut = dir.join("cut.mp4");
+        trim::trim(&path, &cut, 0.25, 0.5).unwrap();
+        let kept = trim::video_entries(&cut).unwrap();
+        // (From the key frame before the cut, sample 1: the switch is its 4th.)
+        assert_eq!(kept.iter().map(|(from, _)| *from).collect::<Vec<_>>(), [1, 4], "{kept:?}");
+        assert_eq!((&kept[0].1, &kept[1].1), (&entries[0].1, &entries[1].1));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A recording whose NVIDIA encoder failed going on with the
+    /// processor's: one file, two sample entries, every picture decoded
+    /// (the GIF maker's decoder taking each entry's sets).
+    #[test]
+    fn a_recording_goes_on_with_another_encoder() {
+        if !nvenc::available() {
+            eprintln!("no NVIDIA encoder here: nothing to try");
+            return;
+        }
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-fallback-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let (w, h) = (320u32, 192u32);
+        let path = dir.join("fallback.mp4");
+        let mut mp4 = Mp4::create_for(&path, w, h, 1000, Codec::H264).unwrap();
+        let mut enc = Encoder::new(w, h, 30, Choice::Nvidia, Codec::H264).unwrap();
+        let frame = |i: u32| -> Vec<u8> { (0..w * h).flat_map(|p| if (p / w + 192 - i * 3 % 192) % 192 < 16 { [230u8, 230, 230, 255] } else { [40, 40, 40, 255] }).collect() };
+        for i in 0..60u32 {
+            if i == 30 {
+                // NVENC "fails": the next of the codec takes over.
+                assert_eq!(enc.others(), [Choice::Cpu]);
+                enc = Encoder::new(w, h, 30, Choice::Cpu, Codec::H264).unwrap();
+                mp4.new_entry().unwrap();
+            }
+            let (bits, key) = enc.encode(&frame(i), w as usize * 4, Order::Bgra).unwrap();
+            mp4.add(&bits, key, 33).unwrap();
+        }
+        mp4.finish().unwrap();
+        let entries = trim::video_entries(&path).unwrap();
+        assert_eq!(entries.iter().map(|(from, _)| *from).collect::<Vec<_>>(), [1, 31]);
+        let v = gif::tests_open(&path).unwrap();
+        let mut seen = 0;
+        v.each_decoded(&mut |_| {
+            seen += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert!(seen >= 58, "{seen} pictures decoded of 60");
+        eprintln!("NVENC then OpenH264: {seen} pictures decoded, {} bytes, at {}", std::fs::metadata(&path).unwrap().len(), path.display());
+        if std::env::var_os("OLO_KEEP_TEST_VIDEO").is_none() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     /// An encoder opened again with the same settings goes on in the same

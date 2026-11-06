@@ -914,7 +914,7 @@ impl Passwords {
         {
             return incoming.reply(Response::Passkeys { passkeys: Vec::new() });
         }
-        let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Check { .. } | Request::Search { .. } | Request::Passkeys { .. });
+        let waits = !matches!(incoming.request, Request::Logins { .. } | Request::Cards { .. } | Request::Check { .. } | Request::Search { .. } | Request::Passkeys { .. });
         if self.lock.locked {
             if !waits {
                 return incoming.reply(Response::Locked);
@@ -999,6 +999,22 @@ impl Passwords {
                 self.open_main(cx);
                 cx.notify();
                 return incoming.reply(Response::Shown);
+            }
+            // Credit cards: every one for the menu (not kept for sites);
+            // only a card, and the one chosen, to fill.
+            Request::Cards { .. } | Request::FillCard { .. } => {
+                let chosen = match &incoming.request {
+                    Request::FillCard { vault, id, .. } => Some((vault.clone(), id.clone())),
+                    _ => None,
+                };
+                let candidates = self
+                    .items
+                    .iter()
+                    .filter(|i| i.state == ItemState::Active && i.category == ItemCategory::CreditCard)
+                    .map(|i| (i.vault_id.clone(), i.id.clone()))
+                    .filter(|c| chosen.as_ref().is_none_or(|w| w == c))
+                    .collect();
+                return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates, vault: String::new() });
             }
             Request::Logins { url } | Request::Fill { url, .. } | Request::Check { url, .. } | Request::Save { url, .. } => {
                 let url = url.clone();
