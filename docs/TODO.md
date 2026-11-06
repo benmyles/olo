@@ -17,13 +17,13 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-- **Viewer: a video zoomed to fill, and full screen** (Ben, 2026-11-06):
-  "watching a video in viewer needs to support zooming, like an option
-  to zoom to fill (whilst keeping proportions) and a full screen option
-  (whilst keeping proportions)". A video in the Viewer shown fitting the
-  window (as now), or zoomed to fill it (its proportions kept, what
-  overflows cut off), and full screen (the same two ways), with menu
-  commands and keys, as the Viewer's pictures zoom.
+- **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
+  passwords chrome integration should recognize credit card forms and
+  show the credit cards in the olo context menu for filling". Olo's
+  extension finds a page's card fields (number, name, expiry, security
+  code, by their `autocomplete` tokens, names and labels), and Olo's
+  context menu there lists Passwords' cards to fill them with, as it
+  lists logins for a sign-in form.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -1627,6 +1627,20 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Viewer: a video zoomed to fill, and full screen**~~ (Ben, 2026-11-06):
+  "watching a video in viewer needs to support zooming, like an option
+  to zoom to fill (whilst keeping proportions) and a full screen option
+  (whilst keeping proportions)". A video in the Viewer shown fitting the
+  window (as now), or zoomed to fill it (its proportions kept, what
+  overflows cut off), and full screen (the same two ways), with menu
+  commands and keys, as the Viewer's pictures zoom.
+  *Done* (2026-11-06, HACKING's "Viewer"): View ▸ Actual Size (⌘0),
+  Zoom to Fit (⌘9), Zoom to Fill (⇧⌘9); Enter Full Screen (F; Escape
+  leaves), the transport over the picture while the pointer moves or
+  it's paused; leaving full screen gives the window its place and size
+  back (app_server). Tried headless at 2× (each way, full screen while
+  playing, the window back as it was); review clean at every scale.
 
 - ~~**app_server's critical path on threads of its own**~~ (Ben,
   2026-11-01: "why run the risk of a blocking call? threads would

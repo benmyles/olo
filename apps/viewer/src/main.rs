@@ -19,7 +19,7 @@ use std::{
 use olo_preview::{
     Body, Item,
     edit::{self, EditEvent, Editor, Op},
-    ui::{PreviewEvent, PreviewView},
+    ui::{PreviewEvent, PreviewView, VideoZoom},
 };
 use olo_ui::{
     Frame, Menu, MenuBar, WindowOptions, agent,
@@ -122,6 +122,9 @@ struct Doc {
     after_save: After,
     /// The screen is kept awake (a video is playing).
     awake: bool,
+    /// The window is full screen (as last drawn): its menu bar hidden,
+    /// a picture or a video all there is.
+    fullscreen: bool,
     edit: Option<ImageEdit>,
     /// The file as last opened or saved here (when it was written, how
     /// long), to tell another program's change from our own save.
@@ -201,6 +204,7 @@ impl Viewer {
             sized: false,
             after_save: After::Nothing,
             awake: false,
+            fullscreen: false,
             edit: None,
             trimming: false,
             on_disk: None,
@@ -918,6 +922,7 @@ impl Doc {
                     .checked(v.fit == Some(Fit::Page)),
             );
         }
+        let full_screen = if self.fullscreen { "Exit Full Screen" } else { "Enter Full Screen" };
         if let Content::Other(prev) = &self.content
             && prev.read(cx).is_image()
         {
@@ -933,7 +938,33 @@ impl Doc {
                     .checked(!image.fitted() && (image.scale() - 1.0).abs() < 1e-3)
                     .item("Zoom to Fit", "zoom-fit")
                     .key("9")
-                    .checked(image.fitted()),
+                    .checked(image.fitted())
+                    .separator()
+                    .item(full_screen, "fullscreen")
+                    .keys("F"),
+            );
+        }
+        // A video: at most its own size, as big as fits or filling the
+        // window, its proportions kept; full screen the same ways (Actual
+        // Size there is as big as fits).
+        if let Content::Other(prev) = &self.content
+            && prev.read(cx).is_video()
+        {
+            let zoom = prev.read(cx).video_zoom();
+            menus.push(
+                Menu::new("View")
+                    .item("Actual Size", "video-actual")
+                    .key("0")
+                    .checked(zoom == VideoZoom::Actual)
+                    .item("Zoom to Fit", "video-fit")
+                    .key("9")
+                    .checked(zoom == VideoZoom::Fit)
+                    .item("Zoom to Fill", "video-fill")
+                    .shift_key("9")
+                    .checked(zoom == VideoZoom::Fill)
+                    .separator()
+                    .item(full_screen, "fullscreen")
+                    .keys("F"),
             );
         }
         if picture {
@@ -1102,6 +1133,23 @@ impl Doc {
                 "find-next" => p.find_step(false, cx),
                 _ => p.find_step(true, cx),
             });
+            return;
+        }
+        if command == "fullscreen" {
+            window.toggle_fullscreen();
+            cx.notify();
+            return;
+        }
+        if let Content::Other(prev) = &self.content
+            && let Some(zoom) = match command {
+                "video-actual" => Some(VideoZoom::Actual),
+                "video-fit" => Some(VideoZoom::Fit),
+                "video-fill" => Some(VideoZoom::Fill),
+                _ => None,
+            }
+        {
+            prev.update(cx, |p, cx| p.set_video_zoom(zoom, cx));
+            cx.notify();
             return;
         }
         if let Content::Other(prev) = &self.content {
@@ -1279,6 +1327,19 @@ impl Doc {
             }
             cx.stop_propagation();
             return;
+        }
+        // A picture or a video: F full screen and back, Escape back.
+        if plain && matches!(&self.content, Content::Other(p) if p.read(cx).is_image() || p.read(cx).is_video()) {
+            match key {
+                "f" => window.toggle_fullscreen(),
+                "escape" if window.is_fullscreen() => window.toggle_fullscreen(),
+                _ => {}
+            }
+            if key == "f" || (key == "escape" && self.fullscreen) {
+                cx.notify();
+                cx.stop_propagation();
+                return;
+            }
         }
         match &self.content {
             Content::Other(prev) if plain && prev.read(cx).arrows_free() => {
@@ -1533,6 +1594,7 @@ impl Render for Doc {
         if window.focused(cx).is_none() {
             window.focus(&self.focus);
         }
+        self.fullscreen = window.is_fullscreen();
         // A playing video keeps the screen awake.
         let playing = matches!(&self.content, Content::Other(p) if p.read(cx).playing_video());
         if playing != self.awake {
@@ -1623,7 +1685,9 @@ impl Render for Doc {
                     });
                 }
             })
-            .child(bar)
+            // (Full screen, the bar's still there for its keys, but none
+            // of it shows.)
+            .child(if self.fullscreen { div().h(px(0.0)).overflow_hidden().child(bar) } else { div().child(bar) })
             .child(div().flex_1().min_h_0().child(body))
     }
 }

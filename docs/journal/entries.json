@@ -3490,5 +3490,17 @@
   "title": "StyledEdit: Markdown table columns aligned",
   "caption": "A Markdown table's columns align as its delimiter row says (:--- left, :---: centre, ---: right): the editor's rows take each column's own alignment (Row::aligns).",
   "image": "2026-11-06/041458-stylededit-markdown-table-columns-aligned.png"
+ },
+ {
+  "time": "2026-11-06T09:49:41",
+  "title": "Viewer: a video at Actual Size, Zoom to Fit and Zoom to Fill",
+  "caption": "View \u25b8 Actual Size (\u23180), Zoom to Fit (\u23189), Zoom to Fill (\u21e7\u23189), proportions kept; Enter Full Screen (F), the transport over the picture while the pointer moves",
+  "image": "2026-11-06/094941-viewer-a-video-at-actual-size-zoom-to-fit-and-zo.png"
+ },
+ {
+  "time": "2026-11-06T09:49:42",
+  "title": "Touchpad & Mouse: the wheel's scrolling speed",
+  "caption": "One speed for a wheel's notch in every program, Chrome included (app_server scales it before it's sent); at 1.5\u00d7",
+  "image": "2026-11-06/094942-touchpad-mouse-the-wheel-s-scrolling-speed.png"
  }
 ]

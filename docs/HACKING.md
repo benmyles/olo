@@ -7272,6 +7272,23 @@ panels. The document has the keyboard from the moment its window opens
   pan), formatted documents in `RichView`, sheets in `TableView`, and
   text, listings, fonts, sound and video. The window opens at the size
   its content asks (`ideal_size`) for the display it opens on.
+- A video's picture (View menu, `PreviewView::set_video_zoom`,
+  `VideoZoom`): Actual Size (⌘0, as before: at most a frame pixel a
+  device pixel, smaller to fit), Zoom to Fit (⌘9, as big as fits) or
+  Zoom to Fill (⇧⌘9, filling its place, what overflows cut off by a
+  content mask), its proportions kept every way. Enter Full Screen (F,
+  pictures too; Escape or F leaves): the picture is all there is (the
+  menu bar rendered at no height, so its keys still work; the title and
+  facts gone), Actual Size as big as fits, and the transport over its
+  foot while the pointer moved in the last 2.5 s or it's paused (one
+  timer, re-armed as it fires, hides it; a click on the picture plays
+  and pauses then). Leaving full screen, app_server gives a window its
+  place and its own size back (`WindowMeta::before_fullscreen`; asked
+  for none, GPUI took nearly the whole display). Tried headless with a
+  640 × 360 clip in a 700 × 700 window and a 12 s one full screen at 2×:
+  the three ways, the transport gone 3 s after the pointer stopped while
+  playing, and 700 × 600 at (100, 80) back after Escape; the layout
+  review clean at 1×, 1.5× and 2×.
 - A video or a sound showing: ← and → move its time by 10 s
   (`PreviewView::skip`, `SKIP_SECS`, held at its start and end), ↑ and
   ↓ go to the next file; Space or P plays and pauses. Quick Look's keys

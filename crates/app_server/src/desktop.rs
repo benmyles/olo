@@ -136,6 +136,11 @@ pub struct WindowMeta {
     /// alone, not also where it was on the others (its buffer the
     /// display's size, it would spill onto them).
     pub fullscreen: Cell<bool>,
+    /// Where it was (its place in the space) and how big (the client's
+    /// own size, decorations left out) before it went full screen: given
+    /// back as it leaves (a client left to choose took
+    /// nearly the whole display, the Viewer 1264 × 784 from 700 × 700).
+    pub before_fullscreen: Cell<Option<smithay::utils::Rectangle<i32, smithay::utils::Logical>>>,
     /// Zoomed by Focus, and unzoomed when it leaves it.
     pub focus_zoomed: Cell<bool>,
     /// Glowing as a new window (Preferences ▸ Appearance): since when,
@@ -206,6 +211,7 @@ impl WindowElement {
             focus_display: Cell::new(None),
             covered: Cell::new(false),
             fullscreen: Cell::new(false),
+            before_fullscreen: Cell::new(None),
             focus_zoomed: Cell::new(false),
             glow: Cell::new(None),
             glow_pieces: Default::default(),

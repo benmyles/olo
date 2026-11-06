@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Touchpad & Mouse: the wheel's scrolling speed
+
+*09:49* — One speed for a wheel's notch in every program, Chrome included (app_server scales it before it's sent); at 1.5×
+
+![Touchpad & Mouse: the wheel's scrolling speed](2026-11-06/094942-touchpad-mouse-the-wheel-s-scrolling-speed.png)
+
+### Viewer: a video at Actual Size, Zoom to Fit and Zoom to Fill
+
+*09:49* — View ▸ Actual Size (⌘0), Zoom to Fit (⌘9), Zoom to Fill (⇧⌘9), proportions kept; Enter Full Screen (F), the transport over the picture while the pointer moves
+
+![Viewer: a video at Actual Size, Zoom to Fit and Zoom to Fill](2026-11-06/094941-viewer-a-video-at-actual-size-zoom-to-fit-and-zo.png)
+
 ### StyledEdit: Markdown table columns aligned
 
 *04:14* — A Markdown table's columns align as its delimiter row says (:--- left, :---: centre, ---: right): the editor's rows take each column's own alignment (Row::aligns).
