@@ -7777,6 +7777,14 @@ scan made for the sudo user). What it looks for:
   advertisement monitor is. Fixed by a drop-in
   (`/etc/systemd/system/bluetooth.service.d/olo.conf`, `--experimental`)
   and Bluetooth restarted.
+- **A USB 2 device in a Thunderbolt 5 port may go unseen** (advice, where
+  Intel's Barlow Ridge USB controller, 8086:5782, is present): Ben's
+  YubiKey in such a port wasn't seen at all (2026-11-04; the kernel heard
+  nothing) while USB 3 drives were and the key worked in another port.
+  It says to use another port meanwhile, and Keep It Awake for Now writes
+  `on` to the controller's and its root hubs' `power/control` until the
+  next restart, so plugging the device in again tells whether the
+  sleeping controller misses the plug; once awake, it's fine.
 - **Voice processing's sound not realtime**: a voice service's PipeWire
   thread that rtkit refused (its processes-per-user limit reached).
   Fixed by an rtkit drop-in (`/etc/systemd/system/rtkit-daemon.service.d/olo.conf`:
@@ -8171,6 +8179,16 @@ one are always told apart:
   the default, never listed as a device (`Devices::no_output`).
   `olo_protocol::sound::SoundChoice` remembers it, and Deskbar makes it
   again at login (the sound server forgets it).
+- **A Bluetooth device that plays nothing** (Ben's AirPods, 2026-11-04:
+  an input, but no output): `Devices::unplayable` lists each Bluetooth
+  card (`api.bluez5.address`) with no output of its own, why
+  (`Silence`: its profile `off`; no music or call profile available, its
+  Bluetooth audio not connected; or one chosen yet no output) and the
+  profile that plays (an available `a2dp-sink*`, else
+  `headset-head-unit*`). Preferences ▸ Sound names it under Output ("…
+  is connected but plays no sound: its sound is turned off.") with Play
+  Sound Through It (`set_card_profile`). The watcher follows cards too
+  (`SubscriptionMask::CARD`), so it goes as the profile comes up.
 - **UI**: Preferences ▸ Sound's Voice Processing box (and what it's
   doing in a line); Deskbar's speaker menu: "Clean Up Microphone Sound"
   and a Voice Processing submenu.

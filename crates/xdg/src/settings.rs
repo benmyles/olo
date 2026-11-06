@@ -211,6 +211,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "security", tab: "", group: "Face Unlock", name: "Forget…", role: "Button" },
     Setting { panel: "security", tab: "", group: "Face Unlock", name: "Set Up Again…", role: "Button" },
     Setting { panel: "sound", tab: "", group: "Output", name: "Play sound through", role: "ComboBox" },
+    Setting { panel: "sound", tab: "", group: "Output", name: "Play Sound Through It", role: "Button" },
     Setting { panel: "sound", tab: "", group: "Output", name: "Volume", role: "Slider" },
     Setting { panel: "sound", tab: "", group: "Output", name: "Mute", role: "CheckBox" },
     Setting { panel: "sound", tab: "", group: "Output", name: "Noise control", role: "ComboBox" },

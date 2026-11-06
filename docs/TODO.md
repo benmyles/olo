@@ -1533,7 +1533,12 @@ people.
   full-speed connect, whether `power/control` on (Ben's to try) or the
   USB4 router's own state brings it, and fix or work around it in Olo
   (a udev rule keeping it awake costs power: measure), with Olo Doctor
-  saying so meanwhile.
+  saying so meanwhile. *Doctor says so* (2026-11-06): advice where the
+  Barlow Ridge controller is, use another port meanwhile, and Keep It
+  Awake for Now (the controller and its root hubs' `power/control` on
+  until the next restart) to try with the key: seen then, the sleeping
+  controller misses the plug, and a rule keeping it awake (measured) is
+  the fix. *Left*: that try, with the key (Ben's), or any USB 2 device.
 
 - **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
   paired my airpods and they show up properly in the input menu but in
@@ -1548,7 +1553,12 @@ people.
   their card with no audio profile up (A2DP failing, AAC say, or the
   profile left `off`): to see with them connected (`pactl list cards`,
   WirePlumber's log), then fixed at the cause, and Sound saying so
-  (their output named, with why it isn't there) rather than nothing.
+  (their output named, with why it isn't there) rather than nothing. *Sound
+  says so* (2026-11-06): a Bluetooth device connected with no output is
+  named under Output with why (its sound turned off, no way to play
+  offered, or not started) and Play Sound Through It where a profile
+  plays (`audio::Devices::unplayable`). *Left*: with the AirPods
+  connected, which of those it is, and the cause fixed.
 
 - **AirPods and voice processing, tried on the real things** (Ben,
   2026-11-02; what's left of "AirPods, natively" and "Voice processing

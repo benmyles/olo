@@ -30,6 +30,8 @@ enum Change {
     Volume(Kind, String, f32, usize),
     Mute(Kind, String, bool),
     Voice(voice::Settings),
+    /// A Bluetooth device's card to a profile that plays (its sound was off).
+    CardProfile(String, String),
 }
 
 struct Link {
@@ -79,6 +81,14 @@ fn test_devices() -> Devices {
         ],
         inputs: vec![device("mic", "MacBook Pro Microphone Array (Built-in Audio Analog Stereo)", 0.8, true)],
         no_output: false,
+        // Connected, its sound off: said, with the way to turn it on.
+        unplayable: vec![audio::Unplayable {
+            card: "bluez_card.02_00_00_00_A1_04".into(),
+            description: "Studio Buds+ in the Second Bedroom".into(),
+            address: "02:00:00:00:A1:04".into(),
+            why: audio::Silence::Off,
+            profile: Some("a2dp-sink".into()),
+        }],
     }
 }
 
@@ -149,6 +159,7 @@ fn apply(change: Change) {
         Change::Default(kind, name) => audio::set_default(*kind, name),
         Change::Volume(kind, name, level, channels) => audio::set_device_volume(*kind, name, *level, *channels),
         Change::Mute(kind, name, mute) => audio::set_device_muted(*kind, name, *mute),
+        Change::CardProfile(card, profile) => audio::set_card_profile(card, profile),
         Change::Voice(settings) => {
             if let Err(e) = settings.save() {
                 tracing::warn!("sound: voice settings: {e}");
@@ -381,6 +392,18 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
                 let _ = tx2.send(Change::Default(kind, names_of[i].clone()));
             }
         }));
+        // Bluetooth devices connected with nothing playing through them:
+        // named, with why, and their sound turned on where it can be.
+        if kind == Kind::Output {
+            for u in &devices.unplayable {
+                ui.note(format!("{} is connected but plays no sound: {}.", u.description, u.why.said()));
+                if let Some(profile) = u.profile.clone() {
+                    let (tx3, card) = (tx.clone(), u.card.clone());
+                    let id = format!("sound-play-{card}");
+                    ui.add(olo_ui::widgets::Button::new("Play Sound Through It").id(id).on_click(move |_, _| _ = tx3.send(Change::CardProfile(card.clone(), profile.clone()))));
+                }
+            }
+        }
         if none_first && current == 0 {
             ui.note(if list.is_empty() { none } else { "Sound plays nowhere until you choose a device." });
             return;

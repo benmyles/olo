@@ -103,7 +103,7 @@ impl Conn {
                 name,
             }
         };
-        let outputs = sinks
+        let outputs: Vec<Device> = sinks
             .iter()
             .map(|s| {
                 let mut d = device(&s.name, &s.description, &s.cvolume, s.muted, &default_out, &s.props);
@@ -118,7 +118,22 @@ impl Conn {
             .collect();
         // A sink's monitor isn't a microphone.
         let inputs = sources.iter().filter(|s| s.monitor_of_sink_index.is_none()).map(|s| device(&s.name, &s.description, &s.cvolume, s.muted, &default_in, &s.props)).collect();
-        Ok(Devices { outputs, inputs, no_output: false })
+        // Bluetooth devices connected with nothing playing through them.
+        let cards: protocol::CardInfoList = self.request(&Command::GetCardInfoList)?;
+        let silent = unplayable(
+            &outputs,
+            cards.iter().filter_map(|k| {
+                Some(SilentCard {
+                    card: k.name.to_string_lossy().into_owned(),
+                    description: prop(&k.props, "device.description").unwrap_or_default(),
+                    address: prop(&k.props, "api.bluez5.address")?,
+                    active: k.active_profile.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
+                    profiles: k.profiles.iter().filter(|p| p.available != 0).map(|p| p.name.to_string_lossy().into_owned()).collect(),
+                    plays: k.profiles.iter().any(|p| plays(&p.name.to_string_lossy())),
+                })
+            }),
+        );
+        Ok(Devices { outputs, inputs, no_output: false, unplayable: silent })
     }
 }
 
@@ -294,6 +309,86 @@ pub struct Devices {
     pub inputs: Vec<Device>,
     /// Sound goes nowhere: "None" chosen as the output ([`set_no_output`]).
     pub no_output: bool,
+    /// Bluetooth devices connected with no output: nothing plays through
+    /// them (Ben's AirPods, 2026-11-04: an input, but no output).
+    pub unplayable: Vec<Unplayable>,
+}
+
+/// A Bluetooth device the sound server has (its card) with no output, and
+/// why.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Unplayable {
+    /// The card's name (what [`set_card_profile`] takes).
+    pub card: String,
+    /// "AirPods Pro".
+    pub description: String,
+    pub address: String,
+    pub why: Silence,
+    /// The profile that plays through it (music's, A2DP, else a call's),
+    /// if it offers one now.
+    pub profile: Option<String>,
+}
+
+/// Why a connected Bluetooth device plays nothing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Silence {
+    /// Its sound is turned off (its card's profile is "off").
+    #[default]
+    Off,
+    /// It offers no way to play sound now (no music or call profile
+    /// available: BlueZ's audio connection didn't come up).
+    NoWay,
+    /// A way is chosen, yet no output came of it.
+    NotStarted,
+}
+
+impl Silence {
+    /// Said after "… is connected but plays no sound:".
+    pub fn said(self) -> &'static str {
+        match self {
+            Silence::Off => "its sound is turned off",
+            Silence::NoWay => "it offers no way to play sound (its Bluetooth audio didn't connect)",
+            Silence::NotStarted => "its sound didn't start",
+        }
+    }
+}
+
+/// A Bluetooth card as `unplayable` judges it.
+struct SilentCard {
+    card: String,
+    description: String,
+    address: String,
+    active: String,
+    /// Its profiles available now.
+    profiles: Vec<String>,
+    /// Whether it has a profile that plays at all, available now or not
+    /// (a phone sending its sound here has none: it isn't missing one).
+    plays: bool,
+}
+
+/// A profile that plays sound through a device: music's (A2DP) or a
+/// call's (HFP/HSP).
+fn plays(profile: &str) -> bool {
+    profile.starts_with("a2dp-sink") || profile.starts_with("headset-head-unit")
+}
+
+/// The Bluetooth cards among `cards` with no output among `outputs` (by
+/// address), each with why and the profile that would play through it.
+fn unplayable(outputs: &[Device], cards: impl Iterator<Item = SilentCard>) -> Vec<Unplayable> {
+    cards
+        .filter(|c| c.plays && !outputs.iter().any(|o| o.bluetooth.as_ref().is_some_and(|b| b.address.eq_ignore_ascii_case(&c.address))))
+        .map(|c| {
+            let playing = |prefix: &str| c.profiles.iter().find(|p| p.starts_with(prefix)).cloned();
+            let profile = playing("a2dp-sink").or_else(|| playing("headset-head-unit"));
+            let why = match (&profile, c.active.as_str()) {
+                (None, _) => Silence::NoWay,
+                (Some(_), "off" | "") => Silence::Off,
+                (Some(_), _) => Silence::NotStarted,
+            };
+            let description = if c.description.is_empty() { c.address.clone() } else { c.description };
+            Unplayable { card: c.card, description, address: c.address, why, profile }
+        })
+        .collect()
 }
 
 /// The output that is none: a silent sink of Olo's (PipeWire's null sink),
@@ -395,7 +490,8 @@ pub fn watch_devices_raw(mut changed: impl FnMut(Option<Devices>)) -> ! {
             let mut query = Conn::connect()?;
             let mut events = Conn::connect()?;
             events.sock.get_ref().set_read_timeout(None)?;
-            events.ack(&Command::Subscribe(SubscriptionMask::SINK | SubscriptionMask::SOURCE | SubscriptionMask::SERVER))?;
+            // (Cards too: a Bluetooth device's profile turned on or off.)
+            events.ack(&Command::Subscribe(SubscriptionMask::SINK | SubscriptionMask::SOURCE | SubscriptionMask::SERVER | SubscriptionMask::CARD))?;
             report(Some(query.devices()?));
             loop {
                 let (_, cmd) = protocol::read_command_message(&mut events.sock, events.version)?;
@@ -498,6 +594,46 @@ fn watch_once(report: &mut impl FnMut(Option<Volume>)) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A Bluetooth card with no output: said why (off, no way, not
+    /// started), with the profile that plays (music's before a call's);
+    /// one with an output isn't.
+    #[test]
+    fn bluetooth_cards_with_no_output() {
+        let card = |address: &str, active: &str, profiles: &[&str]| SilentCard {
+            card: format!("bluez_card.{address}"),
+            description: "AirPods Pro".into(),
+            address: address.into(),
+            active: active.into(),
+            profiles: profiles.iter().map(|p| p.to_string()).collect(),
+            plays: true,
+        };
+        // A phone sending its sound here: nothing to play through.
+        let phone = SilentCard { plays: false, ..card("EE:EE", "a2dp-source", &["a2dp-source", "audio-gateway"]) };
+        let playing = Device {
+            name: "bluez_output.AA_AA".into(),
+            description: "AirPods".into(),
+            volume: Volume { level: 0.5, muted: false },
+            channels: 2,
+            is_default: true,
+            bluetooth: Some(Bluetooth { address: "AA:AA".into(), ..Bluetooth::default() }),
+            private: true,
+        };
+        let got = unplayable(
+            std::slice::from_ref(&playing),
+            vec![
+                card("aa:aa", "a2dp-sink", &["a2dp-sink"]),
+                card("BB:BB", "off", &["headset-head-unit", "a2dp-sink-aac", "off"]),
+                card("CC:CC", "off", &["off"]),
+                card("DD:DD", "headset-head-unit", &["headset-head-unit"]),
+                phone,
+            ]
+            .into_iter(),
+        );
+        let said: Vec<(&str, Silence, Option<&str>)> = got.iter().map(|u| (u.address.as_str(), u.why, u.profile.as_deref())).collect();
+        assert_eq!(said, [("BB:BB", Silence::Off, Some("a2dp-sink-aac")), ("CC:CC", Silence::NoWay, None), ("DD:DD", Silence::NotStarted, Some("headset-head-unit"))]);
+    }
+
     use super::*;
 
     #[test]
