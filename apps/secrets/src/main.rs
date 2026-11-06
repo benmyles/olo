@@ -61,6 +61,10 @@ struct Status {
     /// GNOME Keyring's collections left locked (not copied).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     skipped: Vec<String>,
+    /// What the store had that earlier versions left and was mended as
+    /// it was opened (`Store::heal`): Olo Doctor says so.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    healed: Option<store::Healed>,
     /// What went wrong last, if anything.
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
@@ -142,10 +146,14 @@ fn keyring_key() -> Result<Zeroizing<[u8; 32]>, String> {
 /// Olo answered) is kept. How many came.
 fn import(store: &mut Store, found: Vec<gnome::Found>) -> usize {
     let mut n = 0;
-    for f in found {
+    for mut f in found {
         let identity = store::identity(&f.collection, &f.item.label, &f.item.attributes);
         if store.data.imported.get(&identity) == Some(&f.item.modified) {
             continue;
+        }
+        // (GNOME Keyring's second login keyring, "Login", is ours: one.)
+        if f.collection != store::LOGIN && f.collection.eq_ignore_ascii_case(store::LOGIN) {
+            f.collection = store::LOGIN.to_owned();
         }
         if store.collection(&f.collection).is_none() {
             store.data.collections.push(store::Collection::new(&f.collection, &f.collection_label));
@@ -197,6 +205,12 @@ fn take_over(status: &mut Status) -> Result<Serving, String> {
         let (found, skipped) = gnome::read_all(&conn, !again).map_err(|e| format!("reading GNOME Keyring: {e}"))?;
         status.imported = import(&mut store, found);
         status.skipped = skipped;
+    }
+    // What earlier versions left, mended (an upgrade starts it again).
+    let healed = store.heal();
+    if !healed.is_empty() {
+        tracing::info!("secrets: mended the store: {healed:?}");
+        status.healed = Some(healed);
     }
     store.data.serving_since.get_or_insert_with(store::now);
     store.save()?;
@@ -359,7 +373,8 @@ fn main() -> std::process::ExitCode {
                     Ok(s) => {
                         let imported = std::mem::take(&mut status.imported);
                         let skipped = std::mem::take(&mut status.skipped);
-                        status = Status { imported, skipped, ..status_of(&s.state.store.lock().unwrap_or_else(|e| e.into_inner()), true) };
+                        let healed = status.healed.take();
+                        status = Status { imported, skipped, healed, ..status_of(&s.state.store.lock().unwrap_or_else(|e| e.into_inner()), true) };
                         forget_the_gone(&s.conn, s.state.clone());
                         serving = Some(s);
                     }

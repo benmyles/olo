@@ -458,6 +458,7 @@ pub fn scan(roots: &Roots) -> Report {
     builtin_sound(roots, &gpus, &mut r);
     thunderbolt(roots, &mut r);
     login_keyring(roots, &mut r);
+    secrets_store(roots, &procs, &mut r);
     presence_rule(roots, &mut r);
     security_keys(roots, &mut r);
     panel_hdr(roots, &mut r);
@@ -997,7 +998,21 @@ fn audio_threads(roots: &Roots, procs: &[Proc]) -> Vec<AudioThread> {
 /// 2026-11-06: "i press fix it, it says it's fixed, but then it just
 /// comes back").
 pub fn after_fix(id: &str) -> Option<fn()> {
-    (id == "voice-realtime").then_some(ask_realtime_again as fn())
+    match id {
+        "voice-realtime" => Some(ask_realtime_again as fn()),
+        // (olo-secrets started again by the session, its status written
+        // once it has merged: waited for, five seconds at most.)
+        "secrets:two-logins" => Some(|| {
+            let roots = Roots::real();
+            for _ in 0..50 {
+                if secrets_status(&roots).is_some_and(|v| v["serving"].as_bool() == Some(true) && login_keyrings(&v) <= 1) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }),
+        _ => None,
+    }
 }
 
 fn ask_realtime_again() {
@@ -1250,6 +1265,87 @@ fn login_keyring(roots: &Roots, r: &mut Report) {
             "gnome-keyring keeps the secrets apps keep (Passwords' key, Chrome's, Wi-Fi passwords), and logging in opens it only through its PAM module, which isn't installed ({KEYRING_PAM}). So it stays locked and asks for its password, or was never made. The fix installs it; the keyring then opens at your next login, if its password is your login password."
         ),
         fix: Some(Fix { label: "Install the Keyring's Login Module".into(), root: true, steps: vec![Step::InstallPackages { names: vec![KEYRING_PAM.into()] }] }),
+    });
+}
+
+/// olo-secrets' status file (`$XDG_RUNTIME_DIR/olo-secrets.json`).
+fn secrets_status(roots: &Roots) -> Option<serde_json::Value> {
+    serde_json::from_str(&std::fs::read_to_string(roots.fs.join(format!("run/user/{}/olo-secrets.json", roots.uid))).ok()?).ok()
+}
+
+/// How many login keyrings a status lists (`login`, and a second "Login").
+fn login_keyrings(status: &serde_json::Value) -> usize {
+    status["collections"].as_array().map_or(0, |cs| cs.iter().filter(|c| c["id"].as_str().is_some_and(|id| id.eq_ignore_ascii_case("login"))).count())
+}
+
+/// Programs' secrets kept in one login keyring. Olo's own (olo-secrets,
+/// answering for GNOME Keyring) mends itself each time it starts, as an
+/// upgrade starts it: a second login keyring ("Login", which Olo's own
+/// client made beside `login` on a computer with no default alias,
+/// 2026-11-04) merged in, an item there twice kept once. Said when it did
+/// that; found if it still has two (the fix starts it again). With GNOME
+/// Keyring answering, its own two are said (olo-secrets merges them when
+/// it takes over). Two, gh (go-keyring, which reads `login`) lost its
+/// token to the other (Ben, 2026-11-06).
+fn secrets_store(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let status = secrets_status(roots);
+    if let Some(v) = status.as_ref().filter(|v| v["serving"].as_bool() == Some(true)) {
+        if login_keyrings(v) > 1 {
+            let pid = procs.iter().find(|p| p.uid == roots.uid && p.name == "olo-secrets").map(|p| p.pid);
+            r.findings.push(Finding {
+                id: "secrets:two-logins".into(),
+                severity: Severity::Problem,
+                title: "Olo's keyring has two login keyrings".into(),
+                detail: "Programs that keep their secrets in the login keyring don't all look in the same one: gh (through go-keyring) reads “login”, others the default, “Login”, so gh can lose its token. olo-secrets merges them, each secret kept once (the newest), as it starts; the fix starts it again (its programs carry on).".into(),
+                fix: pid.map(|pid| Fix { label: "Merge Them".into(), root: false, steps: vec![Step::Signal { pid, signal: libc::SIGTERM }] }),
+            });
+            return;
+        }
+        let detail = match v.get("healed") {
+            Some(h) => {
+                let merged = h["merged"].as_array().map_or(0, Vec::len);
+                let twice = h["duplicates"].as_u64().unwrap_or(0);
+                let mut said = Vec::new();
+                if merged > 0 {
+                    said.push("a second login keyring merged in".to_owned());
+                }
+                if twice > 0 {
+                    said.push(format!("{twice} secret{} kept twice now kept once, the newest", if twice == 1 { "" } else { "s" }));
+                }
+                if said.is_empty() {
+                    said.push("its items given GNOME's schema".into());
+                }
+                format!("Olo's keyring mended itself as it started: {}.", said.join("; "))
+            }
+            None => "Olo's keyring keeps programs' secrets in one login keyring, as GNOME Keyring would.".into(),
+        };
+        r.fine.push(Fine { title: "Programs' secrets are in one login keyring".into(), detail });
+        return;
+    }
+    // GNOME Keyring answering: its own two, if it has them.
+    let Some(dir) = roots.bin.parent().map(|local| local.join("share/keyrings")) else { return };
+    if !dir.join("login.keyring").exists() {
+        return;
+    }
+    let others: Vec<String> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.strip_suffix(".keyring").map(str::to_owned))
+        .filter(|stem| stem != "login" && stem.eq_ignore_ascii_case("login"))
+        .collect();
+    if others.is_empty() {
+        return;
+    }
+    r.findings.push(Finding {
+        id: "secrets:gnome-two-logins".into(),
+        severity: Severity::Advice,
+        title: "GNOME Keyring has two login keyrings".into(),
+        detail: format!(
+            "Besides “login” it has “{}”, the default, so programs that keep secrets in the default and those that read “login” (gh, through go-keyring) don't see each other's. Olo's own keyring (Preferences ▸ Security ▸ Programs' Secrets) merges them into one when it takes over.",
+            others.join("”, “")
+        ),
+        fix: None,
     });
 }
 
@@ -1642,6 +1738,41 @@ mod tests {
         let roots =
             Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None), temp: TempFiles::default() };
         (fs, roots)
+    }
+
+    /// Programs' secrets in one login keyring: olo-secrets still having two
+    /// found (its fix starts it again), its mending said, and GNOME
+    /// Keyring's own two said when it answers.
+    #[test]
+    fn one_login_keyring() {
+        let (fs, roots) = machine("secrets");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        w("proc/960/cmdline", "/home/me/.local/bin/olo-secrets\0");
+        let status = format!("run/user/{}/olo-secrets.json", roots.uid);
+        w(&status, r#"{"serving":true,"collections":[{"id":"login","label":"Login","items":3},{"id":"session","label":"Session","items":0},{"id":"Login","label":"Login","items":12}]}"#);
+        let r = scan(&roots);
+        let f = r.find("secrets:two-logins").expect("two found");
+        assert_eq!(f.fix.as_ref().unwrap().steps, [Step::Signal { pid: 960, signal: libc::SIGTERM }]);
+        assert!(after_fix("secrets:two-logins").is_some());
+        // Mended as it started: said, nothing found.
+        w(&status, r#"{"serving":true,"collections":[{"id":"login","label":"Login","items":13}],"healed":{"merged":["Login"],"duplicates":2,"schemas":2}}"#);
+        let r = scan(&roots);
+        assert!(r.find("secrets:two-logins").is_none());
+        let fine = r.fine.iter().find(|f| f.title == "Programs' secrets are in one login keyring").expect("said");
+        assert!(fine.detail.contains("a second login keyring merged in") && fine.detail.contains("2 secrets kept twice"), "{}", fine.detail);
+        // GNOME Keyring answering, with its own two.
+        w(&status, r#"{"serving":false,"collections":[]}"#);
+        w("home/me/.local/share/keyrings/login.keyring", "");
+        w("home/me/.local/share/keyrings/Login.keyring", "");
+        let r = scan(&roots);
+        let f = r.find("secrets:gnome-two-logins").expect("GNOME's two");
+        assert!(f.fix.is_none() && f.detail.contains("“Login”"), "{}", f.detail);
+        std::fs::remove_file(fs.join("home/me/.local/share/keyrings/Login.keyring")).unwrap();
+        assert!(scan(&roots).find("secrets:gnome-two-logins").is_none());
     }
 
     #[test]

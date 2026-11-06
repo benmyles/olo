@@ -27,6 +27,31 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Switching to olo-secrets broke gh's login** (Ben, 2026-11-06,
+  urgent): "i tried switching to olo-secrets and now it broke everything
+  and e.g. gh won't even auth" ("no token found for benmyles", then "The
+  token in default is invalid"); "this has to just work seamlessly so it
+  doesn't break like this next time and olo doctor needs to repair/heal
+  it on the next upgrade"; "can you also heal my keyring for me right
+  now". *Found*: two login keyrings, `login` and "Login" (Olo's own
+  Secret Service client made "Login" beside GNOME's `login` on
+  2026-11-04, when the new computer had no default alias), both copied
+  in; and olo-secrets' `replace` matched attributes exactly where GNOME
+  Keyring matches those given, so gh's new token went in beside the
+  copied old one (which had GNOME's `xdg:schema`), go-keyring read the
+  old one first, and gh's active-account item was in the other keyring.
+  *Fixed*: olo-secrets answers as GNOME Keyring does (`xdg:schema`
+  given, replace by the attributes given) and mends its store at every
+  take-over (so every upgrade): the second login keyring merged in, each
+  secret once, the newest first; Doctor says what it mended, offers Merge
+  Them if two are ever listed, and says when GNOME Keyring has two; the
+  hand-back and Olo's client use `login`. *Ben's keyring healed*
+  (11:31): the store backed up (/var/tmp/olo-secrets-backup), the fixed
+  olo-secrets installed and started again: "Login" merged, 2 duplicates
+  gone; gh's active-account item set to the token of his 11:21 login, as
+  gh's own login would have (nothing printed). `gh auth status` should
+  now say he's logged in.
+
 - **Olo Doctor's "Voice processing's sound isn't realtime" comes back
   after Fix** (Ben, 2026-11-06): "i press fix it, it says it's fixed,
   but then it just comes back". *Found*: the fix did take (rtkit's

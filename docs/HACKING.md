@@ -9211,6 +9211,33 @@ wakeups) and follows the switch live.
   while Olo answered written into GNOME Keyring (D-Bus starts it again;
   it asks for the password to unlock through Olo's prompter) and what was
   deleted deleted there; the kernel's copy of the key forgotten.
+- **As GNOME Keyring answers** (Ben, 2026-11-06: gh lost its token
+  just after he switched): an item made without `xdg:schema` gets
+  `org.freedesktop.Secret.Generic`, as GNOME Keyring gives it; and
+  `CreateItem`'s `replace` replaces an item that has every one of the new
+  one's attributes (GNOME's `gkm_secret_fields_match`), not only one with
+  exactly them. Matching exactly, gh's token written again (go-keyring
+  sends `service` and `username` only) went in beside the copy of
+  GNOME's, which had its `xdg:schema`, and go-keyring reads the first it
+  finds: the old one. go-keyring (gh's) reads and writes
+  `…/collection/login` whenever the service lists it, whatever the
+  default alias says.
+- **Mending** (`Store::heal`, every take-over, so every upgrade, which
+  starts it again): every item given GNOME's `xdg:schema`; a second login
+  collection (an id `login` but for its case: GNOME Keyring's "Login",
+  which Olo's own client made beside `login` on a computer with no
+  default alias, 2026-11-04) merged into `login`, aliases following, and
+  GNOME's "Login" copied into `login` from then on; in each collection
+  one item per set of attributes, the newest, kept first (as go-keyring
+  takes the first found). What it did is in the status (`healed`) and
+  Olo Doctor says so ("Programs' secrets are in one login keyring"); if
+  two login keyrings are ever listed, Doctor's Merge Them starts
+  olo-secrets again. With GNOME Keyring answering, Doctor says when it
+  has a second "Login" keyring. Handing back writes the login
+  collection's items into GNOME's `login` (not the default alias's,
+  which may be "Login"), making `login` the default again there; and
+  `olo_system::secrets` (Passwords' key) makes an existing `login` the
+  default rather than creating another.
 - **Status** for Preferences and agents: `$XDG_RUNTIME_DIR/olo-secrets.json`
   (serving, since, each collection's count, the programs with secrets by
   their `application` attribute or schema, the last copy, collections

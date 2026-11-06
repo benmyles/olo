@@ -123,18 +123,27 @@ pub fn read_all(conn: &Connection, ask: bool) -> zbus::Result<(Vec<Found>, Vec<S
 }
 
 /// The collection `id` (labelled `label`) of GNOME Keyring's, made if
-/// it's missing; its path.
+/// it's missing; its path. The login one is GNOME's `login` keyring where
+/// it has one (what go-keyring, gh's, reads, whatever the default alias
+/// says), made the default again if the default was a second "Login"
+/// (Olo's client made one, 2026-11-04); else the default's.
 fn collection(conn: &Connection, svc: &Proxy<'_>, id: &str, label: &str) -> zbus::Result<OwnedObjectPath> {
+    let collections: Vec<OwnedObjectPath> = svc.get_property("Collections")?;
+    if let Some(p) = collections.iter().find(|p| last(p.as_str()) == id) {
+        if id == store::LOGIN {
+            let default: OwnedObjectPath = svc.call("ReadAlias", &("default",))?;
+            if default.as_str() != p.as_str() && (default.as_str() == "/" || last(default.as_str()).eq_ignore_ascii_case(store::LOGIN)) {
+                let _ = svc.call::<_, _, ()>("SetAlias", &("default", p));
+            }
+        }
+        return Ok(p.clone());
+    }
     let alias = if id == store::LOGIN { "default" } else { "" };
     if !alias.is_empty() {
         let p: OwnedObjectPath = svc.call("ReadAlias", &(alias,))?;
         if p.as_str() != "/" {
             return Ok(p);
         }
-    }
-    let collections: Vec<OwnedObjectPath> = svc.get_property("Collections")?;
-    if let Some(p) = collections.into_iter().find(|p| last(p.as_str()) == id) {
-        return Ok(p);
     }
     let mut props: HashMap<&str, Value> = HashMap::new();
     props.insert("org.freedesktop.Secret.Collection.Label", Value::from(label));
