@@ -17,6 +17,43 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
+- **Screen Recorder: the app, as CleanShot X is** (Ben, 2026-11-04,
+  again 2026-11-06: "where is the screen recording app?"). The
+  recording itself is built (the "Screen recording, for people and
+  agents" entry below: `olo-screenshot --record` and Screenshot's
+  Record… menu), but there is no app around it. An Olo app of its own:
+  - **Start**: Screen, Window or Region (the region picker, with sizes
+    and aspect ratios to snap to), and its options in one place: sound
+    (computer, microphone), camera, clicks and keys shown, pointer size
+    and smoothing, zoom on clicks, countdown, MP4 or GIF, quality.
+  - **While recording**: a small control bar on screen (never in the
+    recording): the time, pause and resume, stop, restart, discard, mark.
+  - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
+    Edit and Delete, dragged out as the file.
+  - **Library**: every recording with its picture, length, size and date:
+    play, edit, show, rename, delete, search.
+  - **Editor**: a timeline (pictures along it, the sound's waveform),
+    trim, cut out a stretch, crop, the zooms and marks edited, sound
+    muted, and Export (MP4 or GIF, size, frame rate, quality) on a worker
+    with progress and Cancel.
+  - Agent-native throughout (the kit's tree, `--json`), and the skill
+    says how.
+
+- **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
+  blocked: "neither of those are blocked on me", 2026-11-06). A display
+  manager in GDM's place (a daemon owning the seat, PAM and logind's
+  session, a greeter on the kit: the person, their picture, the
+  password, Touch ID and face, the sessions) and the boot in Plymouth's
+  (the start-up screen's picture as a theme), built and tried headless
+  and on a vkms seat; switching the machine over is Ben's to say.
+
+- **olo-slack: its status follows Olo's** (Ben, 2026-11-04): away when
+  the screen locks, Do Not Disturb with Olo's, in a meeting during a
+  call; through Slack's web API from its signed-in page.
+
+- **StyledEdit: ⌘-click opens a link; pictures on the web shown** (from
+  the StyledEdit entry: "Not done").
+
 ## Done, waiting for Ben to try or confirm
 
 - **Token Pool upgrades seamlessly** (Ben, 2026-11-06): "make it so that
