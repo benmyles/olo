@@ -887,7 +887,9 @@ impl Doc {
     /// Put `s` back, keeping what it replaces on the other stack.
     fn restore(&mut self, s: State, selection: Range<usize>, redoing: bool) -> (Range<usize>, Change) {
         let removed = s.at..s.at + s.now;
-        let text_only = self.edits.is_some() && s.paras.is_empty();
+        // (A step taken of text alone keeps no paragraph settings: there
+        // is always one a line otherwise.)
+        let text_only = s.paras.is_empty();
         let back = State {
             at: s.at,
             now: s.was.len(),
@@ -1493,5 +1495,12 @@ mod timing {
         d.redo(mid..mid);
         assert_eq!(d.paras().len(), n);
         assert!(d.text().contains("line\nbreak\n"));
+        // A step taken as text alone, undone once styled again.
+        d.edit(0..0, "a\nb\n", 0..0);
+        d.keep_edits(false);
+        d.undo(0..0);
+        assert_eq!(d.paras().len(), d.text().split('\n').count());
+        d.redo(0..0);
+        assert_eq!(d.paras().len(), d.text().split('\n').count());
     }
 }

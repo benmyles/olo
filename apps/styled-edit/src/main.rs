@@ -268,6 +268,8 @@ struct DocView {
     pasted: Option<Vec<u8>>,
     /// Styled, source code or Markdown.
     mode: Mode,
+    /// The link right-clicked in a Markdown document (Open Link).
+    link: Option<String>,
     /// Source shows line numbers (Document ▸ Line Numbers).
     line_numbers: bool,
     _subs: Vec<Subscription>,
@@ -384,6 +386,27 @@ impl editor::Document for Styled<'_> {
                 let typed = format!("\n{indent}");
                 let n = typed.len();
                 (!indent.is_empty()).then_some((sel, typed, n))
+            }
+            // Lines selected: each indented, or outdented, by one.
+            (Mode::Code { indent, .. }, EditKey::Tab | EditKey::BackTab) if !sel.is_empty() => {
+                let start = text[..sel.start].rfind('\n').map_or(0, |i| i + 1);
+                let end = sel.end - usize::from(sel.end > sel.start && text[..sel.end].ends_with('\n'));
+                let end = text[end..].find('\n').map_or(text.len(), |i| end + i);
+                let unit = indent.clone();
+                let lines: Vec<String> = text[start..end]
+                    .split('\n')
+                    .map(|l| {
+                        if key == EditKey::Tab {
+                            if l.is_empty() { String::new() } else { format!("{unit}{l}") }
+                        } else {
+                            let take = if l.starts_with('\t') { 1 } else { (l.len() - l.trim_start_matches(' ').len()).min(unit.len().max(1)) };
+                            l[take..].to_owned()
+                        }
+                    })
+                    .collect();
+                let made = lines.join("\n");
+                let n = made.len();
+                Some((start..end, made, n))
             }
             (Mode::Code { indent, .. }, EditKey::Tab) if sel.is_empty() && indent.as_str() != "\t" => {
                 // To the next indent stop.
@@ -504,6 +527,17 @@ impl EditorHost for DocView {
         }
         let selected = !self.bytes().is_empty();
         let mut menu = Menu::new("Edit");
+        // On a link in a Markdown document: where it goes, first.
+        self.link = match &mut self.mode {
+            Mode::Markdown(look) => {
+                look.sync(self.doc.text(), self.doc.generation);
+                look.link_at(self.editor.caret())
+            }
+            _ => None,
+        };
+        if self.link.is_some() {
+            menu = menu.item("Open Link", "open-link").separator();
+        }
         if let Some((_, guesses)) = &self.spell {
             for (k, g) in guesses.iter().enumerate() {
                 menu = menu.item(g.as_str(), format!("spell:{k}"));
@@ -566,6 +600,7 @@ impl DocView {
             common,
             pasted: None,
             mode: Mode::Styled,
+            link: None,
             line_numbers: true,
             _subs: vec![sub],
         }
@@ -809,6 +844,23 @@ impl DocView {
             "line-numbers" => {
                 self.line_numbers = !self.line_numbers;
                 return cx.notify();
+            }
+            "open-link" => {
+                // A link to a file is from the document's folder; opened by
+                // what opens its kind, on a worker (it may start an app).
+                // (Not a link within the document, `#heading`.)
+                if let Some(to) = self.link.take().filter(|t| !t.starts_with('#')) {
+                    let target = match olo_xdg::open::Target::parse(&to) {
+                        olo_xdg::open::Target::Path(p) if p.is_relative() => olo_xdg::open::Target::Path(self.path.as_deref().and_then(Path::parent).map_or(p.clone(), |f| f.join(p))),
+                        t => t,
+                    };
+                    std::thread::spawn(move || {
+                        if let Err(e) = olo_xdg::open::open(&target) {
+                            tracing::warn!("opening {to}: {e}");
+                        }
+                    });
+                }
+                return;
             }
             c if c.starts_with("language:") => {
                 self.choose_language(&c["language:".len()..]);

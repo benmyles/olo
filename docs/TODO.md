@@ -185,6 +185,20 @@ something nobody here has is in "Blocked", with what it waits for.
   in 4. *Next*: the cause, not the wait: a window coming back into a
   group asked for the group's size at its first commit (as `auto_claim`
   asks a tile's), so it never draws the saved size at all.
+  *Done* (2026-11-06): a window coming back into a group on screen is
+  asked for the group's size as it is now (on its way, mid-drag) in its
+  first configure (`returning_group_size`). Seed 16 with `--reloads`,
+  nothing else running: 13 of 14 pass (8 runs of 60 steps, 6 of 56;
+  it was 1 failure in 4). (Run beside a build, a run fails at step 1
+  too: a StyledEdit's first frame later than the fuzzer's 0.25 s.)
+  *Found*, the one left (a kept run's log): not a window coming back.
+  The StyledEdit opened at step 49, after the reload, behind its
+  group's front (window 2, both 290 px, then 533 after step 53's drag),
+  was raised over it for 8 ms during step 54's drag (the tree read
+  `[6 | 5]` then `[2 | 5]`: a group's tile is its top window, and 6
+  hadn't drawn the group's 533 yet). *Next*: what raised it (log
+  `raise_element` callers with a reason during a drag) and keep a
+  group's front over the window being sized mid-drag.
 
 ## Not started (highest priority first)
 
@@ -326,9 +340,13 @@ any other item; making fast things faster waits here.
   1.7–2.5 ms, max 3.4–5.2 ms at 1× and 2×; plain StyledEdit as before.
   Checked in light and dark at 1×, 1.5× and 2× (review clean),
   through a reload.
+  Since: a link's menu opens it (Open Link: a file from the document's
+  folder, a URL by what opens it); Tab and ⇧Tab over code's selected
+  lines indent and outdent them.
   *Left* (Ben): try it on his own Markdown and code. Not done: a
   table column's own alignment (`:---:`) isn't shown; pictures on the
-  web aren't fetched; a link isn't opened by a click.
+  web aren't fetched; ⌘-click on a link; printing a Markdown document
+  prints its text as typed.
 
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable

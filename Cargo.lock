@@ -7791,6 +7791,7 @@ dependencies = [
  "pulldown-cmark",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]

@@ -109,6 +109,9 @@ struct Line {
     /// Pictures that start on it: the bytes of each one's `![alt](file)`
     /// (from the line's start) and its file.
     images: Vec<(Range<usize>, String)>,
+    /// Links that start on it: each one's bytes (from the line's start)
+    /// and where it goes.
+    links: Vec<(Range<usize>, String)>,
 }
 
 /// A fenced or indented code block: its language and its text.
@@ -191,7 +194,9 @@ impl Look {
         if self.out {
             self.since.push((removed.clone(), inserted));
         }
-        if self.big && !self.lines.is_empty() {
+        // (Small ones are parsed again before they're next asked about;
+        // the lines move anyway, so they're never out of step meanwhile.)
+        if !self.lines.is_empty() {
             self.shift(removed, inserted);
         }
     }
@@ -210,7 +215,7 @@ impl Look {
         let typed = flags.last().copied().unwrap_or(0) & !MARK;
         flags.extend(std::iter::repeat_n(typed, n));
         flags.extend_from_slice(&last.flags[(r.end.saturating_sub(last.start)).min(last.flags.len())..]);
-        let line = Line { start, len: flags.len(), flags, dirty: true, images: Vec::new(), table: None, cells: Vec::new(), ..first.clone() };
+        let line = Line { start, len: flags.len(), flags, dirty: true, images: Vec::new(), links: Vec::new(), table: None, cells: Vec::new(), ..first.clone() };
         self.lines.splice(a..=b, [line]);
         self.dirty = true;
         for l in &mut self.lines[a + 1..] {
@@ -236,10 +241,7 @@ impl Look {
         for i in dirty.into_iter().rev() {
             let l = &mut self.lines[i];
             l.dirty = false;
-            if l.start + l.len > text.len() {
-                continue;
-            }
-            let seg = &text[l.start..l.start + l.len];
+            let Some(seg) = text.get(l.start..l.start + l.len) else { continue };
             if !seg.contains('\n') {
                 continue;
             }
@@ -448,7 +450,13 @@ impl Look {
                     Tag::Emphasis => self.style(&r, EMPH),
                     Tag::Strong => self.style(&r, STRONG),
                     Tag::Strikethrough => self.style(&r, STRIKE),
-                    Tag::Link { .. } => self.style(&r, LINK),
+                    Tag::Link { dest_url, .. } => {
+                        self.style(&r, LINK);
+                        let i = self.line_at(r.start);
+                        let l = &mut self.lines[i];
+                        let end = r.end.min(l.start + l.len);
+                        l.links.push((r.start - l.start..end - l.start, dest_url.to_string()));
+                    }
                     Tag::Image { dest_url, .. } => {
                         self.style(&r, IMAGE);
                         let i = self.line_at(r.start);
@@ -725,6 +733,13 @@ impl Look {
         }
     }
 
+    /// Where the link at byte `at` goes, if it's in one.
+    pub fn link_at(&self, at: usize) -> Option<String> {
+        let l = self.lines.get(self.line_at(at))?;
+        let rel = at.checked_sub(l.start)?;
+        l.links.iter().find(|(r, _)| r.start <= rel && rel <= r.end).map(|(_, to)| to.clone())
+    }
+
     /// What Return types on a list item or in a quotation (its marks
     /// again on the next line: a list's next number, a task unchecked);
     /// in an empty one, its marks go (the list or quotation ends there).
@@ -746,7 +761,7 @@ impl Look {
         if sel.start < l.start + lead {
             return None;
         }
-        let line = &text[l.start..l.start + l.len];
+        let line = text.get(l.start..l.start + l.len)?;
         if lead == l.len {
             return Some((l.start..l.start + l.len, String::new(), 0));
         }
@@ -764,7 +779,7 @@ impl Look {
             return false;
         }
         if b.code.is_none() {
-            let own = text[b.range.clone()].to_owned();
+            let Some(own) = text.get(b.range.clone()).map(str::to_owned) else { return false };
             let made = self.kept.remove(&(lang.id, hash(&own))).unwrap_or_else(|| {
                 // Small: parsed on the spot.
                 let mut c = Code::new(lang, CODE);
@@ -1106,6 +1121,9 @@ mod tests {
         assert_eq!(l.lines[1].block, Block::Underline);
         assert_eq!(marks(&l, 3, text), "See ^the site^^^^^^^^^^^^^^^^^^^ now.");
         assert!(l.lines[3].flags[5] & LINK != 0);
+        let at = text.find("site").unwrap();
+        assert_eq!(l.link_at(at).as_deref(), Some("http://x.org"));
+        assert_eq!(l.link_at(text.find("now").unwrap()), None);
     }
 
     #[test]
