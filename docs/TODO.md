@@ -17,8 +17,58 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-Nothing: every item is being worked on, done (waiting for Ben or
-finished) or blocked.
+These two were tabled by Ben on 2026-11-02 ("performance seems pretty
+solid now in olo so you can table the rest of the performance related
+items ... and skip them"); his goal of 2026-11-06, every item done but
+what's truly blocked, takes them up again.
+
+- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
+  frames is never acceptable: olo must be buttery smooth on all
+  displays all the time"; the pointer "definitely way slow/stuttery",
+  worst on the Studio Display; app_server at 20% of a core). Done
+  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
+  measured cost and observed drops; `{"type":"frames"}`,
+  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
+  overlay plane as cursor plane, clipped at the display's edge in
+  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
+  flip and app_server restart eight times; a refused flip no longer
+  kills it); windows as scan-out candidates; Smithay vendored with
+  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
+  all `render_output`, and in it the GPU submit (asahi's
+  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
+  in the kernel; plane assignment and atomic tests cost 0.0 ms.
+  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
+  renderer making a fence per texture drawn (a GPU submit an
+  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
+  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
+  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
+  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
+  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
+  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
+  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  the radio is the person's to fix (the receiver nearer, its
+  extender, a lower polling rate). **Next**: windows on overlay
+  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
+  agree (a client's cursor on the plane rendered right, or the
+  pointer's plane above every window plane and the window refused
+  while the pointer is drawn in the frame over it); the "draws"
+  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
+  at ~11% with a call on is the tick (now once per 8 ms) and looks;
+  per-display render threads (its own TODO).
+
+- **app_server's critical path on threads of its own** (Ben,
+  2026-11-01: "why run the risk of a blocking call? threads would
+  make sure we don't accidentally block"): input → pointer plane
+  update → commit never shares a thread with anything that can
+  block. Design: an input-and-cursor thread owning libinput and the
+  cursor planes (a pointer move is a plane property commit, no frame);
+  a render-and-commit thread per display owning its GL context, DRM
+  surface and pacing (a slow 5K frame can't delay the built-in
+  display's); the Wayland clients and IPC on the main loop, handing
+  each display's thread a snapshot of what to draw. Our own
+  synchronous work (importing a client's buffer, a fence, a DCP test
+  or commit) is what blocks today, and the heartbeat (`timings`)
+  finds it. After the reliability work.
 
 ## Done, waiting for Ben to try or confirm
 
@@ -1578,81 +1628,30 @@ people.
   following Olo's (away when the screen locks, Do Not Disturb, a
   meeting), which needs Slack's client to build against.
 
-### Tabled by Ben: performance work he asked to skip
+## Done (most recently finished first)
 
-Blocked on Ben asking for them again. Tabled (Ben, 2026-11-02):
-"performance seems pretty solid now in olo so
-you can table the rest of the performance related items under a "maybe
-one day" section in the todos and skip them". Not worked on unless he
-asks again. But (Ben, same day): "still address any performance items
-that are real and cause any noticeable impact to the user but we don't
-have to keep optimizing just for the sake of optimizing": a slowness a
-person notices (a stutter, a lag, a hang) is still fixed at once, as
-any other item; making fast things faster waits here.
-
-- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
-  frames is never acceptable: olo must be buttery smooth on all
-  displays all the time"; the pointer "definitely way slow/stuttery",
-  worst on the Studio Display; app_server at 20% of a core). Done
-  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
-  measured cost and observed drops; `{"type":"frames"}`,
-  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
-  overlay plane as cursor plane, clipped at the display's edge in
-  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
-  flip and app_server restart eight times; a refused flip no longer
-  kills it); windows as scan-out candidates; Smithay vendored with
-  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
-  all `render_output`, and in it the GPU submit (asahi's
-  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
-  in the kernel; plane assignment and atomic tests cost 0.0 ms.
-  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
-  renderer making a fence per texture drawn (a GPU submit an
-  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
-  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
-  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
-  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
-  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
-  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
-  the radio is the person's to fix (the receiver nearer, its
-  extender, a lower polling rate). **Next**: windows on overlay
-  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
-  agree (a client's cursor on the plane rendered right, or the
-  pointer's plane above every window plane and the window refused
-  while the pointer is drawn in the frame over it); the "draws"
-  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
-  at ~11% with a call on is the tick (now once per 8 ms) and looks;
-  per-display render threads (its own TODO).
-
-- **app_server's critical path on threads of its own** (Ben,
-  2026-11-01: "why run the risk of a blocking call? threads would
-  make sure we don't accidentally block"): input → pointer plane
-  update → commit never shares a thread with anything that can
-  block. Design: an input-and-cursor thread owning libinput and the
-  cursor planes (a pointer move is a plane property commit, no frame);
-  a render-and-commit thread per display owning its GL context, DRM
-  surface and pacing (a slow 5K frame can't delay the built-in
-  display's); the Wayland clients and IPC on the main loop, handing
-  each display's thread a snapshot of what to draw. Our own
-  synchronous work (importing a client's buffer, a fence, a DCP test
-  or commit) is what blocks today, and the heartbeat (`timings`)
-  finds it. After the reliability work.
-
-- **Screen recording: frames to the GPU's encoder as dmabufs, and the
-  Intel GPU on battery** (what the screen recording entry below has left;
+- ~~**Screen recording: frames to the GPU's encoder as dmabufs, and the
+  Intel GPU on battery**~~ (what the screen recording entry below has left;
   2026-11-06): the captured frames handed to NVENC as CUDA external
   memory and to VA-API through its DRM PRIME import, its video processor
   making NV12, rather than copied through the CPU; and `--encoder auto`
   taking the Intel GPU's AV1 rather than waking the NVIDIA GPU while on
   battery. *The battery part done* (2026-11-06, `olo_video::on_battery`,
   unit-tested on made-up supplies; untried unplugged).
-  *Tabled* (2026-11-06): recording runs at 8.5 ms a frame at 2560 × 1600
-  on the Intel GPU and 13 ms at 4K on NVIDIA's, frames copied; the
-  zero-copy path (VA-API's video processor, the capture's dmabuf handed
-  across threads) saves CPU nobody notices, so it waits, as Ben asked
-  for performance work.
-
-## Done (most recently finished first)
+  *VA-API's part done* (2026-11-06, HACKING's "Frames that never leave
+  the GPU"): a display or window recorded on the GPU app_server draws
+  with is captured into three dmabufs lent in turn
+  (`Capture::lend_frames`), each imported as a VA surface and made NV12
+  by VA-API's video processor (`Av1::encode_prime`), in the layouts it
+  reads (`olo_vaapi::imports`: Xe2's compressed tiles read as noise);
+  `frames_on_gpu` in what it prints. The recorder at 2560 × 1600, 29
+  frames a second: 2.3% of a core against 15.8% copying, app_server
+  4.1% either way; `vaapi_dmabuf_frames_come_back` checks linear and
+  tiled buffers (54 dB). *NVENC's part can't be done here*: app_server
+  draws on the Intel GPU and CUDA imports no other GPU's memory (its
+  external memory takes NVIDIA's own allocations), so frames for NVENC
+  still cross through the processor; that would need app_server drawing
+  the capture on the NVIDIA GPU, which wakes it.
 
 - ~~**auto-fuzz: two tiles overlap as a Terminal opens**~~ (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz

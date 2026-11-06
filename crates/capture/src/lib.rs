@@ -5,11 +5,19 @@
 //! formats app_server takes and keeps a buffer of that size, a dmabuf on
 //! the GPU app_server names where it can (app_server draws into it on the
 //! GPU, reading nothing back) else shared memory, and gives frames as
-//! BGRx rows (what WebRTC wants first), or into buffers of the caller's.
+//! BGRx rows (what WebRTC wants first), into buffers of the caller's, or
+//! lent out of a few of its own as they are, in the GPU's memory
+//! ([`Capture::lend_frames`]: a recording's encoder on the same GPU).
 
 pub mod live;
 
-use std::os::fd::{AsFd, FromRawFd, OwnedFd};
+use std::{
+    os::fd::{AsFd, AsRawFd as _, BorrowedFd, FromRawFd, OwnedFd},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
+};
 
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
@@ -110,6 +118,56 @@ struct Following {
     _pointer: wl_pointer::WlPointer,
 }
 
+/// Buffers frames are lent out of, in turn: one drawn into, one lent
+/// (or waiting to be), one free.
+const LENDING: usize = 3;
+
+/// Lent frames' keys, unique in the process.
+static NEXT_LENT: AtomicU64 = AtomicU64::new(1);
+
+/// A frame lent out of the capture's own dmabufs ([`Capture::lend`]):
+/// one plane of BGRx (DRM's XRGB8888) in the GPU's memory, laid out as
+/// `modifier` says. Its buffer isn't drawn into again till it's dropped.
+pub struct Lent {
+    /// The same for every frame lent out of this buffer.
+    pub key: u64,
+    pub width: u32,
+    pub height: u32,
+    pub modifier: u64,
+    pub offset: u32,
+    pub pitch: u32,
+    /// The buffer's size, in bytes.
+    pub size: u32,
+    fd: Arc<OwnedFd>,
+    lent: Arc<AtomicUsize>,
+}
+
+impl Lent {
+    /// The buffer's dmabuf.
+    pub fn fd(&self) -> BorrowedFd<'_> {
+        self.fd.as_fd()
+    }
+}
+
+impl Drop for Lent {
+    fn drop(&mut self) {
+        self.lent.fetch_sub(1, Ordering::Release);
+    }
+}
+
+/// One of the buffers frames are lent out of.
+struct Lending {
+    key: u64,
+    width: u32,
+    height: u32,
+    bo: gbm::BufferObject<()>,
+    wl: wl_buffer::WlBuffer,
+    fd: Arc<OwnedFd>,
+    size: u32,
+    /// Frames of it lent out now.
+    lent: Arc<AtomicUsize>,
+}
+
 /// The buffer frames are captured into.
 enum Target {
     Shm(memmap2::MmapMut),
@@ -138,6 +196,13 @@ pub struct Capture {
     frame: Option<frame_v1::ExtImageCopyCaptureFrameV1>,
     /// It was asked for into `buffer` (not one of the stream's).
     into_own: bool,
+    /// Frames lent out (`lend_frames`): the layouts they may come in, the
+    /// buffers, the one the frame asked for goes into, and the one the
+    /// last came into.
+    lend_layouts: fn(u64) -> bool,
+    lending: Option<Vec<Lending>>,
+    lend_drawing: Option<usize>,
+    lend_last: Option<usize>,
     /// What it captures, kept for a cursor session on it.
     source: ext_image_capture_source_v1::ExtImageCaptureSourceV1,
     copier: ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
@@ -240,7 +305,29 @@ impl Capture {
                 }
             })
         };
-        Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, filled: false, frame: None, into_own: false, source: image_source, copier, seat, following: None })
+        Ok(Capture {
+            queue,
+            state,
+            shm,
+            dmabuf,
+            gbm,
+            conn,
+            name,
+            session,
+            buffer: None,
+            fresh: true,
+            filled: false,
+            frame: None,
+            into_own: false,
+            lend_layouts: |_| true,
+            lending: None,
+            lend_drawing: None,
+            lend_last: None,
+            source: image_source,
+            copier,
+            seat,
+            following: None,
+        })
     }
 
     /// Follow the pointer apart from the picture (a cursor session: the
@@ -338,7 +425,82 @@ impl Capture {
 
     /// Whether frames come through the GPU (dmabufs).
     pub fn on_gpu(&self) -> bool {
-        matches!(self.buffer, Some((_, Target::Dma(_), _)))
+        matches!(self.buffer, Some((_, Target::Dma(_), _))) || self.lend_last.is_some()
+    }
+
+    /// The GPU frames come in, as its render node's device number, where
+    /// they can come as dmabufs.
+    pub fn render_device(&self) -> Option<u64> {
+        self.gbm.as_ref()?;
+        self.state.dma_device.map(|d| d as u64)
+    }
+
+    /// From the next `request`, frames come into a few dmabufs of the
+    /// capture's own in turn, laid out as `layouts` takes (by modifier),
+    /// each lent out as it comes (`lend`) and not drawn into again till
+    /// it's given back (dropped); when none is free, into its own buffer
+    /// as before. None: as before.
+    pub fn lend_frames(&mut self, layouts: Option<fn(u64) -> bool>) {
+        let Some(layouts) = layouts else {
+            for b in self.lending.take().into_iter().flatten() {
+                b.wl.destroy();
+            }
+            (self.lend_drawing, self.lend_last) = (None, None);
+            return;
+        };
+        if self.lending.is_none() && self.gbm.is_some() {
+            self.lend_layouts = layouts;
+            self.lending = Some(Vec::new());
+        }
+    }
+
+    /// The last frame, lent out, if it came into a buffer it can be lent
+    /// out of (`lend_frames`).
+    pub fn lend(&self) -> Option<Lent> {
+        let b = &self.lending.as_ref()?[self.lend_last?];
+        b.lent.fetch_add(1, Ordering::Acquire);
+        let modifier = u64::from(b.bo.modifier());
+        Some(Lent { key: b.key, width: b.width, height: b.height, modifier, offset: b.bo.offset(0), pitch: b.bo.stride_for_plane(0), size: b.size, fd: b.fd.clone(), lent: b.lent.clone() })
+    }
+
+    /// Ask for the next frame into a free buffer to lend out of (made
+    /// anew at a new size): false if none is free.
+    fn request_lending(&mut self, w: u32, h: u32) -> Result<bool, String> {
+        let mut bufs = self.lending.take().unwrap_or_default();
+        if bufs.first().is_some_and(|b| (b.width, b.height) != (w, h)) {
+            // (Ones lent out keep their memory: the lent frames hold its
+            // descriptor.)
+            for b in bufs.drain(..) {
+                b.wl.destroy();
+            }
+            (self.lend_drawing, self.lend_last) = (None, None);
+        }
+        let made = (|| {
+            while bufs.len() < LENDING {
+                let (wl, bo, format) = self.dma_buffer(w, h, self.lend_layouts)?;
+                if format != wl_shm::Format::Xrgb8888 || bo.plane_count() != 1 {
+                    wl.destroy();
+                    return Err("frames to lend come as BGRx in one plane".to_owned());
+                }
+                let fd = bo.fd_for_plane(0).map_err(|e| e.to_string())?;
+                // SAFETY: lseek on a dmabuf of ours: its size.
+                let size = unsafe { libc::lseek(fd.as_raw_fd(), 0, libc::SEEK_END) };
+                if size <= 0 {
+                    wl.destroy();
+                    return Err("a dmabuf without a size".to_owned());
+                }
+                bufs.push(Lending { key: NEXT_LENT.fetch_add(1, Ordering::Relaxed), width: w, height: h, bo, wl, fd: Arc::new(fd), size: size as u32, lent: Arc::default() });
+            }
+            Ok(())
+        })();
+        let free = (0..bufs.len()).find(|&i| Some(i) != self.lend_last && bufs[i].lent.load(Ordering::Acquire) == 0);
+        let wl = free.map(|i| bufs[i].wl.clone());
+        self.lending = Some(bufs);
+        made?;
+        let (Some(i), Some(wl)) = (free, wl) else { return Ok(false) };
+        self.request_into(&wl)?;
+        self.lend_drawing = Some(i);
+        Ok(true)
     }
 
     /// The modifiers app_server draws BGRx dmabufs with, where frames can
@@ -390,7 +552,7 @@ impl Capture {
 
     /// A dmabuf for frames of `w`×`h`, in BGRx (else BGRA), as app_server
     /// draws them.
-    fn dma_buffer(&self, w: u32, h: u32) -> Result<(wl_buffer::WlBuffer, gbm::BufferObject<()>, wl_shm::Format), String> {
+    fn dma_buffer(&self, w: u32, h: u32, layouts: fn(u64) -> bool) -> Result<(wl_buffer::WlBuffer, gbm::BufferObject<()>, wl_shm::Format), String> {
         let (gbm, dmabuf) = (self.gbm.as_ref().ok_or("no GPU")?, self.dmabuf.as_ref().ok_or("no linux-dmabuf")?);
         let pick = [(gbm::Format::Xrgb8888, wl_shm::Format::Xrgb8888), (gbm::Format::Argb8888, wl_shm::Format::Argb8888)];
         let (fourcc, shm_format, modifiers) =
@@ -399,6 +561,10 @@ impl Capture {
         // GPU likes best of what app_server draws.
         let linear = u64::from(gbm::Modifier::Linear);
         let modifiers: Vec<u64> = if std::env::var_os("OLO_PORTAL_LINEAR").is_some() { modifiers.into_iter().filter(|m| *m == linear).collect() } else { modifiers };
+        let modifiers: Vec<u64> = modifiers.into_iter().filter(|&m| layouts(m)).collect();
+        if modifiers.is_empty() {
+            return Err("app_server draws dmabufs in no layout wanted".into());
+        }
         let bo = gbm
             .create_buffer_object_with_modifiers2::<()>(w, h, fourcc, modifiers.iter().map(|&m| gbm::Modifier::from(m)), gbm::BufferObjectFlags::RENDERING)
             .map_err(|e| format!("can't allocate a {w}×{h} dmabuf: {e}"))?;
@@ -458,12 +624,23 @@ impl Capture {
     /// screen has changed. `poll` says when it has come.
     pub fn request(&mut self) -> Result<(), String> {
         let (w, h) = self.state.size.ok_or("app_server gave no size")?;
+        if self.lending.is_some() {
+            match self.request_lending(w, h) {
+                Ok(true) => return Ok(()),
+                // (None free: into its own.)
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!("capture: {e}; frames copied, not lent");
+                    self.lend_frames(None);
+                }
+            }
+        }
         if self.buffer.as_ref().is_none_or(|b| (b.2.0, b.2.1) != (w, h)) {
             if let Some((old, _, _)) = self.buffer.take() {
                 old.destroy();
             }
             let dma = if self.gbm.is_some() {
-                match self.dma_buffer(w, h) {
+                match self.dma_buffer(w, h, |_| true) {
                     Ok(b) => Some(b),
                     Err(e) => {
                         tracing::warn!("capture: {e}; capturing into shared memory");
@@ -522,9 +699,15 @@ impl Capture {
         if let Some(frame) = self.frame.take() {
             frame.destroy();
         }
+        let lent = self.lend_drawing.take();
         match done {
-            Ok(()) if self.into_own => self.filled = true,
+            Ok(()) if lent.is_some() => self.lend_last = lent,
+            Ok(()) if self.into_own => {
+                self.filled = true;
+                self.lend_last = None;
+            }
             Ok(()) => {}
+            Err(_) if lent.is_some() => {}
             Err(_) => self.fresh = true,
         }
         Ok(Some(done))
@@ -546,13 +729,21 @@ impl Capture {
     /// None before one has, or while a buffer of another size waits for
     /// its first. (`size` is the size the next will be.)
     pub fn frame_size(&self) -> Option<(u32, u32)> {
+        if let Some(b) = self.lend_last.and_then(|i| self.lending.as_ref()?.get(i)) {
+            return Some((b.width, b.height));
+        }
         self.buffer.as_ref().filter(|_| self.filled).map(|(_, _, (w, h, _, _))| (*w, *h))
     }
 
     /// Copy the last frame into `out`, `stride` bytes a row (as wide as the
     /// frame, or wider).
     pub fn copy_into(&self, out: &mut [u8], stride: usize) -> Result<(), String> {
-        let Some((_, target, (w, h, _, _))) = self.buffer.as_ref().filter(|_| self.filled) else { return Err("no frame yet".into()) };
+        let lent = self.lend_last.and_then(|i| self.lending.as_ref()?.get(i));
+        let (target, w, h) = match (lent, self.buffer.as_ref().filter(|_| self.filled)) {
+            (Some(b), _) => (None, &b.width, &b.height),
+            (None, Some((_, target, (w, h, _, _)))) => (Some(target), w, h),
+            (None, None) => return Err("no frame yet".into()),
+        };
         let row = *w as usize * 4;
         if stride < row || out.len() < stride * (*h as usize - 1) + row {
             return Err("the buffer is too small for the frame".into());
@@ -562,9 +753,11 @@ impl Capture {
                 dst[..row].copy_from_slice(&src[..row]);
             }
         };
-        match target {
-            Target::Shm(map) => copy(map, row, out),
-            Target::Dma(bo) => bo.map(0, 0, *w, *h, |m| copy(m.buffer(), m.stride() as usize, out)).map_err(|e| format!("can't read the dmabuf: {e}"))?,
+        match (target, lent) {
+            (Some(Target::Shm(map)), _) => copy(map, row, out),
+            (Some(Target::Dma(bo)), _) => bo.map(0, 0, *w, *h, |m| copy(m.buffer(), m.stride() as usize, out)).map_err(|e| format!("can't read the dmabuf: {e}"))?,
+            (None, Some(b)) => b.bo.map(0, 0, *w, *h, |m| copy(m.buffer(), m.stride() as usize, out)).map_err(|e| format!("can't read the dmabuf: {e}"))?,
+            (None, None) => unreachable!(),
         }
         Ok(())
     }

@@ -269,6 +269,26 @@ impl Encoder {
             Encoder::Vaapi(e) => e.encode(data, stride, order == Order::Rgba),
         }
     }
+
+    /// The GPU that can encode pictures in its memory as they are
+    /// ([`encode_prime`](Self::encode_prime)), as its render node's
+    /// device number: VA-API's (NVENC can't take another GPU's buffers,
+    /// and the processor reads memory).
+    pub fn prime_device(&self) -> Option<u64> {
+        match self {
+            Encoder::Vaapi(e) => e.device(),
+            _ => None,
+        }
+    }
+
+    /// A picture in that GPU's memory (a capture's dmabuf) encoded, never
+    /// copied through the CPU; as [`encode`](Self::encode) otherwise.
+    pub fn encode_prime(&mut self, picture: &vaapi::Prime) -> Result<(Vec<u8>, bool), String> {
+        match self {
+            Encoder::Vaapi(e) => e.encode_prime(picture),
+            _ => Err(format!("{} encodes pictures in memory only", self.name())),
+        }
+    }
 }
 
 /// Whether the computer runs on its battery: it has one, and no mains
@@ -1214,6 +1234,73 @@ mod tests {
             }
             let psnr = 10.0 * (255f64.powi(2) / (mse / f64::from(w * h)).max(1e-9)).log10();
             assert!(psnr > 38.0, "luma PSNR {psnr:.1} dB");
+        }
+    }
+
+    /// The same from dmabufs (as a capture's frames come), through
+    /// VA-API's video processor: linear ones, and ones as the GPU lays out
+    /// pictures it draws; each buffer drawn in again and encoded again
+    /// (its import kept).
+    #[test]
+    fn vaapi_dmabuf_frames_come_back() {
+        use std::os::fd::{AsFd as _, AsRawFd as _};
+        let Some(node) = vaapi::av1_node() else {
+            eprintln!("no GPU encodes AV1 through VA-API here");
+            return;
+        };
+        let (w, h) = (640u32, 360u32);
+        let gpu = gbm::Device::new(std::fs::OpenOptions::new().read(true).write(true).open(&node).unwrap()).unwrap();
+        // Intel's tiled layouts, best first (4 with Xe2's compression, 4,
+        // Y, X): the GPU takes the first it can draw.
+        let tiled: Vec<gbm::Modifier> = [0x0100_0000_0000_0009u64, 0x0100_0000_0000_0002, 0x0100_0000_0000_0001].into_iter().map(gbm::Modifier::from).collect();
+        for linear in [true, false] {
+            let make = || match linear {
+                true => gpu.create_buffer_object::<()>(w, h, gbm::Format::Xrgb8888, gbm::BufferObjectFlags::LINEAR | gbm::BufferObjectFlags::RENDERING),
+                false => gpu.create_buffer_object_with_modifiers2::<()>(w, h, gbm::Format::Xrgb8888, tiled.iter().copied(), gbm::BufferObjectFlags::RENDERING),
+            };
+            let Ok(first) = make() else {
+                eprintln!("this GPU draws none of Intel's tiled layouts");
+                continue;
+            };
+            let mut bos = vec![first, make().unwrap()];
+            let mut e = vaapi::Av1::new(Some(&node), w, h, 30, vaapi::QUALITY).unwrap();
+            let mut d = olo_images::av1::Decoder::new(1, 1).unwrap();
+            let (mut shown, mut sent) = (Vec::new(), Vec::new());
+            for i in 0..8u32 {
+                let px: Vec<u8> = (0..h).flat_map(|y| (0..w).flat_map(move |x| [(x + i * 4) as u8, y as u8, 128, 255])).collect();
+                let bo = &mut bos[i as usize % 2];
+                bo.map_mut(0, 0, w, h, |m| {
+                    let stride = m.stride() as usize;
+                    for (row, from) in m.buffer_mut().chunks_mut(stride).zip(px.chunks(w as usize * 4)) {
+                        row[..from.len()].copy_from_slice(from);
+                    }
+                })
+                .unwrap();
+                let fd = bo.fd_for_plane(0).unwrap();
+                // SAFETY: lseek on our dmabuf: its size.
+                let size = unsafe { libc::lseek(fd.as_raw_fd(), 0, libc::SEEK_END) } as u32;
+                let picture =
+                    vaapi::Prime { key: u64::from(i % 2), fd: fd.as_fd(), modifier: u64::from(bo.modifier()), offset: bo.offset(0), pitch: bo.stride_for_plane(0), size, width: w, height: h };
+                let (bits, key) = e.encode_prime(&picture).unwrap_or_else(|err| panic!("{} (modifier {:#x}): {err}", if linear { "linear" } else { "tiled" }, picture.modifier));
+                assert_eq!(key, i == 0);
+                d.decode(&bits, &mut shown).unwrap();
+                sent.push(px);
+            }
+            d.flush(&mut shown);
+            assert_eq!(shown.len(), 8, "every frame decoded");
+            for (f, px) in shown.iter().zip(&sent) {
+                let rgba = f.to_rgba();
+                let mut mse = 0f64;
+                for p in 0..(w * h) as usize {
+                    let y = |r: u8, g: u8, b: u8| 0.2126 * f64::from(r) + 0.7152 * f64::from(g) + 0.0722 * f64::from(b);
+                    let a = y(px[p * 4 + 2], px[p * 4 + 1], px[p * 4]);
+                    let b = y(rgba[p * 4], rgba[p * 4 + 1], rgba[p * 4 + 2]);
+                    mse += (a - b).powi(2);
+                }
+                let psnr = 10.0 * (255f64.powi(2) / (mse / f64::from(w * h)).max(1e-9)).log10();
+                eprintln!("{} {:#x}: luma PSNR {psnr:.1} dB", if linear { "linear" } else { "tiled" }, u64::from(bos[0].modifier()));
+                assert!(psnr > 38.0, "luma PSNR {psnr:.1} dB");
+            }
         }
     }
 

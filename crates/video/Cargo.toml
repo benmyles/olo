@@ -21,3 +21,5 @@ color_quant = "1.1"
 
 [dev-dependencies]
 png = "0.18"
+# Dmabufs to encode from (`vaapi_dmabuf_frames_come_back`).
+gbm = { version = "0.18", default-features = false }

@@ -719,7 +719,43 @@ pub struct Av1 {
     gop: u64,
     /// The slot the last frame was kept in.
     slot: u8,
+    /// The video processor making NV12 of pictures in GPU memory
+    /// ([`Av1::encode_prime`]): its config and context, once asked for.
+    vpp: Option<(va::VAConfigID, va::VAContextID)>,
+    /// Those pictures' buffers as surfaces, by their keys (a capture's
+    /// few, used in turn), the newest last.
+    imported: Vec<(u64, va::VASurfaceID)>,
 }
+
+/// A picture in GPU memory for [`Av1::encode_prime`]: a dmabuf of one
+/// plane of XRGB8888 (BGRx in memory, as app_server draws), laid out as
+/// `modifier` says.
+pub struct Prime<'a> {
+    /// The same while the buffer is (its import is kept for it).
+    pub key: u64,
+    pub fd: std::os::fd::BorrowedFd<'a>,
+    pub modifier: u64,
+    pub offset: u32,
+    pub pitch: u32,
+    /// The buffer's size, in bytes.
+    pub size: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// DRM's fourcc for XRGB8888 ("XR24").
+const DRM_FORMAT_XRGB8888: u32 = 0x3432_5258;
+
+/// Whether [`Av1::encode_prime`] reads pictures laid out as `modifier`
+/// says: linear, and Intel's tiles without compression (X, Y, 4). (libva
+/// can't be asked: its modifier list is for allocating. Xe2's 4 with
+/// compression, 0x0100000000000010, imports without a word and reads as
+/// noise, as AMD's with DCC might, untried.)
+pub fn imports(modifier: u64) -> bool {
+    matches!(modifier, 0 | 0x0100_0000_0000_0001 | 0x0100_0000_0000_0002 | 0x0100_0000_0000_0009)
+}
+/// Imports kept at most (a capture's buffers are two or three).
+const IMPORTS_KEPT: usize = 4;
 
 // (Its display and surfaces are used from one thread at a time, through
 // `&mut`.)
@@ -822,6 +858,8 @@ impl Av1 {
             since_key: 0,
             gop: u64::from(fps.clamp(1, 240)) * 2,
             slot: 0,
+            vpp: None,
+            imported: Vec::new(),
             d,
         };
         let api = &av1.d.api;
@@ -864,6 +902,14 @@ impl Av1 {
         &self.d.vendor
     }
 
+    /// The GPU it encodes on, as its render node's device number (to
+    /// tell whether a dmabuf from elsewhere is in its memory, for
+    /// [`encode_prime`](Self::encode_prime)).
+    pub fn device(&self) -> Option<u64> {
+        use std::os::unix::fs::MetadataExt as _;
+        self.d._node.metadata().ok().map(|m| m.rdev())
+    }
+
     /// One picture (BGRA rows, or RGBA with `rgba`; `stride` bytes a
     /// row, at least this size) encoded: a temporal unit's OBUs (the
     /// sequence header with a key frame), and whether it's a key frame.
@@ -873,6 +919,23 @@ impl Av1 {
             return Err("the picture is smaller than the video".into());
         }
         self.upload(data, stride, rgba)?;
+        self.encode_input()
+    }
+
+    /// A picture in GPU memory (a capture's dmabuf) encoded, as
+    /// [`encode`](Self::encode) does one in memory: made NV12 by the GPU's
+    /// video processor straight into the input surface, never copied
+    /// through the CPU. Its top left `width` × `height` are the video.
+    pub fn encode_prime(&mut self, picture: &Prime) -> Result<(Vec<u8>, bool), String> {
+        if picture.width < self.width || picture.height < self.height {
+            return Err("the picture is smaller than the video".into());
+        }
+        self.convert(picture)?;
+        self.encode_input()
+    }
+
+    /// The input surface, filled, encoded.
+    fn encode_input(&mut self) -> Result<(Vec<u8>, bool), String> {
         let key = self.since_key == 0 || self.since_key >= self.gop;
         if key {
             self.since_key = 0;
@@ -892,6 +955,115 @@ impl Av1 {
         let mut unit = vec![OBU_TEMPORAL_DELIMITER << 3 | 0x02, 0];
         unit.extend_from_slice(&out);
         Ok((unit, key))
+    }
+
+    /// `picture` into the input surface as NV12, by the video processor
+    /// (BT.709, full range in, limited out, as the sequence header says).
+    fn convert(&mut self, picture: &Prime) -> Result<(), String> {
+        let ctx = match self.vpp {
+            Some((_, ctx)) => ctx,
+            None => {
+                let api = &self.d.api;
+                let mut cfg = va::VA_INVALID_ID;
+                // SAFETY: our display; no attributes.
+                api.ok(unsafe { (api.create_config)(self.d.dpy, va::VAProfileNone, va::VAEntrypointVideoProc, null_mut(), 0, &mut cfg) }, "vaCreateConfig (video processing)")?;
+                let mut ctx = va::VA_INVALID_ID;
+                // SAFETY: the config just made, the input surface its target.
+                let st = unsafe { (api.create_context)(self.d.dpy, cfg, self.width as c_int, self.height as c_int, va::VA_PROGRESSIVE as c_int, &mut self.input, 1, &mut ctx) };
+                if let Err(e) = api.ok(st, "vaCreateContext (video processing)") {
+                    // SAFETY: the config just made.
+                    unsafe { (api.destroy_config)(self.d.dpy, cfg) };
+                    return Err(e);
+                }
+                self.vpp = Some((cfg, ctx));
+                ctx
+            }
+        };
+        let surface = self.import(picture)?;
+        let api = &self.d.api;
+        let region = va::VARectangle { x: 0, y: 0, width: self.width as u16, height: self.height as u16 };
+        let mut pp = va::VAProcPipelineParameterBuffer {
+            surface,
+            surface_region: &region,
+            surface_color_standard: va::VAProcColorStandardBT709,
+            output_region: &region,
+            output_background_color: 0xff00_0000,
+            output_color_standard: va::VAProcColorStandardBT709,
+            ..Default::default()
+        };
+        pp.input_color_properties.color_range = va::VA_SOURCE_RANGE_FULL as u8;
+        pp.output_color_properties.color_range = va::VA_SOURCE_RANGE_REDUCED as u8;
+        let mut buf = va::VA_INVALID_ID;
+        // SAFETY: libva copies the parameters (the regions read while
+        // rendering, which is done before they go).
+        let st = unsafe {
+            (api.create_buffer)(
+                self.d.dpy,
+                ctx,
+                va::VAProcPipelineParameterBufferType,
+                std::mem::size_of::<va::VAProcPipelineParameterBuffer>() as c_uint,
+                1,
+                (&mut pp as *mut va::VAProcPipelineParameterBuffer).cast(),
+                &mut buf,
+            )
+        };
+        api.ok(st, "vaCreateBuffer (video processing)")?;
+        // SAFETY: our context, the input surface its target, the buffer
+        // just made.
+        let done = unsafe {
+            api.ok((api.begin_picture)(self.d.dpy, ctx, self.input), "vaBeginPicture (video processing)")
+                .and_then(|_| api.ok((api.render_picture)(self.d.dpy, ctx, &mut buf, 1), "vaRenderPicture (video processing)"))
+                .and_then(|_| api.ok((api.end_picture)(self.d.dpy, ctx), "vaEndPicture (video processing)"))
+        };
+        // SAFETY: the buffer made above.
+        unsafe { (api.destroy_buffer)(self.d.dpy, buf) };
+        done?;
+        // SAFETY: our input surface.
+        api.ok(unsafe { (api.sync_surface)(self.d.dpy, self.input) }, "vaSyncSurface (video processing)")
+    }
+
+    /// `picture`'s buffer as a surface (made once while kept).
+    fn import(&mut self, picture: &Prime) -> Result<va::VASurfaceID, String> {
+        use std::os::fd::AsRawFd as _;
+        if let Some(i) = self.imported.iter().position(|(k, _)| *k == picture.key) {
+            let kept = self.imported.remove(i);
+            self.imported.push(kept);
+            return Ok(kept.1);
+        }
+        let mut desc = va::VADRMPRIMESurfaceDescriptor { fourcc: va::VA_FOURCC_BGRX, width: picture.width, height: picture.height, num_objects: 1, num_layers: 1, ..Default::default() };
+        desc.objects[0].fd = picture.fd.as_raw_fd();
+        desc.objects[0].size = picture.size;
+        desc.objects[0].drm_format_modifier = picture.modifier;
+        desc.layers[0].drm_format = DRM_FORMAT_XRGB8888;
+        desc.layers[0].num_planes = 1;
+        desc.layers[0].object_index[0] = 0;
+        desc.layers[0].offset[0] = picture.offset;
+        desc.layers[0].pitch[0] = picture.pitch;
+        let mut attrs = [
+            va::VASurfaceAttrib {
+                type_: va::VASurfaceAttribMemoryType,
+                flags: va::VA_SURFACE_ATTRIB_SETTABLE,
+                value: va::VAGenericValue { type_: va::VAGenericValueTypeInteger, value: va::_VAGenericValue__bindgen_ty_1 { i: va::VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2 as i32 } },
+            },
+            va::VASurfaceAttrib {
+                type_: va::VASurfaceAttribExternalBufferDescriptor,
+                flags: va::VA_SURFACE_ATTRIB_SETTABLE,
+                value: va::VAGenericValue { type_: va::VAGenericValueTypePointer, value: va::_VAGenericValue__bindgen_ty_1 { p: (&mut desc as *mut va::VADRMPRIMESurfaceDescriptor).cast() } },
+            },
+        ];
+        let api = &self.d.api;
+        let mut surface = va::VA_INVALID_ID;
+        // SAFETY: the descriptor lives through the call; the driver takes
+        // the buffer in (its own handle: the fd is the caller's still).
+        let st = unsafe { (api.create_surfaces)(self.d.dpy, va::VA_RT_FORMAT_RGB32, picture.width, picture.height, &mut surface, 1, attrs.as_mut_ptr(), attrs.len() as c_uint) };
+        api.ok(st, "vaCreateSurfaces (a dmabuf)")?;
+        if self.imported.len() >= IMPORTS_KEPT {
+            let (_, mut old) = self.imported.remove(0);
+            // SAFETY: a surface we imported, no longer kept.
+            unsafe { (api.destroy_surfaces)(self.d.dpy, &mut old, 1) };
+        }
+        self.imported.push((picture.key, surface));
+        Ok(surface)
     }
 
     /// The picture into the input surface, as NV12.
@@ -1066,6 +1238,13 @@ impl Drop for Av1 {
             }
             if self.context != va::VA_INVALID_ID {
                 (api.destroy_context)(dpy, self.context);
+            }
+            if let Some((cfg, ctx)) = self.vpp {
+                (api.destroy_context)(dpy, ctx);
+                (api.destroy_config)(dpy, cfg);
+            }
+            for (_, mut s) in self.imported.drain(..) {
+                (api.destroy_surfaces)(dpy, &mut s, 1);
             }
             let mut surfaces = [self.input, self.recon[0], self.recon[1]];
             (api.destroy_surfaces)(dpy, surfaces.as_mut_ptr(), 3);
