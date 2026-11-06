@@ -1,237 +1,17 @@
 # Work list
 
-What's left before Olo is complete, highest priority first, and what
-is finished, below it, most recently finished first. Keep it current:
-when an item lands, strike it (with the commit) and move it to the top
-of Finished; a new one goes where its priority puts it.
+Everything left before Olo is complete and everything finished, in five
+parts (Ben, 2026-11-06): what is being worked on now, what isn't started
+yet (highest priority first), what is done but waits for Ben to try or
+confirm, what is blocked (on Ben, a person at the machine, hardware or
+data), and what is finished, most recently finished first. Keep it
+current: an item moves part to part as it goes, and when it lands it is
+struck (with the commit) and moved to the top of Finished; a new one
+goes where its state and priority put it. An item that is done but has
+a "Left" for Ben is in "Waiting for Ben"; one whose next step needs
+something nobody here has is in "Blocked", with what it waits for.
 
-## Open (highest priority first)
-
-- **Terminal: "please continue" for a coding agent that stopped** (Ben,
-  2026-11-06): "when in olo terminal in a tab that has claude code or
-  codex running, make an extra option available when right clicking the
-  tab to enable a feature where olo will say "please continue" in the
-  claude/codex session if they stop for more than 60s with no activity
-  at all (any change should count as activity we just want to do this
-  when they are not doing anything or processing anything or thinking
-  about anything). limit it to sending up to one "please continue" per
-  hour. when this mode is enabled it should add some kind of visual
-  indicator in the tab too". So: the tab's context menu, on a tab whose
-  shell runs Claude Code or Codex (Terminal knows: `agent_context`'s
-  `own_agent`, the tab title hook), offers a check item (say "Keep It
-  Going"); on, Terminal watches the tab for 120 s (Ben, after: "change
-  it from 60s to 120s without activity") with nothing at all
-  happening (no output, no screen change, no spinner or timer ticking,
-  no input typed: any change restarts the count) and then types
-  "please continue" and Return into it, at most once an hour per tab
-  (Ben, a moment later: "in codex ignore `Pursuing goal (17h 52m)` when
-  assessing whether anything has changed b/c that will just keep counting
-  forever every minute regardless": a clock that counts on its own, as
-  Codex's goal line's elapsed time, isn't activity);
-  the tab shows that it's on (a small mark beside its title, in the
-  palette's colours, at every scale and in light, dark and night). For
-  agents too: the setting readable and settable over Terminal's
-  commands socket, and the tab's state in its tree. Kept with the tab
-  across an upgrade (`restored_state`); off for a new tab.
-  *Done* (2026-11-06, HACKING's "Keep It Going"): the tab's menu and
-  Tabs ▸ Keep It Going, 120 s of no change (Codex's goal clock left out)
-  with the agent's turn over, once an hour at most, the tab's badge (a
-  blue disc with a go-on triangle), kept across restarts; tried headless
-  with a stand-in agent. *Left*: Ben's go with Claude Code and Codex.
-
-- **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
-  screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
-  incorrectly showing up as a keyboard"): "Yubico YubiKey OTP+FIDO+CCID"
-  under Swap Alt and the Windows Key, beside the built-in keyboard. Its
-  OTP interface is a USB boot keyboard (it types one-time codes), so
-  app_server's list (`udev.rs`, `keyboards`: every keyboard device with
-  an A key) takes it. Security keys aren't keyboards to set up: leave
-  them out (Yubico's vendor id, 1050, or a name saying so: YubiKey,
-  Security Key, FIDO, U2F, Nitrokey, OnlyKey, Titan; pid.codes' and
-  Google's ids are shared, so never a vendor alone there), still typing
-  their codes. *Fixed* (2026-11-04: `olo_protocol::keyboards::
-  security_key`, in app_server's list; `security_keys_arent_keyboards`).
-  Left: Ben's look at the tab after the upgrade, the key plugged in.
-
-- **A YubiKey approves sudo and passwords** (Ben, 2026-11-04): "add
-  native yubikey support to olo -- setup should be in prefs-> security
-  and once configured the yubikey should be able to approve any sudo or
-  passwords request. i just plugged in a yubikey nano you can check it
-  against." Preferences ▸ Security gets a YubiKey section: the key found
-  (model, firmware, which applications it has: FIDO2, OTP, PIV),
-  Set Up (a touch to register it, the account password once), a second
-  key as a spare, Remove. Once set up, a touch of the key approves what
-  asks for the account password: Terminal's sudo window, Passwords'
-  unlock and `op`, polkit's dialog (Olo's agent), Approve Without
-  Asking, the lock screen; the password stays the way in, and each
-  window says which (touch the key, or type the password). Native, in
-  Rust: CTAPHID over the key's hidraw node (FIDO2's `hmac-secret`
-  extension, or the OTP application's HMAC-SHA1 challenge-response), no
-  ykman or pam_u2f. One way that needs no PAM change and no root: Olo
-  keeps the account password sealed by a secret only the key can give
-  (`hmac-secret` of a credential made at setup, touch required) and
-  hands the password on as Approve Without Asking does; the other is a
-  PAM module of Olo's for sudo run outside Olo's windows. Udev's rule
-  for the key's hidraw node (uaccess) is checked (Olo Doctor offers it).
-  *Checked* (2026-11-04, from /sys, nothing opened): Ben's key is a
-  YubiKey 5 Nano, USB-C (1050:0407 "YubiKey OTP+FIDO+CCID", firmware
-  5.8, full speed), with three interfaces: OTP as a boot keyboard
-  (hidraw, root's only), FIDO (hidraw, usage page 0xF1D0 usage 1:
-  CTAPHID; the session's ACL already gives Ben read and write, so
-  FIDO2 needs no root and no rule) and CCID (PIV, OpenPGP). So FIDO2's
-  `hmac-secret` is the way in. Next: `CTAPHID_INIT` and
-  `authenticatorGetInfo` (its extensions, PIN set or not), then the
-  sealed-password design above.
-  *Stray taps ignored* (Ben, 2026-11-04): "i have a habit of
-  accidentally tapping my yubikey and it adds the code where i don't
-  want it. when you add the native olo yubikey support, also make it so
-  that stray taps are ignored -- the code should only be captured and
-  used if we're actually in a context where we are waiting for a
-  permission grant from the yubikey for sudo or passwords. also add an
-  option for inserting the code anyway by using 3 taps so that someone
-  could use it e.g. if they are just filling in a web form olo knows
-  nothing about and want the code there. that option can be enabled by
-  default too." A touch types a Yubico OTP (44 characters and Enter)
-  through the key's OTP interface, a USB keyboard of its own: Olo takes
-  that keyboard's keys itself (by the device, as the YubiKey is already
-  told from keyboards: `olo_protocol::keyboards::security_key`) and
-  passes nothing of it to the focused window. While a sudo, Passwords,
-  polkit or lock-screen request is waiting for the key, a touch (FIDO2's
-  user presence, or the OTP if that's how it's set up) answers it; at
-  any other time a touch does nothing. Three touches in a row (within a
-  couple of seconds each) type the next OTP into the focused window as
-  the key would have: Preferences ▸ Security ▸ YubiKey, "Three touches
-  type a code" (on by default). Each code an OTP that was swallowed was
-  one the key used up; that's fine (Yubico's counter only moves on). A
-  key's touches are told apart from a real keyboard's typing by the
-  device, never by timing or the text.
-  *Done* (2026-11-05, HACKING's "Security keys"): `olo-fido` speaks
-  CTAPHID and CTAP2 to the key itself (no root, no PAM change); setting
-  up in Preferences ▸ Security ▸ Security Keys (the password checked
-  through PAM, two touches, a spare the same way, Remove); a touch
-  answering Terminal's sudo window, Passwords' unlock, the polkit agent
-  (the person's own identity) and the lock screen, each window saying
-  so; stray touches typing nothing (app_server takes the key's keyboard
-  by the device) and three in a row typing the code ("Three touches type
-  a code", on). All of it tried headless with a software key
-  (`OLO_FIDO_SOFT`), the PAM stand-in, a stand-in sudo and polkit
-  helper; Ben's key asked what it is without a touch (firmware 5.8.0,
-  hmac-secret, no PIN set, a key agreement in protocol 2). *Left*: Ben's
-  setup with his key (its two touches), then sudo, Passwords, polkit and
-  the lock screen touched for real, and a stray touch and three in a row
-  in a text field; a key with a PIN that wants it (not asked for yet).
-  Olo Doctor says when a key's FIDO node isn't the person's to open, and
-  offers the rule (2026-11-05).
-  *Setting up, with Ben's key* (2026-11-05): his first try "just kept
-  flashing". With every CTAPHID message printed (olo-fido's `touch`
-  example), his YubiKey 5 took both touches and gave its secret ("i was
-  touching the wrong thing"). The box now says what to touch and when (its
-  gold contact, once its light blinks), what to do as each touch is
-  waited for, and asks again when the key stops waiting (three times).
-  Left: Ben's setup in Preferences with the new box, then a touch for
-  sudo, Passwords, polkit and the lock screen.
-
-- **Face unlock: sudo and Passwords approved by a look** (Ben,
-  2026-11-04): "support facial recognition as an alternative to the
-  yubikey or password to unlock sudo and passwords. put the setup in
-  prefs -> passwords. do whatever is needed to get olo working with it
-  even if you have to write a custom driver or whatever." Set up in
-  Preferences ▸ Passwords (enrol a face, a few angles, with and without
-  glasses; Forget), then a look approves what the password, the
-  fingerprint or the YubiKey approve now: Terminal's sudo window,
-  Passwords' unlock and `op`, polkit, Approve Without Asking, the lock
-  screen; each window says it's looking and falls back to the others.
-  Only with the infrared camera: a photo or a screen can't pass it (IR
-  shows skin and depth cues a printout and a display don't; the colour
-  camera alone is too easily fooled, so never that alone). Native, in
-  Rust and in process: the frames over V4L2 (no howdy, no OpenCV
-  binaries, no linux-enable-ir-emitter), the emitter switched on by
-  Olo's own UVC extension-unit control (found by trying the unit's
-  controls with the camera's own IR stream watched for the flood
-  lighting it, kept per camera), face detection and embeddings by a
-  small model run in process (as Olo runs its others), liveness from IR
-  (and the emitter's on/off frames), the enrolled templates sealed for
-  the user only. The privacy shutter closed: it says so.
-  *Checked* (2026-11-04, from /sys): the ThinkPad's camera is Chicony's
-  04f2:b8b3 on USB (3-4): a colour camera ("Integrated Camera",
-  /dev/video0 and 1) and an infrared one ("Integrated IR Camera",
-  /dev/video2 and 3; UVC, interface 1.2), a camera HID interface (1.4:
-  hidraw0) and a DFU one; Ben's account can open them (the video
-  group's ACL). Next: the IR node's formats (GREY or Y8 at what size),
-  its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
-  which control lights the emitter, and what the HID interface reports
-  (the shutter, perhaps).
-  *Built* 2026-11-05 (HACKING's "Face unlock"): `olo-face` (V4L2, the
-  emitter's UVC control found by trying, YuNet and SFace in process,
-  infrared-only looks with a relief check), `olo-faced` (root, the system
-  bus, the faces root's only, no password kept), `pam_olo_face.so` (sudo
-  and polkit), Passwords and the lock screen asking it, and Preferences ▸
-  Security ▸ Face Unlock (Install…, Set Up…, Forget…, Remove). Tried end
-  to end without root or a camera (a private bus, portraits for frames, a
-  stand-in PAM stack). *Left*, needing Ben at the machine: Install… (his
-  administrator password), then Set Up… in front of the camera (the
-  emitter found then: the read-only look found its units 10, 13 and 14,
-  unit 14's control 6 the likeliest); sudo, polkit (under SELinux), the
-  lock screen and Passwords tried with his face; the relief and match
-  thresholds tuned on his real looks; what the camera's HID interface
-  says (the shutter).
-
-- **A USB 2 device in a Thunderbolt 5 port isn't seen** (found
-  2026-11-04 with Ben's YubiKey): in the USB-C port on the Barlow Ridge
-  Thunderbolt 5 controller (8086:5780 bridges, its xHCI 8086:5782 at
-  0000:a9:00.0, buses 5 and 6, both root hubs runtime-suspended, the
-  controller in D3hot) the key drew power (Type-C port 1 had a partner)
-  but the kernel logged nothing at all, not even a failed enumeration;
-  in a port on the chipset's controller (00:14.0) it came up at once. A
-  SanDisk USB 3 drive had worked in that port (SuperSpeed, 6-2). Find
-  whether the controller's USB 2 side misses its wake (PME) for a
-  full-speed connect, whether `power/control` on (Ben's to try) or the
-  USB4 router's own state brings it, and fix or work around it in Olo
-  (a udev rule keeping it awake costs power: measure), with Olo Doctor
-  saying so meanwhile.
-
-- **Floating windows: the one clicked comes to the front** (Ben,
-  2026-11-04): "when more than one floating "on top priority" window
-  exists, one of them keeps itself on top and i can't go to the other
-  floating one it just opens behind it. if we are in auto tile or focus
-  mode the floating windows should probably stay on top of those
-  focused/auto-tiled ones but we should be able to click on other
-  floating windows to see them at front (or if another floating one
-  opens then it should start at the very top). we just want it to be
-  intuitive -- what you'd expect as a user". So: floating windows
-  (dialogs, alerts, panels, windows floated by hand) stay over the tiles
-  in Auto-Tiling and over the focused window in Focus, but among
-  themselves they stack as windows do: the one clicked or activated
-  (Deskbar, ⌘Tab, an agent's `activate`) comes to the front of them, and
-  one that opens starts at the very top. Only a window's own children
-  stay over it (an app's Find panel over its document, an alert over
-  its window). Look at what re-raises the one that stays on top: the
-  passes that put floats back over the tiles and the focused window
-  (`keep_floating_above` in autotile.rs, `keep_floating_over_focus` in
-  modes.rs, "in the order they were") and children over parents
-  (`keep_children_above` in wm.rs), each run after a raise; and an app's
-  floating panels (modes.rs, BeOS's floating feels). Reproduce headless
-  in each mode (two floating windows of different apps, and of one app;
-  click each, activate each, open a third), and keep a test; then a
-  wm-fuzz check that the window just activated is the top one of its
-  layer.
-  *Fixed* (2026-11-04, HACKING's auto-tiling floats): seen headless with
-  two Terminal windows floated by hand over a tiled one: activating the
-  tile put it over both floats, and nothing put them back till a layout
-  pass, which then raised only the float left under the tile, over the
-  one just brought forward. Now the floats stay over the tiles (and
-  Focus's window) on every raise, in their own order, all raised
-  together when any is under. And a window joining a floating group
-  floats with it (found by the new `auto-fuzz --floats`: it was a tile
-  at the group's frame, over its neighbour). Two floats of different
-  apps clicked and activated in turn, and a tile, behave; `--floats`
-  seeds 1–4 pass 80 to 120 steps; 5 (step 51) and 6 (step 73) find an
-  older mid-drag fault with groups (on HEAD's app_server too: a group's
-  window behind showing as a tile over the one dragged), now in the
-  auto-fuzz entry. An activation costs app_server the same (1.75–1.90
-  ms of CPU each, 200 in a row, before and after). *Left*: Ben's go
-  with the windows he had (which "on top priority" ones?), and Standard
-  mode, where nothing keeps floats over others.
+## Working on now
 
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
@@ -389,6 +169,481 @@ of Finished; a new one goes where its priority puts it.
   given, so none had it: seed 16 failed at step 4 every run), so it was
   taken back. The fix wants the keyboard to follow such a window once
   it's fronted, or the newcomer's wait to apply only mid-drag.
+  *Found* (2026-11-06, eight runs at a time): the window is a StyledEdit
+  opened before the reload and coming back only then, during step 54's
+  drag. It is put in its group's tile at the size it was saved at (290
+  px; the group is 533), asked nothing yet while the drag is on, with no
+  frame callback pending, so it isn't held back (`mark_behind` waits only
+  for something to draw) and is the group's front at once; the window
+  list also names a group's front by the stack, so a newcomer still
+  waiting is reported as the front. The look comes at 160 ms, after the
+  drag (75 ms) has been let go. *Tried and taken back*: a size asked
+  counting as something to draw (3 of 8 failed), a newcomer not at its
+  group's size waiting up to 600 ms mid-drag (3 of 8) or always (5 of 8,
+  and new failures: an empty window at step 1), and the window list
+  naming the drawn window as the front (3 of 8); before them it failed 1
+  in 4. *Next*: the cause, not the wait: a window coming back into a
+  group asked for the group's size at its first commit (as `auto_claim`
+  asks a tile's), so it never draws the saved size at all.
+
+## Not started (highest priority first)
+
+- **StyledEdit: Markdown edited as it looks (and as source), code with
+  highlighting** (Ben, 2026-11-05, lower priority): "when opening a
+  markdown file StyledEdit should natively support the Markdown and be
+  more like Typora WYSIWYG editing, but also have an option to switch
+  back and forth between WYSIWYG mode and source mode and in source mode
+  it should be like a code editor with syntax highlighting and fixed
+  width font. also make it support code/source mode for all major
+  programming/scripting languages with syntax highlighting and fixed
+  width font." Now: Markdown comes in through Import… (`convert.rs`,
+  `from_markdown`) and goes out as Markdown, as a styled document, and
+  the editor has no highlighting. To do: a `.md` opened is a Markdown
+  document, edited as Typora does (headings, emphasis, lists, quotes,
+  links, pictures, tables, code blocks and inline code shown as they
+  look; the marks of the line being edited shown as typed) and saved as
+  Markdown again, keeping what the person wrote (their list markers,
+  emphasis characters, line breaks, front matter, HTML); a View toggle
+  (and a key, ⌘/ say) between that and Source, which shows the Markdown
+  itself in a code editor: the fixed-width font, syntax highlighting,
+  line numbers, the place kept across the switch. Source mode for every
+  major language as well (Rust, C, C++, Go, Python, JavaScript and
+  TypeScript, shell, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML,
+  CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, …), a file opened
+  by its type going straight to it: highlighting from a Rust grammar
+  library (tree-sitter's grammars, in process), colours from the
+  palette in light, dark and night, incremental as it's typed (a file
+  of 100,000 lines opens and scrolls at once: measured). In the kit
+  (the code editor is one any app could use: Terminal's, Viewer's text),
+  documented in HACKING.
+
+- **Screen recording: frames to the GPU's encoder as dmabufs, and the
+  Intel GPU on battery** (what the screen recording entry below has left;
+  2026-11-06): the captured frames handed to NVENC as CUDA external
+  memory and to VA-API through its DRM PRIME import, its video processor
+  making NV12, rather than copied through the CPU; and `--encoder auto`
+  taking the Intel GPU's AV1 rather than waking the NVIDIA GPU while on
+  battery.
+
+- **An app_server restart modesets every display** (seen 2026-11-01
+  in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
+  for each of the three displays, "Already set to timingID" yet done
+  again: the screens freeze for a second or two per restart). The
+  new app_server could keep a CRTC's mode when it is the one already
+  set (the same mode blob, no ALLOW_MODESET commit) and go straight
+  to page flips; where Smithay's surface init insists on a modeset,
+  Olo's Smithay changes that. Until then upgrades of app_server are
+  batched, not one a change. (Still: the kernel logged
+  `set_digital_out_mode` 856 times in the day to 2026-11-02.)
+  **Found** 2026-11-02: app_server opens each GPU with
+  `DrmDevice::new(fd, true)` (udev.rs `device_added`), and Smithay's
+  `disable_connectors` runs `reset_state`, switching every connector
+  off: each display is modeset from dark at every start. The fix:
+  open with `false`, and in Olo's Smithay let a surface take over a
+  CRTC already showing its mode (`State`'s mode compared by timings,
+  not the mode's type bits and name, which differ between a CRTC's
+  mode and a connector's list), so the first frame is a page flip;
+  switch off the planes the last app_server left on (a cursor or
+  overlay plane still showing its buffer) in that first commit, no
+  modeset needed; and if the driver refuses it, `reset_state` and
+  modeset as now. It needs trying on the real displays (an upgrade
+  the person agrees to try), so it isn't shipped blind.
+
+- **The kit takes over what every app re-implements** (Ben,
+  2026-11-01: "anything these windows/apps are doing that's reusable
+  should be made reusable so that we aren't reinventing the wheel
+  everywhere"). A pass over the GPUI apps, each pattern moved into
+  olo-ui (documented in HACKING) and every app switched to it: list +
+  search + filter bar wiring (each app's matching and facets are its
+  own; what's shared is a subscription, so not yet worth a kit piece).
+  Done so far (2026-11-01):
+  popups closing in any order, quitting taking windows down, window
+  parts (`part::Part`), secrets on the clipboard (`copy::secret`);
+  2026-11-03, an app's own files read and written whole (`store`:
+  load, save off the thread in order, flushed on quit and upgrade),
+  fourteen apps switched (six wrote straight over the file); one
+  timer for the next thing due and a message that clears itself
+  (`due::{Due, Notice}`: Passwords, Telegram, the only two); a
+  window opened or brought forward (`open_or_raise`, `raise`: nineteen
+  apps); closing with changes not saved asked the same way everywhere
+  (`widgets::ask_to_save`: StyledEdit, Viewer); windows opening at
+  the size they were left at (`WindowOptions::keep_size`, eleven
+  apps; Passwords had its own). Found already the kit's everywhere
+  (2026-11-03): single-instance launches (every windowed app forwards a
+  second launch through `instance`; the rest are services, single by
+  their bus name) and upgrade state (`on_upgrade`, `restored_state` in
+  every app with windows to bring back; the lock screen, the polkit and
+  portal dialogs, the screen saver and the supervisor have none);
+  a window's content scrolling when the window is shorter than it
+  (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
+
+- **Other programs feel like Olo's own: every integration point**
+  (Ben, 2026-10-29): "is there a way where we can make chrome (and any
+  gtk / qt apps) better integrate with olo, e.g. replacing their file
+  picker with olo tracker picker and e.g. in chrome something like show
+  in folder should show in tracker. basically every integration point
+  we can do (whether cleanly through some protocol or 'dirty' through
+  some hack) we should do so that everything feels as seamless as
+  possible". Clean ways first (portals, D-Bus services, settings), a
+  hack where there is none. Each is for Chrome, Electron (Slack,
+  Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
+  - **File pickers** (started 2026-10-30: olo-portal answers the
+    FileChooser portal with the kit's file panel, open, save and folder,
+    several files at once, the app's filters by glob and MIME type as a
+    Show pop-up, the portal's `choices`; Chrome's uploads, GTK 4 and GTK 3
+    tried. The toolkit switches are deliberately not set for everything:
+    they also send GTK's link opening through OpenURI, which asks for an
+    app until one was picked 3 times (HACKING, "Open and Save"); done
+    2026-10-30: the panel's list as Tracker's, Name, Kind, Size and
+    Modified, sorted by a header, Favorites and Recent Folders in its
+    folder pop-up shared with Tracker's Go menu (`olo_kit::places`),
+    and Space for a look at a file in the Viewer): an Olo
+    portal backend
+    (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
+    ScreenCast) showing the kit's file panel (Tracker's columns,
+    favourites, Quick Look, recent places); `olo-portals.conf` sends
+    FileChooser to it. Chrome and Electron use the portal with
+    `--xdg-portal` / `GTK_USE_PORTAL=1`-style switches or by default;
+    GTK 4 apps use it by default, GTK 3 with `GTK_USE_PORTAL=1`, Qt with
+    `QT_QPA_PLATFORMTHEME=xdgdesktopportal`: set these in the session
+    environment. Save dialogs too (name, folder, overwrite).
+  - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
+    serves `org.freedesktop.FileManager1`, each call an Open in
+    Tracker). The OpenURI portal's `OpenDirectory` needs nothing more:
+    xdg-desktop-portal (1.22 here) answers it with FileManager1's
+    `ShowItems`, which Tracker serves, and only without one opens
+    `inode/directory`'s default, which olo-session makes Tracker too.
+  - ~~**Opening things**~~ (done: checked 2026-11-05, GIO opens a folder
+    in Tracker and a link in Chrome from `olo-mimeapps.list`, xdg-open
+    going through GIO on Olo's `XDG_CURRENT_DESKTOP`) (started 2026-10-30: the AppChooser portal is
+    Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
+    writes desktop entries and `olo-mimeapps.list` defaults so GIO,
+    xdg-open and OpenURI open files in Olo's apps as Olo does, links
+    staying with the default browser; Olo's Chrome, once installed, is
+    offered as the default browser by `~/.local/share/applications/
+    olo-mimeapps.list`, behind any browser the person chose and ahead
+    of the system's): the
+    OpenURI portal and `xdg-open`'s MIME
+    defaults resolved by Olo's own (`olo_kit::open`), so links from any
+    app open in Olo's choice, files in Olo's apps; Olo as the default
+    file manager and browser handler (`mimeapps.list`, the `x-scheme-
+    handler`s), Chrome as the default browser offered by Olo.
+  - ~~**Downloads**: Chrome's land in Tracker's Downloads with Olo's own
+    notification (open, show in Tracker) and Deskbar's progress; a
+    download's file shows as being written.~~ (done 2026-10-30: the
+    extension tells olo-chrome's host of Chrome's downloads; Deskbar's
+    progress through LauncherEntry, an Olo notification with Open and
+    Open in Tracker, and Tracker shows a `.crdownload` under its final
+    name with a bar and "3.1 of 10 MB", from `user.olo.expected_size`.)
+  - **Look** (mostly done: app_server's `toolkits.rs` publishes the
+    colour scheme and accent through GSettings, which the GTK portal's
+    Settings serves as `org.freedesktop.appearance`; GTK 3 and 4 themes
+    from Olo's palette, Qt through its GTK 3 platform theme; Olo's fonts;
+    2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
+    Haiku cursors as an XCursor theme for programs that draw their own
+    pointer; Olo's icons in the look as the icon theme, for the
+    freedesktop names it has pictures for). Left, both waiting on Olo
+    itself: `contrast` (once Olo has a high-contrast look) and
+    `text-scaling-factor` (once Olo has a text size of its own; today
+    the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
+    gets as its font size, so there is nothing to scale to).
+  - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
+    once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
+    extensions' shortcuts, Discord's push-to-talk) bound through Olo's
+    keyboard profiles; ~~app menus where a toolkit exports one
+    (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
+    style if worthwhile~~ (not worthwhile, 2026-10-30: Olo's menus are
+    in each window, as BeOS's were, not in a bar at the top of the
+    screen, and GTK 4, Qt and Electron programs already show theirs in
+    their windows; a second copy in Olo's style would only duplicate
+    them. Tray items' menus are Olo's, which is where it helps).
+  - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
+    the StatusNotifierWatcher and host, items in its tray with their
+    menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
+    Discord's tray icons) in Deskbar's tray with their menus~~;
+    ~~the Unity LauncherEntry count (unread badges) on Deskbar's entries;
+    progress on Deskbar (LauncherEntry progress)~~ (done 2026-10-30: the
+    row's dot, shaking when the count rises, and a progress bar).
+  - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
+    Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
+    by app_server's `KeepAwake`), ~~Background~~ (done 2026-10-30, with
+    olo-session starting login items), ~~Print~~ (done 2026-10-30: Olo's Print
+    panel, CUPS over IPP, `olo-print`), ~~Email~~, ~~Account~~ (done 2026-10-30: asked in the permission
+    dialog with your picture), ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
+    ~~Camera/Location as Olo asks permission~~ (xdg-desktop-portal asks
+    them through the Access dialog, Olo's), Secret (Passwords as the
+    Secret Service, so Chrome's and Electron's stored secrets live in
+    Olo's keychain; **held for Ben's go-ahead**, 2026-10-30: Chrome keeps
+    its "Chrome Safe Storage" key in gnome-keyring through libsecret, so
+    taking over `org.freedesktop.secrets` without first moving every
+    existing item across would lose every saved cookie and password in
+    Chrome and Slack. It needs a migration that reads the real keyring,
+    as an explicit step in Preferences ▸ Security, tried on a copy
+    first), and ~~Trash~~ (xdg-desktop-portal trashes through
+    GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
+    Screenshot (Olo's Screenshot app, region when interactive; PickColor
+    with a loupe) and Access (the permission dialog, as Olo's BAlert).
+  - ~~**Drag and drop and the clipboard**: files dragged from Chrome,
+    Slack and GTK into Tracker and back, with the right actions and
+    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).~~
+    (done 2026-10-30, tried with Chrome 156: a picture dragged out of a
+    page lands as its file, a link as a clipping named by its text, files
+    from Tracker open in Chrome; Tracker copies files as file managers do,
+    `x-special/gnome-copied-files` and all, and pastes files, pictures
+    (Chrome's Copy Image) and text; `Cx::paste_data`,
+    `olo_kit::clipboard::files`, `dnd::named_file`, `dnd::moz_url`.)
+  - ~~**Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
+    Chrome's beyond the extension) folded into Olo's widget tree, so
+    agents can drive outside programs as they do Olo's.~~ (done
+    2026-10-30: olo-screen's `tree` reads a non-kit program's windows
+    over AT-SPI, roles named as AccessKit's; tried with GNOME
+    Calculator, driven by name; Qt asked to join with
+    `QT_ACCESSIBILITY=1`. Chrome's pages stay with the extension, which
+    sees more of them.)
+  - Where there's no clean way, a hack is fine if it's reliable: an
+    LD_PRELOAD shim, a launcher wrapper, a policy file or a patched
+    config, documented in HACKING with how it's tested.
+
+- **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
+  "make sure our text system is SOTA -- rivalling apple's or anything
+  else out there. perfect looking, adorably beautiful text is essential";
+  "also the same applies to icons and everything in olo: everything must
+  render absolutely beautifully, good enough that if steve jobs saw it
+  he'd want to fire his team at apple because we put them to shame".
+  *Done so far*: Olo's GPUI draws text as the kit does (hinted Noto,
+  variable weights, the fallback chain; 13e20c7) plus a touch of stem
+  darkening for small text (747a25d; now an emboldened outline, a third
+  of the time a glyph took). Icons in the GPUI kit: the
+  pre-scaled icon for the device size, on whole device pixels, never
+  resampled; checked by the layout review at every scale.
+
+### Tabled (maybe one day)
+
+Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
+you can table the rest of the performance related items under a "maybe
+one day" section in the todos and skip them". Not worked on unless he
+asks again. But (Ben, same day): "still address any performance items
+that are real and cause any noticeable impact to the user but we don't
+have to keep optimizing just for the sake of optimizing": a slowness a
+person notices (a stutter, a lag, a hang) is still fixed at once, as
+any other item; making fast things faster waits here.
+
+- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
+  frames is never acceptable: olo must be buttery smooth on all
+  displays all the time"; the pointer "definitely way slow/stuttery",
+  worst on the Studio Display; app_server at 20% of a core). Done
+  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
+  measured cost and observed drops; `{"type":"frames"}`,
+  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
+  overlay plane as cursor plane, clipped at the display's edge in
+  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
+  flip and app_server restart eight times; a refused flip no longer
+  kills it); windows as scan-out candidates; Smithay vendored with
+  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
+  all `render_output`, and in it the GPU submit (asahi's
+  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
+  in the kernel; plane assignment and atomic tests cost 0.0 ms.
+  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
+  renderer making a fence per texture drawn (a GPU submit an
+  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
+  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
+  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
+  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
+  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
+  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
+  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  the radio is the person's to fix (the receiver nearer, its
+  extender, a lower polling rate). **Next**: windows on overlay
+  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
+  agree (a client's cursor on the plane rendered right, or the
+  pointer's plane above every window plane and the window refused
+  while the pointer is drawn in the frame over it); the "draws"
+  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
+  at ~11% with a call on is the tick (now once per 8 ms) and looks;
+  per-display render threads (its own TODO).
+
+- **app_server's critical path on threads of its own** (Ben,
+  2026-11-01: "why run the risk of a blocking call? threads would
+  make sure we don't accidentally block"): input → pointer plane
+  update → commit never shares a thread with anything that can
+  block. Design: an input-and-cursor thread owning libinput and the
+  cursor planes (a pointer move is a plane property commit, no frame);
+  a render-and-commit thread per display owning its GL context, DRM
+  surface and pacing (a slow 5K frame can't delay the built-in
+  display's); the Wayland clients and IPC on the main loop, handing
+  each display's thread a snapshot of what to draw. Our own
+  synchronous work (importing a client's buffer, a fence, a DCP test
+  or commit) is what blocks today, and the heartbeat (`timings`)
+  finds it. After the reliability work.
+
+## Done, waiting for Ben to try or confirm
+
+- **Terminal: "please continue" for a coding agent that stopped** (Ben,
+  2026-11-06): "when in olo terminal in a tab that has claude code or
+  codex running, make an extra option available when right clicking the
+  tab to enable a feature where olo will say "please continue" in the
+  claude/codex session if they stop for more than 60s with no activity
+  at all (any change should count as activity we just want to do this
+  when they are not doing anything or processing anything or thinking
+  about anything). limit it to sending up to one "please continue" per
+  hour. when this mode is enabled it should add some kind of visual
+  indicator in the tab too". So: the tab's context menu, on a tab whose
+  shell runs Claude Code or Codex (Terminal knows: `agent_context`'s
+  `own_agent`, the tab title hook), offers a check item (say "Keep It
+  Going"); on, Terminal watches the tab for 120 s (Ben, after: "change
+  it from 60s to 120s without activity") with nothing at all
+  happening (no output, no screen change, no spinner or timer ticking,
+  no input typed: any change restarts the count) and then types
+  "please continue" and Return into it, at most once an hour per tab
+  (Ben, a moment later: "in codex ignore `Pursuing goal (17h 52m)` when
+  assessing whether anything has changed b/c that will just keep counting
+  forever every minute regardless": a clock that counts on its own, as
+  Codex's goal line's elapsed time, isn't activity);
+  the tab shows that it's on (a small mark beside its title, in the
+  palette's colours, at every scale and in light, dark and night). For
+  agents too: the setting readable and settable over Terminal's
+  commands socket, and the tab's state in its tree. Kept with the tab
+  across an upgrade (`restored_state`); off for a new tab.
+  *Done* (2026-11-06, HACKING's "Keep It Going"): the tab's menu and
+  Tabs ▸ Keep It Going, 120 s of no change (Codex's goal clock left out)
+  with the agent's turn over, once an hour at most, the tab's badge (a
+  blue disc with a go-on triangle), kept across restarts; tried headless
+  with a stand-in agent. *Left*: Ben's go with Claude Code and Codex.
+
+- **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
+  screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
+  incorrectly showing up as a keyboard"): "Yubico YubiKey OTP+FIDO+CCID"
+  under Swap Alt and the Windows Key, beside the built-in keyboard. Its
+  OTP interface is a USB boot keyboard (it types one-time codes), so
+  app_server's list (`udev.rs`, `keyboards`: every keyboard device with
+  an A key) takes it. Security keys aren't keyboards to set up: leave
+  them out (Yubico's vendor id, 1050, or a name saying so: YubiKey,
+  Security Key, FIDO, U2F, Nitrokey, OnlyKey, Titan; pid.codes' and
+  Google's ids are shared, so never a vendor alone there), still typing
+  their codes. *Fixed* (2026-11-04: `olo_protocol::keyboards::
+  security_key`, in app_server's list; `security_keys_arent_keyboards`).
+  Left: Ben's look at the tab after the upgrade, the key plugged in.
+
+- **A YubiKey approves sudo and passwords** (Ben, 2026-11-04): "add
+  native yubikey support to olo -- setup should be in prefs-> security
+  and once configured the yubikey should be able to approve any sudo or
+  passwords request. i just plugged in a yubikey nano you can check it
+  against." Preferences ▸ Security gets a YubiKey section: the key found
+  (model, firmware, which applications it has: FIDO2, OTP, PIV),
+  Set Up (a touch to register it, the account password once), a second
+  key as a spare, Remove. Once set up, a touch of the key approves what
+  asks for the account password: Terminal's sudo window, Passwords'
+  unlock and `op`, polkit's dialog (Olo's agent), Approve Without
+  Asking, the lock screen; the password stays the way in, and each
+  window says which (touch the key, or type the password). Native, in
+  Rust: CTAPHID over the key's hidraw node (FIDO2's `hmac-secret`
+  extension, or the OTP application's HMAC-SHA1 challenge-response), no
+  ykman or pam_u2f. One way that needs no PAM change and no root: Olo
+  keeps the account password sealed by a secret only the key can give
+  (`hmac-secret` of a credential made at setup, touch required) and
+  hands the password on as Approve Without Asking does; the other is a
+  PAM module of Olo's for sudo run outside Olo's windows. Udev's rule
+  for the key's hidraw node (uaccess) is checked (Olo Doctor offers it).
+  *Checked* (2026-11-04, from /sys, nothing opened): Ben's key is a
+  YubiKey 5 Nano, USB-C (1050:0407 "YubiKey OTP+FIDO+CCID", firmware
+  5.8, full speed), with three interfaces: OTP as a boot keyboard
+  (hidraw, root's only), FIDO (hidraw, usage page 0xF1D0 usage 1:
+  CTAPHID; the session's ACL already gives Ben read and write, so
+  FIDO2 needs no root and no rule) and CCID (PIV, OpenPGP). So FIDO2's
+  `hmac-secret` is the way in. Next: `CTAPHID_INIT` and
+  `authenticatorGetInfo` (its extensions, PIN set or not), then the
+  sealed-password design above.
+  *Stray taps ignored* (Ben, 2026-11-04): "i have a habit of
+  accidentally tapping my yubikey and it adds the code where i don't
+  want it. when you add the native olo yubikey support, also make it so
+  that stray taps are ignored -- the code should only be captured and
+  used if we're actually in a context where we are waiting for a
+  permission grant from the yubikey for sudo or passwords. also add an
+  option for inserting the code anyway by using 3 taps so that someone
+  could use it e.g. if they are just filling in a web form olo knows
+  nothing about and want the code there. that option can be enabled by
+  default too." A touch types a Yubico OTP (44 characters and Enter)
+  through the key's OTP interface, a USB keyboard of its own: Olo takes
+  that keyboard's keys itself (by the device, as the YubiKey is already
+  told from keyboards: `olo_protocol::keyboards::security_key`) and
+  passes nothing of it to the focused window. While a sudo, Passwords,
+  polkit or lock-screen request is waiting for the key, a touch (FIDO2's
+  user presence, or the OTP if that's how it's set up) answers it; at
+  any other time a touch does nothing. Three touches in a row (within a
+  couple of seconds each) type the next OTP into the focused window as
+  the key would have: Preferences ▸ Security ▸ YubiKey, "Three touches
+  type a code" (on by default). Each code an OTP that was swallowed was
+  one the key used up; that's fine (Yubico's counter only moves on). A
+  key's touches are told apart from a real keyboard's typing by the
+  device, never by timing or the text.
+  *Done* (2026-11-05, HACKING's "Security keys"): `olo-fido` speaks
+  CTAPHID and CTAP2 to the key itself (no root, no PAM change); setting
+  up in Preferences ▸ Security ▸ Security Keys (the password checked
+  through PAM, two touches, a spare the same way, Remove); a touch
+  answering Terminal's sudo window, Passwords' unlock, the polkit agent
+  (the person's own identity) and the lock screen, each window saying
+  so; stray touches typing nothing (app_server takes the key's keyboard
+  by the device) and three in a row typing the code ("Three touches type
+  a code", on). All of it tried headless with a software key
+  (`OLO_FIDO_SOFT`), the PAM stand-in, a stand-in sudo and polkit
+  helper; Ben's key asked what it is without a touch (firmware 5.8.0,
+  hmac-secret, no PIN set, a key agreement in protocol 2). *Left*: Ben's
+  setup with his key (its two touches), then sudo, Passwords, polkit and
+  the lock screen touched for real, and a stray touch and three in a row
+  in a text field; a key with a PIN that wants it (not asked for yet).
+  Olo Doctor says when a key's FIDO node isn't the person's to open, and
+  offers the rule (2026-11-05).
+  *Setting up, with Ben's key* (2026-11-05): his first try "just kept
+  flashing". With every CTAPHID message printed (olo-fido's `touch`
+  example), his YubiKey 5 took both touches and gave its secret ("i was
+  touching the wrong thing"). The box now says what to touch and when (its
+  gold contact, once its light blinks), what to do as each touch is
+  waited for, and asks again when the key stops waiting (three times).
+  Left: Ben's setup in Preferences with the new box, then a touch for
+  sudo, Passwords, polkit and the lock screen.
+
+- **Floating windows: the one clicked comes to the front** (Ben,
+  2026-11-04): "when more than one floating "on top priority" window
+  exists, one of them keeps itself on top and i can't go to the other
+  floating one it just opens behind it. if we are in auto tile or focus
+  mode the floating windows should probably stay on top of those
+  focused/auto-tiled ones but we should be able to click on other
+  floating windows to see them at front (or if another floating one
+  opens then it should start at the very top). we just want it to be
+  intuitive -- what you'd expect as a user". So: floating windows
+  (dialogs, alerts, panels, windows floated by hand) stay over the tiles
+  in Auto-Tiling and over the focused window in Focus, but among
+  themselves they stack as windows do: the one clicked or activated
+  (Deskbar, ⌘Tab, an agent's `activate`) comes to the front of them, and
+  one that opens starts at the very top. Only a window's own children
+  stay over it (an app's Find panel over its document, an alert over
+  its window). Look at what re-raises the one that stays on top: the
+  passes that put floats back over the tiles and the focused window
+  (`keep_floating_above` in autotile.rs, `keep_floating_over_focus` in
+  modes.rs, "in the order they were") and children over parents
+  (`keep_children_above` in wm.rs), each run after a raise; and an app's
+  floating panels (modes.rs, BeOS's floating feels). Reproduce headless
+  in each mode (two floating windows of different apps, and of one app;
+  click each, activate each, open a third), and keep a test; then a
+  wm-fuzz check that the window just activated is the top one of its
+  layer.
+  *Fixed* (2026-11-04, HACKING's auto-tiling floats): seen headless with
+  two Terminal windows floated by hand over a tiled one: activating the
+  tile put it over both floats, and nothing put them back till a layout
+  pass, which then raised only the float left under the tile, over the
+  one just brought forward. Now the floats stay over the tiles (and
+  Focus's window) on every raise, in their own order, all raised
+  together when any is under. And a window joining a floating group
+  floats with it (found by the new `auto-fuzz --floats`: it was a tile
+  at the group's frame, over its neighbour). Two floats of different
+  apps clicked and activated in turn, and a tile, behave; `--floats`
+  seeds 1–4 pass 80 to 120 steps; 5 (step 51) and 6 (step 73) find an
+  older mid-drag fault with groups (on HEAD's app_server too: a group's
+  window behind showing as a tile over the one dragged), now in the
+  auto-fuzz entry. An activation costs app_server the same (1.75–1.90
+  ms of CPU each, 200 in a row, before and after). *Left*: Ben's go
+  with the windows he had (which "on top priority" ones?), and Standard
+  mode, where nothing keeps floats over others.
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery
@@ -417,20 +672,510 @@ of Finished; a new one goes where its priority puts it.
   installed program is older), then Performance and Balanced tried from
   Deskbar.
 
-- **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
-  paired my airpods and they show up properly in the input menu but in
-  the sound output menu there's no airpods entry (in sound prefs)".
-  Paired and connected, they're an input in Preferences ▸ Sound but not
-  an output: their A2DP (or HFP) sink missing from what the output menu
-  lists. *Looked at* (2026-11-04, AirPods not connected then): Sound
-  lists every sink the sound server has (`audio::devices`, only Olo's
-  None taken out), and the input that showed is Olo's own
-  (`airpods_mic.ADDRESS`, made by olo-airpods over Apple's protocol,
-  there whatever BlueZ's audio profile does). So the likely cause is
-  their card with no audio profile up (A2DP failing, AAC say, or the
-  profile left `off`): to see with them connected (`pactl list cards`,
-  WirePlumber's log), then fixed at the cause, and Sound saying so
-  (their output named, with why it isn't there) rather than nothing.
+- **Palms read as fingertips on the ThinkPad's touchpad** (Ben,
+  2026-11-04): "on the thinkpad touchpad when i try to do the palm
+  training it just thinks my palms are fingertips and only seems to be
+  registering a small dot when my palms are on the touchpad". The pad is
+  a Goodix GXTP5420 (I²C HID, 27C6:0F90, `/dev/input/event6`), and its
+  axes (from /proc/bus/input/devices, ABS=6e0800001000003) are X, Y,
+  pressure, and for each contact slot, position, tool type
+  (`ABS_MT_TOOL_TYPE`), tracking id and pressure (`ABS_MT_PRESSURE`):
+  no contact size (`ABS_MT_TOUCH_MAJOR`/`MINOR`, `ABS_MT_WIDTH_*`),
+  which the trainer draws and the palm model reads (the Mac's pad gives
+  it), so every contact is a point. Next: see what it sends for a palm
+  (an evdev recording of palms, fingertips and a flat thumb: whether the
+  firmware marks palms `MT_TOOL_PALM` itself, as libinput expects of
+  such pads, what pressure a palm gives, and whether a palm comes as
+  several contacts close together); then make the model and the trainer
+  work from what a pad has (the tool type where it says palm, pressure
+  and the contacts' spread where there's no size), the trainer drawing
+  a contact by what's known (a pressure-sized ring, not a dot) and
+  saying when a pad can't tell palms by size; and the built-in model
+  for pads like this one.
+  *Built* (2026-11-05, docs/TOUCHPAD.md "The ThinkPad's touchpad"):
+  two recordings of Ben's hands showed it all: no size, the pressure
+  the click's force (a flat palm weighs 0: why palms were dots), the
+  firmware right on every palm and never on a finger, but a resting
+  palm called a finger again on up to 98% of its reports (libinput
+  follows it), and the kernel ending a palm and bringing it back under
+  a new id. Ben: "each touchpad type should have its own specific
+  custom model type and weights". Each kind of pad now has its own
+  model (`olo_palm::Kind`: features, size, base model, timing, training
+  and judging); the ThinkPad's is made from Ben's captures (100% of
+  palms, 0% of fingers, by the firmware's word, held). The filter runs
+  there (profile "ThinkPad", Preferences' recommended one for this pad):
+  a palm stays a palm until it lifts, as its tool type to libinput
+  (replayed: 315 flips held, no finger told a palm). The trainer draws a
+  palm as large as one and a fingertip as one, judges a click by the
+  pad's button, and trains this pad's kind. Left: Ben's try after the
+  upgrade (choose the ThinkPad profile in Preferences ▸ Touchpad if it
+  isn't already; type with palms down; the trainer).
+
+- **The palm trainer, full screen and driven from the keyboard** (Ben,
+  2026-11-02, with a screenshot of its last step, "Try it", at 2× in
+  dark mode): "so the training modal/flow needs work: for one i can't
+  click the buttons because i am using the mouse to do stuff. we should
+  make it so that the trainer is full screen and the continue steps
+  etc. are indicated by pressing the spacebar or something, and it
+  needs to be clearer about what is expected for each step with clear
+  feedback as to whether i did it right, and when it finishes it needs
+  to show a proper summary and tell me if it actually created the
+  custom model or not and then in the touch preferneces it needs to
+  also show if it's using the trained model or not and stats on it and
+  you need to carefully qa every window/state screen for it to make
+  sure everything fits and works together and looks good". So:
+  - Full screen, and never needs the pointer: Space goes on, keys for
+    again, back and quit shown on screen (typing steps take their
+    sentence first, so a typed space never skips a step).
+  - Each step says exactly what to do, judges each try as it happens
+    ("that was a fingertip, rest the flat of your hand") and shows its
+    count of good tries; a step is done when it has enough.
+  - The end shows a summary: whether a model was made and saved and is
+    in use now (or why not), touches gathered, and how it does against
+    the built-in model and the size rule on touches kept back.
+  - Preferences ▸ Touchpad says which model is in use (yours, with its
+    date and numbers, or the built-in one) and can forget yours.
+  - The typing exercise as a 90s typing tutor (Ben, 2026-11-02): "for
+    the typing portion show the user something to type (style it like
+    the old school mavis beacon typing tutor from macos -- generate some
+    imagery that looks just like mavis beacon showed and make it a real
+    throwback for people that remember it) because otherwise it's easy
+    to struggle with just thinking about what to type and it's not
+    natural". A lesson strip to type, an on-screen keyboard with each
+    finger's keys in its colour and the next key lit, hands on the home
+    row, speed and accuracy; drawn in Olo's own style (the look, not the
+    product's name, logo or the person on its box).
+  - Enabling the model requires training (Ben: "in fact, change the ux
+    so that enabling it requires doing the training"): only a trained
+    model is used; the check is there once one is.
+  *Status* (2026-11-03): done and built for Ben to try (full screen,
+  keyboard, judged touches with rings and dots, the typing tutor, the
+  summary confirmed with app_server, the try, the Touch tab's status
+  and Forget My Model; walked through headless with synthetic touches at
+  2× dark). Found on the way: a w's points spilled out of its glyph's
+  bitmap when emboldened (a grey box round the letter, any app), fixed
+  in GPUI. Left: QA at 1 and 1.5×, light and night, and the trainer's
+  screens as `ui_lint` tests with the new checks.
+  - QA every screen and state at 1, 1.5 and 2×, light, dark and night.
+  *Status* (2026-11-03): every step in every state is a `ui_lint` test
+  (`ui_lint_the_palm_trainer`: 36 states, at 1280 × 800 and 1512 × 982,
+  1, 1.5 and 2×, light and dark; night is app_server's warm tint, not
+  a palette): clean. Then reworked (Finished: "A palm resting low…"):
+  twelve exercises, each asking one thing, a "now" line, a banner when
+  a step is done. Left: Ben's go on his pad with the new build (his old
+  model stays in use until he trains again).
+
+- **Keyboards we know, starting with Apple's Magic Keyboard with Touch
+  ID (A2520), and its Touch ID as a first-class one** (Ben, 2026-11-03):
+  "add special support in prefs -> keyboards for well known keyboards
+  starting with the external apple keyboard A2520. model it after the
+  way we do it in the mouse section but also it should be a bit more in
+  depth and have it show an image of the actual keyboard and then add
+  any customization options on there and, most importantly, figure out
+  how to support the touch id sensor on this A2520 keyboard so that it
+  works as an alternative first class touch id. if you have to reverse
+  engineer it then do it -- it is plugged in at the moment". So:
+  - Preferences ▸ Keyboard: a known keyboard recognised as Mouse's known
+    mice are, with a picture of it (drawn to ICONS.md) and its own
+    settings on it (its function row and media keys, the Fn/Globe key,
+    the keypad, its battery and connection when wireless,
+    what else it has).
+  - Its Touch ID: a sensor the fingerprint service (and so the lock
+    screen, the polkit agent, Passwords' unlock, approvals) uses as it
+    uses the built-in one, enrolled and chosen in Preferences, reverse
+    engineered as needed, in Rust and in process. Ben, 2026-11-03: "we
+    also want the touch id sensor for it to work both when using on a
+    mac and when on x86 like the thinkpad": the same on an Apple
+    silicon Mac and on an x86 machine (the ThinkPad P1), so nothing of
+    it may lean on a Mac's own Secure Enclave.
+  - What Linux sees of it (2026-11-03, read from sysfs with it plugged in
+    through the Studio Display's hub, 3-1.1): USB 05ac:029f "Magic
+    Keyboard with Touch ID and Numeric Keypad", bcdDevice 0x0420, full
+    speed. Interface 0 "Device Management" (HID, usbhid), 1 "Keyboard /
+    Boot" (HID, usbhid), 2 "Touch ID": HID class but a single bulk IN
+    endpoint (0x85, 64 bytes), so usbhid leaves it unbound; it's to be
+    talked to directly (control transfers on interface 2 and that bulk
+    endpoint). On a Mac the keyboard's sensor is paired with the Mac's
+    Secure Enclave and matching happens there, so what it sends may be
+    sealed for a Secure Enclave: find out first what it says unpaired,
+    whether a template can be matched on our side at all, and say so
+    before building on it.
+    *Found* (2026-11-04): it can't be done. Read from the keyboard (a
+    probe asking only descriptors, run once): interface 2's HID report
+    descriptor is a vendor page (0xff00, usage 0x4b) with three input
+    reports only, 0x20 (107 bytes), 0x21 (649) and 0x22 (62), no output
+    or feature reports, and nothing sent unasked. Apple's Platform
+    Security guide says how it's used: the keyboard's public key
+    accelerator and the Mac's Secure Enclave pair by exchanging public
+    keys rooted in Apple's certificate authority, with hardware-held
+    attestation keys and ephemeral ECDH; Touch ID data between them is
+    then AES-GCM with a 256-bit key; the sensor's own channel to that
+    block is keyed in the factory; the keyboard stores no templates and
+    matches nothing. So without a Secure Enclave Apple attests (no Linux
+    machine has one, the ThinkPad nor an Apple silicon Mac running
+    Linux), nothing can pair with it or read a fingerprint from it. What
+    stays: the keyboard itself in Preferences ▸ Keyboard (its picture,
+    function row, Fn/Globe, keypad), and Touch ID left out, said so
+    there. (Apple: support.apple.com/guide/security/secf60513daa)
+  - *Done* (2026-11-04): Preferences ▸ Keyboard ▸ Keyboards knows it
+    (`olo_protocol::keyboards`): a box with its picture, maker and model,
+    keypad and connection, and why its Touch ID isn't used. Its own
+    picture (2026-11-05: `keyboard-aluminium`, in Classic and every
+    theme). Its settings (2026-11-05): the top row as F-keys first or
+    its printed features first (app_server, per keyboard, no root), the
+    Globe key alone for emoji; its Mission Control and Spotlight keys
+    the overview and the palette; and its Do Not Disturb key, which the
+    kernel sends as KEY_SLEEP and logind took to suspend the computer,
+    Do Not Disturb (app_server holds `handle-suspend-key`). *Left*:
+    Ben's go with the keys themselves (nothing here can press them).
+
+- **Other programs' file handling through Olo, fixed** (Ben,
+  2026-11-04): "the gtk/qt integration doesn't seem to be working
+  properly e.g. even in olo chrome i can't click on the folder for a
+  download and have it open tracker. also, when i'm trying to upload a
+  file in slack it does show tracker but then if i press space on a
+  file to quick look it works but then if i press down or up it doesn't
+  properly show the other ones". Two bugs: Chrome's Show in folder (its
+  downloads' folder icon) goes to `org.freedesktop.FileManager1`'s
+  ShowItems, which Tracker serves (tracker's filemanager.rs; HACKING's
+  "Open in Tracker"): find why nothing opens (the name not taken, the
+  call not reaching it, Chrome asking through the portal's OpenURI or
+  xdg-open instead) and test it from Chrome on an Agent Screen; and in
+  the file panel the portal shows (apps/portal, `olo_ui::file_panel`),
+  Quick Look open on a file must follow ↑ and ↓ (and ← →) to the
+  file selected next, as it does in Tracker's own windows.
+  *Quick Look: done* (9bf9eb3b: the look follows the panel's list both
+  ways, `--follow`, HACKING's file panel). *Show in folder, looked at*:
+  Tracker owns `org.freedesktop.FileManager1` in the session and its
+  ShowItems opens the folder with the file selected (tested on a test
+  session's bus); GIO's default for folders is Tracker too; the user
+  services have WAYLAND_DISPLAY. What Chrome 157 calls is still to see:
+  `busctl --user monitor org.freedesktop.FileManager1` (and
+  `org.freedesktop.portal.Desktop`) running while its download's folder
+  is clicked (a test session's Chrome stops at its terms on first run).
+  *Found and fixed* (2026-11-05): Chrome 157 calls ShowItems itself
+  (it asks whether `org.freedesktop.portal.Desktop` and FileManager1 are
+  on the bus first; with the portal there too, as in Ben's session, it
+  still calls ShowItems), and Tracker serves it: a folder's window with
+  the file selected, brought back from minimized or opened on this
+  workspace, focused (checked on a test session's bus with Chrome, the
+  portal frontend and Olo's backend). But Ben's journal said, at each
+  Olo upgrade on Nov 4, "tracker: not serving org.freedesktop.FileManager1:
+  name already taken on the bus": Tracker asked for the name with
+  ReplaceExisting and DoNotQueue, so when anyone held it (the last
+  Tracker's connection not yet gone as it restarts, or Nautilus, which
+  the system's activation file `org.freedesktop.FileManager1.service`
+  starts whenever no Tracker has the name, and which doesn't allow it
+  taken) Tracker gave up for the session and every "show in folder"
+  went nowhere. It now waits in line for the name and allows it taken
+  (the next Tracker takes over at once): checked with a stand-in owner
+  that doesn't allow it taken (Tracker logs that it waits, takes the
+  name the moment the other lets go, and Chrome's Show in folder opens
+  Downloads). *Left*: Ben's try after the upgrade. Whether to keep
+  D-Bus from starting Nautilus at all (Ben, 2026-11-05: yes, and "doctor
+  should offer to install the change that makes it always use tracker"):
+  *done*, Olo Doctor's "Always Use Tracker" (HACKING's Tracker), its
+  file and Tracker's `--file-manager` tried on a private dbus-daemon and
+  a headless session's bus.
+
+- **Screen sharing: an Olo portal backend** (Ben, 2026-10-29; the
+  design researched by another agent, session 05de188d, kept here).
+  Apps never capture the screen themselves on Wayland: Chrome, Slack,
+  Discord, Firefox and OBS all call the xdg-desktop-portal ScreenCast
+  API; a portal backend shows a picker, the compositor sends frames as a
+  PipeWire stream, and the app reads it. Chrome and Electron apps share
+  WebRTC's capture code, so this is a good portal backend and a good
+  PipeWire stream, plus a few app quirks, nothing app-specific.
+  - **Done** (2026-10-30, HACKING.md "Screen sharing"): olo-portal is
+    the session's ScreenCast backend (olo-session runs it and routes the
+    portal to it); the picker (screens, live thumbnails) opens over the
+    asking window; streams are PipeWire nodes fed from dmabufs app_server
+    draws on the GPU only when the screen changed (0.26 ms median of
+    app_server's loop at 5K); shares survive an app_server reload and an
+    upgrade waits for them; restore tokens and repeat requests answer
+    without a picker. Checked end to end through xdg-desktop-portal with
+    `olo-portal share-test`, and with Chrome 156's getDisplayMedia (a
+    sandbox Chrome on a test session): Chrome's own dialog, Entire
+    Screen, Olo's picker, Chrome's live preview, Share (the second
+    session Chrome opens is answered by the restore token, no second
+    picker), 5120×2880 at the 30 fps asked for, and Chrome's Stop
+    sharing ends the stream. Deskbar's tray shows what is shared, with
+    Stop Sharing (the app is told it closed). Windows as sources
+    (2026-10-30): the picker's Windows, window frames at the client's
+    size, renegotiated as it resizes, ended when it closes. App scopes
+    (2026-10-30): programs started from desktop entries run in
+    `app-olo-<id>-<pid>.scope`, so the portal knows which program asks
+    (Chrome and Slack already put themselves in scopes of their own).
+    Dmabufs passed through (2026-10-30): an app that takes them gets
+    the GPU buffers app_server captures into, no CPU copy (checked with
+    GStreamer's pipewiresrc and the portal's own reader, a screen and a
+    window, resized, across an app_server reload); the rest get memory.
+    Frames carry timestamps now, and a share outlives a reload (it used
+    to end, taking app_server's stop as the window closing).
+  - **Build** our own backend, `olo-portal`, started and supervised by
+    olo-session: it owns `org.freedesktop.impl.portal.desktop.olo` over
+    zbus (which we already use), shows the picker as a kit window,
+    produces the PipeWire streams, and gets frames from app_server over
+    ext-image-copy-capture with dmabufs (no CPU copy), on the direct
+    socket so the protocol stays hidden from outside programs. Not
+    inside the compositor (niri's, KWin's, Mutter's way): a stream in
+    app_server drops every share in the middle of a call at each
+    upgrade; out of process it outlives app_server (the portal
+    reconnects and frames carry on), and libpipewire stays out of the
+    compositor, which never waits on a client. COSMIC is the precedent
+    (a Smithay compositor in Rust with exactly this split: pipewire-rs,
+    gbm, ext-image-copy-capture). Not xdg-desktop-portal-wlr/-hyprland
+    (not native, generic pickers), nor imitating Mutter's private D-Bus
+    API so xdg-desktop-portal-gnome works, as niri does (GNOME's picker,
+    startup races, someone else's private API). pipewire-rs links
+    libpipewire in process, as Smithay links libinput: not shelling out;
+    the pure-Rust `pipewire-native` can't stream video yet, so move to
+    it later.
+  - **For Chrome and Slack** (from WebRTC's capture code):
+    - formats: offer BGRx and BGRA first (WebRTC swaps the bytes of RGB
+      formats on the CPU); offer dmabuf with modifiers, and
+      shared-memory (MemFd) buffers as a fallback (Chromium and some
+      Electron apps showed black screens on niri until it added that);
+      handle WebRTC renegotiating when a modifier fails;
+    - stream metadata: WebRTC asks for the frame header, crop, cursor
+      and damage metadata; send frames only when something changed;
+      all three cursor modes (hidden, drawn in, sent as metadata);
+    - window shares: renegotiate the stream size when a window resizes;
+      draw the window whole even when it's behind another tab in a
+      group (app_server already does this for agent captures);
+    - Slack's repeated pickers: Chromium opens several portal sessions
+      for one share (a Slack patch author counted three, so three
+      pickers; Hyprland users use a wrapper script): answer a repeat
+      request from the same app, a few seconds after a choice, with that
+      choice;
+    - which app is asking (done): the portal leaves the app id empty
+      for unsandboxed apps unless they run in an `app-<id>-….scope`
+      systemd unit. Chromium and Electron put themselves in one
+      (`app-com.google.Chrome-<pid>.scope`, `app-slack-<pid>.scope`);
+      Olo starts other programs from desktop entries in transient
+      scopes (`StartTransientUnit` over D-Bus), which also gives the
+      Inhibit, GlobalShortcuts and Notification portals their app ids;
+    - restore tokens: save a choice for next time (portal interface
+      version 4); OBS uses it, and Chrome the kind that lasts while the
+      app runs;
+    - Slack must run as a Wayland client (no Xwayland; Electron 38 and
+      later do by default); its drawing overlay will still misbehave,
+      but sharing works;
+    - Zoom's native app offers Wayland sharing only when
+      `XDG_CURRENT_DESKTOP=GNOME`, so it needs a launcher quirk for its
+      process; Zoom in Chrome just works;
+    - sharing a Chrome tab never reaches us, and Chrome can only share a
+      tab's audio, not the whole system's: audio is out of scope.
+  - **Done since** (2026-11-05, HACKING "Kept out, and shown as
+    shared"): Passwords, the polkit prompt, Terminal's sudo prompt,
+    Deskbar's approve prompt (`WindowOptions::private`) and the lock
+    screen blacked out of shares and recordings; a shared window ringed
+    on screen while it is. Agent screens run their own portal (HACKING
+    "A screen's own bus"), and the person's picker offers each agent
+    screen as a source (HACKING "Agent screens as sources").
+    RemoteDesktop done (2026-11-05, HACKING "Remote control"): the
+    portal's Notify calls and ConnectToEIS, asked every time, app_server
+    taking libei connections only from olo-portal after a grant, Deskbar
+    showing it with Stop Remote Control; tested headless with
+    `remote_test` (no real Chrome Remote Desktop or Deskflow tried yet).
+    The cursor sent as metadata done too (2026-11-06, HACKING's "The
+    cursor as metadata": app_server's cursor capture sessions, the
+    capture following the pointer, the stream's `SPA_META_Cursor`;
+    tried headless with a reader). *Left*: a real app's go with it
+    (OBS, Chrome Remote Desktop). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
+    started by Olo is told it's on GNOME, so it offers Wayland sharing;
+    untried, Zoom isn't installed here).
+  - **The Olo touches**: the picker, a kit dialog with Screens and
+    Windows, live thumbnails and app icons, opened over the window that
+    asked (agents read and drive it through the widget tree for free);
+    while sharing, Deskbar shows what is shared and by which app, with
+    Stop; a shared window gets an outline; Do Not Disturb turns on (the
+    Notifications item); Passwords, the lock screen and the polkit
+    prompt are blacked out of shares. Agent Screens as sources: the
+    portal can connect to an agent screen's own app_server, to share an
+    agent's screen into a Meet call; a working capture protocol also
+    lets the Agent Screens viewer stop pulling raw-pixel screenshots
+    eight times a second.
+  - **Order**: 1. real capture in app_server, screens then windows
+    (Smithay at our pinned rev already has window capture sources and
+    the foreign-toplevel list; test headless with a small client);
+    2. olo-portal with ScreenCast and the picker; 3. app scopes and
+    answering repeat requests; 4. the Screenshot portal (cheap reuse of
+    what we have); 5. RemoteDesktop over libei, for remote control
+    (app_server already has a `libei` feature). Open question from the
+    design: whether remote control (Zoom, Chrome Remote Desktop) matters
+    soon, which decides how early the libei work comes.
+  - Sources:
+    [ScreenCast backend interface (v6)](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.ScreenCast.html);
+    WebRTC's [screencast_portal.cc](https://chromium.googlesource.com/external/webrtc/+/master/modules/desktop_capture/linux/wayland/screencast_portal.cc)
+    and [shared_screencast_stream.cc](https://chromium.googlesource.com/external/webrtc/+/master/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc);
+    [niri's Screencasting wiki](https://raw.githubusercontent.com/niri-wm/niri/main/docs/wiki/Screencasting.md)
+    and [SHM-fallback notes](https://github.com/ljm-233/niri-portal-cast);
+    [slack-on-wayland](https://github.com/hamolicious/slack-on-wayland),
+    [Slack's Linux release notes](https://slack.com/release-notes/linux),
+    [Electron's desktopCapturer](https://www.electronjs.org/docs/latest/api/desktop-capturer),
+    [Electron PR #54550 (restore tokens)](https://github.com/electron/electron/pull/54550);
+    [xdg-desktop-portal-cosmic](https://github.com/pop-os/xdg-desktop-portal-cosmic)
+    ([Cargo.toml](https://raw.githubusercontent.com/pop-os/xdg-desktop-portal-cosmic/master/Cargo.toml));
+    [pipewire-native](https://crates.io/crates/pipewire-native),
+    [Collabora: PipeWire workshop 2025](https://www.collabora.com/news-and-blog/blog/2025/07/03/pipewire-workshop-2025-updates-video-transport-rust-bluetooth/);
+    [Using portals with unsandboxed apps](https://blogs.gnome.org/ignapk/2025/06/04/using-portals-with-unsandboxed-apps/);
+    [xdg-desktop-portal-wlr FAQ (Zoom)](https://github.com/emersion/xdg-desktop-portal-wlr/wiki/FAQ),
+    [Zoom community thread](https://community.zoom.com/t5/Zoom-Meetings/Do-not-check-if-XDG-CURRENT-DESKTOP-is-gnome-for-wayland/m-p/108716).
+
+- **Screen recording, for people and agents** (Ben, 2026-11-04):
+  "create an olo native screen recording app similar to CleanShot X
+  that can be used by humans but also is agent native so that agents
+  can use it to create polished screen recordings themselves too, from
+  within an agent screen. and make sure that it comes with agent skills
+  about doing it that is included with the agent screens skill and that
+  for screen recordings agents can have a high quality 4k agent screen
+  with 4k screen recordings". An Olo app (beside Screenshot, sharing its
+  region picker) that records the screen, a window or a region, with
+  CleanShot X's polish: the pointer drawn larger and smoothed, clicks
+  and keys shown, zoom that follows the action, a background and
+  rounded frame around a window, the microphone and the computer's
+  sound, a webcam bubble, pause and resume, then a trimming editor and
+  export (MP4, H.264/HEVC/AV1 through the GPU's encoder, and GIF), all
+  native in Rust (no ffmpeg), app_server's capture of the frames
+  (screencopy / dmabuf, no copies), on a worker, cancellable. Agent
+  native: everything a person can do there, an agent can drive through
+  a documented API (start, mark, zoom to, caption, stop, trim, export,
+  where it went), within an Agent Screen, without touching the person's
+  screen. An Agent Screen made for it can be 4K (3840 × 2160, at 1× or
+  2×) and record at 4K. And a skill for it, shipped with Olo Screens'
+  skill (olo-screens): how to plan, pace and record a polished demo
+  (rehearse, then record; the pointer's path, pauses, zooms; checking
+  the result).
+  *Started* (2026-11-04, HACKING's "Screen recording"): the recording
+  itself, for people and agents: `olo-screenshot --record` (a display
+  or a window, frames only as they change, H.264 into an MP4 written as
+  it goes, `--stop`, `--seconds`), `olo-screen record-video` and
+  `stop-video` on an Agent Screen, 4K checked (played back in the
+  Viewer); `olo_video` shared with Agent Screens' Export Video; the
+  skill says how; ⌘⇧6 records the screen or stops (Ctrl+Alt+Print
+  with the Windows and BeOS profiles), Deskbar's tray showing a record
+  light with Stop Recording while it goes, a notification with Show in
+  Tracker when saved. *Then* (2026-11-04): a region (`--region
+  X,Y,W,H` in points, or dragged out with ⌘⇧4's picker), pause and
+  resume (`--pause`/`--resume`, the pause cut out of the video; Deskbar's
+  light shows a pause sign, its menu Pause or Resume), Screenshot's
+  Record… (Screen, Active Window, Region…), and for agents
+  `olo-screen pause-video`, `resume-video`, `record-video --region` and
+  `video-frame` (what a video shows at a time, to check it; the Viewer's
+  seek into a still stretch fixed on the way: it showed the next change).
+  The recorder no longer wakes on a timer (a still or paused recording:
+  only NVIDIA's driver threads wake). *Sound* (2026-11-05): the
+  computer's and the microphone's, either or both (Record…'s ticks,
+  `--sound`), AAC beside the video. *GIF* (2026-11-05): Record… ▸
+  Save as GIF, `--as-gif`, `--gif VIDEO`. *Clicks and shortcuts shown*
+  (2026-11-05): Record… ▸ Show Clicks, Show Shortcuts (app_server
+  draws them; typing never shows); and GPU recordings no longer lose
+  their first 2.5 s (the encoder opened before the clock starts). *A
+  countdown* (2026-11-05): 3 s on screen before a person's recording.
+  *Trimming* (2026-11-05): the Viewer's Edit ▸ Trim…, `--trim`, copied
+  without encoding again. *A window on a background* (2026-11-05):
+  Record… ▸ Window on a Background, `--background`: the blurred
+  wallpaper, rounded corners, a shadow. *The pointer larger and
+  smoothed* (2026-11-05): Record… ▸ Larger Pointer, Smooth Pointer,
+  `--pointer-size`, `--smooth-pointer`; a window's recording has the
+  pointer. *Zoom* (2026-11-05): Record… ▸ Zoom on Clicks,
+  `--zoom-follow`; `--zoom-to` and `olo-screen zoom-video` for agents.
+  *Marks and captions* (2026-11-05): `--mark`/`mark-video` (chapters,
+  shown in the Viewer's timeline and Go menu), `--caption`/
+  `caption-video` (in captures only).
+  *The camera bubble* (2026-11-05): Record… ▸ Show Camera, `--camera`,
+  `olo-camera` (V4L2 in process), checked with the stand-in camera.
+  *Left*: the camera bubble on a real camera (Ben's first try: Show
+  Camera, then a recording of the screen; the laptop's camera and the
+  Studio Display's were never opened here); in a window's recording
+  done (2026-11-05: on a background, the recorder draws the camera on
+  the background's corner itself, `inset.rs`; checked with the stand-in
+  camera), and
+  the GPU
+  encoder below (OpenH264 on the CPU keeps about 9 frames a second at
+  4K: 111 ms a frame). *HEVC and AV1* (2026-11-05): `--codec`,
+  Preferences ▸ GPUs ▸ Format; every codec now at a measured constant
+  quality (H.264's recordings a third smaller for the same picture).
+  - **Encoding on the best GPU, chosen in its settings** (Ben,
+    2026-11-04): "the screen recording app should also take advantage
+    of a discrete graphics card for encoding when available (and make it
+    a togglable setting to use cpu or gpu or specific gpu if more than
+    one and default it to whatever the most powerful detected gpu is)".
+    Its settings list the CPU and each GPU with a hardware encoder
+    (NVIDIA's NVENC, Intel's and AMD's through Vulkan Video or VA-API),
+    by name and what each can encode (H.264, HEVC, AV1, up to which size
+    and rate), the most powerful found chosen by default (a discrete card
+    over the built-in one); the frames handed to it as dmabufs, without
+    a copy through the CPU where the driver allows. A GPU that fails
+    mid-recording falls back to the next, saying so.
+    *Started* (2026-11-04): NVIDIA's NVENC (H.264, `olo_video::nvenc`,
+    its library opened at run time so nothing links it), the recorder's
+    `--encoder auto|cpu|nvidia`, auto taking NVENC where it opens: 4K in
+    13.4 ms a frame against the processor's 111; the setting in
+    Preferences ▸ GPUs ▸ Screen Recordings (the most powerful by
+    default, named; the NVIDIA GPU; the processor). *Then*
+    (2026-11-05): HEVC and AV1 on NVENC, each codec at a measured
+    constant quality; an encoder failing mid-recording opened again,
+    else the recording kept to there (not yet falling back to another
+    encoder: the file's sample entry describes one stream).
+    *Found* (2026-11-05), for Intel's and AMD's: Fedora's own VA-API
+    drivers (iHD from Fedora, Mesa's) leave out the patented codecs: on
+    this ThinkPad's Intel GPU (xe, renderD128) iHD encodes only JPEG,
+    VP9 (profiles 0–3) and AV1 profile 0, no H.264 or HEVC (those need
+    RPM Fusion's `intel-media-driver` / `mesa-va-drivers-freeworld`). An
+    H.264 encoder through VA-API was written (libva opened at run time,
+    bindgen declarations from libva 2.24's headers, NV12 on a few
+    threads, CQP, the driver writing the headers) and set aside: it
+    couldn't be run here. What would run here is AV1 through VA-API,
+    which needs its sequence and frame headers written by us (packed
+    headers with the offsets the driver patches, as FFmpeg's
+    vaapi_encode_av1 does). *Done* (2026-11-05, HACKING "AV1 on Intel's
+    and AMD's GPUs"): AV1 through VA-API on the Intel GPU (`olo_vaapi`,
+    its headers written by us, constant quality 40: 47.6 dB on a
+    2560 × 1600 screen in about 8.5 ms a frame), `--encoder vaapi`, auto
+    falling back to it for AV1, and Preferences ▸ GPUs offering it where
+    the driver says it encodes AV1 (asked on the panel's thread, about
+    15 ms: no cache needed). *Left*: the frames as dmabufs (CUDA's
+    external memory; VA-API's DRM PRIME import with its video processor
+    making NV12) rather than copied; auto preferring the Intel GPU on
+    battery.
+
+- **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
+  at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
+  colours and the default text on bands programs draw read in light
+  mode; 2026-11-03: ls, git log/show, vim, htop, btop, man/less and fzf
+  run in all 16 schemes the looks offer, at 1× and 2× (headless,
+  sandboxed), every one legible, vim taking light or dark colours from
+  the OSC 11 answer; what's dark in light mode is the programs' own
+  dark-only defaults (btop's black theme, fzf's selected line);
+  light/dark reports (DEC mode 2031) so a program hears when the
+  colours turn; *left*: Codex and Claude Code, which must be run on
+  Ben's accounts, so by Ben) (Ben, 2026-10-31): "in light
+  mode my terminal is really hard to read i'm not sure why or what's
+  conflicting but can you figure out a way so that the terminal gets
+  properly themed with colors that look beautiful and have high
+  readability. make sure you test it with various terminal clis, tuis,
+  claude code, and codex for every supported terminal theme light and
+  dark and all terminal themes that come as part of the olo themes both
+  the light and dark variants. every single one must look polished with
+  excellent legibility and aesthetics." Seen in his screenshot (light):
+  Codex's composer a mid-grey band with its placeholder and footer
+  nearly invisible, its paths and dim text pale blue/grey on white, its
+  added lines on a dark grey-green; Claude Code's diff on near-black
+  green, its dim text and tips too faint. Likely causes to check: how
+  programs learn the background (OSC 10/11/4 answers, `COLORFGBG`,
+  `TERM`/`COLORTERM`), Codex and Claude Code picking dark styles
+  (Claude Code's own theme setting), 256-colour greys and the bright
+  colours chosen for dark backgrounds, faint (SGR 2) mixed too far
+  towards the background, truecolor backgrounds a program blends from
+  what it thinks the background is. So: answer the colour queries
+  truly, a minimum contrast for text against its cell (as iTerm's and
+  Ghostty's "minimum contrast"), faint kept legible, and each look's
+  palettes tuned. Checked with ls, git diff/log, htop/btop, vim/nvim,
+  less/man, tmux, fzf, lazygit, Claude Code and Codex in every terminal
+  theme of every Olo look, light and dark, at 1× and 2×, as shots in
+  the journal.
 
 - **The ThinkPad P1 Gen 9, on the machine: everything in it first-class**
   (Ben, 2026-11-03, now running Olo on it: "olo doesn't recognize my
@@ -685,98 +1430,215 @@ of Finished; a new one goes where its priority puts it.
     on); dim when looking away.
   - The IR camera (face sign-in): built, see "Face unlock" above.
 
-- **Palms read as fingertips on the ThinkPad's touchpad** (Ben,
-  2026-11-04): "on the thinkpad touchpad when i try to do the palm
-  training it just thinks my palms are fingertips and only seems to be
-  registering a small dot when my palms are on the touchpad". The pad is
-  a Goodix GXTP5420 (I²C HID, 27C6:0F90, `/dev/input/event6`), and its
-  axes (from /proc/bus/input/devices, ABS=6e0800001000003) are X, Y,
-  pressure, and for each contact slot, position, tool type
-  (`ABS_MT_TOOL_TYPE`), tracking id and pressure (`ABS_MT_PRESSURE`):
-  no contact size (`ABS_MT_TOUCH_MAJOR`/`MINOR`, `ABS_MT_WIDTH_*`),
-  which the trainer draws and the palm model reads (the Mac's pad gives
-  it), so every contact is a point. Next: see what it sends for a palm
-  (an evdev recording of palms, fingertips and a flat thumb: whether the
-  firmware marks palms `MT_TOOL_PALM` itself, as libinput expects of
-  such pads, what pressure a palm gives, and whether a palm comes as
-  several contacts close together); then make the model and the trainer
-  work from what a pad has (the tool type where it says palm, pressure
-  and the contacts' spread where there's no size), the trainer drawing
-  a contact by what's known (a pressure-sized ring, not a dot) and
-  saying when a pad can't tell palms by size; and the built-in model
-  for pads like this one.
-  *Built* (2026-11-05, docs/TOUCHPAD.md "The ThinkPad's touchpad"):
-  two recordings of Ben's hands showed it all: no size, the pressure
-  the click's force (a flat palm weighs 0: why palms were dots), the
-  firmware right on every palm and never on a finger, but a resting
-  palm called a finger again on up to 98% of its reports (libinput
-  follows it), and the kernel ending a palm and bringing it back under
-  a new id. Ben: "each touchpad type should have its own specific
-  custom model type and weights". Each kind of pad now has its own
-  model (`olo_palm::Kind`: features, size, base model, timing, training
-  and judging); the ThinkPad's is made from Ben's captures (100% of
-  palms, 0% of fingers, by the firmware's word, held). The filter runs
-  there (profile "ThinkPad", Preferences' recommended one for this pad):
-  a palm stays a palm until it lifts, as its tool type to libinput
-  (replayed: 315 flips held, no finger told a palm). The trainer draws a
-  palm as large as one and a fingertip as one, judges a click by the
-  pad's button, and trains this pad's kind. Left: Ben's try after the
-  upgrade (choose the ThinkPad profile in Preferences ▸ Touchpad if it
-  isn't already; type with palms down; the trainer).
+- **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
+  arrives within days; **next once the GPUI migration is done**, before
+  the rest of this list: "after all the gpui work is done, prioritize
+  the thinkpad p1 gen9 special support next", 2026-11-01): stock Fedora, `git clone` the repo, run a setup
+  app, and everything works and is supported in Olo, not just on
+  the arm64 M2 MacBook Pro (Aurora). The setup app checks and installs
+  what is needed (packages, Rust toolchain, the session entry, PAM,
+  udev rules, keyd-style key mapping where wanted) with live progress,
+  and is safe to run again. The machine: Intel Core Ultra 7 356H; 64 GB
+  LPDDR5X; 2 TB PCIe Gen5 SSD (Opal); 16" 3200×2000 tandem OLED, touch,
+  HDR 600 (1500 nits peak), 100% DCI-P3, VRR 40–120 Hz, factory colour
+  calibration; NVIDIA RTX PRO 2000 Blackwell 8 GB (hybrid with Intel
+  graphics); 5 MP RGB+IR camera (face sign-in) with dual microphones;
+  Intel Wi-Fi 7 BE211 and Bluetooth 5.4; fingerprint reader; haptic
+  touchpad; backlit US keyboard. All of it should work: hybrid graphics
+  (app_server on the Intel GPU, the NVIDIA one for apps that want it,
+  external displays on either), HDR and wide colour and the panel's
+  calibration, VRR, touch screen, the haptic touchpad's gestures and
+  click settings, IR face sign-in alongside the fingerprint for unlock
+  and Passwords, brightness, keyboard backlight, power profiles and
+  battery, suspend, and an x86_64 Chrome. Build and test x86_64 in CI or
+  a VM before it arrives.
+  Done so far: `tools/setup.sh` (checks by capability, installs with dnf or
+  layers with rpm-ostree, Rust through rustup if it's too old, builds and
+  installs; `--check` reports only); `tools/dev/x86-check` (the whole
+  workspace type-checks for x86_64 from this Mac, clean); the GPU Olo
+  draws with is the boot GPU (Intel on a hybrid ThinkPad;
+  `ANVIL_DRM_DEVICE` overrides); touch screens, keyboard backlights
+  (`*kbd_backlight`) and laptop panel brightness are already generic.
+  Waiting on the machine: NVIDIA for apps and external displays, HDR and
+  wide colour, VRR, the haptic touchpad, IR face sign-in.
+  *Status* (2026-11-03, Ben: "update tools/setup to make sure it will
+  recognize the system and do all that", for Fedora 45 on x86):
+  - It says what it's on: the release (warning before 44), the
+    processor, memory, free space, each GPU, and the login screen (GDM
+    or SDDM). It names that screen when it's done, with how to choose
+    Olo Desktop there.
+  - It installs what a fresh Workstation lacks: Git LFS and its files
+    (the voice model is built in from LFS, so a clone without it built
+    a pointer); PipeWire's and SPA's headers; Mesa's DRI and Vulkan
+    drivers and the Vulkan loader; Pillow for the dev tools.
+  - Its Rust minimum is now the newest `rust-version` a crate asks for
+    (1.95, filmcraft's; it said 1.88).
+  - Every package and `pkgconfig(…)` it names resolves in Fedora 45's
+    x86_64 repository (dnf repoquery against it). Fedora 45 has
+    libdisplay-info 0.3.0, as built against here, and Rust 1.98.
+  - Not run on x86 yet: that's the ThinkPad.
+  - Ben, setting the ThinkPad up the same day: "the tools setup doesn't
+    seem to be adding the login entry for gdm". The entry went into
+    /usr/local/share/wayland-sessions, which GDM reads only when its
+    XDG_DATA_DIRS names it; Fedora 45's GDM 51 daemon doesn't name
+    XDG_DATA_DIRS, though it has /usr/share/wayland-sessions built in.
+    Now it goes into /usr/share/wayland-sessions (atomic systems keep
+    /usr/local's), and an entry in the other place is removed. The live
+    layout lint, which could stop the install before the entry on a new
+    machine, is left to the hooks during setup (`OLO_SKIP_UI_LINT=1`).
+    Setup checks the entry is where the login screen reads it, and
+    stops saying so when installing fails. Doctor looks in both places.
+    Left: Ben's run on the ThinkPad.
+  - brush's command model (olo-complete) computes with AVX2 and FMA on
+    x86_64 (SSE2 without): its test (`simd_does_the_reference_arithmetic`,
+    against the plain reference) passes on the ThinkPad (2026-11-04).
+  - *On the ThinkPad* (2026-11-04): Olo runs there daily. Since: each
+    display composed by its own GPU (Intel the panel, NVIDIA its HDMI
+    port, which sleeps otherwise: apps, Chrome and app_server leave it
+    asleep), Preferences ▸ GPUs, NVIDIA's driver through Doctor, the
+    touch screen as pointer and scroll, the OLED known, power modes and
+    the charge limit, the SoundWire sound once kernel 7.2.15 came, the
+    ThinkPad's keys (F4 and its light, F7–F9), the TrackPoint, the
+    presence sensor, Thunderbolt in Doctor. Left: in the ThinkPad item
+    above (HDR, VRR, face sign-in, the haptic touchpad's palm filter).
 
-- **The palm trainer, full screen and driven from the keyboard** (Ben,
-  2026-11-02, with a screenshot of its last step, "Try it", at 2× in
-  dark mode): "so the training modal/flow needs work: for one i can't
-  click the buttons because i am using the mouse to do stuff. we should
-  make it so that the trainer is full screen and the continue steps
-  etc. are indicated by pressing the spacebar or something, and it
-  needs to be clearer about what is expected for each step with clear
-  feedback as to whether i did it right, and when it finishes it needs
-  to show a proper summary and tell me if it actually created the
-  custom model or not and then in the touch preferneces it needs to
-  also show if it's using the trained model or not and stats on it and
-  you need to carefully qa every window/state screen for it to make
-  sure everything fits and works together and looks good". So:
-  - Full screen, and never needs the pointer: Space goes on, keys for
-    again, back and quit shown on screen (typing steps take their
-    sentence first, so a typed space never skips a step).
-  - Each step says exactly what to do, judges each try as it happens
-    ("that was a fingertip, rest the flat of your hand") and shows its
-    count of good tries; a step is done when it has enough.
-  - The end shows a summary: whether a model was made and saved and is
-    in use now (or why not), touches gathered, and how it does against
-    the built-in model and the size rule on touches kept back.
-  - Preferences ▸ Touchpad says which model is in use (yours, with its
-    date and numbers, or the built-in one) and can forget yours.
-  - The typing exercise as a 90s typing tutor (Ben, 2026-11-02): "for
-    the typing portion show the user something to type (style it like
-    the old school mavis beacon typing tutor from macos -- generate some
-    imagery that looks just like mavis beacon showed and make it a real
-    throwback for people that remember it) because otherwise it's easy
-    to struggle with just thinking about what to type and it's not
-    natural". A lesson strip to type, an on-screen keyboard with each
-    finger's keys in its colour and the next key lit, hands on the home
-    row, speed and accuracy; drawn in Olo's own style (the look, not the
-    product's name, logo or the person on its box).
-  - Enabling the model requires training (Ben: "in fact, change the ux
-    so that enabling it requires doing the training"): only a trained
-    model is used; the check is there once one is.
-  *Status* (2026-11-03): done and built for Ben to try (full screen,
-  keyboard, judged touches with rings and dots, the typing tutor, the
-  summary confirmed with app_server, the try, the Touch tab's status
-  and Forget My Model; walked through headless with synthetic touches at
-  2× dark). Found on the way: a w's points spilled out of its glyph's
-  bitmap when emboldened (a grey box round the letter, any app), fixed
-  in GPUI. Left: QA at 1 and 1.5×, light and night, and the trainer's
-  screens as `ui_lint` tests with the new checks.
-  - QA every screen and state at 1, 1.5 and 2×, light, dark and night.
-  *Status* (2026-11-03): every step in every state is a `ui_lint` test
-  (`ui_lint_the_palm_trainer`: 36 states, at 1280 × 800 and 1512 × 982,
-  1, 1.5 and 2×, light and dark; night is app_server's warm tint, not
-  a palette): clean. Then reworked (Finished: "A palm resting low…"):
-  twelve exercises, each asking one thing, a "now" line, a banner when
-  a step is done. Left: Ben's go on his pad with the new build (his old
-  model stays in use until he trains again).
+## Blocked
+
+Each waits for what its entry's "Left" says: Ben at the machine (a
+password, a touch, a camera, a reboot he agrees to), hardware nobody
+here has plugged in, an account to sign in with, or data from more
+people.
+
+- **Face unlock: sudo and Passwords approved by a look** (Ben,
+  2026-11-04): "support facial recognition as an alternative to the
+  yubikey or password to unlock sudo and passwords. put the setup in
+  prefs -> passwords. do whatever is needed to get olo working with it
+  even if you have to write a custom driver or whatever." Set up in
+  Preferences ▸ Passwords (enrol a face, a few angles, with and without
+  glasses; Forget), then a look approves what the password, the
+  fingerprint or the YubiKey approve now: Terminal's sudo window,
+  Passwords' unlock and `op`, polkit, Approve Without Asking, the lock
+  screen; each window says it's looking and falls back to the others.
+  Only with the infrared camera: a photo or a screen can't pass it (IR
+  shows skin and depth cues a printout and a display don't; the colour
+  camera alone is too easily fooled, so never that alone). Native, in
+  Rust and in process: the frames over V4L2 (no howdy, no OpenCV
+  binaries, no linux-enable-ir-emitter), the emitter switched on by
+  Olo's own UVC extension-unit control (found by trying the unit's
+  controls with the camera's own IR stream watched for the flood
+  lighting it, kept per camera), face detection and embeddings by a
+  small model run in process (as Olo runs its others), liveness from IR
+  (and the emitter's on/off frames), the enrolled templates sealed for
+  the user only. The privacy shutter closed: it says so.
+  *Checked* (2026-11-04, from /sys): the ThinkPad's camera is Chicony's
+  04f2:b8b3 on USB (3-4): a colour camera ("Integrated Camera",
+  /dev/video0 and 1) and an infrared one ("Integrated IR Camera",
+  /dev/video2 and 3; UVC, interface 1.2), a camera HID interface (1.4:
+  hidraw0) and a DFU one; Ben's account can open them (the video
+  group's ACL). Next: the IR node's formats (GREY or Y8 at what size),
+  its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
+  which control lights the emitter, and what the HID interface reports
+  (the shutter, perhaps).
+  *Built* 2026-11-05 (HACKING's "Face unlock"): `olo-face` (V4L2, the
+  emitter's UVC control found by trying, YuNet and SFace in process,
+  infrared-only looks with a relief check), `olo-faced` (root, the system
+  bus, the faces root's only, no password kept), `pam_olo_face.so` (sudo
+  and polkit), Passwords and the lock screen asking it, and Preferences ▸
+  Security ▸ Face Unlock (Install…, Set Up…, Forget…, Remove). Tried end
+  to end without root or a camera (a private bus, portraits for frames, a
+  stand-in PAM stack). *Left*, needing Ben at the machine: Install… (his
+  administrator password), then Set Up… in front of the camera (the
+  emitter found then: the read-only look found its units 10, 13 and 14,
+  unit 14's control 6 the likeliest); sudo, polkit (under SELinux), the
+  lock screen and Passwords tried with his face; the relief and match
+  thresholds tuned on his real looks; what the camera's HID interface
+  says (the shutter).
+
+- **A USB 2 device in a Thunderbolt 5 port isn't seen** (found
+  2026-11-04 with Ben's YubiKey): in the USB-C port on the Barlow Ridge
+  Thunderbolt 5 controller (8086:5780 bridges, its xHCI 8086:5782 at
+  0000:a9:00.0, buses 5 and 6, both root hubs runtime-suspended, the
+  controller in D3hot) the key drew power (Type-C port 1 had a partner)
+  but the kernel logged nothing at all, not even a failed enumeration;
+  in a port on the chipset's controller (00:14.0) it came up at once. A
+  SanDisk USB 3 drive had worked in that port (SuperSpeed, 6-2). Find
+  whether the controller's USB 2 side misses its wake (PME) for a
+  full-speed connect, whether `power/control` on (Ben's to try) or the
+  USB4 router's own state brings it, and fix or work around it in Olo
+  (a udev rule keeping it awake costs power: measure), with Olo Doctor
+  saying so meanwhile.
+
+- **AirPods missing from Sound's outputs** (Ben, 2026-11-04): "i
+  paired my airpods and they show up properly in the input menu but in
+  the sound output menu there's no airpods entry (in sound prefs)".
+  Paired and connected, they're an input in Preferences ▸ Sound but not
+  an output: their A2DP (or HFP) sink missing from what the output menu
+  lists. *Looked at* (2026-11-04, AirPods not connected then): Sound
+  lists every sink the sound server has (`audio::devices`, only Olo's
+  None taken out), and the input that showed is Olo's own
+  (`airpods_mic.ADDRESS`, made by olo-airpods over Apple's protocol,
+  there whatever BlueZ's audio profile does). So the likely cause is
+  their card with no audio profile up (A2DP failing, AAC say, or the
+  profile left `off`): to see with them connected (`pactl list cards`,
+  WirePlumber's log), then fixed at the cause, and Sound saying so
+  (their output named, with why it isn't there) rather than nothing.
+
+- **AirPods and voice processing, tried on the real things** (Ben,
+  2026-11-02; what's left of "AirPods, natively" and "Voice processing
+  for every microphone", below): built and measured headless and in
+  `tools/dev/pw-sandbox`; these need the hardware and Ben:
+  - After upgrading, `sudo ~/.local/bin/olo-doctor --fix all` (Ben's to
+    run): Bluetooth started with its advertisement monitor
+    (`--experimental`), and rtkit given room (its 15 processes a user
+    were used up, so the voice services' sound isn't realtime and their
+    nice −10 was refused too).
+  - Connect and switch automatically with AirPods Pro 2 and an iPhone:
+    does the phone take them back by itself when it plays, or is Apple's
+    smart routing needed for a handoff as seamless as between Apple
+    devices (AACP 0x10 "hijack" messages, BlueZ's `DeviceID` as Apple's
+    in /etc/bluetooth/main.conf; ask before touching it)? The 60 s
+    no-tug-of-war rule seen working both ways.
+  - Echo cancellation through the MacBook's and the ThinkPad's own
+    speakers: the residual leak (−30 dB, fixed) tuned on real
+    loudspeaker distortion, double talk, the delay found with real
+    PipeWire buffers, and speakers and microphone on different clocks
+    (render and capture frames matched one for one now).
+  - The ThinkPad P1 Gen 9: the voice chain on x86_64 (AVX: tract, rustfft,
+    the canceller's loops), its dual microphones, AirPods over the Intel
+    BE211.
+  - Calls ask the graph for a 10 ms quantum while recording: everyone's
+    wakeups rise then; measure, and keep it only if it buys latency.
+  - A low-latency noise model (10 ms) if a better one than
+    DeepFilterNet3-LL appears (that one turns a voice down 5 dB when
+    another was heard first).
+  - Deskbar: the AirPods' levels from their broadcast while they're not
+    connected (the service has them now).
+
+- **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
+  2026-11-03; waiting on the machine): an export from this Mac (sealed,
+  with passwords and sign-ins), imported on the ThinkPad (x86, another
+  user name if it has one, other displays): every pane and app looked
+  at, Passwords opened, the Wi-Fi networks there (NetworkManager asks
+  polkit for their passwords and to save them: Olo's agent's prompts
+  seen), the pool's accounts turned on once the Mac's are off.
+
+- **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
+  chrome scrolling does not seem to be the same speed as olo native
+  apps (it's slower) and it's most noticeable on the studio display at
+  2x where each scrollwheel push doesn't go very far at all". So: a
+  wheel notch (and a touchpad's travel) moves Chrome's page as far as
+  it moves a kit app's view at every scale. Found so far (2026-11-02,
+  headless, Chrome 156): a synthetic notch (axis 15, value120 120, as
+  libinput reports a plain wheel) moves Chrome 48 CSS px at 1× and at
+  2× (devicePixelRatio 2), and StyledEdit 48 px at both (3 lines,
+  `SCROLL_LINES`); Chrome takes value120 over the axis value
+  (wayland_event_source.cc) and olo-wlproxy passes both through. So the
+  difference is in what Ben's mouse (a Razer Viper V2 Pro) sends, or in
+  his Chrome (page zoom, a flag): next, log what app_server gets from
+  libinput for one of its notches (`amount`, `amount_v120`) and sends
+  on, with him turning it once in each app; then make Chrome's step and
+  the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
+  both).
 
 - **The touchpad's latency on Ben's machine, and what next** (from the
   palm model in Activity, 2026-11-03): Activity ▸ Inputs ▸ Touchpad
@@ -859,559 +1721,6 @@ of Finished; a new one goes where its priority puts it.
   only today's (one run on its own overfits that sitting: run 1 judged
   by a model of run 2 loses 8.3% of its fingers).
 
-- **x86 machines, starting with Ben's ThinkPad P1 Gen 9** (Ben; it
-  arrives within days; **next once the GPUI migration is done**, before
-  the rest of this list: "after all the gpui work is done, prioritize
-  the thinkpad p1 gen9 special support next", 2026-11-01): stock Fedora, `git clone` the repo, run a setup
-  app, and everything works and is supported in Olo, not just on
-  the arm64 M2 MacBook Pro (Aurora). The setup app checks and installs
-  what is needed (packages, Rust toolchain, the session entry, PAM,
-  udev rules, keyd-style key mapping where wanted) with live progress,
-  and is safe to run again. The machine: Intel Core Ultra 7 356H; 64 GB
-  LPDDR5X; 2 TB PCIe Gen5 SSD (Opal); 16" 3200×2000 tandem OLED, touch,
-  HDR 600 (1500 nits peak), 100% DCI-P3, VRR 40–120 Hz, factory colour
-  calibration; NVIDIA RTX PRO 2000 Blackwell 8 GB (hybrid with Intel
-  graphics); 5 MP RGB+IR camera (face sign-in) with dual microphones;
-  Intel Wi-Fi 7 BE211 and Bluetooth 5.4; fingerprint reader; haptic
-  touchpad; backlit US keyboard. All of it should work: hybrid graphics
-  (app_server on the Intel GPU, the NVIDIA one for apps that want it,
-  external displays on either), HDR and wide colour and the panel's
-  calibration, VRR, touch screen, the haptic touchpad's gestures and
-  click settings, IR face sign-in alongside the fingerprint for unlock
-  and Passwords, brightness, keyboard backlight, power profiles and
-  battery, suspend, and an x86_64 Chrome. Build and test x86_64 in CI or
-  a VM before it arrives.
-  Done so far: `tools/setup.sh` (checks by capability, installs with dnf or
-  layers with rpm-ostree, Rust through rustup if it's too old, builds and
-  installs; `--check` reports only); `tools/dev/x86-check` (the whole
-  workspace type-checks for x86_64 from this Mac, clean); the GPU Olo
-  draws with is the boot GPU (Intel on a hybrid ThinkPad;
-  `ANVIL_DRM_DEVICE` overrides); touch screens, keyboard backlights
-  (`*kbd_backlight`) and laptop panel brightness are already generic.
-  Waiting on the machine: NVIDIA for apps and external displays, HDR and
-  wide colour, VRR, the haptic touchpad, IR face sign-in.
-  *Status* (2026-11-03, Ben: "update tools/setup to make sure it will
-  recognize the system and do all that", for Fedora 45 on x86):
-  - It says what it's on: the release (warning before 44), the
-    processor, memory, free space, each GPU, and the login screen (GDM
-    or SDDM). It names that screen when it's done, with how to choose
-    Olo Desktop there.
-  - It installs what a fresh Workstation lacks: Git LFS and its files
-    (the voice model is built in from LFS, so a clone without it built
-    a pointer); PipeWire's and SPA's headers; Mesa's DRI and Vulkan
-    drivers and the Vulkan loader; Pillow for the dev tools.
-  - Its Rust minimum is now the newest `rust-version` a crate asks for
-    (1.95, filmcraft's; it said 1.88).
-  - Every package and `pkgconfig(…)` it names resolves in Fedora 45's
-    x86_64 repository (dnf repoquery against it). Fedora 45 has
-    libdisplay-info 0.3.0, as built against here, and Rust 1.98.
-  - Not run on x86 yet: that's the ThinkPad.
-  - Ben, setting the ThinkPad up the same day: "the tools setup doesn't
-    seem to be adding the login entry for gdm". The entry went into
-    /usr/local/share/wayland-sessions, which GDM reads only when its
-    XDG_DATA_DIRS names it; Fedora 45's GDM 51 daemon doesn't name
-    XDG_DATA_DIRS, though it has /usr/share/wayland-sessions built in.
-    Now it goes into /usr/share/wayland-sessions (atomic systems keep
-    /usr/local's), and an entry in the other place is removed. The live
-    layout lint, which could stop the install before the entry on a new
-    machine, is left to the hooks during setup (`OLO_SKIP_UI_LINT=1`).
-    Setup checks the entry is where the login screen reads it, and
-    stops saying so when installing fails. Doctor looks in both places.
-    Left: Ben's run on the ThinkPad.
-  - brush's command model (olo-complete) computes with AVX2 and FMA on
-    x86_64 (SSE2 without): its test (`simd_does_the_reference_arithmetic`,
-    against the plain reference) passes on the ThinkPad (2026-11-04).
-  - *On the ThinkPad* (2026-11-04): Olo runs there daily. Since: each
-    display composed by its own GPU (Intel the panel, NVIDIA its HDMI
-    port, which sleeps otherwise: apps, Chrome and app_server leave it
-    asleep), Preferences ▸ GPUs, NVIDIA's driver through Doctor, the
-    touch screen as pointer and scroll, the OLED known, power modes and
-    the charge limit, the SoundWire sound once kernel 7.2.15 came, the
-    ThinkPad's keys (F4 and its light, F7–F9), the TrackPoint, the
-    presence sensor, Thunderbolt in Doctor. Left: in the ThinkPad item
-    above (HDR, VRR, face sign-in, the haptic touchpad's palm filter).
-
-- **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
-  2026-11-03; waiting on the machine): an export from this Mac (sealed,
-  with passwords and sign-ins), imported on the ThinkPad (x86, another
-  user name if it has one, other displays): every pane and app looked
-  at, Passwords opened, the Wi-Fi networks there (NetworkManager asks
-  polkit for their passwords and to save them: Olo's agent's prompts
-  seen), the pool's accounts turned on once the Mac's are off.
-
-- **AirPods and voice processing, tried on the real things** (Ben,
-  2026-11-02; what's left of "AirPods, natively" and "Voice processing
-  for every microphone", below): built and measured headless and in
-  `tools/dev/pw-sandbox`; these need the hardware and Ben:
-  - After upgrading, `sudo ~/.local/bin/olo-doctor --fix all` (Ben's to
-    run): Bluetooth started with its advertisement monitor
-    (`--experimental`), and rtkit given room (its 15 processes a user
-    were used up, so the voice services' sound isn't realtime and their
-    nice −10 was refused too).
-  - Connect and switch automatically with AirPods Pro 2 and an iPhone:
-    does the phone take them back by itself when it plays, or is Apple's
-    smart routing needed for a handoff as seamless as between Apple
-    devices (AACP 0x10 "hijack" messages, BlueZ's `DeviceID` as Apple's
-    in /etc/bluetooth/main.conf; ask before touching it)? The 60 s
-    no-tug-of-war rule seen working both ways.
-  - Echo cancellation through the MacBook's and the ThinkPad's own
-    speakers: the residual leak (−30 dB, fixed) tuned on real
-    loudspeaker distortion, double talk, the delay found with real
-    PipeWire buffers, and speakers and microphone on different clocks
-    (render and capture frames matched one for one now).
-  - The ThinkPad P1 Gen 9: the voice chain on x86_64 (AVX: tract, rustfft,
-    the canceller's loops), its dual microphones, AirPods over the Intel
-    BE211.
-  - Calls ask the graph for a 10 ms quantum while recording: everyone's
-    wakeups rise then; measure, and keep it only if it buys latency.
-  - A low-latency noise model (10 ms) if a better one than
-    DeepFilterNet3-LL appears (that one turns a voice down 5 dB when
-    another was heard first).
-  - Deskbar: the AirPods' levels from their broadcast while they're not
-    connected (the service has them now).
-
-- **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
-  chrome scrolling does not seem to be the same speed as olo native
-  apps (it's slower) and it's most noticeable on the studio display at
-  2x where each scrollwheel push doesn't go very far at all". So: a
-  wheel notch (and a touchpad's travel) moves Chrome's page as far as
-  it moves a kit app's view at every scale. Found so far (2026-11-02,
-  headless, Chrome 156): a synthetic notch (axis 15, value120 120, as
-  libinput reports a plain wheel) moves Chrome 48 CSS px at 1× and at
-  2× (devicePixelRatio 2), and StyledEdit 48 px at both (3 lines,
-  `SCROLL_LINES`); Chrome takes value120 over the axis value
-  (wayland_event_source.cc) and olo-wlproxy passes both through. So the
-  difference is in what Ben's mouse (a Razer Viper V2 Pro) sends, or in
-  his Chrome (page zoom, a flag): next, log what app_server gets from
-  libinput for one of its notches (`amount`, `amount_v120`) and sends
-  on, with him turning it once in each app; then make Chrome's step and
-  the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
-  both).
-
-- **An app_server restart modesets every display** (seen 2026-11-01
-  in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
-  for each of the three displays, "Already set to timingID" yet done
-  again: the screens freeze for a second or two per restart). The
-  new app_server could keep a CRTC's mode when it is the one already
-  set (the same mode blob, no ALLOW_MODESET commit) and go straight
-  to page flips; where Smithay's surface init insists on a modeset,
-  Olo's Smithay changes that. Until then upgrades of app_server are
-  batched, not one a change. (Still: the kernel logged
-  `set_digital_out_mode` 856 times in the day to 2026-11-02.)
-  **Found** 2026-11-02: app_server opens each GPU with
-  `DrmDevice::new(fd, true)` (udev.rs `device_added`), and Smithay's
-  `disable_connectors` runs `reset_state`, switching every connector
-  off: each display is modeset from dark at every start. The fix:
-  open with `false`, and in Olo's Smithay let a surface take over a
-  CRTC already showing its mode (`State`'s mode compared by timings,
-  not the mode's type bits and name, which differ between a CRTC's
-  mode and a connector's list), so the first frame is a page flip;
-  switch off the planes the last app_server left on (a cursor or
-  overlay plane still showing its buffer) in that first commit, no
-  modeset needed; and if the driver refuses it, `reset_state` and
-  modeset as now. It needs trying on the real displays (an upgrade
-  the person agrees to try), so it isn't shipped blind.
-
-- **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
-  at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
-  colours and the default text on bands programs draw read in light
-  mode; 2026-11-03: ls, git log/show, vim, htop, btop, man/less and fzf
-  run in all 16 schemes the looks offer, at 1× and 2× (headless,
-  sandboxed), every one legible, vim taking light or dark colours from
-  the OSC 11 answer; what's dark in light mode is the programs' own
-  dark-only defaults (btop's black theme, fzf's selected line);
-  light/dark reports (DEC mode 2031) so a program hears when the
-  colours turn; *left*: Codex and Claude Code, which must be run on
-  Ben's accounts, so by Ben) (Ben, 2026-10-31): "in light
-  mode my terminal is really hard to read i'm not sure why or what's
-  conflicting but can you figure out a way so that the terminal gets
-  properly themed with colors that look beautiful and have high
-  readability. make sure you test it with various terminal clis, tuis,
-  claude code, and codex for every supported terminal theme light and
-  dark and all terminal themes that come as part of the olo themes both
-  the light and dark variants. every single one must look polished with
-  excellent legibility and aesthetics." Seen in his screenshot (light):
-  Codex's composer a mid-grey band with its placeholder and footer
-  nearly invisible, its paths and dim text pale blue/grey on white, its
-  added lines on a dark grey-green; Claude Code's diff on near-black
-  green, its dim text and tips too faint. Likely causes to check: how
-  programs learn the background (OSC 10/11/4 answers, `COLORFGBG`,
-  `TERM`/`COLORTERM`), Codex and Claude Code picking dark styles
-  (Claude Code's own theme setting), 256-colour greys and the bright
-  colours chosen for dark backgrounds, faint (SGR 2) mixed too far
-  towards the background, truecolor backgrounds a program blends from
-  what it thinks the background is. So: answer the colour queries
-  truly, a minimum contrast for text against its cell (as iTerm's and
-  Ghostty's "minimum contrast"), faint kept legible, and each look's
-  palettes tuned. Checked with ls, git diff/log, htop/btop, vim/nvim,
-  less/man, tmux, fzf, lazygit, Claude Code and Codex in every terminal
-  theme of every Olo look, light and dark, at 1× and 2×, as shots in
-  the journal.
-
-- **Keyboards we know, starting with Apple's Magic Keyboard with Touch
-  ID (A2520), and its Touch ID as a first-class one** (Ben, 2026-11-03):
-  "add special support in prefs -> keyboards for well known keyboards
-  starting with the external apple keyboard A2520. model it after the
-  way we do it in the mouse section but also it should be a bit more in
-  depth and have it show an image of the actual keyboard and then add
-  any customization options on there and, most importantly, figure out
-  how to support the touch id sensor on this A2520 keyboard so that it
-  works as an alternative first class touch id. if you have to reverse
-  engineer it then do it -- it is plugged in at the moment". So:
-  - Preferences ▸ Keyboard: a known keyboard recognised as Mouse's known
-    mice are, with a picture of it (drawn to ICONS.md) and its own
-    settings on it (its function row and media keys, the Fn/Globe key,
-    the keypad, its battery and connection when wireless,
-    what else it has).
-  - Its Touch ID: a sensor the fingerprint service (and so the lock
-    screen, the polkit agent, Passwords' unlock, approvals) uses as it
-    uses the built-in one, enrolled and chosen in Preferences, reverse
-    engineered as needed, in Rust and in process. Ben, 2026-11-03: "we
-    also want the touch id sensor for it to work both when using on a
-    mac and when on x86 like the thinkpad": the same on an Apple
-    silicon Mac and on an x86 machine (the ThinkPad P1), so nothing of
-    it may lean on a Mac's own Secure Enclave.
-  - What Linux sees of it (2026-11-03, read from sysfs with it plugged in
-    through the Studio Display's hub, 3-1.1): USB 05ac:029f "Magic
-    Keyboard with Touch ID and Numeric Keypad", bcdDevice 0x0420, full
-    speed. Interface 0 "Device Management" (HID, usbhid), 1 "Keyboard /
-    Boot" (HID, usbhid), 2 "Touch ID": HID class but a single bulk IN
-    endpoint (0x85, 64 bytes), so usbhid leaves it unbound; it's to be
-    talked to directly (control transfers on interface 2 and that bulk
-    endpoint). On a Mac the keyboard's sensor is paired with the Mac's
-    Secure Enclave and matching happens there, so what it sends may be
-    sealed for a Secure Enclave: find out first what it says unpaired,
-    whether a template can be matched on our side at all, and say so
-    before building on it.
-    *Found* (2026-11-04): it can't be done. Read from the keyboard (a
-    probe asking only descriptors, run once): interface 2's HID report
-    descriptor is a vendor page (0xff00, usage 0x4b) with three input
-    reports only, 0x20 (107 bytes), 0x21 (649) and 0x22 (62), no output
-    or feature reports, and nothing sent unasked. Apple's Platform
-    Security guide says how it's used: the keyboard's public key
-    accelerator and the Mac's Secure Enclave pair by exchanging public
-    keys rooted in Apple's certificate authority, with hardware-held
-    attestation keys and ephemeral ECDH; Touch ID data between them is
-    then AES-GCM with a 256-bit key; the sensor's own channel to that
-    block is keyed in the factory; the keyboard stores no templates and
-    matches nothing. So without a Secure Enclave Apple attests (no Linux
-    machine has one, the ThinkPad nor an Apple silicon Mac running
-    Linux), nothing can pair with it or read a fingerprint from it. What
-    stays: the keyboard itself in Preferences ▸ Keyboard (its picture,
-    function row, Fn/Globe, keypad), and Touch ID left out, said so
-    there. (Apple: support.apple.com/guide/security/secf60513daa)
-  - *Done* (2026-11-04): Preferences ▸ Keyboard ▸ Keyboards knows it
-    (`olo_protocol::keyboards`): a box with its picture, maker and model,
-    keypad and connection, and why its Touch ID isn't used. Its own
-    picture (2026-11-05: `keyboard-aluminium`, in Classic and every
-    theme). Its settings (2026-11-05): the top row as F-keys first or
-    its printed features first (app_server, per keyboard, no root), the
-    Globe key alone for emoji; its Mission Control and Spotlight keys
-    the overview and the palette; and its Do Not Disturb key, which the
-    kernel sends as KEY_SLEEP and logind took to suspend the computer,
-    Do Not Disturb (app_server holds `handle-suspend-key`). *Left*:
-    Ben's go with the keys themselves (nothing here can press them).
-
-- **The kit takes over what every app re-implements** (Ben,
-  2026-11-01: "anything these windows/apps are doing that's reusable
-  should be made reusable so that we aren't reinventing the wheel
-  everywhere"). A pass over the GPUI apps, each pattern moved into
-  olo-ui (documented in HACKING) and every app switched to it: list +
-  search + filter bar wiring (each app's matching and facets are its
-  own; what's shared is a subscription, so not yet worth a kit piece).
-  Done so far (2026-11-01):
-  popups closing in any order, quitting taking windows down, window
-  parts (`part::Part`), secrets on the clipboard (`copy::secret`);
-  2026-11-03, an app's own files read and written whole (`store`:
-  load, save off the thread in order, flushed on quit and upgrade),
-  fourteen apps switched (six wrote straight over the file); one
-  timer for the next thing due and a message that clears itself
-  (`due::{Due, Notice}`: Passwords, Telegram, the only two); a
-  window opened or brought forward (`open_or_raise`, `raise`: nineteen
-  apps); closing with changes not saved asked the same way everywhere
-  (`widgets::ask_to_save`: StyledEdit, Viewer); windows opening at
-  the size they were left at (`WindowOptions::keep_size`, eleven
-  apps; Passwords had its own). Found already the kit's everywhere
-  (2026-11-03): single-instance launches (every windowed app forwards a
-  second launch through `instance`; the rest are services, single by
-  their bus name) and upgrade state (`on_upgrade`, `restored_state` in
-  every app with windows to bring back; the lock screen, the polkit and
-  portal dialogs, the screen saver and the supervisor have none);
-  a window's content scrolling when the window is shorter than it
-  (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
-
-- **Screen sharing: an Olo portal backend** (Ben, 2026-10-29; the
-  design researched by another agent, session 05de188d, kept here).
-  Apps never capture the screen themselves on Wayland: Chrome, Slack,
-  Discord, Firefox and OBS all call the xdg-desktop-portal ScreenCast
-  API; a portal backend shows a picker, the compositor sends frames as a
-  PipeWire stream, and the app reads it. Chrome and Electron apps share
-  WebRTC's capture code, so this is a good portal backend and a good
-  PipeWire stream, plus a few app quirks, nothing app-specific.
-  - **Done** (2026-10-30, HACKING.md "Screen sharing"): olo-portal is
-    the session's ScreenCast backend (olo-session runs it and routes the
-    portal to it); the picker (screens, live thumbnails) opens over the
-    asking window; streams are PipeWire nodes fed from dmabufs app_server
-    draws on the GPU only when the screen changed (0.26 ms median of
-    app_server's loop at 5K); shares survive an app_server reload and an
-    upgrade waits for them; restore tokens and repeat requests answer
-    without a picker. Checked end to end through xdg-desktop-portal with
-    `olo-portal share-test`, and with Chrome 156's getDisplayMedia (a
-    sandbox Chrome on a test session): Chrome's own dialog, Entire
-    Screen, Olo's picker, Chrome's live preview, Share (the second
-    session Chrome opens is answered by the restore token, no second
-    picker), 5120×2880 at the 30 fps asked for, and Chrome's Stop
-    sharing ends the stream. Deskbar's tray shows what is shared, with
-    Stop Sharing (the app is told it closed). Windows as sources
-    (2026-10-30): the picker's Windows, window frames at the client's
-    size, renegotiated as it resizes, ended when it closes. App scopes
-    (2026-10-30): programs started from desktop entries run in
-    `app-olo-<id>-<pid>.scope`, so the portal knows which program asks
-    (Chrome and Slack already put themselves in scopes of their own).
-    Dmabufs passed through (2026-10-30): an app that takes them gets
-    the GPU buffers app_server captures into, no CPU copy (checked with
-    GStreamer's pipewiresrc and the portal's own reader, a screen and a
-    window, resized, across an app_server reload); the rest get memory.
-    Frames carry timestamps now, and a share outlives a reload (it used
-    to end, taking app_server's stop as the window closing).
-  - **Build** our own backend, `olo-portal`, started and supervised by
-    olo-session: it owns `org.freedesktop.impl.portal.desktop.olo` over
-    zbus (which we already use), shows the picker as a kit window,
-    produces the PipeWire streams, and gets frames from app_server over
-    ext-image-copy-capture with dmabufs (no CPU copy), on the direct
-    socket so the protocol stays hidden from outside programs. Not
-    inside the compositor (niri's, KWin's, Mutter's way): a stream in
-    app_server drops every share in the middle of a call at each
-    upgrade; out of process it outlives app_server (the portal
-    reconnects and frames carry on), and libpipewire stays out of the
-    compositor, which never waits on a client. COSMIC is the precedent
-    (a Smithay compositor in Rust with exactly this split: pipewire-rs,
-    gbm, ext-image-copy-capture). Not xdg-desktop-portal-wlr/-hyprland
-    (not native, generic pickers), nor imitating Mutter's private D-Bus
-    API so xdg-desktop-portal-gnome works, as niri does (GNOME's picker,
-    startup races, someone else's private API). pipewire-rs links
-    libpipewire in process, as Smithay links libinput: not shelling out;
-    the pure-Rust `pipewire-native` can't stream video yet, so move to
-    it later.
-  - **For Chrome and Slack** (from WebRTC's capture code):
-    - formats: offer BGRx and BGRA first (WebRTC swaps the bytes of RGB
-      formats on the CPU); offer dmabuf with modifiers, and
-      shared-memory (MemFd) buffers as a fallback (Chromium and some
-      Electron apps showed black screens on niri until it added that);
-      handle WebRTC renegotiating when a modifier fails;
-    - stream metadata: WebRTC asks for the frame header, crop, cursor
-      and damage metadata; send frames only when something changed;
-      all three cursor modes (hidden, drawn in, sent as metadata);
-    - window shares: renegotiate the stream size when a window resizes;
-      draw the window whole even when it's behind another tab in a
-      group (app_server already does this for agent captures);
-    - Slack's repeated pickers: Chromium opens several portal sessions
-      for one share (a Slack patch author counted three, so three
-      pickers; Hyprland users use a wrapper script): answer a repeat
-      request from the same app, a few seconds after a choice, with that
-      choice;
-    - which app is asking (done): the portal leaves the app id empty
-      for unsandboxed apps unless they run in an `app-<id>-….scope`
-      systemd unit. Chromium and Electron put themselves in one
-      (`app-com.google.Chrome-<pid>.scope`, `app-slack-<pid>.scope`);
-      Olo starts other programs from desktop entries in transient
-      scopes (`StartTransientUnit` over D-Bus), which also gives the
-      Inhibit, GlobalShortcuts and Notification portals their app ids;
-    - restore tokens: save a choice for next time (portal interface
-      version 4); OBS uses it, and Chrome the kind that lasts while the
-      app runs;
-    - Slack must run as a Wayland client (no Xwayland; Electron 38 and
-      later do by default); its drawing overlay will still misbehave,
-      but sharing works;
-    - Zoom's native app offers Wayland sharing only when
-      `XDG_CURRENT_DESKTOP=GNOME`, so it needs a launcher quirk for its
-      process; Zoom in Chrome just works;
-    - sharing a Chrome tab never reaches us, and Chrome can only share a
-      tab's audio, not the whole system's: audio is out of scope.
-  - **Done since** (2026-11-05, HACKING "Kept out, and shown as
-    shared"): Passwords, the polkit prompt, Terminal's sudo prompt,
-    Deskbar's approve prompt (`WindowOptions::private`) and the lock
-    screen blacked out of shares and recordings; a shared window ringed
-    on screen while it is. Agent screens run their own portal (HACKING
-    "A screen's own bus"), and the person's picker offers each agent
-    screen as a source (HACKING "Agent screens as sources").
-    RemoteDesktop done (2026-11-05, HACKING "Remote control"): the
-    portal's Notify calls and ConnectToEIS, asked every time, app_server
-    taking libei connections only from olo-portal after a grant, Deskbar
-    showing it with Stop Remote Control; tested headless with
-    `remote_test` (no real Chrome Remote Desktop or Deskflow tried yet).
-    The cursor sent as metadata done too (2026-11-06, HACKING's "The
-    cursor as metadata": app_server's cursor capture sessions, the
-    capture following the pointer, the stream's `SPA_META_Cursor`;
-    tried headless with a reader). *Left*: a real app's go with it
-    (OBS, Chrome Remote Desktop). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
-    started by Olo is told it's on GNOME, so it offers Wayland sharing;
-    untried, Zoom isn't installed here).
-  - **The Olo touches**: the picker, a kit dialog with Screens and
-    Windows, live thumbnails and app icons, opened over the window that
-    asked (agents read and drive it through the widget tree for free);
-    while sharing, Deskbar shows what is shared and by which app, with
-    Stop; a shared window gets an outline; Do Not Disturb turns on (the
-    Notifications item); Passwords, the lock screen and the polkit
-    prompt are blacked out of shares. Agent Screens as sources: the
-    portal can connect to an agent screen's own app_server, to share an
-    agent's screen into a Meet call; a working capture protocol also
-    lets the Agent Screens viewer stop pulling raw-pixel screenshots
-    eight times a second.
-  - **Order**: 1. real capture in app_server, screens then windows
-    (Smithay at our pinned rev already has window capture sources and
-    the foreign-toplevel list; test headless with a small client);
-    2. olo-portal with ScreenCast and the picker; 3. app scopes and
-    answering repeat requests; 4. the Screenshot portal (cheap reuse of
-    what we have); 5. RemoteDesktop over libei, for remote control
-    (app_server already has a `libei` feature). Open question from the
-    design: whether remote control (Zoom, Chrome Remote Desktop) matters
-    soon, which decides how early the libei work comes.
-  - Sources:
-    [ScreenCast backend interface (v6)](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.ScreenCast.html);
-    WebRTC's [screencast_portal.cc](https://chromium.googlesource.com/external/webrtc/+/master/modules/desktop_capture/linux/wayland/screencast_portal.cc)
-    and [shared_screencast_stream.cc](https://chromium.googlesource.com/external/webrtc/+/master/modules/desktop_capture/linux/wayland/shared_screencast_stream.cc);
-    [niri's Screencasting wiki](https://raw.githubusercontent.com/niri-wm/niri/main/docs/wiki/Screencasting.md)
-    and [SHM-fallback notes](https://github.com/ljm-233/niri-portal-cast);
-    [slack-on-wayland](https://github.com/hamolicious/slack-on-wayland),
-    [Slack's Linux release notes](https://slack.com/release-notes/linux),
-    [Electron's desktopCapturer](https://www.electronjs.org/docs/latest/api/desktop-capturer),
-    [Electron PR #54550 (restore tokens)](https://github.com/electron/electron/pull/54550);
-    [xdg-desktop-portal-cosmic](https://github.com/pop-os/xdg-desktop-portal-cosmic)
-    ([Cargo.toml](https://raw.githubusercontent.com/pop-os/xdg-desktop-portal-cosmic/master/Cargo.toml));
-    [pipewire-native](https://crates.io/crates/pipewire-native),
-    [Collabora: PipeWire workshop 2025](https://www.collabora.com/news-and-blog/blog/2025/07/03/pipewire-workshop-2025-updates-video-transport-rust-bluetooth/);
-    [Using portals with unsandboxed apps](https://blogs.gnome.org/ignapk/2025/06/04/using-portals-with-unsandboxed-apps/);
-    [xdg-desktop-portal-wlr FAQ (Zoom)](https://github.com/emersion/xdg-desktop-portal-wlr/wiki/FAQ),
-    [Zoom community thread](https://community.zoom.com/t5/Zoom-Meetings/Do-not-check-if-XDG-CURRENT-DESKTOP-is-gnome-for-wayland/m-p/108716).
-
-- **Other programs feel like Olo's own: every integration point**
-  (Ben, 2026-10-29): "is there a way where we can make chrome (and any
-  gtk / qt apps) better integrate with olo, e.g. replacing their file
-  picker with olo tracker picker and e.g. in chrome something like show
-  in folder should show in tracker. basically every integration point
-  we can do (whether cleanly through some protocol or 'dirty' through
-  some hack) we should do so that everything feels as seamless as
-  possible". Clean ways first (portals, D-Bus services, settings), a
-  hack where there is none. Each is for Chrome, Electron (Slack,
-  Discord, VS Code), GTK 3/4 and Qt 5/6 alike unless noted:
-  - **File pickers** (started 2026-10-30: olo-portal answers the
-    FileChooser portal with the kit's file panel, open, save and folder,
-    several files at once, the app's filters by glob and MIME type as a
-    Show pop-up, the portal's `choices`; Chrome's uploads, GTK 4 and GTK 3
-    tried. The toolkit switches are deliberately not set for everything:
-    they also send GTK's link opening through OpenURI, which asks for an
-    app until one was picked 3 times (HACKING, "Open and Save"); done
-    2026-10-30: the panel's list as Tracker's, Name, Kind, Size and
-    Modified, sorted by a header, Favorites and Recent Folders in its
-    folder pop-up shared with Tracker's Go menu (`olo_kit::places`),
-    and Space for a look at a file in the Viewer): an Olo
-    portal backend
-    (`org.freedesktop.impl.portal.FileChooser` in `olo-portal`, beside
-    ScreenCast) showing the kit's file panel (Tracker's columns,
-    favourites, Quick Look, recent places); `olo-portals.conf` sends
-    FileChooser to it. Chrome and Electron use the portal with
-    `--xdg-portal` / `GTK_USE_PORTAL=1`-style switches or by default;
-    GTK 4 apps use it by default, GTK 3 with `GTK_USE_PORTAL=1`, Qt with
-    `QT_QPA_PLATFORMTHEME=xdgdesktopportal`: set these in the session
-    environment. Save dialogs too (name, folder, overwrite).
-  - ~~**Show in folder**~~ (done 2026-10-30: the desktop's Tracker
-    serves `org.freedesktop.FileManager1`, each call an Open in
-    Tracker). The OpenURI portal's `OpenDirectory` needs nothing more:
-    xdg-desktop-portal (1.22 here) answers it with FileManager1's
-    `ShowItems`, which Tracker serves, and only without one opens
-    `inode/directory`'s default, which olo-session makes Tracker too.
-  - ~~**Opening things**~~ (done: checked 2026-11-05, GIO opens a folder
-    in Tracker and a link in Chrome from `olo-mimeapps.list`, xdg-open
-    going through GIO on Olo's `XDG_CURRENT_DESKTOP`) (started 2026-10-30: the AppChooser portal is
-    Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
-    writes desktop entries and `olo-mimeapps.list` defaults so GIO,
-    xdg-open and OpenURI open files in Olo's apps as Olo does, links
-    staying with the default browser; Olo's Chrome, once installed, is
-    offered as the default browser by `~/.local/share/applications/
-    olo-mimeapps.list`, behind any browser the person chose and ahead
-    of the system's): the
-    OpenURI portal and `xdg-open`'s MIME
-    defaults resolved by Olo's own (`olo_kit::open`), so links from any
-    app open in Olo's choice, files in Olo's apps; Olo as the default
-    file manager and browser handler (`mimeapps.list`, the `x-scheme-
-    handler`s), Chrome as the default browser offered by Olo.
-  - ~~**Downloads**: Chrome's land in Tracker's Downloads with Olo's own
-    notification (open, show in Tracker) and Deskbar's progress; a
-    download's file shows as being written.~~ (done 2026-10-30: the
-    extension tells olo-chrome's host of Chrome's downloads; Deskbar's
-    progress through LauncherEntry, an Olo notification with Open and
-    Open in Tracker, and Tracker shows a `.crdownload` under its final
-    name with a bar and "3.1 of 10 MB", from `user.olo.expected_size`.)
-  - **Look** (mostly done: app_server's `toolkits.rs` publishes the
-    colour scheme and accent through GSettings, which the GTK portal's
-    Settings serves as `org.freedesktop.appearance`; GTK 3 and 4 themes
-    from Olo's palette, Qt through its GTK 3 platform theme; Olo's fonts;
-    2026-10-30: fonts hinted as the kit, slight and grayscale, and Olo's
-    Haiku cursors as an XCursor theme for programs that draw their own
-    pointer; Olo's icons in the look as the icon theme, for the
-    freedesktop names it has pictures for). Left, both waiting on Olo
-    itself: `contrast` (once Olo has a high-contrast look) and
-    `text-scaling-factor` (once Olo has a text size of its own; today
-    the kit's text is one size, `fonts::PLAIN_SIZE`, which GTK already
-    gets as its font size, so there is nothing to scale to).
-  - **Menus and shortcuts** (GlobalShortcuts done 2026-10-30: asked
-    once per app, kept, held through upgrades): ~~the GlobalShortcuts portal~~ (Chrome's
-    extensions' shortcuts, Discord's push-to-talk) bound through Olo's
-    keyboard profiles; ~~app menus where a toolkit exports one
-    (`org.gtk.Menus`, `com.canonical.dbusmenu`) shown in Olo's menu bar
-    style if worthwhile~~ (not worthwhile, 2026-10-30: Olo's menus are
-    in each window, as BeOS's were, not in a bar at the top of the
-    screen, and GTK 4, Qt and Electron programs already show theirs in
-    their windows; a second copy in Olo's style would only duplicate
-    them. Tray items' menus are Olo's, which is where it helps).
-  - **Notifications, tray and badges** (tray done 2026-10-30: Deskbar is
-    the StatusNotifierWatcher and host, items in its tray with their
-    menus as Olo menus; tried with Slack's): ~~StatusNotifierItem (Slack's,
-    Discord's tray icons) in Deskbar's tray with their menus~~;
-    ~~the Unity LauncherEntry count (unread badges) on Deskbar's entries;
-    progress on Deskbar (LauncherEntry progress)~~ (done 2026-10-30: the
-    row's dot, shaking when the count rises, and a progress bar).
-  - **The rest of the portals**: ~~Inhibit~~ (done 2026-10-30: the
-    Inhibit portal and `org.freedesktop.ScreenSaver` in olo-portal, held
-    by app_server's `KeepAwake`), ~~Background~~ (done 2026-10-30, with
-    olo-session starting login items), ~~Print~~ (done 2026-10-30: Olo's Print
-    panel, CUPS over IPP, `olo-print`), ~~Email~~, ~~Account~~ (done 2026-10-30: asked in the permission
-    dialog with your picture), ~~Wallpaper~~ (done 2026-10-30), Screenshot (with screen sharing),
-    ~~Camera/Location as Olo asks permission~~ (xdg-desktop-portal asks
-    them through the Access dialog, Olo's), Secret (Passwords as the
-    Secret Service, so Chrome's and Electron's stored secrets live in
-    Olo's keychain; **held for Ben's go-ahead**, 2026-10-30: Chrome keeps
-    its "Chrome Safe Storage" key in gnome-keyring through libsecret, so
-    taking over `org.freedesktop.secrets` without first moving every
-    existing item across would lose every saved cookie and password in
-    Chrome and Slack. It needs a migration that reads the real keyring,
-    as an explicit step in Preferences ▸ Security, tried on a copy
-    first), and ~~Trash~~ (xdg-desktop-portal trashes through
-    GIO, in the freedesktop layout Tracker's Trash uses: nothing to add). Done 2026-10-30:
-    Screenshot (Olo's Screenshot app, region when interactive; PickColor
-    with a loupe) and Access (the permission dialog, as Olo's BAlert).
-  - ~~**Drag and drop and the clipboard**: files dragged from Chrome,
-    Slack and GTK into Tracker and back, with the right actions and
-    formats (`text/uri-list`, images, `x-special/gnome-copied-files`).~~
-    (done 2026-10-30, tried with Chrome 156: a picture dragged out of a
-    page lands as its file, a link as a clipping named by its text, files
-    from Tracker open in Chrome; Tracker copies files as file managers do,
-    `x-special/gnome-copied-files` and all, and pastes files, pictures
-    (Chrome's Copy Image) and text; `Cx::paste_data`,
-    `olo_kit::clipboard::files`, `dnd::named_file`, `dnd::moz_url`.)
-  - ~~**Agent-readable**: the AT-SPI trees of GTK and Qt windows (and
-    Chrome's beyond the extension) folded into Olo's widget tree, so
-    agents can drive outside programs as they do Olo's.~~ (done
-    2026-10-30: olo-screen's `tree` reads a non-kit program's windows
-    over AT-SPI, roles named as AccessKit's; tried with GNOME
-    Calculator, driven by name; Qt asked to join with
-    `QT_ACCESSIBILITY=1`. Chrome's pages stay with the extension, which
-    sees more of them.)
-  - Where there's no clean way, a hack is fine if it's reliable: an
-    LD_PRELOAD shim, a launcher wrapper, a policy file or a patched
-    config, documented in HACKING with how it's tested.
-
 - **Olo's own login and boot** (Ben, 2026-11-01, for after the GPUI
   refactor is complete): replace GDM with an Olo-native display
   manager, and have Olo take over the boot visuals as early as it can
@@ -1430,68 +1739,6 @@ of Finished; a new one goes where its priority puts it.
   place (a daemon owning the seat, PAM and logind's session, a greeter on
   the kit) and the boot in Plymouth's (a theme of the same picture, or
   Olo drawing from the initramfs).
-
-- **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
-  "make sure our text system is SOTA -- rivalling apple's or anything
-  else out there. perfect looking, adorably beautiful text is essential";
-  "also the same applies to icons and everything in olo: everything must
-  render absolutely beautifully, good enough that if steve jobs saw it
-  he'd want to fire his team at apple because we put them to shame".
-  *Done so far*: Olo's GPUI draws text as the kit does (hinted Noto,
-  variable weights, the fallback chain; 13e20c7) plus a touch of stem
-  darkening for small text (747a25d; now an emboldened outline, a third
-  of the time a glyph took). Icons in the GPUI kit: the
-  pre-scaled icon for the device size, on whole device pixels, never
-  resampled; checked by the layout review at every scale.
-
-- **Other programs' file handling through Olo, fixed** (Ben,
-  2026-11-04): "the gtk/qt integration doesn't seem to be working
-  properly e.g. even in olo chrome i can't click on the folder for a
-  download and have it open tracker. also, when i'm trying to upload a
-  file in slack it does show tracker but then if i press space on a
-  file to quick look it works but then if i press down or up it doesn't
-  properly show the other ones". Two bugs: Chrome's Show in folder (its
-  downloads' folder icon) goes to `org.freedesktop.FileManager1`'s
-  ShowItems, which Tracker serves (tracker's filemanager.rs; HACKING's
-  "Open in Tracker"): find why nothing opens (the name not taken, the
-  call not reaching it, Chrome asking through the portal's OpenURI or
-  xdg-open instead) and test it from Chrome on an Agent Screen; and in
-  the file panel the portal shows (apps/portal, `olo_ui::file_panel`),
-  Quick Look open on a file must follow ↑ and ↓ (and ← →) to the
-  file selected next, as it does in Tracker's own windows.
-  *Quick Look: done* (9bf9eb3b: the look follows the panel's list both
-  ways, `--follow`, HACKING's file panel). *Show in folder, looked at*:
-  Tracker owns `org.freedesktop.FileManager1` in the session and its
-  ShowItems opens the folder with the file selected (tested on a test
-  session's bus); GIO's default for folders is Tracker too; the user
-  services have WAYLAND_DISPLAY. What Chrome 157 calls is still to see:
-  `busctl --user monitor org.freedesktop.FileManager1` (and
-  `org.freedesktop.portal.Desktop`) running while its download's folder
-  is clicked (a test session's Chrome stops at its terms on first run).
-  *Found and fixed* (2026-11-05): Chrome 157 calls ShowItems itself
-  (it asks whether `org.freedesktop.portal.Desktop` and FileManager1 are
-  on the bus first; with the portal there too, as in Ben's session, it
-  still calls ShowItems), and Tracker serves it: a folder's window with
-  the file selected, brought back from minimized or opened on this
-  workspace, focused (checked on a test session's bus with Chrome, the
-  portal frontend and Olo's backend). But Ben's journal said, at each
-  Olo upgrade on Nov 4, "tracker: not serving org.freedesktop.FileManager1:
-  name already taken on the bus": Tracker asked for the name with
-  ReplaceExisting and DoNotQueue, so when anyone held it (the last
-  Tracker's connection not yet gone as it restarts, or Nautilus, which
-  the system's activation file `org.freedesktop.FileManager1.service`
-  starts whenever no Tracker has the name, and which doesn't allow it
-  taken) Tracker gave up for the session and every "show in folder"
-  went nowhere. It now waits in line for the name and allows it taken
-  (the next Tracker takes over at once): checked with a stand-in owner
-  that doesn't allow it taken (Tracker logs that it waits, takes the
-  name the moment the other lets go, and Chrome's Show in folder opens
-  Downloads). *Left*: Ben's try after the upgrade. Whether to keep
-  D-Bus from starting Nautilus at all (Ben, 2026-11-05: yes, and "doctor
-  should offer to install the change that makes it always use tracker"):
-  *done*, Olo Doctor's "Always Use Tracker" (HACKING's Tracker), its
-  file and Tracker's `--file-manager` tried on a private dbus-daemon and
-  a headless session's bus.
 
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
@@ -1524,213 +1771,7 @@ of Finished; a new one goes where its priority puts it.
   following Olo's (away when the screen locks, Do Not Disturb, a
   meeting), which needs Slack's client to build against.
 
-- **Screen recording, for people and agents** (Ben, 2026-11-04):
-  "create an olo native screen recording app similar to CleanShot X
-  that can be used by humans but also is agent native so that agents
-  can use it to create polished screen recordings themselves too, from
-  within an agent screen. and make sure that it comes with agent skills
-  about doing it that is included with the agent screens skill and that
-  for screen recordings agents can have a high quality 4k agent screen
-  with 4k screen recordings". An Olo app (beside Screenshot, sharing its
-  region picker) that records the screen, a window or a region, with
-  CleanShot X's polish: the pointer drawn larger and smoothed, clicks
-  and keys shown, zoom that follows the action, a background and
-  rounded frame around a window, the microphone and the computer's
-  sound, a webcam bubble, pause and resume, then a trimming editor and
-  export (MP4, H.264/HEVC/AV1 through the GPU's encoder, and GIF), all
-  native in Rust (no ffmpeg), app_server's capture of the frames
-  (screencopy / dmabuf, no copies), on a worker, cancellable. Agent
-  native: everything a person can do there, an agent can drive through
-  a documented API (start, mark, zoom to, caption, stop, trim, export,
-  where it went), within an Agent Screen, without touching the person's
-  screen. An Agent Screen made for it can be 4K (3840 × 2160, at 1× or
-  2×) and record at 4K. And a skill for it, shipped with Olo Screens'
-  skill (olo-screens): how to plan, pace and record a polished demo
-  (rehearse, then record; the pointer's path, pauses, zooms; checking
-  the result).
-  *Started* (2026-11-04, HACKING's "Screen recording"): the recording
-  itself, for people and agents: `olo-screenshot --record` (a display
-  or a window, frames only as they change, H.264 into an MP4 written as
-  it goes, `--stop`, `--seconds`), `olo-screen record-video` and
-  `stop-video` on an Agent Screen, 4K checked (played back in the
-  Viewer); `olo_video` shared with Agent Screens' Export Video; the
-  skill says how; ⌘⇧6 records the screen or stops (Ctrl+Alt+Print
-  with the Windows and BeOS profiles), Deskbar's tray showing a record
-  light with Stop Recording while it goes, a notification with Show in
-  Tracker when saved. *Then* (2026-11-04): a region (`--region
-  X,Y,W,H` in points, or dragged out with ⌘⇧4's picker), pause and
-  resume (`--pause`/`--resume`, the pause cut out of the video; Deskbar's
-  light shows a pause sign, its menu Pause or Resume), Screenshot's
-  Record… (Screen, Active Window, Region…), and for agents
-  `olo-screen pause-video`, `resume-video`, `record-video --region` and
-  `video-frame` (what a video shows at a time, to check it; the Viewer's
-  seek into a still stretch fixed on the way: it showed the next change).
-  The recorder no longer wakes on a timer (a still or paused recording:
-  only NVIDIA's driver threads wake). *Sound* (2026-11-05): the
-  computer's and the microphone's, either or both (Record…'s ticks,
-  `--sound`), AAC beside the video. *GIF* (2026-11-05): Record… ▸
-  Save as GIF, `--as-gif`, `--gif VIDEO`. *Clicks and shortcuts shown*
-  (2026-11-05): Record… ▸ Show Clicks, Show Shortcuts (app_server
-  draws them; typing never shows); and GPU recordings no longer lose
-  their first 2.5 s (the encoder opened before the clock starts). *A
-  countdown* (2026-11-05): 3 s on screen before a person's recording.
-  *Trimming* (2026-11-05): the Viewer's Edit ▸ Trim…, `--trim`, copied
-  without encoding again. *A window on a background* (2026-11-05):
-  Record… ▸ Window on a Background, `--background`: the blurred
-  wallpaper, rounded corners, a shadow. *The pointer larger and
-  smoothed* (2026-11-05): Record… ▸ Larger Pointer, Smooth Pointer,
-  `--pointer-size`, `--smooth-pointer`; a window's recording has the
-  pointer. *Zoom* (2026-11-05): Record… ▸ Zoom on Clicks,
-  `--zoom-follow`; `--zoom-to` and `olo-screen zoom-video` for agents.
-  *Marks and captions* (2026-11-05): `--mark`/`mark-video` (chapters,
-  shown in the Viewer's timeline and Go menu), `--caption`/
-  `caption-video` (in captures only).
-  *The camera bubble* (2026-11-05): Record… ▸ Show Camera, `--camera`,
-  `olo-camera` (V4L2 in process), checked with the stand-in camera.
-  *Left*: the camera bubble on a real camera (Ben's first try: Show
-  Camera, then a recording of the screen; the laptop's camera and the
-  Studio Display's were never opened here); in a window's recording
-  done (2026-11-05: on a background, the recorder draws the camera on
-  the background's corner itself, `inset.rs`; checked with the stand-in
-  camera), and
-  the GPU
-  encoder below (OpenH264 on the CPU keeps about 9 frames a second at
-  4K: 111 ms a frame). *HEVC and AV1* (2026-11-05): `--codec`,
-  Preferences ▸ GPUs ▸ Format; every codec now at a measured constant
-  quality (H.264's recordings a third smaller for the same picture).
-  - **Encoding on the best GPU, chosen in its settings** (Ben,
-    2026-11-04): "the screen recording app should also take advantage
-    of a discrete graphics card for encoding when available (and make it
-    a togglable setting to use cpu or gpu or specific gpu if more than
-    one and default it to whatever the most powerful detected gpu is)".
-    Its settings list the CPU and each GPU with a hardware encoder
-    (NVIDIA's NVENC, Intel's and AMD's through Vulkan Video or VA-API),
-    by name and what each can encode (H.264, HEVC, AV1, up to which size
-    and rate), the most powerful found chosen by default (a discrete card
-    over the built-in one); the frames handed to it as dmabufs, without
-    a copy through the CPU where the driver allows. A GPU that fails
-    mid-recording falls back to the next, saying so.
-    *Started* (2026-11-04): NVIDIA's NVENC (H.264, `olo_video::nvenc`,
-    its library opened at run time so nothing links it), the recorder's
-    `--encoder auto|cpu|nvidia`, auto taking NVENC where it opens: 4K in
-    13.4 ms a frame against the processor's 111; the setting in
-    Preferences ▸ GPUs ▸ Screen Recordings (the most powerful by
-    default, named; the NVIDIA GPU; the processor). *Then*
-    (2026-11-05): HEVC and AV1 on NVENC, each codec at a measured
-    constant quality; an encoder failing mid-recording opened again,
-    else the recording kept to there (not yet falling back to another
-    encoder: the file's sample entry describes one stream).
-    *Found* (2026-11-05), for Intel's and AMD's: Fedora's own VA-API
-    drivers (iHD from Fedora, Mesa's) leave out the patented codecs: on
-    this ThinkPad's Intel GPU (xe, renderD128) iHD encodes only JPEG,
-    VP9 (profiles 0–3) and AV1 profile 0, no H.264 or HEVC (those need
-    RPM Fusion's `intel-media-driver` / `mesa-va-drivers-freeworld`). An
-    H.264 encoder through VA-API was written (libva opened at run time,
-    bindgen declarations from libva 2.24's headers, NV12 on a few
-    threads, CQP, the driver writing the headers) and set aside: it
-    couldn't be run here. What would run here is AV1 through VA-API,
-    which needs its sequence and frame headers written by us (packed
-    headers with the offsets the driver patches, as FFmpeg's
-    vaapi_encode_av1 does). *Done* (2026-11-05, HACKING "AV1 on Intel's
-    and AMD's GPUs"): AV1 through VA-API on the Intel GPU (`olo_vaapi`,
-    its headers written by us, constant quality 40: 47.6 dB on a
-    2560 × 1600 screen in about 8.5 ms a frame), `--encoder vaapi`, auto
-    falling back to it for AV1, and Preferences ▸ GPUs offering it where
-    the driver says it encodes AV1 (asked on the panel's thread, about
-    15 ms: no cache needed). *Left*: the frames as dmabufs (CUDA's
-    external memory; VA-API's DRM PRIME import with its video processor
-    making NV12) rather than copied; auto preferring the Intel GPU on
-    battery.
-
-- **StyledEdit: Markdown edited as it looks (and as source), code with
-  highlighting** (Ben, 2026-11-05, lower priority): "when opening a
-  markdown file StyledEdit should natively support the Markdown and be
-  more like Typora WYSIWYG editing, but also have an option to switch
-  back and forth between WYSIWYG mode and source mode and in source mode
-  it should be like a code editor with syntax highlighting and fixed
-  width font. also make it support code/source mode for all major
-  programming/scripting languages with syntax highlighting and fixed
-  width font." Now: Markdown comes in through Import… (`convert.rs`,
-  `from_markdown`) and goes out as Markdown, as a styled document, and
-  the editor has no highlighting. To do: a `.md` opened is a Markdown
-  document, edited as Typora does (headings, emphasis, lists, quotes,
-  links, pictures, tables, code blocks and inline code shown as they
-  look; the marks of the line being edited shown as typed) and saved as
-  Markdown again, keeping what the person wrote (their list markers,
-  emphasis characters, line breaks, front matter, HTML); a View toggle
-  (and a key, ⌘/ say) between that and Source, which shows the Markdown
-  itself in a code editor: the fixed-width font, syntax highlighting,
-  line numbers, the place kept across the switch. Source mode for every
-  major language as well (Rust, C, C++, Go, Python, JavaScript and
-  TypeScript, shell, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML,
-  CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, …), a file opened
-  by its type going straight to it: highlighting from a Rust grammar
-  library (tree-sitter's grammars, in process), colours from the
-  palette in light, dark and night, incremental as it's typed (a file
-  of 100,000 lines opens and scrolls at once: measured). In the kit
-  (the code editor is one any app could use: Terminal's, Viewer's text),
-  documented in HACKING.
-
-## Maybe one day
-
-Tabled (Ben, 2026-11-02): "performance seems pretty solid now in olo so
-you can table the rest of the performance related items under a "maybe
-one day" section in the todos and skip them". Not worked on unless he
-asks again. But (Ben, same day): "still address any performance items
-that are real and cause any noticeable impact to the user but we don't
-have to keep optimizing just for the sake of optimizing": a slowness a
-person notices (a stutter, a lag, a hang) is still fixed at once, in
-Open; making fast things faster waits here.
-
-- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
-  frames is never acceptable: olo must be buttery smooth on all
-  displays all the time"; the pointer "definitely way slow/stuttery",
-  worst on the Studio Display; app_server at 20% of a core). Done
-  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
-  measured cost and observed drops; `{"type":"frames"}`,
-  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
-  overlay plane as cursor plane, clipped at the display's edge in
-  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
-  flip and app_server restart eight times; a refused flip no longer
-  kills it); windows as scan-out candidates; Smithay vendored with
-  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
-  all `render_output`, and in it the GPU submit (asahi's
-  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
-  in the kernel; plane assignment and atomic tests cost 0.0 ms.
-  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
-  renderer making a fence per texture drawn (a GPU submit an
-  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
-  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
-  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
-  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
-  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
-  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
-  the radio is the person's to fix (the receiver nearer, its
-  extender, a lower polling rate). **Next**: windows on overlay
-  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
-  agree (a client's cursor on the plane rendered right, or the
-  pointer's plane above every window plane and the window refused
-  while the pointer is drawn in the frame over it); the "draws"
-  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
-  at ~11% with a call on is the tick (now once per 8 ms) and looks;
-  per-display render threads (its own TODO).
-
-- **app_server's critical path on threads of its own** (Ben,
-  2026-11-01: "why run the risk of a blocking call? threads would
-  make sure we don't accidentally block"): input → pointer plane
-  update → commit never shares a thread with anything that can
-  block. Design: an input-and-cursor thread owning libinput and the
-  cursor planes (a pointer move is a plane property commit, no frame);
-  a render-and-commit thread per display owning its GL context, DRM
-  surface and pacing (a slow 5K frame can't delay the built-in
-  display's); the Wayland clients and IPC on the main loop, handing
-  each display's thread a snapshot of what to draw. Our own
-  synchronous work (importing a client's buffer, a fence, a DCP test
-  or commit) is what blocks today, and the heartbeat (`timings`)
-  finds it. After the reliability work.
-
-## Finished (most recently finished first)
+## Done (most recently finished first)
 
 - ~~**The voice model's weights in f16 or int8, if voices stay as clear**~~
   (done 2026-11-05, HACKING's "Voice processing": the weights alone in
