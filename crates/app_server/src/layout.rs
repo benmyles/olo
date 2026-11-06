@@ -179,6 +179,13 @@ pub fn load() -> Vec<Placement> {
     }
     let fresh: Vec<Placement> = list.into_iter().filter(|e| now().saturating_sub(e.at) < RESTART_KEEP.as_secs()).collect();
     info!(windows = fresh.len(), "restoring window layout");
+    // The groups made by hand that are coming back keep their numbers:
+    // none given to a group formed before their windows show (an app's,
+    // just after the restart), or two groups had one number (auto-fuzz
+    // seed 41: tab places [0, 0, 1, 1] in "group 2").
+    for p in &fresh {
+        crate::shell::groups::reserve_restored(&p.grouping);
+    }
     fresh
 }
 

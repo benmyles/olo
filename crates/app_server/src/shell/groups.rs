@@ -97,6 +97,14 @@ pub fn next_tab_order() -> u64 {
     NEXT_TAB.fetch_add(1, Ordering::Relaxed)
 }
 
+/// A group number a window coming back will have (`Grouping::With`),
+/// never given to another group meanwhile.
+pub fn reserve_restored(grouping: &Grouping) {
+    if let Grouping::With(GroupKey::Id(n)) = grouping {
+        NEXT_GROUP.fetch_max(n + 1, Ordering::Relaxed);
+    }
+}
+
 /// A window put back as it was before a restart: groups and tab places
 /// given from now on come after its.
 pub fn note_restored(grouping: &Grouping, tab_order: u64) {
