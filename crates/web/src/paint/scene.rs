@@ -283,6 +283,9 @@ impl<'a> BuildJob<'a> {
         let source = layout.cache().tree().text_source(source).ok_or(Error::Invalid)?;
         let prepared = text.text().prepared();
         let size = text.text().paragraph().font_size;
+        // Styles are immutable for this build. Consecutive glyphs usually
+        // belong to the same span: resolve/convert its paint color once.
+        let mut paint_color = None;
         for (li, line) in text.lines().iter().enumerate() {
             check(self.cancel)?;
             // Native text has subpixel x placement and a device-pixel baseline.
@@ -308,11 +311,18 @@ impl<'a> BuildJob<'a> {
                     let g = run.glyphs[gi as usize];
                     let mapping = prepared.mapping_at_output(g.cluster).ok_or(Error::Invalid)?;
                     let span = source.spans.get(mapping.span as usize).ok_or(Error::Invalid)?;
-                    let s = layout.cache().tree().styles().snapshot(span.style_node).ok_or(Error::Stale)?;
-                    let mut c = color(s, P::Color)?;
-                    if !visible(s) {
-                        c[3] = 0
-                    }
+                    let c = match paint_color {
+                        Some((owner, color)) if owner == mapping.span => color,
+                        _ => {
+                            let s = layout.cache().tree().styles().snapshot(span.style_node).ok_or(Error::Stale)?;
+                            let mut c = color(s, P::Color)?;
+                            if !visible(s) {
+                                c[3] = 0
+                            }
+                            paint_color = Some((mapping.span, c));
+                            c
+                        }
+                    };
                     // A cluster shared across different paint styles needs caret clipping.
                     // Never silently color the entire ligature from its first source span.
                     let stop = if run.direction == Direction::RightToLeft { run.glyphs.partition_point(|n| n.cluster > g.cluster) } else { run.glyphs.partition_point(|n| n.cluster <= g.cluster) };
@@ -337,8 +347,8 @@ impl<'a> BuildJob<'a> {
                     // A shared cluster spanning DOM nodes needs glyph caret
                     // ownership. Keep it readable, but do not invent a click target.
                     let hit_span = if hi - lo == 1 { mapping.span } else { u32::MAX };
-                    for next in &source.spans[lo..hi] {
-                        if controls.binary_search_by_key(&next.range.start, |c| c.offset).is_ok() {
+                    for (offset, next) in source.spans[lo..hi].iter().enumerate() {
+                        if lo + offset == mapping.span as usize || controls.binary_search_by_key(&next.range.start, |c| c.offset).is_ok() {
                             continue;
                         }
                         let ns = layout.cache().tree().styles().snapshot(next.style_node).ok_or(Error::Stale)?;

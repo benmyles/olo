@@ -1,0 +1,37 @@
+--- a/crates/web/src/paint/scene.rs
++++ b/crates/web/src/paint/scene.rs
+@@ -261,8 +261,15 @@
+     fn text(&mut self, id: BoxId, source: u32, at: Point, group: u32, clip: u32) -> Result<()> {
+         // Layout is held outside self's mutable command builder borrow.
+         let layout = self.layout.clone();
++        let controls = layout.cache().tree().controls(source);
++        // Most contexts have no semantic controls. Choose once per context,
++        // keeping their source searches out of the ordinary glyph loop.
++        if controls.is_empty() { self.text_inner::<false>(&layout, id, source, at, group, clip, &[]) } else { self.text_inner::<true>(&layout, id, source, at, group, clip, controls) }
++    }
++    #[allow(clippy::too_many_arguments)] // Immutable layout/control inputs are borrowed outside the mutable builder.
++    fn text_inner<const HAS_CONTROLS: bool>(&mut self, layout: &layout::Layout, id: BoxId, source: u32, at: Point, group: u32, clip: u32, controls: &[layout::Control]) -> Result<()> {
+         let text = layout.text_layout(id).ok_or(Error::Invalid)?;
+-        let controls = layout.cache().tree().controls(source);
++        let controls = if HAS_CONTROLS { controls } else { &[] };
+         // Include empty/nested boxes: checking only glyph ownership misses
+         // a visible background on an empty padded span or an outer inline.
+         for b in layout.cache().tree().inline_boxes(source).ok_or(Error::Invalid)? {
+@@ -324,7 +331,7 @@
+                     let project_end = prepared.mapping_at_output(end.saturating_sub(1)).ok_or(Error::Invalid)?;
+                     let input_end = if project_end.kind == crate::text::prepare::MappingKind::Copy { project_end.input.start + (end - project_end.output.start) } else { project_end.input.end };
+                     let input_start = if mapping.kind == crate::text::prepare::MappingKind::Copy { mapping.input.start + (g.cluster - mapping.output.start) } else { mapping.input.start };
+-                    let semantic_control = !controls.is_empty() && controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
++                    let semantic_control = HAS_CONTROLS && controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
+                     if semantic_control && input_end <= span.range.end {
+                         if let Some((start, origin, color, bounds, _)) = segment.take() {
+                             self.emit(group, true, bounds, Primitive::Text { owner: id, fragment: fi, glyphs: start..gi, origin, color }, clip)?;
+@@ -338,7 +345,7 @@
+                     // ownership. Keep it readable, but do not invent a click target.
+                     let hit_span = if hi - lo == 1 { mapping.span } else { u32::MAX };
+                     for next in &source.spans[lo..hi] {
+-                        if controls.binary_search_by_key(&next.range.start, |c| c.offset).is_ok() {
++                        if HAS_CONTROLS && controls.binary_search_by_key(&next.range.start, |c| c.offset).is_ok() {
+                             continue;
+                         }
+                         let ns = layout.cache().tree().styles().snapshot(next.style_node).ok_or(Error::Stale)?;

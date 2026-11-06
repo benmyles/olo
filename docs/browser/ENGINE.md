@@ -2105,3 +2105,21 @@ a development build. Both are isolated from the person's display, but their
 compositor/build scope differs. Record which was used; use a fresh owned screen
 for merged-desktop checks and frozen comparisons. Set its initial scale to 2
 before the 1/1.25/1.5/1.75/2 live matrix, then resize the window per case.
+
+Retained text paint reuses the last source span's resolved RGBA/visibility for
+consecutive glyphs within that text-context build. It also skips checking that
+same span against its own cluster color again. Other contributing spans still
+undergo style/visibility checks; a differently painted real span inside a shared
+cluster remains unsupported. This is local stack state, with no retained cache
+allocation or invalidation protocol: each new style/layout build resolves again.
+
+`page_profile` times existing phase transitions (including disposal separately);
+its instrumentation changes code generation, so use `page_bench` to confirm
+whole-pipeline conclusions. `scene_bench` repeatedly builds/drops a scene from a
+retained layout, with an optional `controls` workload. Untimed geometry and
+raster hashes guard equivalence. The matching Python runners select an allowed
+CPU with the highest advertised maximum frequency, rotate frozen revisions,
+report RSS and require default features. Compile archived revisions with matching
+profiles/dependency versions, separate build targets, and identical new benchmark
+examples; probe the control-bearing before binary before collecting samples.
+These measurements exclude network, JS, raster timing, GPU and presentation.

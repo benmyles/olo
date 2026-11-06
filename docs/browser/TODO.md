@@ -374,7 +374,8 @@ this is a harness correction, not a browser speedup.
   caret/anchor ownership of shared clusters and full inline decorations remain
   required. Image/form/media objects are still unsupported; no website passes.
 
-- [ ] Remove the semantic-control milestone's remaining ordinary-page worker
-  cost regression: 100/1,000 elements 1048.580/8616.924→1058.642/8936.758 µs
-  after lookup/hash hoisting (~1.0%/~3.7%). Profile stages before more changes;
-  retain the original sample and distinguish new-control workloads.
+- [x] Resolve the semantic-control milestone's ordinary-page worker cost
+  regression on the authored matched case. Reusing span paint colors measures
+  905.738/8897.912→776.512/7441.896 µs for 100/1,000 elements; matched
+  pre-control baseline 895.940/8868.916 µs (CPU0, seven rotated samples).
+  Original samples remain retained. This is not general website acceptance.

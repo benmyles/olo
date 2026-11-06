@@ -3542,3 +3542,71 @@ Journal stays **595** unique entries, all images present. No personal session
 install/reload or secret-service takeover. Website acceptance **0/100**, goal
 still active. Next: profile the measured ordinary-page regression, then continue
 images/replaced controls, inline decorations and table layout.
+
+
+### 2026-11-06 — reuse span colors during retained text paint
+
+Paint construction now resolves/converts the current source span's color and
+visibility once for consecutive glyphs. It skips comparing that span's own
+color with itself when checking a cluster. Other contributing spans still get
+checked; differently painted real text inside one shared glyph remains an
+explicit unsupported case. State is local to one immutable text-context build,
+with no retained allocation or cross-generation invalidation. Added regression
+coverage for color changes across breaks/hidden text and a differently colored
+real span inside a shared ligature. Output remains unchanged on tested inputs.
+
+A phase callback diagnostic pointed to paint: 1,000 elements
+**3783.627→3944.395 µs** pre-controls→before. Instrumentation changes code
+generation, so this was a lead, not exact attribution. Perf task-clock counting
+works here; software/hardware sampling is denied by machine policy. No policy
+change. A const-specialized ordinary/control dispatch trial had no material
+1,000-element scene gain and added about 5 KiB of text; removed it. Its patch
+and measurements remain recorded.
+
+Final frozen release measurements, CPU0 (highest advertised maximum 4.7 GHz,
+not a frequency lock), seven rotated samples, 200 scene / 60 pipeline rounds.
+Baseline is pre-controls **f1e462cc**; before is **ec3fd83c**. Archived engine
+revisions use separate standalone build targets and matching release profiles/
+dependency versions, with identical diagnostic examples. Every binary reports
+**features=[]**; source, geometry and command counts agree; scenes additionally
+have matching untimed 256×256 raster hashes. Default command storage stays
+**80 bytes**. Own builds/GUI tests stopped during samples; external desktop load
+and CPU frequency remain uncontrolled.
+
+100/1,000-element scene medians: before **314.227/3709.820→179.616/2414.210 µs**
+(about **43%/35%** faster). Pre-control baseline **318.432/3644.453 µs**.
+Control-bearing scenes **350.925/4323.552→220.792/2890.279 µs** (about **37%/33%**
+faster). Whole pipeline before **905.738/8897.912→776.512/7441.896 µs**
+(about **14%/16%** faster), below the matched pre-control
+**895.940/8868.916 µs**. This resolves the recorded regression on this authored
+case; it does not establish universal cost acceptance. Ordinary scene peak RSS
+**7908–8120→7724–8068 KiB**, control scenes **9832–9900→9696–9864 KiB**;
+pipeline **8632–9100→8664–9020 KiB** (overlapping ranges).
+
+**252 browser/web release tests**, **239 all-feature web tests**, strict clippy,
+workspace release (**7.16s**), thirteen kit/Preferences lint tests and Browser
+live lint pass. Native links/breaks: **15 reviews / 36 requests**; navigation:
+**15 reviews / 61 requests**, including re-exec/history/scroll restoration.
+Looked at the light/dark/night five-scale screenshot matrix; tested source
+geometry/raster hashes and existing independent Chrome component cases stay
+unchanged. Four break-control combinations remain rendering nonpasses.
+
+Native common scroll, three replays each: RSS **84880→85200 KiB**, both **zero
+idle CPU/wakeups/frames** over three seconds. First report→moving client frame
+D/F/W **7.740/9.036/0.489→5.435/5.822/0.473 ms**, zero hitches. Slowest-draw
+medians **0.61/0.59/0.60→0.64/0.59/2.41 ms**. Candidate confirmation (original
+sample retained): **9.031/9.039/0.478 ms**, draws **0.58/0.44/0.59 ms**, zero
+hitches; RSS **85672 KiB**, idle still zero. No causal native-latency speedup
+claim: scene construction is not performed by every common scroll frame.
+Frozen 1,001-link keyboard: **17.3225→17.3495 ms**, RSS **88360→88264 KiB**,
+idle zero. The frame-latency target remains open. Client marks do not measure
+compositor presentation or optical latency.
+
+Evidence: `2026-11-06-paint-color-cache-{checks,phase-profile,dispatch-experiment,
+scenes,ui-cost,ui-confirmation,keyboard-before,keyboard-after}.json` and the
+rejected dispatch patch; `page_profile`, `scene_bench` and matching Python
+runners. No new visible design or personal session install/reload. Website
+acceptance remains **0/100**, **0/3000** combinations; corpus still needs actual
+rank/complexity selection and runnable independent website journeys. Next:
+images/replaced controls, inline decorations and tables, alongside the frame
+latency and broader performance work.

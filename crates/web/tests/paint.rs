@@ -104,6 +104,19 @@ fn a_shared_ligature_can_be_read_without_an_internal_optional_break_marker() {
     assert_eq!(page.document.value(first).unwrap(), Some("f"));
     assert_eq!(page.document.value(wbr).unwrap(), None);
     assert_eq!(page.document.value(last).unwrap(), Some("i"));
+    let error = olo_web::page::load(
+        format!("<!doctype html><style>{BASE}html{{font-family:'Olo Inline ligature'}}</style><div>f<span style='color:red'>i</span></div>").into(),
+        &host,
+        &scope,
+        &mut Shaper::default(),
+        &mut paint::Engine::default(),
+        layout::Viewport { width: 100., height: 100., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .err()
+    .unwrap();
+    assert!(error.to_string().contains("paint boundary inside a glyph cluster"), "{error}");
 }
 
 #[test]
@@ -151,6 +164,17 @@ fn colors_visibility_clipping_and_positioned_paint_order() {
     assert_eq!(pixel(&t, 1, 3), [0, 0, 0, 255]);
     assert_eq!(pixel(&t, 5, 3), [255; 4]);
     assert_eq!(pixel(&t, 1, 11), [255; 4]);
+}
+#[test]
+fn glyph_color_reuse_tracks_real_spans_across_breaks_and_hidden_text() {
+    let mut p = paint::Engine::default();
+    let s = scene("<div><span style='color:red'>AB<br>CD</span><span style='color:blue'>E</span><br><span style='visibility:hidden'>F</span><span style='color:green'>G</span></div>", "", &mut p);
+    let tile = render(&mut p, &s);
+    for (x, y, expected) in
+        [(1, 3, [255, 0, 0, 255]), (21, 3, [255, 0, 0, 255]), (1, 23, [255, 0, 0, 255]), (21, 23, [255, 0, 0, 255]), (41, 23, [0, 0, 255, 255]), (1, 43, [255; 4]), (21, 43, [0, 128, 0, 255])]
+    {
+        assert_eq!(pixel(&tile, x, y), expected, "{x},{y}");
+    }
 }
 #[test]
 fn tiled_output_equals_whole_surface_and_index_matches_brute_force() {

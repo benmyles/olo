@@ -1,0 +1,985 @@
+{
+  "scope": "Pair frozen phase-instrumented and uninstrumented worker executables.\nUsage: OWNED_DIR OUTPUT.json [ROUNDS=200]. Requires profile-baseline,\nprofile-current, page-baseline and page-current, built with matching default\nrelease profiles. Selects one allowed CPU with the highest advertised maximum\nfrequency; descendants inherit affinity. Stop own builds/GUI checks first.\nPhase instrumentation changes code generation: confirm with the ordinary\npage benchmark. No raster, GPU, network, JavaScript or presentation coverage.\n",
+  "baseline": "f1e462cc",
+  "current": "ec3fd83c",
+  "cpu": 0,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "advertised_max_khz": 4700000,
+  "binaries": {
+    "profile-baseline": "e036a69d6bb880139e610c439adcdaf21811f2752c11cfc7ac779e0dc6563784",
+    "profile-current": "492575d81897f461ad178e9a3e3db02137fa00dbc0a209ede0d848d62b69e2bf",
+    "page-baseline": "c965acf5d7c622c7a77bbd0667d8039048da8bc551c31a6b5d3dc829e95467ba",
+    "page-current": "15cf21df864c79364e3472a4b3c20c577212ad60f6eacf1aea47857243f1fb69"
+  },
+  "observations": [
+    {
+      "mode": "profile",
+      "variant": "baseline",
+      "sample": 0,
+      "rss_kib": 9048,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.59873,
+            "dispose": 9.280395,
+            "html": 21.07719,
+            "layout": 69.55748,
+            "paint": 303.32239000000004,
+            "styles": 433.46727500000003,
+            "text": 39.63602
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 890.9597499999999
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 119.311255,
+            "dispose": 87.88177999999999,
+            "html": 172.495625,
+            "layout": 766.9059849999999,
+            "paint": 3782.9765650000004,
+            "styles": 3836.4014,
+            "text": 169.50348000000002
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 8935.495745
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "current",
+      "sample": 0,
+      "rss_kib": 9088,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.576154999999998,
+            "dispose": 9.2926,
+            "html": 20.033694999999998,
+            "layout": 72.340225,
+            "paint": 319.93768,
+            "styles": 442.90072999999995,
+            "text": 40.72255
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 919.8225
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 119.50310999999999,
+            "dispose": 88.43709999999999,
+            "html": 181.96615999999997,
+            "layout": 775.71076,
+            "paint": 3950.7532899999997,
+            "styles": 3851.91541,
+            "text": 175.273735
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 9143.58171
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "current",
+      "sample": 1,
+      "rss_kib": 9240,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.34943,
+            "dispose": 9.106455,
+            "html": 19.9543,
+            "layout": 68.535695,
+            "paint": 318.5764,
+            "styles": 440.58614,
+            "text": 40.30187
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 911.42686
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 117.16182500000001,
+            "dispose": 87.55954,
+            "html": 167.0177,
+            "layout": 776.8246899999999,
+            "paint": 3898.925265,
+            "styles": 3860.0382700000005,
+            "text": 175.72357499999998
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 9083.273985
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "baseline",
+      "sample": 1,
+      "rss_kib": 9060,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.16715,
+            "dispose": 9.236745,
+            "html": 20.827530000000003,
+            "layout": 68.775105,
+            "paint": 304.40630999999996,
+            "styles": 432.95766499999996,
+            "text": 39.40018499999999
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 889.78924
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 116.275205,
+            "dispose": 86.94799499999999,
+            "html": 167.82191500000002,
+            "layout": 726.3865299999999,
+            "paint": 3783.6266549999996,
+            "styles": 3839.989535,
+            "text": 168.42222999999998
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 8889.490995
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "baseline",
+      "sample": 2,
+      "rss_kib": 9256,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.213215,
+            "dispose": 9.082135,
+            "html": 20.554585000000003,
+            "layout": 67.51091,
+            "paint": 298.73461,
+            "styles": 424.70095000000003,
+            "text": 38.874655
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 873.689965
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 116.44414,
+            "dispose": 85.750165,
+            "html": 165.21809500000003,
+            "layout": 726.8134249999999,
+            "paint": 3839.085525,
+            "styles": 3688.26783,
+            "text": 168.91106
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 8790.51003
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "current",
+      "sample": 2,
+      "rss_kib": 9132,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.40898,
+            "dispose": 9.17696,
+            "html": 20.017315,
+            "layout": 68.39010999999999,
+            "paint": 321.77078499999993,
+            "styles": 438.78051,
+            "text": 40.692535
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 913.25457
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 121.111175,
+            "dispose": 87.903285,
+            "html": 167.282075,
+            "layout": 765.9423749999999,
+            "paint": 3951.3438499999993,
+            "styles": 3796.6743,
+            "text": 205.25749
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 9095.535795
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "current",
+      "sample": 3,
+      "rss_kib": 9160,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.580409999999999,
+            "dispose": 9.01299,
+            "html": 19.788919999999997,
+            "layout": 67.43724,
+            "paint": 321.241055,
+            "styles": 436.36202,
+            "text": 40.579125
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 909.0218
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 122.79967500000001,
+            "dispose": 88.0241,
+            "html": 161.18182000000002,
+            "layout": 745.251435,
+            "paint": 3951.2204699999998,
+            "styles": 3922.56664,
+            "text": 176.94967499999998
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 9168.02514
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "baseline",
+      "sample": 3,
+      "rss_kib": 8960,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.322885000000001,
+            "dispose": 9.18755,
+            "html": 20.745265,
+            "layout": 68.310435,
+            "paint": 301.49948,
+            "styles": 429.15027000000003,
+            "text": 39.468095
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 882.7030249999999
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 117.235015,
+            "dispose": 86.31710500000001,
+            "html": 168.74749,
+            "layout": 797.892645,
+            "paint": 3763.8838749999995,
+            "styles": 3779.5909500000002,
+            "text": 169.9032
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 8883.58995
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "baseline",
+      "sample": 4,
+      "rss_kib": 9328,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.680060000000001,
+            "dispose": 9.233505000000001,
+            "html": 20.77568,
+            "layout": 68.36955,
+            "paint": 305.1297,
+            "styles": 434.053685,
+            "text": 39.4547
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 891.7161349999999
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 124.84724,
+            "dispose": 104.15532499999999,
+            "html": 219.27619499999997,
+            "layout": 745.6204449999999,
+            "paint": 3829.77492,
+            "styles": 3719.799355,
+            "text": 168.29625500000003
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 8911.79127
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "current",
+      "sample": 4,
+      "rss_kib": 9256,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.41112,
+            "dispose": 9.14362,
+            "html": 20.018895,
+            "layout": 68.421835,
+            "paint": 316.15935499999995,
+            "styles": 437.041515,
+            "text": 39.927369999999996
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 905.14271
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 122.616965,
+            "dispose": 87.10829,
+            "html": 166.656275,
+            "layout": 791.461505,
+            "paint": 3897.6411700000003,
+            "styles": 3788.3086449999996,
+            "text": 191.10607
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 9044.927894999999
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "current",
+      "sample": 5,
+      "rss_kib": 9196,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.855440000000002,
+            "dispose": 8.991725,
+            "html": 19.525715,
+            "layout": 68.704485,
+            "paint": 315.484085,
+            "styles": 437.73561500000005,
+            "text": 40.256095
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 905.5727149999999
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 130.012935,
+            "dispose": 87.090965,
+            "html": 159.70514,
+            "layout": 766.867955,
+            "paint": 3944.395195,
+            "styles": 3854.2315399999998,
+            "text": 175.45084499999996
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 9117.779895
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "baseline",
+      "sample": 5,
+      "rss_kib": 8976,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.068735000000002,
+            "dispose": 9.074075,
+            "html": 20.650495,
+            "layout": 66.56236,
+            "paint": 299.229485,
+            "styles": 427.78352,
+            "text": 38.86466
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 876.25142
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 121.57161,
+            "dispose": 86.34566999999998,
+            "html": 196.678,
+            "layout": 741.3974800000001,
+            "paint": 3718.2697850000004,
+            "styles": 3766.6610149999997,
+            "text": 168.736905
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 8799.679985
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "baseline",
+      "sample": 6,
+      "rss_kib": 9004,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.300035000000001,
+            "dispose": 9.15042,
+            "html": 20.72674,
+            "layout": 67.747225,
+            "paint": 303.11036,
+            "styles": 430.99063,
+            "text": 39.31424
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 885.3570700000001
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 118.669995,
+            "dispose": 86.77770499999998,
+            "html": 167.34276999999997,
+            "layout": 796.20783,
+            "paint": 3817.7127,
+            "styles": 3702.09105,
+            "text": 168.24069500000002
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 8857.062385000001
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "profile",
+      "variant": "current",
+      "sample": 6,
+      "rss_kib": 9048,
+      "features": [],
+      "rounds": 200,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "phase_us": {
+            "boxes": 14.811795,
+            "dispose": 9.100125,
+            "html": 19.596405,
+            "layout": 66.94411,
+            "paint": 316.17063,
+            "styles": 438.32730000000004,
+            "text": 41.01653999999999
+          },
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7",
+          "total_us": 905.984945
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "phase_us": {
+            "boxes": 123.36631000000001,
+            "dispose": 112.095625,
+            "html": 206.78176499999998,
+            "layout": 785.37841,
+            "paint": 3889.750685,
+            "styles": 3779.534845,
+            "text": 183.18325000000002
+          },
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9",
+          "total_us": 9081.612215
+        }
+      ],
+      "scope": "Instrumented phase diagnostic; excludes raster/GPU/presentation. Styles includes stylesheet parsing and cascade. Dispose includes all page destruction. Callback instrumentation changes code generation; confirm conclusions with page_bench."
+    },
+    {
+      "mode": "page",
+      "variant": "baseline",
+      "sample": 0,
+      "rss_kib": 8908,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 900.3957833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8594.187483333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "current",
+      "sample": 0,
+      "rss_kib": 8776,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 905.1099833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9077.613233333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "current",
+      "sample": 1,
+      "rss_kib": 9112,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 911.6039999999999,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8865.700933333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "baseline",
+      "sample": 1,
+      "rss_kib": 8964,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 888.2829833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8989.971833333335,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "baseline",
+      "sample": 2,
+      "rss_kib": 9076,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 882.0577333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8918.950733333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "current",
+      "sample": 2,
+      "rss_kib": 8976,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 903.6896833333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8809.861516666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "current",
+      "sample": 3,
+      "rss_kib": 8904,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 910.1203,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9133.599316666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "baseline",
+      "sample": 3,
+      "rss_kib": 8868,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 892.9200000000001,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8537.3501,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "baseline",
+      "sample": 4,
+      "rss_kib": 8668,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 891.8581333333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8980.959316666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "current",
+      "sample": 4,
+      "rss_kib": 8976,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 956.0889833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9697.478883333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "current",
+      "sample": 5,
+      "rss_kib": 8912,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 913.3603333333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8896.473733333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "baseline",
+      "sample": 5,
+      "rss_kib": 8840,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 903.5880833333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 9045.68255,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "baseline",
+      "sample": 6,
+      "rss_kib": 8992,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 885.9631333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8475.122133333332,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "current",
+      "sample": 6,
+      "rss_kib": 8972,
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 945.9705666666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8950.94905,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    }
+  ]
+}

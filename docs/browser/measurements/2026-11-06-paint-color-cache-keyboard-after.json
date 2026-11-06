@@ -1,0 +1,465 @@
+{
+  "scope": "Release keyboard-to-moving-client-frame sample on an OWN Agent Screen.\nArgs: SCREEN /var/tmp/OWNED OUTPUT.json. Expects frozen browser-after there.\nNo comparison is possible for the newly added keyboard behavior. This is\nclient submission evidence, not compositor presentation or website acceptance.\n",
+  "binary_sha256": "3a2245d6b1e7e489214858dfa96e2ef54e86aba4c0fed4c5338d7e638f982194",
+  "links": 1001,
+  "rows": [
+    {
+      "submitted_at_us": 80461878995,
+      "first_moving_client_frame_ms": 17.526,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 569,
+          "total_us": 569,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80461896521,
+              "us": 569,
+              "ui_us": 424,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 145,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80463179020,
+      "first_moving_client_frame_ms": 17.435,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 535,
+          "total_us": 535,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80463196455,
+              "us": 535,
+              "ui_us": 414,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 121,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80464481841,
+      "first_moving_client_frame_ms": 17.346,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 661,
+          "total_us": 661,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80464499187,
+              "us": 661,
+              "ui_us": 555,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 106,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80465786289,
+      "first_moving_client_frame_ms": 17.402,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 563,
+          "total_us": 563,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80465803691,
+              "us": 563,
+              "ui_us": 430,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 133,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80467085743,
+      "first_moving_client_frame_ms": 17.328,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 760,
+          "total_us": 760,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80467103071,
+              "us": 760,
+              "ui_us": 512,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 248,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80468386849,
+      "first_moving_client_frame_ms": 17.593,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 729,
+          "total_us": 729,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80468404442,
+              "us": 729,
+              "ui_us": 587,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 142,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80469693019,
+      "first_moving_client_frame_ms": 17.297,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 488,
+          "total_us": 488,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80469710316,
+              "us": 488,
+              "ui_us": 377,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 111,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80470993844,
+      "first_moving_client_frame_ms": 17.353,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 592,
+          "total_us": 592,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80471011197,
+              "us": 592,
+              "ui_us": 434,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 158,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80472295201,
+      "first_moving_client_frame_ms": 11.392,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 3,
+          "slowest_us": 537,
+          "total_us": 1347,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80472298189,
+              "us": 498,
+              "ui_us": 316,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 182,
+              "scrolls": [
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            },
+            {
+              "at_us": 80472306593,
+              "us": 312,
+              "ui_us": 209,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 103,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            },
+            {
+              "at_us": 80472315044,
+              "us": 537,
+              "ui_us": 417,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 120,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "submitted_at_us": 80473600111,
+      "first_moving_client_frame_ms": 17.263,
+      "frames": [
+        {
+          "title": "Browser",
+          "frames": 1,
+          "slowest_us": 794,
+          "total_us": 794,
+          "adapter": "Intel(R) Graphics (PTL) (Intel open-source Mesa driver)",
+          "marks": [
+            {
+              "at_us": 80473617374,
+              "us": 794,
+              "ui_us": 613,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 181,
+              "scrolls": [
+                [
+                  0.0,
+                  21516.0,
+                  0.0,
+                  21835.793
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "rss_kib": 88264,
+  "idle": {
+    "seconds": 3.0,
+    "total": {
+      "cpu": 0.0,
+      "wakeups": 0
+    },
+    "threads": [
+      {
+        "tid": 3231430,
+        "name": "browser-after",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 3231433,
+        "name": "Timer",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 3231435,
+        "name": "theme-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 3231436,
+        "name": "menus",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 3231437,
+        "name": "upgrade-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 3231438,
+        "name": "browser:disk$0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 3231442,
+        "name": "browse:traceq0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 3231455,
+        "name": "browser-page",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 3231457,
+        "name": "browser-after",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      }
+    ],
+    "windows": [
+      {
+        "title": "Browser",
+        "frames": 0,
+        "per_second": 0.0,
+        "mean_us": 0,
+        "ui_us": 0,
+        "tessellate_us": 0,
+        "submit_us": 0,
+        "slowest_us": 0
+      }
+    ]
+  },
+  "median_first_moving_client_frame_ms": 17.3495
+}

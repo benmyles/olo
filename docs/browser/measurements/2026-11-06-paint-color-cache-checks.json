@@ -1,0 +1,1414 @@
+{
+  "baseline": "f1e462cc",
+  "before": "ec3fd83c",
+  "after_source_sha256": "3c594527ff2dba2f53a745b41d81ee8135601160bc3560e38832675105999a49",
+  "font_sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb",
+  "captured_at": "2026-11-06T15:36:45.875567+00:00",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "build_profile": "release, opt-level default3, debug=line-tables-only, resolver3; default features only",
+  "benchmark_inputs": {
+    "crates/web/examples/page_profile.rs": "5cd3a78e97ebf1bd884b6564e2eb834d991d3c142f20e6eb51c2bb44491cc6e4",
+    "crates/web/examples/scene_bench.rs": "1355bc873fe236b7870c667c02a58325e18f6611998bb773d271f0ff276aa3ef",
+    "crates/web/examples/page_bench.rs": "a5a600d6ab80b8b5482dc3002da5a9d80f73905066037297f8e607ea692d1dc9",
+    "tools/browser/profile-pipeline.py": "ba67cbdc01286d723e536ec6f9f563dac50f8de52ff42bfbdcd181dd6d9cd5e1",
+    "tools/browser/measure-scenes.py": "d824ca57bd7c561fe0133544eaf8c3e73ff9e0b30cb6c6a7d5580e48f37a32aa"
+  },
+  "source_isolation": "Baseline/before are git archives with their own standalone manifests and targets, matching inherited version/edition/license/serde_json and release profile. New benchmark examples copied identically; Cargo.lock retained dependency versions. Candidate uses normal worktree build. All frozen binaries report features=[] and source/geometry/command hashes agree. Scene samples also require equal raster hashes. Before controls probe succeeds; no baseline controls claim.",
+  "profiler": "perf task-clock counters allowed; cpu-clock/cycles sampling denied by machine policy. No policy change. Phase timings use existing callbacks and alter code generation; not exact attribution.",
+  "abandoned_dispatch": "Const-specialized ordinary/control paths added about5KiB of text and showed no material 1k scene improvement; removed. Its frozen measurements are retained separately.",
+  "tests": 252,
+  "all_feature_web_tests": 239,
+  "strict_clippy": "pass with existing dependency warnings",
+  "workspace_release_build_seconds": 7.16,
+  "kit_preferences_lint_tests": 13,
+  "browser_live_lint_errors": 0,
+  "website_passes": 0,
+  "scope": "Authored component performance and regression validation, not complete browser acceptance.",
+  "native_links": {
+    "scope": "Owned-screen link input regression; production engine/network are Rust.\nStart one release olo-browser on a 1280x800 Agent Screen initially at 2x,\neval its environment, then: THIS_SCRIPT NAME /var/tmp/OWNED/output.\nAdd --inline for inline spacing; --breaks for semantic br/wbr and carrier-free text.\nNo website journey acceptance follows from these authored fixtures.\n",
+    "inline_boxes": true,
+    "semantic_breaks": true,
+    "initial": {
+      "window": 1,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "Navigate",
+          "x": 96.188,
+          "y": 67.0,
+          "width": 66.256,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Back",
+          "x": 65.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Forward",
+          "x": 157.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": false
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "http://127.0.0.1:40241/links",
+          "x": 249.0,
+          "y": 104.0,
+          "width": 608.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "value": "{\"url\":\"http://127.0.0.1:40241/links\",\"navigation\":2,\"document\":2}",
+          "x": 53.0,
+          "y": 140.0,
+          "width": 1000.0,
+          "height": 577.5,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "Link fixture",
+          "x": 75.38,
+          "y": 168.58,
+          "width": 157.584,
+          "height": 21.699997,
+          "enabled": true
+        },
+        {
+          "id": 11,
+          "parent": 1,
+          "role": "Link",
+          "name": "First link",
+          "value": "http://127.0.0.1:40241/dest/one",
+          "x": 81.552,
+          "y": 224.84,
+          "width": 61.631996,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 12,
+          "parent": 1,
+          "role": "Link",
+          "name": "Second link",
+          "value": "http://127.0.0.1:40241/dest/two",
+          "x": 167.304,
+          "y": 224.84,
+          "width": 84.784,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 13,
+          "parent": 1,
+          "role": "Link",
+          "name": "Download link",
+          "value": "http://127.0.0.1:40241/unrequested",
+          "x": 81.552,
+          "y": 268.84,
+          "width": 105.28,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 14,
+          "parent": 1,
+          "role": "Link",
+          "name": "Local file link",
+          "value": "file:///dev/null",
+          "x": 81.552,
+          "y": 312.76,
+          "width": 94.944,
+          "height": 12.400009,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 15,
+          "parent": 1,
+          "role": "Link",
+          "name": "New window link",
+          "value": "http://127.0.0.1:40241/unrequested",
+          "x": 81.552,
+          "y": 356.84,
+          "width": 125.119995,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 16,
+          "parent": 1,
+          "role": "Label",
+          "name": "Ordinary text after the links.",
+          "x": 73.976,
+          "y": 400.76,
+          "width": 208.832,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 17,
+          "parent": 1,
+          "role": "Label",
+          "name": "Wrapped inline text crosses",
+          "x": 91.192,
+          "y": 462.84,
+          "width": 205.664,
+          "height": 16.0,
+          "enabled": true
+        },
+        {
+          "id": 18,
+          "parent": 1,
+          "role": "Label",
+          "name": "several lines.",
+          "x": 73.816,
+          "y": 490.84,
+          "width": 94.224,
+          "height": 12.384003,
+          "enabled": true
+        },
+        {
+          "id": 19,
+          "parent": 1,
+          "role": "Label",
+          "name": "Tail.",
+          "x": 197.512,
+          "y": 490.84,
+          "width": 27.824005,
+          "height": 12.384003,
+          "enabled": true
+        },
+        {
+          "id": 20,
+          "parent": 1,
+          "role": "Label",
+          "name": "Before forced break",
+          "x": 74.552,
+          "y": 534.76,
+          "width": 147.232,
+          "height": 12.399994,
+          "enabled": true
+        },
+        {
+          "id": 21,
+          "parent": 1,
+          "role": "Label",
+          "name": "After forced break",
+          "x": 73.0,
+          "y": 562.76,
+          "width": 136.0,
+          "height": 12.399994,
+          "enabled": true
+        },
+        {
+          "id": 22,
+          "parent": 1,
+          "role": "Label",
+          "name": "Optional",
+          "x": 73.976,
+          "y": 606.83997,
+          "width": 62.576004,
+          "height": 16.0,
+          "enabled": true
+        },
+        {
+          "id": 23,
+          "parent": 1,
+          "role": "Label",
+          "name": "break",
+          "x": 74.36,
+          "y": 634.83997,
+          "width": 41.168,
+          "height": 12.320007,
+          "enabled": true
+        },
+        {
+          "id": 24,
+          "parent": 1,
+          "role": "Label",
+          "name": "Link fixture",
+          "x": 69.0,
+          "y": 733.5,
+          "width": 968.0,
+          "height": 16.5,
+          "enabled": true
+        }
+      ]
+    },
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 62
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 147
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 245
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 379
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 549
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 62
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 147
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 245
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 379
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 549
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 62
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 147
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 245
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 379
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 549
+      }
+    ],
+    "requests": [
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/one",
+      "/links",
+      "/links",
+      "/links",
+      "/links"
+    ],
+    "final": {
+      "window": 1,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "Navigate",
+          "x": 96.188,
+          "y": 67.0,
+          "width": 66.256,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Back",
+          "x": 65.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Forward",
+          "x": 157.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": false
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "http://127.0.0.1:40241/links",
+          "x": 249.0,
+          "y": 104.0,
+          "width": 608.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "value": "{\"url\":\"http://127.0.0.1:40241/links\",\"navigation\":37,\"document\":37}",
+          "x": 53.0,
+          "y": 140.0,
+          "width": 1000.0,
+          "height": 577.5,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "Link fixture",
+          "x": 75.38,
+          "y": 168.58,
+          "width": 157.584,
+          "height": 21.699997,
+          "enabled": true
+        },
+        {
+          "id": 11,
+          "parent": 1,
+          "role": "Link",
+          "name": "First link",
+          "value": "http://127.0.0.1:40241/dest/one",
+          "x": 81.552,
+          "y": 224.84,
+          "width": 61.631996,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 12,
+          "parent": 1,
+          "role": "Link",
+          "name": "Second link",
+          "value": "http://127.0.0.1:40241/dest/two",
+          "x": 167.304,
+          "y": 224.84,
+          "width": 84.784,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 13,
+          "parent": 1,
+          "role": "Link",
+          "name": "Download link",
+          "value": "http://127.0.0.1:40241/unrequested",
+          "x": 81.552,
+          "y": 268.84,
+          "width": 105.28,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 14,
+          "parent": 1,
+          "role": "Link",
+          "name": "Local file link",
+          "value": "file:///dev/null",
+          "x": 81.552,
+          "y": 312.76,
+          "width": 94.944,
+          "height": 12.400009,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 15,
+          "parent": 1,
+          "role": "Link",
+          "name": "New window link",
+          "value": "http://127.0.0.1:40241/unrequested",
+          "x": 81.552,
+          "y": 356.84,
+          "width": 125.119995,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 16,
+          "parent": 1,
+          "role": "Label",
+          "name": "Ordinary text after the links.",
+          "x": 73.976,
+          "y": 400.76,
+          "width": 208.832,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 17,
+          "parent": 1,
+          "role": "Label",
+          "name": "Wrapped inline text crosses",
+          "x": 91.192,
+          "y": 462.84,
+          "width": 205.664,
+          "height": 16.0,
+          "enabled": true
+        },
+        {
+          "id": 18,
+          "parent": 1,
+          "role": "Label",
+          "name": "several lines.",
+          "x": 73.816,
+          "y": 490.84,
+          "width": 94.224,
+          "height": 12.384003,
+          "enabled": true
+        },
+        {
+          "id": 19,
+          "parent": 1,
+          "role": "Label",
+          "name": "Tail.",
+          "x": 197.512,
+          "y": 490.84,
+          "width": 27.824005,
+          "height": 12.384003,
+          "enabled": true
+        },
+        {
+          "id": 20,
+          "parent": 1,
+          "role": "Label",
+          "name": "Before forced break",
+          "x": 74.552,
+          "y": 534.76,
+          "width": 147.232,
+          "height": 12.399994,
+          "enabled": true
+        },
+        {
+          "id": 21,
+          "parent": 1,
+          "role": "Label",
+          "name": "After forced break",
+          "x": 73.0,
+          "y": 562.76,
+          "width": 136.0,
+          "height": 12.399994,
+          "enabled": true
+        },
+        {
+          "id": 22,
+          "parent": 1,
+          "role": "Label",
+          "name": "Optional",
+          "x": 73.976,
+          "y": 606.83997,
+          "width": 62.576004,
+          "height": 16.0,
+          "enabled": true
+        },
+        {
+          "id": 23,
+          "parent": 1,
+          "role": "Label",
+          "name": "break",
+          "x": 74.36,
+          "y": 634.83997,
+          "width": 41.168,
+          "height": 12.320007,
+          "enabled": true
+        },
+        {
+          "id": 24,
+          "parent": 1,
+          "role": "Label",
+          "name": "Link fixture",
+          "x": 69.0,
+          "y": 733.5,
+          "width": 968.0,
+          "height": 16.5,
+          "enabled": true
+        }
+      ]
+    },
+    "accepted_websites": 0
+  },
+  "native_navigation": {
+    "scope": "Native navigation on an OWN Agent Screen; authored fixtures accept no sites.\nStart release olo-browser there, eval olo-screen env, then run NAME OUTPUT_DIR.\nChecks canonical redirects, in-document identity/no I/O, history, keyboard focus\nand scroll restoration at all native modes/scales. HTTP server is test-only.\n",
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 38,
+          "document": 38
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 39,
+          "document": 38
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 43,
+          "document": 40
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 46,
+          "document": 41
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 47,
+          "document": 41
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 51,
+          "document": 43
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 54,
+          "document": 44
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 55,
+          "document": 44
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 59,
+          "document": 46
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 62,
+          "document": 47
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 63,
+          "document": 47
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 67,
+          "document": 49
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 70,
+          "document": 50
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 71,
+          "document": 50
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 75,
+          "document": 52
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 78,
+          "document": 53
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 79,
+          "document": 53
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 83,
+          "document": 55
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 86,
+          "document": 56
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 87,
+          "document": 56
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 91,
+          "document": 58
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 94,
+          "document": 59
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 95,
+          "document": 59
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 99,
+          "document": 61
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 102,
+          "document": 62
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 103,
+          "document": 62
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 107,
+          "document": 64
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 110,
+          "document": 65
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 111,
+          "document": 65
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 115,
+          "document": 67
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 118,
+          "document": 68
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 119,
+          "document": 68
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 123,
+          "document": 70
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 126,
+          "document": 71
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 127,
+          "document": 71
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 131,
+          "document": 73
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 134,
+          "document": 74
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 135,
+          "document": 74
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 139,
+          "document": 76
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 142,
+          "document": 77
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 143,
+          "document": 77
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 147,
+          "document": 79
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:41223/nav",
+          "navigation": 150,
+          "document": 80
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 151,
+          "document": 80
+        },
+        "restored": {
+          "url": "http://127.0.0.1:41223/nav#section",
+          "navigation": 155,
+          "document": 82
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      }
+    ],
+    "requests": [
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/nav"
+    ],
+    "reload": {
+      "before": {
+        "url": "http://127.0.0.1:41223/nav#section",
+        "navigation": 157,
+        "document": 82
+      },
+      "restored": {
+        "url": "http://127.0.0.1:41223/nav#section",
+        "navigation": 1,
+        "document": 1
+      },
+      "section_y": 145.70801,
+      "forward_then_back_without_requests": true
+    },
+    "accepted_websites": 0
+  },
+  "discarded_dispatch_patch": "2026-11-06-paint-color-cache-dispatch.patch",
+  "discarded_dispatch_patch_sha256": "2d778cf981b051c6b8a3a41f39ff3b131e55038b39567df2ca0f790fdf0f6629",
+  "browser_binary_sha256": "3a2245d6b1e7e489214858dfa96e2ef54e86aba4c0fed4c5338d7e638f982194",
+  "native_cost_scope": "Frozen before/ec3fd83c vs span-color reuse, on worktree-built bdc8036a desktop. Three common scroll replays each, plus candidate-only confirmation after wheel draw maximum increased; preserve original. Keyboard uses same helper with isolated roots for both frozen binaries, ten samples each. Client marks, not presentation."
+}
