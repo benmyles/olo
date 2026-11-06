@@ -487,11 +487,33 @@ fn lerp(a: Hsla, b: Hsla, t: f32) -> Hsla {
 
 /// A tab's icon: Terminal's, with a badge at its corner: a turning arc
 /// while an agent works, an orange "!" when it needs an answer, a green
-/// dot when it's done and no one has looked, a blue dot for an unseen bell.
-pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool) -> widgets::strip::PaintFn {
+/// dot when it's done and no one has looked, a blue dot for an unseen
+/// bell; and at its bottom corner, while Keep It Going is on, a blue
+/// disc with a "go on" triangle.
+pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: bool) -> widgets::strip::PaintFn {
     Rc::new(move |window: &mut Window, cx: &mut App, r: Bounds<Pixels>| {
         icons::paint(window, r, "terminal");
         let p = theme::palette(cx);
+        if keep_going {
+            // A disc in the accent colour with a "go on" triangle, as the
+            // question's is orange with a "!".
+            let c = point(r.right() - px(1.5), r.bottom() - px(3.5));
+            let disc = |window: &mut Window, radius: f32, color: Hsla| {
+                let b = Bounds { origin: point(c.x - px(radius), c.y - px(radius)), size: size(px(2.0 * radius), px(2.0 * radius)) };
+                window.paint_quad(gpui::fill(b, color).corner_radii(px(radius)));
+            };
+            disc(window, 5.5, style::c(p.panel_background));
+            let accent = p.keyboard_navigation;
+            disc(window, 4.5, style::c(accent));
+            let mut path = gpui::PathBuilder::fill();
+            path.move_to(point(c.x - px(1.25), c.y - px(2.25)));
+            path.line_to(point(c.x + px(2.25), c.y));
+            path.line_to(point(c.x - px(1.25), c.y + px(2.25)));
+            path.close();
+            if let Ok(path) = path.build() {
+                window.paint_path(path, style::ink_on(accent));
+            }
+        }
         let at = point(r.right() - px(1.5), r.top() + px(3.5));
         let back = style::c(p.panel_background);
         let disc = |window: &mut Window, radius: f32, color: Hsla| {
@@ -801,7 +823,7 @@ impl Terminal {
                 };
                 StripTab {
                     label: tab.title.clone().into(),
-                    icon: Some(tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention)),
+                    icon: Some(tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention, tab.keep_going.is_some())),
                     status: status.map(Into::into),
                     badge: pr.map(repos::pr_badge),
                     group: tab.group,
@@ -849,7 +871,8 @@ impl Terminal {
             let pane_cache = tab.pane.clone();
             let hover = tab.mouse.hover.clone();
             let scheme = scheme.clone();
-            let head = several.then(|| (tab.title.clone(), tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention), tab.group.and_then(|g| group_chips.get(g).cloned())));
+            let head =
+                several.then(|| (tab.title.clone(), tab_icon(tab.rang, tab.agent.map(|(_, s)| s), tab.attention, tab.keep_going.is_some()), tab.group.and_then(|g| group_chips.get(g).cloned())));
             let dim = (several && !active).then(|| view::screen_colors(&tab.session, &scheme).0);
             let preedit = preedit.clone().filter(|_| active);
             let input = active.then(|| (view.clone(), focus.clone()));
@@ -1076,6 +1099,10 @@ impl Terminal {
             key.shift = false;
         }
         let tab = t.tab_mut();
+        // (Typing is something happening: Keep It Going's quiet starts again.)
+        if let Some(k) = tab.keep_going.as_mut() {
+            k.since = std::time::Instant::now();
+        }
         if view::key(&tab.session, key, true, e.is_held) {
             tab.mouse.hover = None;
             cx.stop_propagation();
@@ -1096,6 +1123,9 @@ impl Terminal {
     pub(crate) fn typed_text(&mut self, cx: &mut Cx, id: WindowId, text: &str) {
         let Some(Win::Term(t)) = self.windows.get_mut(&id) else { return };
         let tab = t.tab_mut();
+        if let Some(k) = tab.keep_going.as_mut() {
+            k.since = std::time::Instant::now();
+        }
         view::text(&tab.session, text);
         tab.mouse.hover = None;
         cx.redraw(id);
@@ -1420,6 +1450,10 @@ impl Terminal {
                     .separator()
                     .item(if t.tabs[i].hidden_tiled { "Show When Tiled" } else { "Hide When Tiled" }, format!("tab-tile-hide:{shell}"))
                     .item(label, place);
+                // A tab with a coding agent in it: told "please continue"
+                // when it stops (Keep It Going).
+                let keep = t.tabs[i].keep_going.is_some();
+                let menu = if t.tabs[i].agent.is_some() || keep { menu.separator().item("Keep It Going", format!("tab-keep-going:{shell}")).checked(keep) } else { menu };
                 self.popup(id, menu, pos, window, cx);
             }
         }

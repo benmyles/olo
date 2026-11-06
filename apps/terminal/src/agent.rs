@@ -113,6 +113,30 @@ fn screen_text(term: &Term<Listener>) -> String {
 /// A change: shell `.0` now runs `.1` (or no agent).
 pub struct Report(pub u64, pub Option<(Agent, State)>);
 
+/// Shell `.0`'s agent's screen changed (Keep It Going: anything at all
+/// is activity, but a clock that counts by itself).
+pub struct Activity(pub u64);
+
+/// What the screen shows, for telling a change: its text with the
+/// clocks that count by themselves taken out (Codex's "Pursuing goal
+/// (17h 52m)", whose time goes on every minute whatever it's doing: Ben,
+/// 2026-11-06).
+pub fn fingerprint(screen: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for line in screen.lines() {
+        match line.find("Pursuing goal (") {
+            Some(at) => {
+                let rest = &line[at + "Pursuing goal (".len()..];
+                let after = rest.find(')').map_or("", |e| &rest[e + 1..]);
+                (&line[..at], after).hash(&mut h);
+            }
+            None => line.hash(&mut h),
+        }
+    }
+    h.finish()
+}
+
 struct Watched {
     shell: u64,
     term: Weak<FairMutex<Term<Listener>>>,
@@ -120,6 +144,8 @@ struct Watched {
     reported: Option<(Agent, State)>,
     /// A different reading, and how many times running it's been seen.
     seen: Option<(Option<(Agent, State)>, u32)>,
+    /// What its agent's screen last showed (`fingerprint`).
+    print: u64,
 }
 
 /// How often the tabs are looked at, at most (while shells print, and
@@ -153,10 +179,18 @@ impl Watcher {
                 list.retain(|w| w.term.strong_count() > 0);
                 for w in list.iter_mut() {
                     let (Some(term), Some(shared)) = (w.term.upgrade(), w.shared.upgrade()) else { continue };
+                    let mut print = None;
                     let now = shared.foreground().filter(|&p| Some(p) != shared.shell()).and_then(which).map(|agent| {
                         let text = screen_text(&term.lock());
+                        print = Some(fingerprint(&text));
                         (agent, classify(&text))
                     });
+                    if let Some(p) = print
+                        && p != w.print
+                    {
+                        w.print = p;
+                        proxy.send(Activity(w.shell));
+                    }
                     if now == w.reported {
                         w.seen = None;
                         continue;
@@ -187,7 +221,7 @@ impl Watcher {
     pub fn watch(&self, shell: u64, term: &Arc<FairMutex<Term<Listener>>>, shared: &Arc<io::Shared>) {
         let mut list = self.list.lock().unwrap();
         if !list.iter().any(|w| w.shell == shell) {
-            list.push(Watched { shell, term: Arc::downgrade(term), shared: Arc::downgrade(shared), reported: None, seen: None });
+            list.push(Watched { shell, term: Arc::downgrade(term), shared: Arc::downgrade(shared), reported: None, seen: None, print: 0 });
             self.nudge.poke();
         }
     }
@@ -205,6 +239,14 @@ mod tests {
         assert_eq!(identify("codex", "/usr/local/bin/codex", &args(&["codex"])), Some(Agent::Codex));
         assert_eq!(identify("node", "/usr/bin/node", &args(&["node", "/usr/local/bin/codex", "--full-auto"])), Some(Agent::Codex));
         assert_eq!(identify("vim", "/usr/bin/vim", &args(&["vim", "claude.md"])), None);
+    }
+
+    #[test]
+    fn codex_goal_clock_isnt_a_change() {
+        let at = |t: &str| format!("• Did the thing.\n\n  Pursuing goal ({t}) · ship the browser\n› \n");
+        assert_eq!(fingerprint(&at("17h 52m")), fingerprint(&at("17h 53m")));
+        assert_ne!(fingerprint(&at("17h 52m")), fingerprint("• Did the thing.\n\n  Pursuing goal (17h 52m) · ship the browser\n› more\n"));
+        assert_ne!(fingerprint("✻ Pondering… (12s)"), fingerprint("✻ Pondering… (13s)"));
     }
 
     #[test]

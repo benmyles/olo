@@ -8638,6 +8638,30 @@ the agent leaves the tab or sets an empty one; it is saved with the
 window, and after a restart kept only if the tab's agent is seen again
 within 5 s.
 
+**Keep It Going** (Ben, 2026-11-06; `Tab::keep_going`, `KeepGoing`): on a
+tab with a coding agent, its menu (and Tabs ▸ Keep It Going, which
+agents reach through the commands socket, `tab-keep-going:SHELL`) has
+Terminal say "please continue" to the agent once it has stopped: after
+two minutes (`KEEP_GOING_QUIET`) with nothing at all changing on its
+screen and nothing typed, its turn over (`State::Idle`: not while it
+works, nor on a question, whose answer is the person's), at most once
+an hour (`KEEP_GOING_EVERY`). Activity is the agent watcher's: when it
+reads a tab after output (at most every 600 ms, as for the agent's
+state), a change of the screen's `agent::fingerprint` is reported
+(`agent::Activity`), with the clocks that count by themselves taken out
+first (Codex's "Pursuing goal (17h 52m)", which goes on every minute).
+A timer of the tab's own sleeps until the quiet would be long enough,
+so nothing runs while it waits; the words go in as typed, the Return
+150 ms after (all at once, a TUI may take it as pasted text). The tab's
+icon carries a blue disc with a white "go on" triangle at its bottom
+corner while it's on; its name says so to screen readers and agents.
+Kept with the window (when it last spoke too, so a restart doesn't make
+the hour start again); `OLO_TERMINAL_KEEP_GOING_SECS` shortens the wait
+for a test. Tried headless with a stand-in named `claude` (an idle
+screen, a goal clock ticking every 2 s): one "please continue" after
+the quiet, none again within the hour, back after Terminal quit and
+started again.
+
 **Repositories** (`src/git.rs`, `src/repos.rs`), in process through
 libgit2 (git2, vendored; no `git` or `gh`). A thread (`git::Watcher`)
 looks at each tab's folder (its foreground program's, else its shell's)

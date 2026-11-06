@@ -33,6 +33,11 @@ of Finished; a new one goes where its priority puts it.
   agents too: the setting readable and settable over Terminal's
   commands socket, and the tab's state in its tree. Kept with the tab
   across an upgrade (`restored_state`); off for a new tab.
+  *Done* (2026-11-06, HACKING's "Keep It Going"): the tab's menu and
+  Tabs ▸ Keep It Going, 120 s of no change (Codex's goal clock left out)
+  with the agent's turn over, once an hour at most, the tab's badge (a
+  blue disc with a go-on triangle), kept across restarts; tried headless
+  with a stand-in agent. *Left*: Ben's go with Claude Code and Codex.
 
 - **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
   screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
