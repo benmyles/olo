@@ -1,8 +1,14 @@
 //! Security: how Passwords keeps its secrets (syncing with 1Password,
 //! locking, `op` on the command line, the clipboard; Passwords follows
-//! these live), and beside them security keys (`security_keys`).
+//! these live), whether Olo keeps programs' secrets (olo-secrets, its
+//! state followed from the file it writes), and beside them security keys
+//! (`security_keys`).
 
+use std::sync::{Arc, OnceLock};
+
+use olo_sync::Mutex;
 use olo_ui::gpui::SharedString;
+use serde::Deserialize;
 
 use crate::{
     form::{Ui, divider_for},
@@ -37,6 +43,10 @@ fn passwords(ui: &mut Ui) {
         if p.ssh_agent {
             ssh_config_note(ui);
         }
+    });
+    ui.bbox("Programs’ Secrets", |ui| {
+        ui.check("Keep programs’ secrets in Olo", p.secret_service, |s, v| s.security.passwords.secret_service = v);
+        secrets_note(ui, p.secret_service);
     });
     ui.bbox("Passwords: Clipboard", |ui| {
         const CHOICES: [u32; 5] = [30, 60, 90, 180, 300];
@@ -89,6 +99,98 @@ fn ssh_config_note(ui: &mut Ui) {
         cx.notify();
     });
     ui.button("Use Passwords for ssh", done);
+}
+
+/// What olo-secrets says it's doing (`$XDG_RUNTIME_DIR/olo-secrets.json`).
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+struct SecretsStatus {
+    /// Its file is there: olo-secrets runs.
+    #[serde(skip)]
+    running: bool,
+    serving: bool,
+    collections: Vec<SecretsCollection>,
+    programs: Vec<String>,
+    skipped: Vec<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Deserialize)]
+#[serde(default)]
+struct SecretsCollection {
+    items: usize,
+}
+
+/// olo-secrets' state, followed from its file (one watch for the app).
+fn secrets_status(proxy: olo_ui::Proxy) -> SecretsStatus {
+    static SHARED: OnceLock<Arc<Mutex<SecretsStatus>>> = OnceLock::new();
+    let shared = SHARED.get_or_init(|| {
+        let shared: Arc<Mutex<SecretsStatus>> = Arc::default();
+        // Tests (the layout lint): Olo keeping a long list's worth.
+        if cfg!(test) {
+            *shared.lock().unwrap() = SecretsStatus {
+                running: true,
+                serving: true,
+                collections: vec![SecretsCollection { items: 137 }],
+                programs: ["chrome", "Slack", "org.gnome.NetworkManager", "olo", "evolution-data-server", "discord"].map(String::from).to_vec(),
+                skipped: vec!["Work Keyring".into()],
+                error: None,
+            };
+            return shared;
+        }
+        let path = olo_xdg::runtime_dir().join("olo-secrets.json");
+        let read = {
+            let (shared, path) = (shared.clone(), path.clone());
+            move |_: &[std::path::PathBuf]| {
+                let now: SecretsStatus = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).map(|s| SecretsStatus { running: true, ..s }).unwrap_or_default();
+                let mut s = shared.lock().unwrap();
+                if *s != now {
+                    *s = now;
+                    drop(s);
+                    proxy.send(crate::Msg::Redraw);
+                }
+            }
+        };
+        read(&[]);
+        if let Some(w) = olo_ui::watch::watch([path], read) {
+            // The app's, for as long as it runs.
+            std::mem::forget(w);
+        }
+        shared
+    });
+    shared.lock().unwrap().clone()
+}
+
+/// What keeping programs' secrets means, and how it's going.
+fn secrets_note(ui: &mut Ui, on: bool) {
+    if !on {
+        ui.note("Chrome, Slack and other programs keep their secrets (the keys to their saved passwords and sign-ins) in GNOME Keyring. Turned on, Olo keeps them instead, GNOME Keyring’s copied over first; turned off, what changed goes back.");
+        return;
+    }
+    let st = secrets_status(olo_ui::proxy(ui.cx));
+    if !st.running {
+        ui.note("Olo’s keyring service isn’t running here; it starts with your session.");
+        return;
+    }
+    if let Some(e) = &st.error {
+        ui.note(format!("Olo doesn’t keep them yet: {e}."));
+        return;
+    }
+    if !st.serving {
+        ui.note("Copying GNOME Keyring’s secrets…");
+        return;
+    }
+    let n: usize = st.collections.iter().map(|c| c.items).sum();
+    let secrets = if n == 1 { "1 secret".to_owned() } else { format!("{n} secrets") };
+    let programs = match st.programs.len() {
+        0 => String::new(),
+        k if k <= 3 => format!(", of {}", st.programs.join(", ")),
+        k => format!(", of {} and {} more", st.programs[..3].join(", "), k - 3),
+    };
+    ui.note(format!("Olo keeps {secrets}{programs}, in place of GNOME Keyring."));
+    if !st.skipped.is_empty() {
+        ui.note(format!("Left in GNOME Keyring, locked: {}.", st.skipped.join(", ")));
+    }
 }
 
 fn seconds_text(s: u32) -> String {

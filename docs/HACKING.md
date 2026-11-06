@@ -383,6 +383,7 @@ socket.
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
+| `apps/secrets` | `olo-secrets`: Olo's own Secret Service, programs' secrets kept in place of GNOME Keyring when Preferences ▸ Security says so (see "Programs' secrets"). |
 | `crates/camera` | `olo-camera`: cameras in process: listed from sysfs (nothing opened till one is asked for), a V4L2 stream (MJPEG decoded by zune-jpeg, or YUYV converted) as BGRA frames; `OLO_CAMERA_FAKE=1` puts a stand-in first ("Test Camera", a moving pattern at 30 frames a second) for tests and headless sessions, which never open a real camera. For a recording's camera bubble (Screenshot's `bubble.rs`), later face sign-in. |
 | `crates/face` | `olo-face`: face unlock natively: the infrared camera over V4L2, its emitter through its UVC extension unit, YuNet and SFace run in process (tract), and `olo-faced`, the root service on the system bus. See "Face unlock". |
 | `crates/pam-face` | `pam_olo_face.so`: face unlock in sudo's and polkit's PAM stacks (asks `olo-faced`). See "Face unlock". |
@@ -9066,7 +9067,14 @@ breaks if `PromptReady` overtakes the `PerformPrompt` reply). A wrong
 password comes back as another `PerformPrompt` with a `warning`; the
 window stays "Checking…" in between. One prompt at a time; a caller that
 leaves the bus takes its prompts with it, and if the agent goes, the
-keyring dismisses the request instead of hanging.
+keyring dismisses the request instead of hanging. The shared secret is
+padded to the prime's length before HKDF, as gcr's and libsecret's
+`egg_dh_gen_secret` write it (unpadded, one exchange in 256, whose
+secret starts with a zero byte, derived another key and a right password
+read as wrong). `keyring_prompt::ask_password(props, wrong, check)` is
+the other side, for a program of Olo's own that keeps secrets
+(olo-secrets): it asks through the same prompter, as gnome-keyring does,
+again with `wrong` as the warning till `check` says yes; blocking.
 
 Test it on a private bus with a throwaway daemon, never the session's:
 start a bus (`dbus-broker-launch` with a listening socket handed over as
@@ -9076,6 +9084,84 @@ start a bus (`dbus-broker-launch` with a listening socket handed over as
 --ignored` (makes a keyring, wrong then right password, cancel), or
 `olo-polkit-agent --keyring-test unix:path=…` in a headless session and
 a Secret Service client calling `Unlock` and `Prompt`.
+
+## Programs' secrets (apps/secrets)
+
+`olo-secrets` is Olo's own Secret Service (`org.freedesktop.secrets`, the
+freedesktop API 0.2): with Preferences ▸ Security ▸ Programs' Secrets on
+(`security.passwords.secret_service`, off by default), the secrets
+Chrome, Slack, NetworkManager's applets, `gh` and Olo itself keep through
+libsecret live in Olo's store rather than GNOME Keyring's. olo-session
+starts it in a real session (`REAL_SHELL`, and on an upgrade that adds
+it); while off it waits on app_server's settings events (no CPU, no
+wakeups) and follows the switch live.
+
+- **The store** (`store.rs`): `$XDG_CONFIG_HOME/olo/secrets.store`,
+  "OLOS", a format byte, a 24-byte nonce, the JSON sealed with
+  XChaCha20-Poly1305 (the header as associated data), written atomically
+  at 0600 after each change. Collections (`login`, the `default` alias's,
+  made first; others by `CreateCollection`) of items (label, attributes,
+  secret, content type, times); the `session` collection in memory only.
+  Its key is 32 random bytes in GNOME Keyring's login keyring
+  (`olo_system::secrets::SECRETS_KEY`, which PAM unlocks at login; a
+  kept secret, so Backup carries it, and the store with it as a vault:
+  "Programs' Secrets"), and for the rest of the login in the kernel's
+  session keyring (`kernel.rs`: `olo-secrets:` and the store's path, so
+  a test's key never meets the real one), so olo-secrets started again
+  (an upgrade, a crash) opens it without GNOME Keyring, which has quit.
+- **Taking over** (at login, or switched on): the key, the store, then
+  every GNOME Keyring item new or changed since the last copy
+  (`Data::imported`: identity, its `Modified`; identity is collection,
+  label and attributes without `xdg:schema`, which GNOME Keyring adds to
+  an item that had none once it has read it back from disk), each locked
+  GNOME Keyring collection unlocked first through Olo's prompter (not
+  when started again: it waits for the next login). Then it asks for the
+  bus name with no flags, so it waits in line (GNOME Keyring lets nobody
+  replace it: `RequestName` with `REPLACE_EXISTING` says it exists), and
+  tells GNOME Keyring to quit over its control socket (`gnome.rs`: op 3,
+  `GKD_CONTROL_OP_QUIT`), the name coming to olo-secrets as it goes
+  (waited for as `NameAcquired`, up to 5 s). GNOME Keyring's other
+  parts (pkcs11) go with it; SSH is Passwords' agent or gcr's.
+- **Serving** (`service.rs`): the service, collections (also at
+  `…/aliases/NAME`), items, sessions and prompts as the spec has them,
+  with their properties and signals. Sessions are `plain` and
+  `dh-ietf1024-sha256-aes128-cbc-pkcs7` (`session.rs`: RFC 2409's 1024-bit
+  group, the shared secret padded to 128 bytes, HKDF-SHA256 to an AES-128
+  key, CBC with PKCS#7 and the IV as the secret's parameters: libsecret's
+  default, so Chrome's), each only for its own caller and closed when it
+  leaves the bus (a match on `NameOwnerChanged` with no new owner). Every
+  collection is unlocked once the store is open; `Lock` locks one, and
+  `Unlock` gives a prompt asking for the account password in Olo's
+  keyring window (`ask_password`), checked by PAM. Changes made while
+  serving are noted (`Data::changed`, `deleted`).
+- **Handing back** (switched off): the name given up, then what changed
+  while Olo answered written into GNOME Keyring (D-Bus starts it again;
+  it asks for the password to unlock through Olo's prompter) and what was
+  deleted deleted there; the kernel's copy of the key forgotten.
+- **Status** for Preferences and agents: `$XDG_RUNTIME_DIR/olo-secrets.json`
+  (serving, since, each collection's count, the programs with secrets by
+  their `application` attribute or schema, the last copy, collections
+  left locked, the last error), followed by Preferences' box with an
+  inotify watch; `olo-secrets --status` prints it.
+
+Measured (release, a private bus): idle while serving, 0.0% of a core
+and no wakeups (`tools/dev/cost`, 5 s); a lookup through libsecret
+(`secret-tool`, its start-up included) 7.6 ms against GNOME Keyring's
+8.0. Tests: `cargo test -p olo-secrets` (the store sealed and opened,
+replacing by attributes, a libsecret-style client and the service
+agreeing over 64 DH sessions, the kernel keyring); and against a real
+GNOME Keyring with libsecret's own client, on a private bus that never
+reaches the person's (`tools/dev/private-keyring start`, which now uses
+`dbus-daemon` when busd isn't installed and keeps the display out):
+`KEYRING_TEST_BUS=$DBUS_SESSION_BUS_ADDRESS cargo test -p olo-secrets
+--test takeover -- --ignored` takes over (3 copied, GNOME Keyring gone),
+answers 300 `secret-tool lookup`s (encrypted sessions), stores, replaces,
+searches and clears, locks and unlocks through a test prompter
+(`OLO_SECRETS_TEST_PASSWORD`, never the account's), hands back (1
+written, 1 deleted; GNOME Keyring started again and unlocked through the
+prompter), takes over again copying only what changed, and starts again
+without GNOME Keyring or a prompt. `OLO_SECRETS_SERVE=1|stdin`,
+`OLO_SECRETS_KEYFILE` and `OLO_SECRETS_STORE` are for tests.
 
 ## Notifications (apps/notifications)
 
@@ -10974,8 +11060,9 @@ conflicts, races, accounts, reset) and syncing against the in-process fake
 changes nothing and names every change, archived items and an
 unlistable vault, and several accounts in one review). The Secret Service
 client has an ignored test for a private keyring:
-`tools/dev/private-keyring start` (busd plus its own gnome-keyring; needs
-`cargo install busd --root /tmp/olo-dev/busd`), then
+`tools/dev/private-keyring start` (busd if installed with `cargo install
+busd --root /tmp/olo-dev/busd`, else dbus-daemon, plus its own
+gnome-keyring), then
 `DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/olo-dev/keyring/bus cargo test
 -p olo-system secrets -- --ignored`; it refuses any other bus.
 

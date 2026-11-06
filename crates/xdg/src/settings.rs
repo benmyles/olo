@@ -203,6 +203,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "security", tab: "", group: "Passwords: Locking", name: "Lock when the screen locks", role: "CheckBox" },
     Setting { panel: "security", tab: "", group: "Passwords: Command line", name: "Answer 1Password’s op command", role: "CheckBox" },
     Setting { panel: "security", tab: "", group: "Passwords: Command line", name: "Be the SSH agent (ssh, git)", role: "CheckBox" },
+    Setting { panel: "security", tab: "", group: "Programs’ Secrets", name: "Keep programs’ secrets in Olo", role: "CheckBox" },
     Setting { panel: "security", tab: "", group: "Passwords: Clipboard", name: "Clear copied secrets after", role: "ComboBox" },
     Setting { panel: "security", tab: "", group: "Security Keys", name: "Remove", role: "Button" },
     Setting { panel: "security", tab: "", group: "Security Keys", name: "Three touches type a code", role: "CheckBox" },

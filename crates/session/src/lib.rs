@@ -62,7 +62,9 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// the computer's one loopback port; the supervisor (Preferences ▸
 /// Performance) looks after the person's own processes; Olo Doctor tells
 /// of problems at login and of the Wi-Fi healer's resets; the AirPods
-/// service talks to the computer's own Bluetooth.
+/// service talks to the computer's own Bluetooth; olo-secrets answers
+/// for the login keyring (when Preferences ▸ Security says so) in GNOME
+/// Keyring's place, which PAM started for this login.
 const REAL_SHELL: &[&[&str]] = &[
     &["olo-polkit-agent"],
     &["olo-notifications"],
@@ -75,6 +77,7 @@ const REAL_SHELL: &[&[&str]] = &[
     // The SSH agent (Passwords without a window; it exits, not wanted,
     // with the agent turned off).
     &["olo-passwords", "--agent"],
+    &["olo-secrets"],
 ];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;

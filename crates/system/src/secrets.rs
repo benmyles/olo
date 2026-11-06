@@ -57,9 +57,14 @@ pub const TELEGRAM_API: Kept = Kept { label: "Telegram API ID (Olo)", attributes
 pub const TELEGRAM_SESSION: Kept =
     Kept { label: "Telegram session (Olo)", attributes: &[("application", "olo"), ("service", "telegram"), ("kind", "session")], what: "Telegram sign-in", carry: Carry::SameComputer };
 
+/// The key to Olo's own Secret Service's store (olo-secrets'
+/// `secrets.store`), kept in GNOME Keyring's login keyring, which PAM
+/// unlocks at login.
+pub const SECRETS_KEY: Kept = Kept { label: "Olo Secrets", attributes: &[("application", "olo"), ("purpose", "secrets-key")], what: "Programs’ Secrets", carry: Carry::Anywhere };
+
 /// Every secret Olo keeps in the keyring. One added anywhere goes here,
 /// or a backup leaves it behind.
-pub const KEPT: &[Kept] = &[PASSWORDS_KEY, POOL_KEY, GITHUB, TELEGRAM_API, TELEGRAM_SESSION];
+pub const KEPT: &[Kept] = &[PASSWORDS_KEY, POOL_KEY, GITHUB, TELEGRAM_API, TELEGRAM_SESSION, SECRETS_KEY];
 
 fn service(conn: &Connection) -> Result<Proxy<'_>> {
     Proxy::new(conn, DEST, ROOT, SERVICE)

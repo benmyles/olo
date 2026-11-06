@@ -405,6 +405,79 @@ impl Prompter {
     }
 }
 
+/// What the prompter calls back on ([`ask_password`]'s side).
+struct Asking {
+    tx: std::sync::mpsc::Sender<Option<(String, String)>>,
+}
+
+#[zbus::interface(name = "org.gnome.keyring.internal.Prompter.Callback")]
+impl Asking {
+    fn prompt_ready(&self, reply: String, _properties: HashMap<String, OwnedValue>, exchange: String) {
+        let _ = self.tx.send(Some((reply, exchange)));
+    }
+
+    fn prompt_done(&self) {
+        let _ = self.tx.send(None);
+    }
+}
+
+/// Ask the person for a password through the session's prompter (Olo's
+/// window, the one gnome-keyring asks through), as gnome-keyring does:
+/// the client side of the protocol above, for a program keeping secrets
+/// of its own (olo-secrets). `check` says whether an answer is right; a
+/// wrong one is asked for again with `wrong` as the warning. The password,
+/// or None if the person cancelled. Blocks until answered: call it from a
+/// worker thread. An error if no prompter answers.
+pub fn ask_password(props: &Props, wrong: &str, mut check: impl FnMut(&str) -> bool) -> Result<Option<zeroize::Zeroizing<String>>> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let conn = crate::bus::session()?;
+    let path = format!("/org/olo/prompt/p{}_{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    let (tx, rx) = std::sync::mpsc::channel();
+    conn.object_server().at(path.as_str(), Asking { tx })?;
+    let callback = zvariant::ObjectPath::try_from(path.as_str())?;
+    let prompter = zbus::blocking::Proxy::new(conn, SYSTEM_NAME, PATH, IFACE)?;
+    let asked = (|| -> Result<Option<zeroize::Zeroizing<String>>> {
+        prompter.call::<_, _, ()>("BeginPrompting", &(&callback,))?;
+        let gone = || zbus::Error::Failure("the prompter went away".into());
+        // Its half of the exchange first.
+        let Some((_, theirs)) = rx.recv().map_err(|_| gone())? else { return Ok(None) };
+        let mut exchange = Exchange::new();
+        if !exchange.receive(&theirs) {
+            return Err(zbus::Error::Failure("the prompter's key exchange made no sense".into()));
+        }
+        let mut props = props.clone();
+        loop {
+            let wrap = |v: zvariant::Value<'static>| zvariant::Value::Value(Box::new(v));
+            let mut dict: HashMap<&str, zvariant::Value<'static>> = HashMap::new();
+            for (k, v) in [
+                ("title", &props.title),
+                ("message", &props.message),
+                ("description", &props.description),
+                ("warning", &props.warning),
+                ("continue-label", &props.continue_label),
+                ("cancel-label", &props.cancel_label),
+            ] {
+                dict.insert(k, wrap(v.clone().into()));
+            }
+            dict.insert("password-new", wrap(props.password_new.into()));
+            prompter.call::<_, _, ()>("PerformPrompt", &(&callback, "password", dict, exchange.begin()))?;
+            let Some((reply, answer)) = rx.recv().map_err(|_| gone())? else { return Ok(None) };
+            if reply != "yes" {
+                return Ok(None);
+            }
+            let Some(bytes) = exchange.open(&answer) else { return Err(zbus::Error::Failure("the prompter's answer couldn't be read".into())) };
+            let password = zeroize::Zeroizing::new(String::from_utf8_lossy(&bytes).into_owned());
+            if check(&password) {
+                return Ok(Some(password));
+            }
+            props.warning = wrong.to_owned();
+        }
+    })();
+    let _ = prompter.call::<_, _, ()>("StopPrompting", &(&callback,));
+    let _ = conn.object_server().remove::<Asking, _>(path.as_str());
+    asked
+}
+
 /// gcr's password strength (gcr-prompt-dialog.c): 0 empty, else 1 plus
 /// one for each kind of character beyond the first (up to 4) once it's
 /// eight or more long.
@@ -468,13 +541,19 @@ impl Exchange {
         if peer <= BigUint::from(1u32) || peer >= p {
             return false;
         }
-        let shared = peer.modpow(&self.private, &p).to_bytes_be();
+        let shared = padded(&peer.modpow(&self.private, &p), &p);
         let mut key = [0u8; 16];
         if hkdf::Hkdf::<sha2::Sha256>::new(None, &shared).expand(&[], &mut key).is_err() {
             return false;
         }
         self.key = Some(key);
         true
+    }
+
+    /// The secret in the other side's message, decrypted.
+    fn open(&self, text: &str) -> Option<zeroize::Zeroizing<Vec<u8>>> {
+        let fields = parse_exchange(text);
+        decrypt(self.key.as_ref()?, fields.get("iv")?, fields.get("secret")?).map(zeroize::Zeroizing::new)
     }
 
     /// Our reply, with `secret` encrypted under the shared key.
@@ -487,6 +566,17 @@ impl Exchange {
     }
 }
 
+/// `n`'s bytes, big-endian, as long as the prime's: the shared secret as
+/// egg_dh_gen_secret writes it (zeros first), so HKDF sees the same bytes
+/// the other side does (unpadded, one exchange in 256 got another key).
+pub fn padded(n: &BigUint, prime: &BigUint) -> Vec<u8> {
+    let bytes = n.to_bytes_be();
+    let len = prime.bits().div_ceil(8) as usize;
+    let mut out = vec![0u8; len.saturating_sub(bytes.len())];
+    out.extend_from_slice(&bytes);
+    out
+}
+
 fn encrypt(key: &[u8; 16], iv: &[u8; 16], plain: &[u8]) -> Vec<u8> {
     use aes::cipher::{BlockModeEncrypt, KeyIvInit, block_padding::Pkcs7};
     let mut buf = vec![0u8; (plain.len() / 16 + 1) * 16];
@@ -496,7 +586,6 @@ fn encrypt(key: &[u8; 16], iv: &[u8; 16], plain: &[u8]) -> Vec<u8> {
     buf
 }
 
-#[cfg(test)]
 fn decrypt(key: &[u8; 16], iv: &[u8], sealed: &[u8]) -> Option<Vec<u8>> {
     use aes::cipher::{BlockModeDecrypt, KeyIvInit, block_padding::Pkcs7};
     let mut buf = sealed.to_vec();
@@ -567,6 +656,16 @@ mod tests {
         let mut ours = Exchange::new();
         assert!(ours.receive(&std::env::var("GCR_PEER").unwrap().replace("\\n", "\n")));
         println!("REPLY:{}", ours.send(Some(b"olo-secret")).replace('\n', "\\n"));
+    }
+
+    /// A shared secret with zeros at its front keeps them, as gcr's does.
+    #[test]
+    fn shared_secrets_are_the_primes_length() {
+        let p = prime();
+        assert_eq!(padded(&BigUint::from(0x1234u32), &p).len(), 192);
+        assert_eq!(&padded(&BigUint::from(0x1234u32), &p)[190..], &[0x12, 0x34]);
+        let big = &p - BigUint::from(1u32);
+        assert_eq!(padded(&big, &p), big.to_bytes_be());
     }
 
     /// HKDF with no salt and no info (egg_hkdf_perform), against RFC 5869's
