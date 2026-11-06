@@ -839,7 +839,7 @@ impl Deskbar {
             Some(t) if on => format!("Allow Sleep (awake until {})", status::time_of_day(t, &self.clock)),
             _ => "Allow Sleep".into(),
         };
-        m.separator().item("Even With the Lid Closed", "caff:lid").checked(self.caffeinated_lid).separator().item(label, "caff:off").enabled(on)
+        m.separator().item("Even With the Lid Closed", "caff:lid").checked(self.caffeinated_lid).separator().item(label, "caff:off").enabled(on).separator().item("Power Preferences…", "pref:power")
     }
 
     /// A caffeinated-menu command (after `caff:`).
@@ -910,6 +910,14 @@ impl Deskbar {
 
     fn run_command(&mut self, cmd: &str, cx: &mut Context<Self>) {
         match cmd.split_once(':') {
+            // One of Olo's apps (with ⌘ held, a copy of its own beside one
+            // running).
+            Some(("run", bin)) if CHOSEN_WITH_COMMAND.with(|c| c.get()) => {
+                let app = bin.split_whitespace().next().and_then(|b| b.strip_prefix("olo-")).map(|b| format!("olo.{b}")).unwrap_or_default();
+                if let Err(e) = olo_xdg::spawn_detached_app_with(bin, &app, &[(olo_xdg::NEW_INSTANCE, "1")]) {
+                    tracing::warn!("launch {bin} again: {e}");
+                }
+            }
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
@@ -992,9 +1000,10 @@ impl Deskbar {
             Some(("arrange", id)) => request(Request::RunShortcut { id: id.into(), window: self.focused_window() }),
             Some(("notif", "history")) => spawn("olo-notifications --history"),
             Some(("notif", arg)) => self.do_not_disturb(arg),
+            // With ⌘ held, a copy of its own beside one running.
             Some(("desktop", id)) => {
                 if let Some(e) = self.installed.entries.iter().find(|e| e.id == id) {
-                    let _ = e.launch();
+                    let _ = if CHOSEN_WITH_COMMAND.with(|c| c.get()) { e.launch_new_instance() } else { e.launch() };
                 }
             }
             _ => match cmd {
@@ -1150,6 +1159,25 @@ impl Deskbar {
         }
         if !ids.is_empty() {
             request(Request::ActivateAll { ids });
+        }
+    }
+
+    /// The application `team_key_` started again as a copy of its own
+    /// (⌘-click): from its installed entry.
+    fn launch_again(&mut self, team_key_: &str) {
+        let Some(app) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) else { return };
+        let started = match self.entry(&app) {
+            Some(e) => e.launch_new_instance(),
+            // One of Olo's own with no entry installed (a test's home):
+            // its program, as Olo names them (olo.terminal, olo-terminal).
+            None if olo_xdg::apps::our_app(&app).is_some() => {
+                let program = format!("olo-{}", app.strip_prefix("olo.").unwrap_or(&app));
+                olo_xdg::spawn_detached_app_with(&program, &app, &[(olo_xdg::NEW_INSTANCE, "1")])
+            }
+            None => Err(std::io::Error::other("no entry to start it from")),
+        };
+        if let Err(err) = started {
+            tracing::warn!("starting {app} again: {err}");
         }
     }
 
@@ -1491,13 +1519,12 @@ fn supervisor_menu(sup: &status::Supervisor) -> Menu {
     m.separator().item("Show in Activity Monitor", "run:olo-activity --section supervisor").item("Performance Settings…", "pref:performance")
 }
 
-/// A link's tray icon: a click opens Network's preferences on the link's
-/// tab, a right click the link's menu, read as it opens.
+/// A link's tray icon: a click (either button) opens the link's menu,
+/// read as it opens, which ends with Network's preferences on its tab.
 fn link_hit(h: olo_ui::gpui::Stateful<olo_ui::gpui::Div>, r: Bounds<Pixels>, kind: olo_system::network::Kind, model: &Entity<Deskbar>, view: &Entity<BarView>) -> AnyElement {
     let (m, v) = (model.clone(), view.clone());
     h.on_any_button(move |e, window, cx| match button(e) {
-        MouseButton::Left => m.update(cx, |d, cx| d.run_command(if kind == olo_system::network::Kind::Wifi { "pref:network --tab Wi-Fi" } else { "pref:network --tab Ethernet" }, cx)),
-        MouseButton::Right => {
+        MouseButton::Left | MouseButton::Right => {
             let mm = m.clone();
             let key = if kind == olo_system::network::Kind::Wifi { "tray:wifi" } else { "tray:ethernet" };
             open_menu(window, cx, &v, key, r, link_menu(kind, &status::links()), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
@@ -1772,6 +1799,21 @@ fn hit(view: &Entity<BarView>, key: &str, r: Bounds<Pixels>, tip_text: Option<St
 
 /// Opens `menu` under `r`, from the bar's element `key` (shown open
 /// until it goes); commands go to `then`.
+/// Whether Super (⌘ on a Mac's keys) or Control was held as a menu's item
+/// was chosen or a row clicked: an app started then is a copy of its own
+/// (`DesktopEntry::launch_new_instance`). Deskbar never has the keyboard,
+/// so Wayland doesn't say: app_server is asked (`HeldModifiers`), at
+/// the click only.
+fn command_held(_: &Window) -> bool {
+    let asked = olo_protocol::Client::connect().ok().and_then(|mut c| c.request(&Request::HeldModifiers).ok());
+    matches!(asked, Some(olo_protocol::Reply::HeldModifiers { ctrl, logo, .. }) if ctrl || logo)
+}
+
+thread_local! {
+    /// The command key was held as the menu item being run was chosen.
+    static CHOSEN_WITH_COMMAND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 fn open_menu(window: &mut Window, cx: &mut App, view: &Entity<BarView>, key: &str, r: Bounds<Pixels>, menu: Menu, then: impl Fn(&str, &mut App) + 'static) {
     let key = SharedString::from(key.to_owned());
     let (v, k) = (view.clone(), key.clone());
@@ -1781,7 +1823,11 @@ fn open_menu(window: &mut Window, cx: &mut App, view: &Entity<BarView>, key: &st
         menu,
         r,
         Corner::BottomLeft,
-        move |cmd, _, cx| then(cmd, cx),
+        move |cmd, window, cx| {
+            CHOSEN_WITH_COMMAND.with(|c| c.set(command_held(window)));
+            then(cmd, cx);
+            CHOSEN_WITH_COMMAND.with(|c| c.set(false));
+        },
         move |cx| {
             v.update(cx, |v, cx| {
                 if v.open.as_ref() == Some(&k) {
@@ -2035,22 +2081,25 @@ impl Deskbar {
                 }),
             );
             let key = format!("tray:{}", it.key);
-            let (item_key, title, entries, is_menu) = (it.key.clone(), it.title.clone(), it.menu.clone().filter(|m| !m.is_empty()), it.item_is_menu);
+            let (item_key, title, entries) = (it.key.clone(), it.title.clone(), it.menu.clone().filter(|m| !m.is_empty()));
             let (m, v, m2) = (model.clone(), view.clone(), model.clone());
             let wheel_key = it.key.clone();
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {
                     let b = button(e);
-                    let show = match b {
-                        MouseButton::Left => is_menu && entries.is_some(),
-                        MouseButton::Right => entries.is_some(),
-                        _ => false,
-                    };
+                    // Either button: its menu, if it has one (ending with
+                    // what a click did, opening the program), else what a
+                    // click does.
+                    let show = matches!(b, MouseButton::Left | MouseButton::Right) && entries.is_some();
                     if show && let Some(entries) = &entries {
                         let ik = item_key.clone();
                         let mm = m.clone();
-                        open_menu(window, cx, &v, &key, r, sni::menu(&title, entries), move |cmd, cx| {
-                            if let Some(id) = cmd.strip_prefix("sni:").and_then(|n| n.parse::<i32>().ok()) {
+                        let open = if title.is_empty() { "Open".to_owned() } else { format!("Open {title}") };
+                        let menu = sni::menu(&title, entries).separator().item(open, "sni-open");
+                        open_menu(window, cx, &v, &key, r, menu, move |cmd, cx| {
+                            if cmd == "sni-open" {
+                                mm.read(cx).tray_host.send(&ik, sni::Do::Activate);
+                            } else if let Some(id) = cmd.strip_prefix("sni:").and_then(|n| n.parse::<i32>().ok()) {
                                 mm.read(cx).tray_host.send(&ik, sni::Do::Chosen(id));
                             }
                         });
@@ -2105,7 +2154,7 @@ impl Deskbar {
             let m = model.clone();
             d.hits.push(
                 h.on_any_button(move |e, _, cx| {
-                    if button(e) == MouseButton::Left {
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
                         m.update(cx, |d, cx| d.ask_upgrade(cx));
                     }
                 })
@@ -2131,7 +2180,7 @@ impl Deskbar {
             let (m, v) = (model.clone(), view.clone());
             let menu = Menu::new("").item(said, "").enabled(false);
             let menu = if paused { menu.item("Resume Recording", "record:resume") } else { menu.item("Pause Recording", "record:pause") };
-            let menu = menu.item("Stop Recording", "record:stop");
+            let menu = menu.item("Stop Recording", "record:stop").separator().item("Open Screenshot", "run:olo-screenshot");
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {
                     if matches!(button(e), MouseButton::Left | MouseButton::Right) {
@@ -2189,29 +2238,29 @@ impl Deskbar {
             let m = model.clone();
             d.hits.push(
                 h.on_any_button(move |e, _, cx| {
-                    if button(e) == MouseButton::Left {
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
                         m.update(cx, |d, cx| d.run_command("run:olo-screen watch", cx));
                     }
                 })
                 .into_any_element(),
             );
         }
-        // The supervisor: click to turn it on or off, its menu for more.
+        // The supervisor: a click opens its menu (on or off, what it
+        // found, Activity Monitor).
         if let Some(sup) = st.supervisor.clone() {
             let (n, urgent) = (sup.state.findings.len(), sup.state.urgent());
             let tip_text = match (sup.on, n, urgent) {
-                (false, ..) => "Performance supervisor: off. Click to turn on.".to_owned(),
-                (true, 0, _) => "Performance supervisor: on, nothing found. Click to turn off.".to_owned(),
-                (true, n, 0) => format!("Performance supervisor: {n} finding{}. Click to turn off.", if n == 1 { "" } else { "s" }),
-                (true, _, u) => format!("Performance supervisor: {u} urgent finding{}. Click to turn off.", if u == 1 { "" } else { "s" }),
+                (false, ..) => "Performance supervisor: off".to_owned(),
+                (true, 0, _) => "Performance supervisor: on, nothing found".to_owned(),
+                (true, n, 0) => format!("Performance supervisor: {n} finding{}", if n == 1 { "" } else { "s" }),
+                (true, _, u) => format!("Performance supervisor: {u} urgent finding{}", if u == 1 { "" } else { "s" }),
             };
             let on = sup.on;
             let (r, h) = tray_item(&mut d, "supervisor", tip_text, Box::new(move |window, cx, r| status::draw_gauge(window, cx, r, &theme::palette(cx), on, n, urgent > 0)));
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(
                 h.on_any_button(move |e, window, cx| match button(e) {
-                    MouseButton::Left => m.update(cx, |d, cx| d.run_command("perf:toggle", cx)),
-                    MouseButton::Right => {
+                    MouseButton::Left | MouseButton::Right => {
                         let mm = m.clone();
                         open_menu(window, cx, &v, "tray:supervisor", r, supervisor_menu(&sup), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
                     }
@@ -2237,8 +2286,8 @@ impl Deskbar {
                 .into_any_element(),
             );
         }
-        // The battery: click for Power's preferences; right-click for the
-        // power mode.
+        // The battery: a click opens its menu (the power mode, Power's
+        // preferences).
         if let Some(b) = st.battery {
             let mode = st.power_modes.as_ref().map(|m| format!(", {}", m.active.label())).unwrap_or_default();
             let power = match (b.plugged, b.charging) {
@@ -2246,13 +2295,12 @@ impl Deskbar {
                 (true, false) => " — plugged in",
                 _ => "",
             };
-            let tip_text = format!("{}%{power}{mode}. Right-click for the power mode.", b.percent);
+            let tip_text = format!("{}%{power}{mode}", b.percent);
             let (r, h) = tray_item(&mut d, "battery", tip_text, Box::new(move |window, cx, r| status::draw_battery(window, r, &theme::palette(cx), b.percent, b.plugged)));
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(
                 h.on_any_button(move |e, window, cx| match button(e) {
-                    MouseButton::Left => m.update(cx, |d, cx| d.run_command("pref:power", cx)),
-                    MouseButton::Right => {
+                    MouseButton::Left | MouseButton::Right => {
                         let menu = m.read(cx).battery_menu();
                         let mm = m.clone();
                         open_menu(window, cx, &v, "tray:battery", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
@@ -2264,22 +2312,22 @@ impl Deskbar {
         }
         // The links: Ethernet while a cable's connected, Wi-Fi while
         // there's an adapter. With both, the one not carrying the traffic
-        // (the default route) is drawn faint. Click for Network's
-        // preferences; right-click for the link's addresses and rates.
+        // (the default route) is drawn faint. A click opens the link's
+        // menu (its addresses and rates, Network's preferences).
         use olo_system::network::Kind;
         let standing_by = |kind: Kind| st.wired.is_some() && st.wifi.as_ref().is_some_and(|w| w.ssid.is_some()) && st.primary.is_some_and(|p| p != kind);
         let faint = |on: bool| if on { Some(0.45) } else { None };
         if let Some(w) = st.wired.clone() {
             let by = standing_by(Kind::Ethernet);
             let speed = w.speed.map(|s| format!(", {}", olo_system::network::speed_text(s))).unwrap_or_default();
-            let tip_text = format!("Ethernet{speed}{}. Right-click for details.", if by { ", standing by: Wi-Fi is in use" } else { "" });
+            let tip_text = format!("Ethernet{speed}{}", if by { ", standing by: Wi-Fi is in use" } else { "" });
             let (r, h) = tray_item(&mut d, "ethernet", tip_text, Box::new(move |window, cx, r| window.with_element_opacity(faint(by), |window| status::draw_ethernet(window, r, &theme::palette(cx)))));
             d.hits.push(link_hit(h, r, Kind::Ethernet, &model, view));
         }
         if let Some(w) = st.wifi.clone() {
             let by = standing_by(Kind::Wifi);
             let tip_text = match &w.ssid {
-                Some(s) => format!("{s} ({}%){}. Right-click for details.", w.signal, if by { ", standing by: Ethernet is in use" } else { "" }),
+                Some(s) => format!("{s} ({}%){}", w.signal, if by { ", standing by: Ethernet is in use" } else { "" }),
                 None => "Not connected".into(),
             };
             let signal = w.ssid.as_ref().map(|_| w.signal);
@@ -2287,31 +2335,18 @@ impl Deskbar {
             d.hits.push(link_hit(h, r, Kind::Wifi, &model, view));
         }
         if let Some(vol) = st.volume {
-            let tip_text = if vol.muted {
-                "Muted. Click to unmute; right-click for sound devices.".into()
-            } else {
-                format!("Volume {}%. Click to mute; right-click for sound devices.", (vol.level * 100.0).round())
-            };
+            let tip_text = if vol.muted { "Muted".into() } else { format!("Volume {}%", (vol.level * 100.0).round()) };
             let (r, h) = tray_item(&mut d, "volume", tip_text, Box::new(move |window, cx, r| status::draw_volume(window, r, &theme::palette(cx), vol.level, vol.muted)));
-            let (m, m2, v) = (model.clone(), model.clone(), view.clone());
+            let (m2, v) = (model.clone(), view.clone());
             let (m3, v3, menu_of) = (model.clone(), view.clone(), (st.sound.clone(), st.airpods.clone(), vol.muted, st.voice));
             d.hits.push(
                 h.on_any_button(move |e, window, cx| {
-                    // Right: every output and input, and AirPods' controls.
-                    if button(e) == MouseButton::Right {
+                    // Either button: every output and input, Mute, and
+                    // AirPods' controls; the wheel sets the volume.
+                    if matches!(button(e), MouseButton::Left | MouseButton::Right) {
                         let mm = m3.clone();
                         let menu = sound_menu(menu_of.0.as_ref(), menu_of.1.as_ref(), menu_of.2, &menu_of.3);
                         open_menu(window, cx, &v3, "tray:volume", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
-                        return;
-                    }
-                    if button(e) == MouseButton::Left {
-                        status::toggle_mute();
-                        m.update(cx, |d, cx| {
-                            if let Some(v) = &mut d.status.volume {
-                                v.muted = !v.muted;
-                            }
-                            cx.notify();
-                        });
                     }
                 })
                 // One notch (or a trackpad swipe's worth) per 5% step.
@@ -2340,8 +2375,8 @@ impl Deskbar {
                 .into_any_element(),
             );
         }
-        // Notifications: a bell with the unread count. Click for the
-        // history; right-click for Do Not Disturb.
+        // Notifications: a bell with the unread count. A click opens its
+        // menu (the history, Do Not Disturb, the settings).
         if let Some(n) = st.notifications.clone() {
             let tip_text = match (n.quiet, n.unread) {
                 (true, 0) => "Do Not Disturb is on".to_string(),
@@ -2355,8 +2390,7 @@ impl Deskbar {
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(
                 h.on_any_button(move |e, window, cx| match button(e) {
-                    MouseButton::Left => m.update(cx, |d, cx| d.run_command("notif:history", cx)),
-                    MouseButton::Right => {
+                    MouseButton::Left | MouseButton::Right => {
                         let mm = m.clone();
                         open_menu(window, cx, &v, "tray:notifications", r, notifications_menu(quiet), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
                     }
@@ -2365,25 +2399,21 @@ impl Deskbar {
                 .into_any_element(),
             );
         }
-        // Caffeinated: a cup, steaming while the machine is kept awake.
-        // Right-click for a set time or to stay awake with the lid closed.
+        // Caffeinated: a cup, steaming while the machine is kept awake. A
+        // click opens its menu (until turned off, for a while, with the lid
+        // closed, Allow Sleep, Power's preferences).
         {
             let on = self.caffeinated;
             let tip_text = match (on, self.caffeinated_until) {
-                (true, Some(t)) => format!("Caffeinated until {}. Click to allow sleep.", status::time_of_day(t, &self.clock)),
-                (true, None) => "Caffeinated: staying awake. Click to allow sleep.".into(),
-                _ => "Click to stay awake (caffeinated); right-click for more".into(),
+                (true, Some(t)) => format!("Caffeinated until {}", status::time_of_day(t, &self.clock)),
+                (true, None) => "Caffeinated: staying awake".into(),
+                _ => "Stay awake (caffeinated)".into(),
             };
             let (r, h) = tray_item(&mut d, "caffeine", tip_text, Box::new(move |window, cx, r| status::draw_cup(window, r, &theme::palette(cx), on)));
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(
                 h.on_any_button(move |e, window, cx| match button(e) {
-                    MouseButton::Left => m.update(cx, |d, cx| {
-                        d.caffeinated = !on;
-                        request(Request::SetCaffeinated { on: !on, minutes: None, lid: false });
-                        cx.notify();
-                    }),
-                    MouseButton::Right => {
+                    MouseButton::Left | MouseButton::Right => {
                         let menu = m.read(cx).caffeine_menu();
                         let mm = m.clone();
                         open_menu(window, cx, &v, "tray:caffeine", r, menu, move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
@@ -2394,23 +2424,19 @@ impl Deskbar {
             );
         }
         // Approving without asking: a key, gold while requests go ahead
-        // without asking. Click to turn it on (it takes the password) or
-        // off; right-click for how long.
+        // without asking. A click opens its menu (for how long, which
+        // takes the password; Ask Again; Security's preferences).
         {
             let tip_text = match self.approve_until {
-                Some(t) => format!("Approving without asking: {} left (until {}). Click to ask again.", approve::left(t), status::time_of_day(t, &self.clock)),
-                None => "Click to approve requests without asking for a while; right-click for how long".into(),
+                Some(t) => format!("Approving without asking: {} left (until {})", approve::left(t), status::time_of_day(t, &self.clock)),
+                None => "Approve requests without asking, for a while".into(),
             };
             let on = self.approve_until.is_some();
             let (r, h) = tray_item(&mut d, "approve", tip_text, Box::new(move |window, cx, r| status::draw_key(window, r, &theme::palette(cx), on)));
             let (m, v) = (model.clone(), view.clone());
             d.hits.push(
                 h.on_any_button(move |e, window, cx| match button(e) {
-                    MouseButton::Left => {
-                        let cmd = if on { "approve:off".to_owned() } else { format!("approve:{}", approve::USUAL) };
-                        m.update(cx, |d, cx| d.run_command(&cmd, cx));
-                    }
-                    MouseButton::Right => {
+                    MouseButton::Left | MouseButton::Right => {
                         let menu = {
                             let d = m.read(cx);
                             approve::menu(d.approve_until, &d.clock)
@@ -2739,7 +2765,9 @@ impl Deskbar {
         let mut row = hit(view, &key, r, None)
             .on_any_button(move |e, window, cx| match button(e) {
                 // A click brings the application forward, every window of
-                // it; the right button opens the menu of them, to choose one.
+                // it (with ⌘ held, starts a copy of it of its own); the
+                // right button opens the menu of them, to choose one.
+                MouseButton::Left if command_held(window) => m.update(cx, |d, _| d.launch_again(&team_key_)),
                 MouseButton::Left => m.read(cx).bring_forward(&team_key_, dsp.as_deref(), ws),
                 MouseButton::Right => {
                     let menu = m.read(cx).team_menu(&menu_team);

@@ -352,6 +352,10 @@ this is a harness correction, not a browser speedup.
   66 ms Browser / 30 ms compositor shortcut hitch. Same-seed fresh confirmation
   passes stock budgets, but its worst app frame is 20.8 ms, above the 8.3 ms
   target. Preserve both observations and identify the cause before acceptance.
+  Optimized build with main 350f22c6 passes a PID/binary/content-verified 24-step
+  repeat; worst app frame 14.4 ms and native first-motion response about 9 ms still
+  miss 120 Hz. Discarded forwarded-launch runs cannot establish coverage; native
+  cost runner now asserts fresh PID ownership and awaits Quit/process exit.
 - [ ] Profile the remaining 1,000-element scene regression after image support:
   2388.630→2495.630 µs (4.5%), CPU0/seven alternating frozen processes with
   identical source/geometry/pixels and no compiler activity. Text-only scene

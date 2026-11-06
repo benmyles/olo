@@ -208,6 +208,13 @@ fn new_id() -> String {
 /// Fills in what the core computes (one-time passwords).
 fn computed(mut item: Item) -> Item {
     for field in &mut item.fields {
+        // As 1Password: a field its SDK doesn't read (a card's expiry kept
+        // in an older form) comes without its value, and without its
+        // section; its secret reference still resolves it.
+        if field.field_type == ItemFieldType::Unsupported {
+            field.value.clear();
+            field.section_id = None;
+        }
         if field.field_type == ItemFieldType::Totp {
             field.details = Some(ItemFieldDetails::Otp(match Totp::parse(&field.value) {
                 Ok(totp) => OtpFieldDetails { code: Some(totp.now().0), error_message: None },

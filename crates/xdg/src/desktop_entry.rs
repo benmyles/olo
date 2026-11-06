@@ -201,6 +201,20 @@ impl DesktopEntry {
         }
         crate::spawn_detached_app(&cmd, &self.id)
     }
+
+    /// Start it as a copy of its own, beside one running (Deskbar's
+    /// ⌘-click): Olo's apps then don't hand the launch to the copy running
+    /// (`NEW_INSTANCE`); another program does as it does (Chrome opens a
+    /// window in the one it has).
+    pub fn launch_new_instance(&self) -> std::io::Result<()> {
+        let Some(cmd) = self.command() else {
+            return Err(std::io::Error::other("no Exec line"));
+        };
+        if self.terminal {
+            return crate::spawn_detached(&format!("olo-terminal -e {cmd}"));
+        }
+        crate::spawn_detached_app_with(&cmd, &self.id, &[(crate::NEW_INSTANCE, "1")])
+    }
 }
 
 #[cfg(test)]

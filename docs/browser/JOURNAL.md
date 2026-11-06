@@ -3834,3 +3834,48 @@ through **6f58acf4** with all 601 earlier journal images preserved, plus three
 new entries (604 unique images verified). Another fetch found main146c4375;
 that integration follows this measured checkpoint. No personal install/reload
 or secrets access. Website acceptance remains **0/100, 0/3000**, goal active.
+
+### 2026-11-06 — Revalidate images with main 350f22c6
+
+Pushed **42f94d98**, including main 6f58acf4, image integration, scalar/SIMD cost
+controls, independent references and journal/TODO. Explicitly checked/pushed its
+six LFS objects. Fetched again and merged **350f22c6**, including the five newer
+Passwords, capture, separate-launch, window grouping and tray-menu commits.
+Merge is clean; no browser engine source changes were needed.
+
+Merged workspace release build **2m49s**, final rebuild **0.40s**; Browser
+**13 tests** (one optional public-network probe ignored), strict browser/web
+clippy, **13 kit/Preferences tests** and live Browser lint all pass. Current
+image, link and navigation/history/focus checks each pass **15 mode/scale
+reviews**, including live scale changes and owned-session re-exec. Image pixel
+counts now include only opaque pixels: invisible RGB outside a shaped window
+tab must not supply false colour evidence. All 15 image checks were repeated
+with that stronger assertion. The engine's earlier 266/252 release test counts
+and 49/60 independent pixel result remain unchanged; web sources match 42f94d98.
+
+Discarded the first merged fuzz attempt: a launch was forwarded to a surviving
+copy after display-name reuse. Its launcher-PID readiness assertion failed,
+but the shell continued and the fuzzer passed; that log is **not accepted
+coverage**. A fresh repeat verified the actual window PID, drawn image tree
+and exact optimized binary SHA before fuzz. Stock default budgets, one image
+Browser in a private no-shell two-display session, seed4106, **24 steps pass**:
+worst loop **11.9 ms**, ping **14.8 ms**, compositor frame **2.2 ms**, app frame
+**14.4 ms**; fd 46→46, threads 12→12, RSS 125→127 MiB. This still misses the 8.3 ms
+app-frame target. Earlier pre-optimization hitch and scene regression stay open.
+
+The native sampler also rejected a forwarded launch before accepting any data.
+It now requires an empty owned screen, asserts the fresh PID owns exactly one
+window, invokes Quit and awaits process exit with pidfd before the next frozen
+variant. Fresh paired native sample, common merged server/default wheel speed1,
+no builds: RSS **106972→112708 KiB**, idle **0 CPU/0 wakeups both**. Median
+report-to-first-moving-client drag/flick/wheel **9.040/8.965/0.326→9.355/8.855/
+0.520 ms**; hitches2→0. These are client submission observations on authored
+text, not presentation latency, image loading cost, maximum-call latency or a
+general memory/speedup claim. The 14.4 ms fuzz frame and 9 ms motion response leave
+the 120 Hz performance goal open.
+
+Evidence: `2026-11-06-image-main-{integration,ui-cost}.json`, updated sampler,
+existing image smoke/fixture controls. No new visible UI difference/new global
+journal image; all 604 existing journal entries are preserved. Only owned test
+sessions were used; no personal install/reload or secrets access. Website
+acceptance remains **0/100, 0/3000**, goal active.

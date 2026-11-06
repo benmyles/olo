@@ -333,6 +333,13 @@ impl<'a> Items<'a> {
         self.0.invoke("ItemsGet", json!({ "vault_id": vault_id, "item_id": item_id }))
     }
 
+    /// An item as 1Password's JSON, whatever it holds (keys `Item`
+    /// doesn't know included): for finding out what a field arrives as
+    /// (`examples/card_shapes.rs`).
+    pub fn get_json(&self, vault_id: &str, item_id: &str) -> Result<Value> {
+        self.0.invoke("ItemsGet", json!({ "vault_id": vault_id, "item_id": item_id }))
+    }
+
     pub fn get_all(&self, vault_id: &str, item_ids: &[String]) -> Result<ItemsGetAllResponse> {
         self.0.invoke("ItemsGetAll", json!({ "vault_id": vault_id, "item_ids": item_ids }))
     }

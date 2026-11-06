@@ -53,7 +53,18 @@ fn socket_on(app_id: &str, display: &str) -> PathBuf {
 /// when this process was moved here from another display (`moving`), or
 /// carries state (`restore`: re-executing): not a launch, and handed to
 /// the copy here its state would be lost.
+///
+/// Nor when started as a copy of its own (`olo_xdg::NEW_INSTANCE`,
+/// Deskbar's ⌘-click): it runs beside the one running, which keeps its
+/// launch socket (this one doesn't take launches). The variable is
+/// cleared, so what it starts isn't a copy too: call this first thing,
+/// before any thread starts.
 pub fn forward(app_id: &str, args: &[String]) -> bool {
+    if std::env::var_os(olo_xdg::NEW_INSTANCE).is_some_and(|v| v == "1") {
+        // SAFETY: called first thing in main, before threads start.
+        unsafe { std::env::remove_var(olo_xdg::NEW_INSTANCE) };
+        return false;
+    }
     if crate::moving::claim() || std::env::var_os(crate::restore::ENV).is_some() {
         return false;
     }

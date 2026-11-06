@@ -5056,7 +5056,11 @@ that shows. Every one of them is zoomed (`zoom_window`, so leaving Focus
 puts each back where it was; `focus_tick`), a new one opens zoomed
 (`focus_claim`, at its first commit, and stays so while it is placed:
 `focus_tick` leaves a window that isn't placed yet alone), and one moved
-or sized by hand zooms again where it is let go. A group zooms as one
+or sized by hand zooms again where it is let go. An app's windows are
+grouped there (`group_key`), whether or not the app groups them
+elsewhere, but one taken out of its group (Remove from Group: `Alone`)
+stays out and shows on its own, the app's others not its tabs. A group
+zooms as one
 (its front window's arrangement is its others', `share_arrangement`):
 leaving Focus (`leave_focus`, for that display's windows only: another
 may still be in Focus) puts back every window of a group Focus zoomed,
@@ -7041,16 +7045,12 @@ its request, for the app's Cancel and for holding an upgrade off.
   so an agent's screen can be shared into a call. Tried in a private
   world: chosen in the person's picker, its stream through PipeWire
   carried the screen's 1440×900 desktop.
-- **Kept out, and shown as shared** (app_server's `private.rs`): a
-  share or recording never shows a private window, which the person
-  still sees: Passwords' windows and the polkit prompt (by app id) and
-  any window its app tags `private` (the kit's
-  `WindowOptions::private`: Terminal's sudo prompt, Deskbar's
-  approve-without-asking) are drawn as a dark grey in what a capture
-  session gets (`capture_elements`, a window share of one), and while
-  the screen is locked a screen share is that grey altogether, never
-  the lock screen (macOS's `NSWindowSharingNone` likewise). Screenshots
-  and agents' looks at their own screens show them. A window being
+- **Shown as shared** (app_server's `private.rs`): nothing is kept out
+  of a share or a recording (Ben, 2026-11-06: "nothing should be
+  intentionally blacked out"). Passwords' windows, prompts and the lock
+  screen show as they are, in an agent screen's Live view too (which
+  showed Passwords as a black box: it's a capture session of the
+  screen's app_server). A window being
   shared has a ring round its body on the person's screen (a
   recording's red, two points, laid out in device pixels as the
   decoration lays out its frame, so flush outside its border at every
@@ -7058,10 +7058,10 @@ its request, for the app's Cancel and for holding an upgrade off.
   the portal tells app_server which windows its shares are of
   (`Request::SharedWindows`, as it publishes `SharingState`, whose
   shares carry `windows` too). Checked with `olo-portal capture-test`
-  against a screenshot (Passwords blacked out of one only, the locked
-  screen grey), the ring at 1, 1.25, 1.5, 1.75 and 2×, and end to end on
-  an agent screen: a window shared through its portal's picker ringed,
-  the ring gone with the share.
+  (a screen and a window share of Passwords, both showing it), the ring
+  at 1, 1.25, 1.5, 1.75 and 2×, and end to end on an agent screen: a
+  window shared through its portal's picker ringed, the ring gone with
+  the share.
 - **Screenshots** (`shot.rs`): the Screenshot portal has Olo's
   Screenshot app take the picture (`olo-screenshot --silent --for-app`,
   or `--region` when the app wants the person to choose; `--for-app`
@@ -10800,11 +10800,33 @@ the lit workspace), with transparent hit areas over it for the pointer:
 a left click as a click, the right and middle buttons as they're
 pressed (menus open on the press, as BeOS's), hovering that lights and
 a tip in a popup of its own (`olo_ui::tip`: the bar is narrower than
-what its icons say). The tray's glyphs (status.rs) are exact-coverage
+what its icons say). A tray icon opens its menu on either button (Ben,
+2026-11-06), each menu ending with the app that tells more (Network's,
+Displays', Power's, Sound's, Notifications' and Security's preferences,
+Activity Monitor, Screenshot); one with no menu (Olo Doctor, the agent
+screens, an upgrade) does what its click does on either; another
+program's item shows its menu on either button, with "Open NAME" (its
+activation) last, or is activated if it has none. The volume's wheel
+still sets the volume; Mute is in its menu. The tray's glyphs (status.rs) are exact-coverage
 paths and the GPU's discs, rings and arcs (`paint_sector`), straight
 lines on device pixels. An application dragged out is a link to its
 program (`olo_ui::dnd`, its icon and name under the pointer); files
-dropped on one open with it, its row lit as they come over it. Bars
+dropped on one open with it, its row lit as they come over it. A
+click on a running application's row with ⌘ held (Super on a Mac's
+keys; Control too), or ⌘ held as an application is chosen in the Olo
+menu (`run:` and `desktop:` items), starts it again as a process of its
+own beside the one running (`launch_again`,
+`DesktopEntry::launch_new_instance`): Olo's apps are started with
+`OLO_NEW_INSTANCE=1` (`olo_xdg::NEW_INSTANCE`), for which the kit's
+`instance::forward` hands nothing over (and clears it; `spawn_detached`
+never passes it on), so the copy opens its own window and leaves the
+launch socket to the first; another program does as it does (Chrome
+opens a window in the one it has). Deskbar never has the keyboard, so
+Wayland doesn't say what's held: it asks app_server at the click
+(`Request::HeldModifiers`, the seat's keys as pressed). Tried headless:
+⌘-clicking Terminal's row, and ⌘-choosing Terminal in Applications,
+each started a second olo-terminal with its own window; plain, a
+window in the one running. Bars
 for displays that come are opened once the model's update is over (a
 window draws as it opens, and its bar reads the model), before those
 going are closed, so the app always has one. Approve Without Asking's
@@ -11075,8 +11097,20 @@ person's approval. It runs in two steps, each on its own thread:
   there since is archived here from its listing (`Change::Archived`),
   archived items never synced are left out with a note, and whatever a
   batch didn't bring is fetched one at a time, so a bad item costs only
-  itself. Up: 1Password's copies of items changed here
-  are fetched to compare. The plan is the store's `Change`s, what to send,
+  itself. A field 1Password's SDK names but won't give the value of (its
+  `Unsupported`, with no value and no section: an older card's expiry,
+  three of Ben's cards) is asked for by its secret reference
+  (`op://vault/item/field`, `resolve_unread`, all of a batch at once,
+  else one by one), which 1Password answers: a card's expiry or
+  valid-from that reads as a month and year becomes a `MonthYear`
+  ("MM/YYYY"); any other keeps its value. An item synced before that
+  with such a field empty is fetched again, once, its vault changed or
+  not (`has_unread`). `cargo run -p olo-onepassword --example
+  card_shapes [VAULT ITEM]` shows what the 1Password app gives for each
+  card (or one item): every field's id, label, type and section, and its
+  value's shape only ("NN/NNNN"), never a value or a title, and how its
+  unsupported fields resolve. Up: 1Password's copies of items changed here
+  are fetched to compare (their unread fields asked for the same way). The plan is the store's `Change`s, what to send,
   and a `Row` for every change either side would see (add, change with the
   parts that differ by name, never values, archive, delete, keep both).
 * The store keeps the plan and the UI shows its rows in Review Sync. Only

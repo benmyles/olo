@@ -18,8 +18,6 @@ use crate::status;
 /// (app_server takes 5 to a day).
 pub const LENGTHS: [(&str, &str, u32); 5] =
     [("For 5 Minutes", "5 minutes", 5), ("For 15 Minutes", "15 minutes", 15), ("For 1 Hour", "1 hour", 60), ("For 4 Hours", "4 hours", 240), ("For a Day", "a day", 24 * 60)];
-/// What clicking the key turns it on for.
-pub const USUAL: u32 = 15;
 
 const WIDTH: f32 = 420.0;
 const ICON: &str = "key";
@@ -52,7 +50,7 @@ pub fn menu(until: Option<u64>, clock: &ClockSettings) -> Menu {
         Some(t) => format!("Ask Again ({} left, until {})", left(t), status::time_of_day(t, clock)),
         None => "Ask Again".into(),
     };
-    menu.separator().item(label, "approve:off").enabled(until.is_some())
+    menu.separator().item(label, "approve:off").enabled(until.is_some()).separator().item("Security Preferences…", "pref:security")
 }
 
 /// app_server's answer to turning it on.
@@ -84,7 +82,7 @@ impl Ask {
         });
         let h = height(cx);
         let view = ask.clone();
-        let window = olo_ui::open_window(cx, WindowOptions::alert(TITLE.to_owned(), WIDTH, h).private(), move |window, cx| {
+        let window = olo_ui::open_window(cx, WindowOptions::alert(TITLE.to_owned(), WIDTH, h), move |window, cx| {
             window.activate_window();
             let closing = view.clone();
             window.on_window_should_close(cx, move |_, cx| {
@@ -227,7 +225,6 @@ mod tests {
 
     #[test]
     fn lengths_are_what_app_server_takes() {
-        assert!(LENGTHS.iter().any(|l| l.2 == USUAL));
         for (_, _, minutes) in LENGTHS {
             assert!((5..=24 * 60).contains(&minutes));
         }

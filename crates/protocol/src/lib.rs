@@ -245,6 +245,10 @@ pub enum Request {
     },
     /// Lock the screen now.
     Lock,
+    /// The modifier keys held now, on the seat's keyboard
+    /// (`Reply::HeldModifiers`): for a surface that never has the keyboard
+    /// (Deskbar), which Wayland doesn't tell, at the moment of a click.
+    HeldModifiers,
     /// Olo Rescue (⌃⇧⌘Delete, or Super for ⌘) on or off: on puts every
     /// window away, runs the displays, keyboard and pointer on safe
     /// settings and starts olo-rescue; off brings back what was, with
@@ -595,6 +599,13 @@ pub enum TouchPhase {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Reply {
     Ok,
+    /// [`Request::HeldModifiers`]: the keys as pressed (Super is `logo`).
+    HeldModifiers {
+        ctrl: bool,
+        alt: bool,
+        shift: bool,
+        logo: bool,
+    },
     Pong {
         version: String,
     },

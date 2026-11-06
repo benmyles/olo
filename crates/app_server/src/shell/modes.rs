@@ -7,8 +7,9 @@
 //! of those that would be tiles (`floats` says which aren't: dialogs,
 //! alerts, fixed-size and floating windows, which show over it as ever).
 //! Activating another (Deskbar, ⌘Tab, Twitcher passing it, the overview)
-//! raises it, so it is the one that shows. An app's windows are always
-//! grouped there (`group_key`), so its others are tabs along the top.
+//! raises it, so it is the one that shows. An app's windows are grouped
+//! there (`group_key`), so its others are tabs along the top; one taken
+//! out of its group (Remove from Group) shows on its own.
 //! The rest are covered (`WindowMeta::covered`): not drawn and not under
 //! the pointer, but still in the space, zoomed at the same place, so
 //! showing one is only raising it (its picture is ready, at that size),

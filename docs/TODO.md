@@ -17,6 +17,16 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
+- **Passwords: Add Field in each section, and search inside items**
+  (Ben, 2026-11-06): "in passwords each section needs its own add field
+  button, right now there's only one at the very bottom of all
+  sections. also, i need to be able to search/filter sections and their
+  items not just the top level vault item entries". Editing an item,
+  each section has its own Add Field (the new field goes in that
+  section); and search finds sections and fields (their labels, and
+  values that aren't secret) as well as items, showing where in an item
+  it matched.
+
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
@@ -26,6 +36,22 @@ Nothing: what's left is waiting for Ben or blocked.
   lists logins for a sign-in form.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Credit cards' expiry dates synced wrong from 1Password** (Ben,
+  2026-11-06): "credit card expiry dates aren't being properly synced
+  from 1password to passwords, please fix". A card's expiry in Passwords
+  as it is in 1Password, both ways.
+  *Found* (2026-11-06, a probe Ben allowed that shows fields' types and
+  values' shapes only, `examples/card_shapes.rs`): 1Password's SDK gives
+  most cards' expiry as `MonthYear` "NN/NNNN", but three cards' (his
+  "card of his" among them) as `Unsupported`, with no value and no
+  section; asked for by its secret reference, the expiry comes, "NN/NNNN".
+  *Fixed*: sync asks for every such field by reference
+  (`resolve_unread`), a card's expiry and valid-from becoming month and
+  years, and fetches again, once, any item synced before with one empty
+  (`a_card_expiry_1password_wont_give_is_asked_for`; the stand-in now
+  leaves an unsupported field's value out as 1Password does). *Left*
+  (Ben): Sync Now after upgrading; the work card's expiry shows.
 
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
@@ -1627,6 +1653,69 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Deskbar's tray icons: either click shows their menu**~~ (Ben,
+  2026-11-06): "in the deskbar, left clicking or right clicking an icon
+  should show the context menu for that icon (if there is one -- if not
+  it can open the corresponding app immediately) and the context menu
+  should have an option to open the relevant app(s) for more details".
+  A tray icon (the status icons: displays, network, sound, battery,
+  notifications, keys, the recording, the agent screens…) opens its
+  menu on a left click as on a right one; an icon with no menu opens its
+  app at once; and each menu has an item opening the app(s) that tell
+  more (Preferences' panel, Activity Monitor, Agent Screens…).
+  *Done* (2026-11-06, HACKING's "Deskbar"): every tray icon with a
+  menu opens it on a left click as on a right one (links, battery,
+  volume, notifications, supervisor, Stay Awake, Approve, recording,
+  sharing, AirPods, displays, other programs'), each menu ending with
+  the app that tells more (Stay Awake's now Power's preferences,
+  Approve's Security's, the recording's Screenshot, other programs'
+  "Open NAME"); those with none open their app on either button. Tried
+  headless: each menu opened by a left click.
+
+- ~~**Focus mode: Remove from Group**~~ (Ben, 2026-11-06, with a screenshot
+  of three Chrome windows as tabs): "remove from group doesn't seem to
+  work at least here i can't remove the chrome window from the chrome
+  group. clarification: it works in standard mode but in focus mode it
+  doesn't work -- in focus mode an ungrouped window for the same app
+  should get its own focus without the other window tabs for that app".
+  In Focus mode, a window taken out of its app's group is focused on its
+  own, the app's other windows no longer its tabs.
+  *Done* (2026-11-06): Focus grouped an app's windows by app even when
+  one had been taken out (`group_key` took `Alone` as `Auto` there), so
+  it went straight back in. A window taken out now stays out in Focus
+  and shows on its own. Tried headless: two Terminal windows, tabs of
+  one group in Focus; Remove from Group on one, then each shown alone
+  (its own tab only, the other covered).
+
+- ~~**Deskbar: Super-click launches a second instance**~~ (Ben, 2026-11-06,
+  prioritised): "when opening an app in the deskbar menu if i hold down
+  super and click the app it should launch a second instance of that app
+  if the app is already running -- not just go to the app or open a new
+  window in the app". In Deskbar's menu (the Olo menu's apps, the
+  running apps' rows), a click with Super held starts the app again as
+  a process of its own, beside the one running.
+  *Done* (2026-11-06, HACKING's "Deskbar"): ⌘ (Super) held as a
+  running app's row is clicked, or as an app is chosen in the Olo menu,
+  starts it again as a process of its own (Olo's apps with
+  `OLO_NEW_INSTANCE=1`, which the kit's single-instance hand-over
+  honours; Deskbar asks app_server what's held, `HeldModifiers`). Tried
+  headless: a second Terminal process each way, a plain click unchanged.
+
+- ~~**Passwords in an agent screen opens black**~~ (Ben, 2026-11-06, with a
+  screenshot of the screen "work-qa"): "trying to open
+  passwords in agent screens doesn't seem to work anymore". Its window
+  shows (Deskbar lists it) but stays a black rectangle over Chrome.
+  *Found*: the screen drew Passwords (its own screenshot showed it); the
+  Live view is a capture session of the screen's app_server, and every
+  capture blacked out Passwords' windows (`private.rs`). *Fixed* (Ben:
+  "nothing should be intentionally blacked out"): no blackout at all in
+  shares, recordings or the Live view (Passwords, the polkit prompt,
+  windows tagged private, the locked screen); the kit's
+  `WindowOptions::private` gone with it. Checked with `olo-portal
+  capture-test`: a screen capture and a window share of Passwords both
+  show it. A screen running before the upgrade keeps its app_server till
+  it's started again.
 
 - ~~**Viewer: a video zoomed to fill, and full screen**~~ (Ben, 2026-11-06):
   "watching a video in viewer needs to support zooming, like an option

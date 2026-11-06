@@ -311,24 +311,37 @@ pub fn display_name() -> String {
 /// them: the login screen gives a session a bare PATH that needn't
 /// include where Olo is installed (~/.local/bin).
 pub fn spawn_detached(cmd: &str) -> std::io::Result<()> {
-    spawn_detached_pid(cmd).map(drop)
+    spawn_detached_pid(cmd, &[]).map(drop)
 }
 
 /// `spawn_detached` for desktop entry `app_id`, in a scope of its own
 /// (`scope`; not Olo's own programs). The shell runs a lone command in
 /// its own place, so the scope holds the program.
 pub fn spawn_detached_app(cmd: &str, app_id: &str) -> std::io::Result<()> {
-    let pid = spawn_detached_pid(cmd)?;
+    spawn_detached_app_with(cmd, app_id, &[])
+}
+
+/// [`spawn_detached_app`] with `env` set for it (`NEW_INSTANCE`).
+pub fn spawn_detached_app_with(cmd: &str, app_id: &str, env: &[(&str, &str)]) -> std::io::Result<()> {
+    let pid = spawn_detached_pid(cmd, env)?;
     if cmd.split_whitespace().next().is_some_and(|p| !scope::ours(p.as_ref())) {
         scope::place(pid, app_id);
     }
     Ok(())
 }
 
-fn spawn_detached_pid(cmd: &str) -> std::io::Result<u32> {
+/// Set for a program started as a copy of its own beside the one running
+/// (Deskbar's ⌘-click): the kit's `instance::forward` hands nothing over
+/// then, and clears it, so what the copy starts isn't one too.
+pub const NEW_INSTANCE: &str = "OLO_NEW_INSTANCE";
+
+fn spawn_detached_pid(cmd: &str, env: &[(&str, &str)]) -> std::io::Result<u32> {
     use std::os::unix::process::CommandExt;
     let mut c = std::process::Command::new("/bin/sh");
     c.arg("-c").arg(cmd);
+    // (A copy of its own only when asked: never inherited.)
+    c.env_remove(NEW_INSTANCE);
+    c.envs(env.iter().copied());
     if let Some(program) = cmd.split_whitespace().next() {
         electron::on_screen(&mut c, program.as_ref());
         quirks::apply(&mut c, program.as_ref());

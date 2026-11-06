@@ -20,7 +20,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use onepassword::{Client, Item, ItemCreateParams, ItemListFilter, ItemListFilterByState, ItemState, fields, individual_items};
+use onepassword::{Client, Item, ItemCategory, ItemCreateParams, ItemFieldType, ItemListFilter, ItemListFilterByState, ItemState, fields, individual_items};
 
 use crate::{
     store::describe,
@@ -203,6 +203,54 @@ fn params(item: &Item, vault: &str) -> ItemCreateParams {
     p
 }
 
+/// Whether `item` has a field 1Password named but gave no value of (its
+/// SDK's `Unsupported`: a card's expiry kept in a form it doesn't read).
+fn has_unread(item: &Item) -> bool {
+    item.fields.iter().any(|f| f.field_type == ItemFieldType::Unsupported && f.value.is_empty())
+}
+
+/// Each field of `items` (in vault `vault`) 1Password gave as
+/// `Unsupported`, with no value, asked for by its secret reference
+/// (`op://vault/item/field`), which 1Password answers: a card's expiry or
+/// valid-from that reads as a month and year becomes one (`MonthYear`,
+/// "MM/YYYY", as 1Password's own app shows it), any other keeps its
+/// value as it came. Those it can't resolve stay as they were.
+fn resolve_unread<'a>(c: &Client, vault: &str, items: impl Iterator<Item = &'a mut Item>) {
+    let mut asked: Vec<(&'a mut Item, Vec<usize>)> = items
+        .filter_map(|item| {
+            let at: Vec<usize> = item.fields.iter().enumerate().filter(|(_, f)| f.field_type == ItemFieldType::Unsupported && f.value.is_empty()).map(|(i, _)| i).collect();
+            (!at.is_empty()).then_some((item, at))
+        })
+        .collect();
+    if asked.is_empty() {
+        return;
+    }
+    let refs: Vec<String> = asked.iter().flat_map(|(item, at)| at.iter().map(|&i| format!("op://{vault}/{}/{}", item.id, item.fields[i].id))).collect();
+    let answers: Vec<Option<String>> = match c.secrets().resolve_all(&refs) {
+        Ok(mut r) => refs.iter().map(|k| r.individual_responses.remove(k).and_then(|r| r.content).map(|c| c.secret)).collect(),
+        Err(e) => {
+            tracing::info!("sync: resolving {} fields at once failed ({e}); one at a time", refs.len());
+            refs.iter().map(|r| c.secrets().resolve(r).ok()).collect()
+        }
+    };
+    let mut answers = answers.into_iter();
+    for (item, at) in &mut asked {
+        let card = item.category == ItemCategory::CreditCard;
+        for &i in at.iter() {
+            let Some(Some(value)) = answers.next() else { continue };
+            let f = &mut item.fields[i];
+            match fields::month_year(&value) {
+                Some(my) if card && matches!(f.id.as_str(), "expiry" | "validFrom") => {
+                    f.field_type = ItemFieldType::MonthYear;
+                    f.value = my;
+                    f.section_id.get_or_insert_with(String::new);
+                }
+                _ => f.value = value,
+            }
+        }
+    }
+}
+
 fn client(account: &str, socket: &str) -> Result<Client, String> {
     Client::builder().desktop_app_integration(account).integration_info("Olo Passwords", env!("CARGO_PKG_VERSION")).desktop_socket(socket).build().map_err(|e| describe(&e))
 }
@@ -305,8 +353,13 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
     // made here to these can't go up either.
     let mut archived_there = HashSet::new();
     let all = [ItemListFilter::ByState(ItemListFilterByState { active: true, archived: true })];
+    // Items of ours with a field 1Password reported but wouldn't give the
+    // value of (fetched before it was asked for by reference): read
+    // again, once, whether or not their vault changed.
+    let unread: HashSet<&str> = snap.entries.iter().filter(|e| e.remote.is_some() && !e.dirty && has_unread(&e.item)).map(|e| e.item.id.as_str()).collect();
     for v in &vaults {
-        if snap.synced.get(&v.id) == Some(&v.content_version) {
+        let again = snap.entries.iter().any(|e| e.item.vault_id == v.id && unread.contains(e.item.id.as_str()));
+        if snap.synced.get(&v.id) == Some(&v.content_version) && !again {
             continue;
         }
         let list = match c.items().list(&v.id, &all) {
@@ -323,7 +376,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
         for o in &list {
             let mine = local.get(o.id.as_str());
             let seen = mine.and_then(|e| e.remote.as_ref());
-            if seen.is_some_and(|seen| seen.updated_at == o.updated_at && seen.state == o.state) {
+            if seen.is_some_and(|seen| seen.updated_at == o.updated_at && seen.state == o.state) && !unread.contains(o.id.as_str()) {
                 continue;
             }
             if o.state != ItemState::Archived {
@@ -358,10 +411,12 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                     HashMap::new()
                 }
             };
+            resolve_unread(&c, &v.id, got.values_mut());
             // Any the batch didn't bring, one by one: only a bad one is lost.
             for id in ids.iter().filter(|id| !got.contains_key(*id)).cloned().collect::<Vec<_>>() {
                 match c.items().get(&v.id, &id) {
-                    Ok(item) => {
+                    Ok(mut item) => {
+                        resolve_unread(&c, &v.id, std::iter::once(&mut item));
                         got.insert(id, item);
                     }
                     Err(e) => {
@@ -422,7 +477,11 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
     for (vault, ids) in by_vault {
         for ids in ids.chunks(BATCH) {
             match c.items().get_all(vault, ids) {
-                Ok(resp) => theirs.extend(individual_items(resp)),
+                Ok(resp) => {
+                    let mut got = individual_items(resp);
+                    resolve_unread(&c, vault, got.values_mut());
+                    theirs.extend(got);
+                }
                 // Those missing are reported below, item by item.
                 Err(e) => tracing::info!("sync: reading {} at once failed ({e})", ids.len()),
             }
@@ -455,7 +514,10 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                 let there = match theirs.remove(&e.item.id) {
                     Some(there) => there,
                     None => match c.items().get(&e.item.vault_id, &e.item.id) {
-                        Ok(there) => there,
+                        Ok(mut there) => {
+                            resolve_unread(&c, &e.item.vault_id, std::iter::once(&mut there));
+                            there
+                        }
                         Err(err) => {
                             let why = format!("Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}", reason(&err));
                             p.problems.push(Problem::error(&title_of(&e.item.vault_id), Some(&e.item.title), why));
@@ -780,6 +842,39 @@ mod tests {
         // And here as there.
         assert_eq!(w.local("Old Card").unwrap().field("expiry").unwrap().value, "08/2029");
         assert_eq!(w.local("Jane Doe").unwrap().field("address").unwrap().details, person.field("address").unwrap().details);
+    }
+
+    /// A card whose expiry 1Password's SDK won't give (its `Unsupported`,
+    /// no value: an older card's, as one of Ben's): its secret reference
+    /// is asked, and it comes as a month and year. One synced before that
+    /// (its expiry empty here) is read again, its vault unchanged.
+    #[test]
+    fn a_card_expiry_1password_wont_give_is_asked_for() {
+        use onepassword::{ItemField, ItemFieldType};
+        let mut data = sample(ACCOUNT);
+        let vid = data.vaults.iter().find(|v| v.items.iter().any(|i| i.title == "Travel Visa")).unwrap().vault.id.clone();
+        let card = data.vaults.iter_mut().flat_map(|v| v.items.iter_mut()).find(|i| i.title == "Travel Visa").unwrap();
+        let expiry = card.fields.iter_mut().find(|f| f.id == "expiry").unwrap();
+        *expiry = ItemField::new("expiry", "expiry date", ItemFieldType::Unsupported, "203108");
+        let mut w = world_with("unread", data);
+        // As 1Password gives it.
+        let there = w.client.items().list(&vid, &[]).unwrap();
+        let id = there.iter().find(|o| o.title == "Travel Visa").unwrap().id.clone();
+        let raw = w.client.items().get(&vid, &id).unwrap();
+        assert_eq!(raw.field("expiry").map(|f| (f.field_type, f.value.as_str())), Some((ItemFieldType::Unsupported, "")));
+        w.sync();
+        let card = w.local("Travel Visa").unwrap();
+        let expiry = card.field("expiry").unwrap();
+        assert_eq!((expiry.field_type, expiry.value.as_str()), (ItemFieldType::MonthYear, "08/2031"));
+
+        // Synced before this: its expiry empty here, nothing changed there.
+        let e = w.vault.data.entries.iter_mut().find(|e| e.item.title == "Travel Visa").unwrap();
+        let f = e.item.fields.iter_mut().find(|f| f.id == "expiry").unwrap();
+        (f.field_type, f.value) = (ItemFieldType::Unsupported, String::new());
+        w.sync();
+        let expiry = w.local("Travel Visa").unwrap().field("expiry").unwrap().clone();
+        assert_eq!((expiry.field_type, expiry.value.as_str()), (ItemFieldType::MonthYear, "08/2031"), "read again");
+        assert_eq!(w.vault.pending(), 0, "nothing to send");
     }
 
     #[test]

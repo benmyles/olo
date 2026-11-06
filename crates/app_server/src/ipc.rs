@@ -606,6 +606,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Gpus { gpus }
             }
             Request::PowerStatus => Reply::Power { status: self.power_status() },
+            Request::HeldModifiers => {
+                let m = self.seat.get_keyboard().map(|k| k.modifier_state()).unwrap_or_default();
+                Reply::HeldModifiers { ctrl: m.ctrl, alt: m.alt, shift: m.shift, logo: m.logo }
+            }
             Request::Lock => {
                 self.lock_screen();
                 Reply::Ok

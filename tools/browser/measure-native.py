@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import select
 import subprocess
 import sys
 
@@ -64,6 +65,7 @@ class Reports(scroll.Check):
 
 
 rows = []
+assert not any(w['app_id'] == 'olo.browser' for w in json.loads(run('windows', screen))), 'Start with no Browser on this owned screen; a surviving instance can take a frozen launch'
 for variant in ['before', 'after']:
     binary = root / f'browser-{variant}'
     pid = int(run('run', screen, binary, fixture))
@@ -72,7 +74,9 @@ for variant in ['before', 'after']:
         run('resize', screen, '1000x700')
         run('wait', screen, '--idle')
         windows = json.loads(run('windows', screen))
-        window = next(w for w in windows if w['pid'] == pid)
+        owned = [w for w in windows if w['pid'] == pid]
+        assert len(owned) == 1, 'Frozen launch was forwarded or failed to map; no measurement accepted'
+        window = owned[0]
         frame = window.get('content') or window['frame']
         check = object.__new__(Reports)
         check.last_y = 0.
@@ -97,4 +101,15 @@ for variant in ['before', 'after']:
     finally:
         for w in json.loads(run('windows', screen)):
             if w['pid'] == pid:
-                run('close', screen, '--window', w['id'])
+                # Quit the measured process, then wait for it to exit. A
+                # close request alone can race the next single-instance launch.
+                subprocess.run(['olo-screen', 'invoke', screen, 'quit', '--window', str(w['id'])], stdout=subprocess.DEVNULL, check=False)
+        try:
+            fd = os.pidfd_open(pid)
+        except ProcessLookupError:
+            pass
+        else:
+            try:
+                assert select.select([fd], [], [], 10)[0], 'Measured Browser did not exit; do not launch another variant'
+            finally:
+                os.close(fd)

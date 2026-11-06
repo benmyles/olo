@@ -40,7 +40,10 @@ try:
    images=[n for n in w['nodes'] if n['role']=='Image'];links=[n for n in w['nodes'] if n['role']=='Link'];assert {n['name'] for n in images}=={'Inline colours','Pixel colours'};assert any(n['name']=='Linked colours' for n in links)
    review=json.loads(run('review',screen,'--window',w['window'],'--json'));assert all(not r['findings'] for r in review),review
    path=out/f'{mode}-{scale}.png';run('look',screen,path,'--window',w['window'],'--no-pointer')
-   with Image.open(path) as im:counts=dict((c,n) for n,c in im.convert('RGB').getcolors(im.width*im.height))
+   with Image.open(path) as im:
+    counts={}
+    for n,(r,g,b,a) in im.convert('RGBA').getcolors(im.width*im.height):
+     if a==255:counts[(r,g,b)]=counts.get((r,g,b),0)+n
    assert counts.get((255,0,0),0)>100 and counts.get((0,255,0),0)>100,counts.get((255,0,0))
    rows.append(dict(mode=mode,scale=scale,tree=w,review=review,red_pixels=counts[(255,0,0)],green_pixels=counts[(0,255,0)]))
  assert requests==['/','/image.png'],requests
