@@ -1,0 +1,26 @@
+<!doctype html><meta charset=utf-8><title>Original inert HTML control states</title>
+<div id=ordinary disabled>Not a form control</div>
+<x-control id=undefined-custom disabled></x-control>
+<input id=text><input id=hidden type=hidden><input id=disabled-text disabled>
+<input id=disabled-false disabled=false><input id=readonly readonly>
+<button id=button>Button</button><button id=disabled-button disabled>Button</button>
+<textarea id=textarea></textarea><textarea id=disabled-textarea disabled></textarea>
+<select id=select><option id=option>Option</option><option id=disabled-option disabled>Option</option></select>
+<select id=disabled-select disabled><option id=inside-disabled-select>Option</option></select>
+<select><optgroup id=group label=Enabled><option id=group-child>Option</option></optgroup>
+<optgroup id=disabled-group label=Disabled disabled><option id=disabled-group-child>Option</option></optgroup></select>
+<fieldset id=fieldset><input id=fieldset-child></fieldset>
+<fieldset id=disabled-fieldset disabled>
+  <p>Before the first legend</p>
+  <legend id=first-legend><input id=first-legend-input><span><button id=first-legend-button>Button</button></span>
+    <fieldset id=nested-disabled-in-legend disabled><legend><input id=nested-exempt></legend><input id=nested-disabled></fieldset>
+  </legend>
+  <input id=fieldset-disabled-input>
+  <legend id=second-legend><input id=second-legend-input></legend>
+  <fieldset id=nested-fieldset><input id=nested-fieldset-input></fieldset>
+  <fieldset id=nested-disabled-fieldset disabled><legend><input id=nested-outer-disabled></legend></fieldset>
+  <select id=fieldset-select><optgroup id=fieldset-optgroup label=Group><option id=fieldset-option>Option</option></optgroup></select>
+</fieldset>
+<fieldset disabled><div><legend id=indirect-legend><input id=indirect-legend-input></legend></div><legend><input id=actual-first-legend></legend></fieldset>
+<svg><input id=foreign-input disabled></input></svg>
+<math><mi id=math-disabled disabled>x</mi></math>

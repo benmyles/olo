@@ -1,0 +1,1265 @@
+{
+  "scope": "Capture original control-state fixtures in an owned Chrome profile/screen.\n\n--screen NAME --profile /var/tmp/OWNED/profile --out /var/tmp/OWNED/control.json\nLaunch Chrome through olo-screen/olo-chrome with --remote-debugging-port=0.\nThe existing site tab is kept. A new local fixture tab is closed after capture.\nNo form is submitted. This is CSS state evidence, not visual/site acceptance.\n",
+  "version": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "input_sha256": "cd15938d94908a6406879bd03c235f86bc0d27adb337972f898b9c42a1f3a2fb",
+  "rows": [
+    {
+      "id": "initial",
+      "elements": [
+        {
+          "id": "ordinary",
+          "tag": "div",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "undefined-custom",
+          "tag": "x-control",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "text",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "hidden",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-text",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-false",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "readonly",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "textarea",
+          "tag": "textarea",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-textarea",
+          "tag": "textarea",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "inside-disabled-select",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "group",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "group-child",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-group",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-group-child",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-child",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "first-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "first-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "first-legend-button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-disabled-in-legend",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-exempt",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-disabled",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset-disabled-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "second-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "second-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-fieldset-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-disabled-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-outer-disabled",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset-select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset-optgroup",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset-option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "indirect-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "indirect-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "actual-first-legend",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "foreign-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/2000/svg",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "math-disabled",
+          "tag": "mi",
+          "namespace": "http://www.w3.org/1998/Math/MathML",
+          "disabled": false,
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "id": "move-first-legend",
+      "elements": [
+        {
+          "id": "ordinary",
+          "tag": "div",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "undefined-custom",
+          "tag": "x-control",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "text",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "hidden",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-text",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-false",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "readonly",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "textarea",
+          "tag": "textarea",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-textarea",
+          "tag": "textarea",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "inside-disabled-select",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "group",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "group-child",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-group",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-group-child",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-child",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset-disabled-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "second-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "second-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-fieldset-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-disabled-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-outer-disabled",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset-select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset-optgroup",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset-option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "first-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "first-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "first-legend-button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-disabled-in-legend",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-exempt",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-disabled",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "indirect-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "indirect-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "actual-first-legend",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "foreign-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/2000/svg",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "math-disabled",
+          "tag": "mi",
+          "namespace": "http://www.w3.org/1998/Math/MathML",
+          "disabled": false,
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "id": "enable-fieldset",
+      "elements": [
+        {
+          "id": "ordinary",
+          "tag": "div",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "undefined-custom",
+          "tag": "x-control",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "text",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "hidden",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-text",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-false",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "readonly",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "textarea",
+          "tag": "textarea",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-textarea",
+          "tag": "textarea",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "inside-disabled-select",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "group",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "group-child",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-group",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-group-child",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-child",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-disabled-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "second-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "second-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-fieldset-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-disabled-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-outer-disabled",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-optgroup",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "first-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "first-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "first-legend-button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-disabled-in-legend",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-exempt",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-disabled",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "indirect-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "indirect-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "actual-first-legend",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "foreign-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/2000/svg",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "math-disabled",
+          "tag": "mi",
+          "namespace": "http://www.w3.org/1998/Math/MathML",
+          "disabled": false,
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "id": "disable-option",
+      "elements": [
+        {
+          "id": "ordinary",
+          "tag": "div",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "undefined-custom",
+          "tag": "x-control",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "text",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "hidden",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-text",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-false",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "readonly",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "textarea",
+          "tag": "textarea",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-textarea",
+          "tag": "textarea",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "inside-disabled-select",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "group",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "group-child",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-group",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "disabled-group-child",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-child",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "disabled-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-disabled-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "second-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "second-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-fieldset-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-disabled-fieldset",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-outer-disabled",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-select",
+          "tag": "select",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-optgroup",
+          "tag": "optgroup",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "fieldset-option",
+          "tag": "option",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "first-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "first-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "first-legend-button",
+          "tag": "button",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-disabled-in-legend",
+          "tag": "fieldset",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "nested-exempt",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "nested-disabled",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "indirect-legend",
+          "tag": "legend",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "indirect-legend-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": true,
+          "enabled": false
+        },
+        {
+          "id": "actual-first-legend",
+          "tag": "input",
+          "namespace": "http://www.w3.org/1999/xhtml",
+          "disabled": false,
+          "enabled": true
+        },
+        {
+          "id": "foreign-input",
+          "tag": "input",
+          "namespace": "http://www.w3.org/2000/svg",
+          "disabled": false,
+          "enabled": false
+        },
+        {
+          "id": "math-disabled",
+          "tag": "mi",
+          "namespace": "http://www.w3.org/1998/Math/MathML",
+          "disabled": false,
+          "enabled": false
+        }
+      ]
+    }
+  ]
+}

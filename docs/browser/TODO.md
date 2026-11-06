@@ -6,6 +6,11 @@ item means implemented and verified; a partial implementation stays open.
 While working, fetch and merge `origin/main` at regular working checkpoints,
 revalidate the merged workspace and push the integration with browser work.
 
+**Active website: [Stripe](eval/stripe/README.md), selected by the user.**
+Finish its real pages/journeys and all30 configurations before choosing another
+site. Component work now follows observed Stripe blockers. Startup is still a
+nonpass: CSS disabled state is fixed; environment substitution is next.
+
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.
 - [ ] Build a reproducible 100-site corpus with explicit provenance,
@@ -371,6 +376,13 @@ this is a harness correction, not a browser speedup.
   compare a baseline and profile before claiming latency acceptance. Paired
   native text trials overlap compiler work and have opposite hitch counts;
   their latency/memory observations cannot establish a causal change.
+- [ ] Profile control-state integration cost observations: seven rotated
+  frozen release pairs show pipeline100/1000:1257.02→1245.31 /11889.36→12320.26µs;
+  scene282.24→328.15 /3594.45→4042.43µs. All source/geometry/pixels match,
+  but host load is high and nine accepted samples have concurrent Cargo/test
+  context (no rustc observed at sample boundaries). Scene construction does not
+  query the new state index; cause/attribution remains unresolved. Preserve the
+  dataset and confirm/profile before performance acceptance.
 - [ ] Profile the remaining 1,000-element scene regression after image support:
   2388.630→2495.630 µs (4.5%), CPU0/seven alternating frozen processes with
   identical source/geometry/pixels and no compiler activity. Text-only scene

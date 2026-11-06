@@ -3,6 +3,7 @@
 //! or insertion modes from a start tag alone.
 
 pub mod bytes;
+pub mod controls;
 mod entities;
 mod tokenizer;
 mod tree;

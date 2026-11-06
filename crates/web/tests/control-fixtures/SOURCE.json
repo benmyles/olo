@@ -1,0 +1,29 @@
+{
+  "scope": "Original inert connected-tree CSS enabled/disabled fixtures; 176 element observations / 352 selector booleans in independent Chrome. No website acceptance or form interaction.",
+  "browser": "Chrome/157.0.8103.38",
+  "chromium": "a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+  "references": [
+    "https://html.spec.whatwg.org/multipage/semantics-other.html#selector-disabled",
+    "https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#concept-fe-disabled",
+    "https://html.spec.whatwg.org/multipage/form-elements.html#concept-option-disabled",
+    "https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/third_party/blink/renderer/core/html/forms/html_field_set_element.cc",
+    "https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/third_party/blink/renderer/core/html/forms/html_option_element.cc",
+    "https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/third_party/blink/renderer/core/html/forms/html_opt_group_element.cc",
+    "https://chromium.googlesource.com/chromium/src/+/a733b5afbb3ba618844ff8876b89ad1a774b2f18/third_party/blink/renderer/core/html/forms/html_select_element.cc"
+  ],
+  "files": {
+    "input.html": "cd15938d94908a6406879bd03c235f86bc0d27adb337972f898b9c42a1f3a2fb",
+    "chrome.json": "6b1e8814ea406dc16e08e231b609753976c3cda69fc5d2d076f39b2a883d1d3a",
+    "capture.py": "62a98bf9223d951ca8677f075664f6e089427565c539e81767c7ec8c41a1de59"
+  },
+  "transport": {
+    "path": "tools/browser/cdp.py",
+    "sha256": "e5902f6f98c9e0301ed4784fcfea289677e49be68d12405859bd3c99652b2faa"
+  },
+  "notes": [
+    "CSS selector state is distinct from intrinsic option disabledness and form submission state.",
+    "The pinned Chrome enables OptionDisablednessCheckAncestors: option/optgroup CSS state includes its owning select. Fieldset selector state uses IsActuallyDisabled, not IsDisabledFormControl.",
+    "Original document, legend move and attribute changes; no remote form submission, no injected website DOM and no personal profile.",
+    "Custom form-associated upgrades, shadow trees, other states, input widgets, Web IDL and live invalidation remain open."
+  ]
+}

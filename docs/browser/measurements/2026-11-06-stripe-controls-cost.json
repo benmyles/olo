@@ -1,0 +1,1966 @@
+{
+  "scope": "Frozen release control-state and ordinary text cost observations.\n\nROOT OUTPUT.json; ROOT is owned /var/tmp scratch with page/scene-before/after\nand controls-bench. Stop own builds and GUI checks first. Seven rotated samples,\none performance CPU. Wait for rustc; record concurrent Cargo/test processes\nseparately (these samples do not establish complete host isolation).\nThe input-only direct walk is a limited cost control;\nChrome state fixtures provide independent semantic evidence separately.\nNo network, JS, form interaction, GPU, presentation or website speed coverage.\n",
+  "before": "8eecc555 (unchanged web core from 0106c55c)",
+  "cpu": 0,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "binaries": {
+    "page-before": "5803e3ba4c119513c731303f5e36921bcc776c7f58e43f7dd7482ff20ced40cf",
+    "page-after": "e220f1f3a78a669cc725b91bffc0a7d9f51883e34d56207db687c0dea52514bf",
+    "scene-before": "bed99b4e3ad8654d9a6bfd73e93152a4a06080461c050182a6b70e02cb17b58a",
+    "scene-after": "821ade5d67cb7113a0af3ddbe7ffd22cd2439a9ea42dd76d9fe5c422002c9d83",
+    "controls-bench": "b96711a29475fb2bdc10743fd9013355819b9314c7788c16bbad8b7624e8a3c6"
+  },
+  "observations": [
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 0,
+      "rss_kib": 9292,
+      "before_context": {
+        "loadavg": [
+          30.728515625,
+          37.57861328125,
+          29.36865234375
+        ],
+        "build_processes": {
+          "4003006": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          30.728515625,
+          37.57861328125,
+          29.36865234375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1366.0258,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 11222.842833333332,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 0,
+      "rss_kib": 9100,
+      "before_context": {
+        "loadavg": [
+          30.728515625,
+          37.57861328125,
+          29.36865234375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.728515625,
+          37.57861328125,
+          29.36865234375
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1300.28825,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 12320.255283333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 1,
+      "rss_kib": 9052,
+      "before_context": {
+        "loadavg": [
+          30.728515625,
+          37.57861328125,
+          29.36865234375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1163.6299833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 12120.7292,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 1,
+      "rss_kib": 9120,
+      "before_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1465.9201666666668,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 11889.355249999999,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 9260,
+      "before_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1082.1078499999999,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 11764.5416,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 2,
+      "rss_kib": 9020,
+      "before_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1245.3072166666668,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 11588.496033333335,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 3,
+      "rss_kib": 9100,
+      "before_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1158.3096,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 11338.209366666668,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 3,
+      "rss_kib": 9248,
+      "before_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1090.6271666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 11256.017733333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 4,
+      "rss_kib": 9300,
+      "before_context": {
+        "loadavg": [
+          30.75048828125,
+          37.46923828125,
+          29.37744140625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1272.4779333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 12167.694083333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 9264,
+      "before_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1292.9622666666664,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 12561.4723,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 5,
+      "rss_kib": 9136,
+      "before_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1193.9056166666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 12976.734133333335,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 5,
+      "rss_kib": 9292,
+      "before_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1238.8668,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 12041.191733333335,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 6,
+      "rss_kib": 9036,
+      "before_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1257.0236166666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 12383.812883333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 6,
+      "rss_kib": 9040,
+      "before_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1253.2688333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 12372.932683333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 0,
+      "rss_kib": 7872,
+      "before_context": {
+        "loadavg": [
+          30.36962890625,
+          37.27880859375,
+          29.35888671875
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 269.51686666666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3443.7504666666664,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 0,
+      "rss_kib": 8040,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 328.1528666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 4317.460216666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 1,
+      "rss_kib": 7976,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 363.1400166666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 4095.2735666666663,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 1,
+      "rss_kib": 8080,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 290.4840666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3594.445416666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 7936,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 288.4772166666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3798.9387666666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 2,
+      "rss_kib": 8184,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 535.6875833333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 4069.5481,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 3,
+      "rss_kib": 8224,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 283.72771666666665,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3853.80005,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 3,
+      "rss_kib": 8200,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 282.2362166666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3609.9869000000003,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 4,
+      "rss_kib": 8000,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 270.2237833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3742.090583333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 8016,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 1225.0290333333332,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 4042.4306166666665,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 5,
+      "rss_kib": 8048,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 258.12058333333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3502.5415666666668,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 5,
+      "rss_kib": 7972,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 283.70206666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3376.1704999999997,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 6,
+      "rss_kib": 7948,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 249.70085,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3536.0025166666665,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 6,
+      "rss_kib": 8016,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 288.6917833333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3985.4518166666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "controls",
+      "variant": "bench",
+      "repeat": 0,
+      "rss_kib": 2888,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "build_us": 5.016000000000001,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.7833333333333334,
+          "late_legend": false,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "0296bcefef0918cd575f824c707009e5ba427de5286b7e77181775fbb097b920",
+          "walk_queries_us": 12.840366666666666
+        },
+        {
+          "build_us": 7.723916666666667,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.4625166666666665,
+          "late_legend": true,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "03803ef2abcd6bf44f82b459350dfd100ad190690d8e2dee20b3499df893f1da",
+          "walk_queries_us": 54.596250000000005
+        },
+        {
+          "build_us": 42.98138333333334,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 19.00678333333333,
+          "late_legend": false,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "bcaf54c0c849eb71b94b27fe58abe80fad179449a0051b4df7de6d700a29c143",
+          "walk_queries_us": 194.57675
+        },
+        {
+          "build_us": 75.79958333333335,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 19.085366666666665,
+          "late_legend": true,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "0e1548f9dc1be4a1d5f54d9cebea3540c362583bbdb009ce5d0cff4019362246",
+          "walk_queries_us": 4449.73015
+        }
+      ],
+      "scope": "Original input-only fixtures: cold state index and warm full-set queries versus direct ancestor walking. Parse excluded. No form interaction, render, GPU or website speed claim."
+    },
+    {
+      "mode": "controls",
+      "variant": "bench",
+      "repeat": 1,
+      "rss_kib": 3092,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "build_us": 5.983216666666666,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.8257666666666665,
+          "late_legend": false,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "0296bcefef0918cd575f824c707009e5ba427de5286b7e77181775fbb097b920",
+          "walk_queries_us": 29.356416666666668
+        },
+        {
+          "build_us": 9.750133333333334,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.88725,
+          "late_legend": true,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "03803ef2abcd6bf44f82b459350dfd100ad190690d8e2dee20b3499df893f1da",
+          "walk_queries_us": 76.05128333333332
+        },
+        {
+          "build_us": 50.95845,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 19.595583333333334,
+          "late_legend": false,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "bcaf54c0c849eb71b94b27fe58abe80fad179449a0051b4df7de6d700a29c143",
+          "walk_queries_us": 136.69799999999998
+        },
+        {
+          "build_us": 91.85840000000002,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 23.107633333333332,
+          "late_legend": true,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "0e1548f9dc1be4a1d5f54d9cebea3540c362583bbdb009ce5d0cff4019362246",
+          "walk_queries_us": 5186.841183333333
+        }
+      ],
+      "scope": "Original input-only fixtures: cold state index and warm full-set queries versus direct ancestor walking. Parse excluded. No form interaction, render, GPU or website speed claim."
+    },
+    {
+      "mode": "controls",
+      "variant": "bench",
+      "repeat": 2,
+      "rss_kib": 2952,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "build_us": 4.913266666666667,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.4784833333333331,
+          "late_legend": false,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "0296bcefef0918cd575f824c707009e5ba427de5286b7e77181775fbb097b920",
+          "walk_queries_us": 15.866999999999999
+        },
+        {
+          "build_us": 8.2255,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.5163333333333333,
+          "late_legend": true,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "03803ef2abcd6bf44f82b459350dfd100ad190690d8e2dee20b3499df893f1da",
+          "walk_queries_us": 57.05425
+        },
+        {
+          "build_us": 43.12263333333333,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 19.227899999999998,
+          "late_legend": false,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "bcaf54c0c849eb71b94b27fe58abe80fad179449a0051b4df7de6d700a29c143",
+          "walk_queries_us": 134.70303333333334
+        },
+        {
+          "build_us": 90.76751666666668,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 22.99055,
+          "late_legend": true,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "0e1548f9dc1be4a1d5f54d9cebea3540c362583bbdb009ce5d0cff4019362246",
+          "walk_queries_us": 5248.39085
+        }
+      ],
+      "scope": "Original input-only fixtures: cold state index and warm full-set queries versus direct ancestor walking. Parse excluded. No form interaction, render, GPU or website speed claim."
+    },
+    {
+      "mode": "controls",
+      "variant": "bench",
+      "repeat": 3,
+      "rss_kib": 3220,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "build_us": 5.16765,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.5159500000000001,
+          "late_legend": false,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "0296bcefef0918cd575f824c707009e5ba427de5286b7e77181775fbb097b920",
+          "walk_queries_us": 14.032216666666667
+        },
+        {
+          "build_us": 8.057616666666666,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.5541333333333334,
+          "late_legend": true,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "03803ef2abcd6bf44f82b459350dfd100ad190690d8e2dee20b3499df893f1da",
+          "walk_queries_us": 59.51758333333333
+        },
+        {
+          "build_us": 51.04411666666667,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 23.495183333333333,
+          "late_legend": false,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "bcaf54c0c849eb71b94b27fe58abe80fad179449a0051b4df7de6d700a29c143",
+          "walk_queries_us": 143.2675166666667
+        },
+        {
+          "build_us": 88.82975,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 19.782366666666668,
+          "late_legend": true,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "0e1548f9dc1be4a1d5f54d9cebea3540c362583bbdb009ce5d0cff4019362246",
+          "walk_queries_us": 4862.689083333334
+        }
+      ],
+      "scope": "Original input-only fixtures: cold state index and warm full-set queries versus direct ancestor walking. Parse excluded. No form interaction, render, GPU or website speed claim."
+    },
+    {
+      "mode": "controls",
+      "variant": "bench",
+      "repeat": 4,
+      "rss_kib": 2968,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {
+          "4004579": "cargo"
+        }
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "build_us": 4.715083333333334,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.4995666666666667,
+          "late_legend": false,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "0296bcefef0918cd575f824c707009e5ba427de5286b7e77181775fbb097b920",
+          "walk_queries_us": 13.803400000000002
+        },
+        {
+          "build_us": 7.748133333333333,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.4514999999999998,
+          "late_legend": true,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "03803ef2abcd6bf44f82b459350dfd100ad190690d8e2dee20b3499df893f1da",
+          "walk_queries_us": 106.76916666666668
+        },
+        {
+          "build_us": 41.396883333333335,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 18.57623333333333,
+          "late_legend": false,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "bcaf54c0c849eb71b94b27fe58abe80fad179449a0051b4df7de6d700a29c143",
+          "walk_queries_us": 301.26741666666663
+        },
+        {
+          "build_us": 71.56108333333333,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 18.69535,
+          "late_legend": true,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "0e1548f9dc1be4a1d5f54d9cebea3540c362583bbdb009ce5d0cff4019362246",
+          "walk_queries_us": 4856.13935
+        }
+      ],
+      "scope": "Original input-only fixtures: cold state index and warm full-set queries versus direct ancestor walking. Parse excluded. No form interaction, render, GPU or website speed claim."
+    },
+    {
+      "mode": "controls",
+      "variant": "bench",
+      "repeat": 5,
+      "rss_kib": 3068,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {
+          "4004579": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          30.46044921875,
+          36.94287109375,
+          29.37548828125
+        ],
+        "build_processes": {
+          "4004579": "cargo"
+        }
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "build_us": 5.776016666666666,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.7945166666666668,
+          "late_legend": false,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "0296bcefef0918cd575f824c707009e5ba427de5286b7e77181775fbb097b920",
+          "walk_queries_us": 16.99815
+        },
+        {
+          "build_us": 9.806833333333335,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.8613833333333332,
+          "late_legend": true,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "03803ef2abcd6bf44f82b459350dfd100ad190690d8e2dee20b3499df893f1da",
+          "walk_queries_us": 67.63391666666666
+        },
+        {
+          "build_us": 66.60716666666666,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 23.006183333333336,
+          "late_legend": false,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "bcaf54c0c849eb71b94b27fe58abe80fad179449a0051b4df7de6d700a29c143",
+          "walk_queries_us": 141.69871666666666
+        },
+        {
+          "build_us": 84.07015,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 22.923150000000003,
+          "late_legend": true,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "0e1548f9dc1be4a1d5f54d9cebea3540c362583bbdb009ce5d0cff4019362246",
+          "walk_queries_us": 5183.461883333334
+        }
+      ],
+      "scope": "Original input-only fixtures: cold state index and warm full-set queries versus direct ancestor walking. Parse excluded. No form interaction, render, GPU or website speed claim."
+    },
+    {
+      "mode": "controls",
+      "variant": "bench",
+      "repeat": 6,
+      "rss_kib": 3136,
+      "before_context": {
+        "loadavg": [
+          30.46044921875,
+          36.94287109375,
+          29.37548828125
+        ],
+        "build_processes": {
+          "4004579": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          30.46044921875,
+          36.94287109375,
+          29.37548828125
+        ],
+        "build_processes": {
+          "4004579": "cargo"
+        }
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "build_us": 6.132866666666667,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.8593499999999998,
+          "late_legend": false,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "0296bcefef0918cd575f824c707009e5ba427de5286b7e77181775fbb097b920",
+          "walk_queries_us": 20.508533333333332
+        },
+        {
+          "build_us": 9.653283333333333,
+          "controls": 101,
+          "elements": 100,
+          "indexed_queries_us": 1.8185333333333333,
+          "late_legend": true,
+          "payload_bytes": 808,
+          "result_sha256": "e74a2888657708b679dcb8fd977e404452fb82655e53f924e847b9d5176831d4",
+          "source_sha256": "03803ef2abcd6bf44f82b459350dfd100ad190690d8e2dee20b3499df893f1da",
+          "walk_queries_us": 69.28278333333334
+        },
+        {
+          "build_us": 52.36443333333333,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 22.88045,
+          "late_legend": false,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "bcaf54c0c849eb71b94b27fe58abe80fad179449a0051b4df7de6d700a29c143",
+          "walk_queries_us": 140.72095
+        },
+        {
+          "build_us": 91.86383333333333,
+          "controls": 1001,
+          "elements": 1000,
+          "indexed_queries_us": 23.079666666666665,
+          "late_legend": true,
+          "payload_bytes": 8008,
+          "result_sha256": "a56adbd3dac2f7391cbb69e38b44e26b2d745eb0b20281a8e050c8393639dcb6",
+          "source_sha256": "0e1548f9dc1be4a1d5f54d9cebea3540c362583bbdb009ce5d0cff4019362246",
+          "walk_queries_us": 5415.695166666667
+        }
+      ],
+      "scope": "Original input-only fixtures: cold state index and warm full-set queries versus direct ancestor walking. Parse excluded. No form interaction, render, GPU or website speed claim."
+    }
+  ],
+  "discarded": [
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 0,
+      "rss_kib": 9088,
+      "before_context": {
+        "loadavg": [
+          30.728515625,
+          37.57861328125,
+          29.36865234375
+        ],
+        "build_processes": {
+          "4003006": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          30.728515625,
+          37.57861328125,
+          29.36865234375
+        ],
+        "build_processes": {
+          "4003006": "cargo",
+          "4003566": "rustc"
+        }
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 1294.10075,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 11974.349283333335,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 8220,
+      "before_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          29.69921875,
+          37.02490234375,
+          29.3193359375
+        ],
+        "build_processes": {
+          "4004156": "cargo",
+          "4004226": "rustc"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 283.5278166666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3545.55935,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 8040,
+      "before_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {
+          "4004156": "cargo"
+        }
+      },
+      "after_context": {
+        "loadavg": [
+          29.8037109375,
+          36.9248046875,
+          29.32861328125
+        ],
+        "build_processes": {
+          "4004156": "cargo",
+          "4004354": "rustc",
+          "4004357": "rustc"
+        }
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 348.13115,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 3590.70685,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    }
+  ],
+  "build_waits": [
+    {
+      "loadavg": [
+        31.517578125,
+        38.05859375,
+        29.38623046875
+      ],
+      "build_processes": {
+        "4003006": "cargo",
+        "4003039": "rustc",
+        "4003114": "rustc",
+        "4003191": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        31.23583984375,
+        37.8916015625,
+        29.37841796875
+      ],
+      "build_processes": {
+        "4003006": "cargo",
+        "4003039": "rustc",
+        "4003114": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        32.09814453125,
+        37.9599609375,
+        29.4462890625
+      ],
+      "build_processes": {
+        "4003006": "cargo",
+        "4003114": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        30.728515625,
+        37.57861328125,
+        29.36865234375
+      ],
+      "build_processes": {
+        "4003006": "cargo",
+        "4003566": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        29.69921875,
+        37.02490234375,
+        29.3193359375
+      ],
+      "build_processes": {
+        "4004156": "cargo",
+        "4004226": "rustc"
+      }
+    },
+    {
+      "loadavg": [
+        29.8037109375,
+        36.9248046875,
+        29.32861328125
+      ],
+      "build_processes": {
+        "4004156": "cargo",
+        "4004354": "rustc",
+        "4004357": "rustc"
+      }
+    }
+  ]
+}

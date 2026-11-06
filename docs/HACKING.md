@@ -11847,6 +11847,14 @@ and reclamation follows page work without idle timers. Budget exhaustion falls
 back to available levels. These are allocation budgets, not a process-memory
 limit; exact GPU filtering and anisotropic image quality remain incomplete.
 
+Initial inert HTML `:enabled`/`:disabled` CSS state comes from a lazy, bounded
+worker index of connected controls (`olo_web::html::controls`). It stores eight
+bytes per control and handles fieldset/first-legend and select/optgroup contexts
+in one traversal, without repeated ancestry scans. Document/revision mismatches
+reject stale queries. CSS option/group state includes the owning select and is
+distinct from form submission/activation disabledness. Other form states, widgets,
+custom-element upgrades, shadow trees and web-facing DOM invalidation remain open.
+
 Visible images expose alt text (or "Image"), document bounds and normal link
 actions in the structured tree. Linked images use the same link/origin checks
 and human input dispatch as text links. Image pixels or source bytes are not

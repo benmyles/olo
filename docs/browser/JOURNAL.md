@@ -3997,3 +3997,72 @@ journeys or acceptance. A frame diagnostic recorder was drafted in disk scratch
 but not committed or counted as verified; investigating the retained79ms frame
 remains queued while real-page testing takes priority. Website acceptance
 remains0/100 and0/3000. Evidence:2026-11-06-minification-main-sync.json.
+
+### 2026-11-06 — Follow real pages; Stripe first
+
+The user asked when real-page testing could start. HTTP/HTTPS was already
+implemented; isolated component refinement had delayed useful end-to-end probes.
+Ran live Hacker News, Wikipedia and public rust-lang/rust GitHub startup probes.
+All fail: missing decoded image (HN), CSS StateUnavailable (Wikipedia/GitHub).
+These are native startup diagnostics, not corpus journeys or visual passes.
+Evidence:2026-11-06-live-startup-probes.json, including probe source/identity.
+
+The user then selected **stripe.com first**, finishing each website before the
+next. Its site-specific queue is in eval/stripe/README.md. Private Chrome loaded
+the actual public homepage; captured initial DOM/typography/resource inventory
+and hashes for original HTML/five stylesheet bodies in owned disk scratch.
+The first resource-tree response omitted four stylesheets; the actual DOM sheet
+list corrected the inventory. This is not a complete replay or accepted visual
+reference. A web-search-service Indian regional redirect is not used as baseline.
+No account, payment, form submission or personal profile was used.
+
+A precise selector diagnostic identifies the first native Stripe blocker as
+**Disabled**. Added original Rust connected-tree CSS enabled/disabled state,
+lazily on the page worker. A bounded traversal carries fieldset/first-legend and
+select/optgroup contexts, then stores sorted sparse entries: **8bytes/control**,
+no DOM clone or repeated ancestry scans. Node/work/control/depth limits,
+cancellation and document/revision/handle checks are explicit. Inapplicable
+elements return neither state without building the index. No timers or threads
+are added. The model is initial inert CSS state, not form activation/submission,
+widgets, Web IDL or shadow/custom-element upgrade behavior.
+
+Independent original Chrome157 fixtures: **176 element observations /352 CSS
+boolean assertions**, including legend movement and attribute changes, match.
+Pinned Chromium sources confirm the important distinction: option/group CSS
+state includes the owning select (OptionDisablednessCheckAncestors), unlike
+intrinsic option disabledness. Fieldset selector state uses inherited actual
+disabledness. Two native regression groups cover resource bounds/stale handles
+and full-page CSS selection/rebuild after a native DOM attribute change.
+
+Actual freshly launched workspace Browser (PID/executable SHA verified) now
+gets past Disabled and stops later at **Variables(Unsupported(arbitrary
+substitution function))**. Retained Stripe CSS uses
+`calc(env(safe-area-inset-bottom,0px) + var(...))`; env/host-context support is
+next. Captured115 independent env observations at five native DPRs for that
+next task in disk scratch; this is not implemented env acceptance. No selectors
+were silently forced false and the real site was not replaced with a fixture.
+
+Release default browser/web **273**, all-feature web **259**, strict clippy and
+workspace build **17.68s** pass. Existing dependency warnings remain. Cost
+controls: CPU0/seven rotated frozen processes/variant, **35 accepted samples**,
+three compiler-overlap attempts retained, nine samples with Cargo/test context.
+Sampler paused before measurements while an independent Chrome fixture was
+captured, then restarted after owned GUI apps were quit. Native server/build
+identities are separate in the evidence; no source equivalence is assumed.
+
+Index cold construction100/1000 inputs: **5.17/50.96µs** with first legend,
+**8.23/88.83µs** with late legend. Warm whole-set queries **1.78/19.60µs** and
+**1.55/22.92µs** respectively; direct input-only ancestor-walk controls
+**15.87/141.70µs**, **67.63/5183.46µs**. Payload **808/8008bytes** includes the
+fieldset. Walk/index bytes agree; this is not a general website speedup.
+Ordinary pipeline100/1000 **1257.02→1245.31 /11889.36→12320.26µs**; scene
+**282.24→328.15 /3594.45→4042.43µs**. Source/geometry/pixels match. Host load is
+high and scene building never queries the new index; the observed regressions
+and their cause remain open, rather than being declared improvements. Earlier
+image sampling, scene and79ms fuzz findings also remain open.
+
+Evidence:2026-11-06-stripe-controls-{checks,cost}.json, original control fixtures,
+benchmarks, bounded CDP transport and site queue. There is still no useful native
+Stripe content or new site visual to accept. No global screenshot journal image
+was added for a CSS-state/diagnostic-only milestone. **Stripe0/30, corpus0/100
+and0/3000**; goal active, next task env substitution on the same real website.

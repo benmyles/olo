@@ -272,7 +272,7 @@ fn render(
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize)> {
     let defaults = Defaults::new(host, Default::default(), cancel)?;
-    let snapshot = interaction::Snapshot { doc, input };
+    let snapshot = interaction::Snapshot::new(doc, input, cancel);
     let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), ..Default::default() }, Default::default(), cancel)?;
     while !job.step(128, |_| host)?.finished {
         progress(Phase::Styles, job.progress().styled)

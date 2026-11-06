@@ -13,7 +13,9 @@ and journey recipes live in `tools/browser/build-corpus.py`; the full
 ranking download's SHA-256 is pinned there and in the manifest. The
 selected ranks are also in `selected-ranks.csv`. Rebuild by downloading
 the pinned CSV to /var/tmp and passing its path to that Python script.
-No website journey has been executed yet. Category recipes still need
+Initial live startup probes have run; all are nonpasses, with no complete
+website journey executed yet. [Stripe is the active first site](stripe/README.md).
+Category recipes still need
 site-specific runnable steps, stable test items and independent captures.
 
 The native Rust comparator is runnable now:

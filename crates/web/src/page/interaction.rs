@@ -3,7 +3,9 @@
 use crate::{
     css::selectors::{self, PseudoElement, State, StateSource},
     dom::{Document, Namespace, NodeId},
+    html::controls,
 };
+use std::{cell::OnceCell, sync::atomic::AtomicBool};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Interaction {
     pub hover: Option<NodeId>,
@@ -25,8 +27,26 @@ impl Interaction {
 pub(super) struct Snapshot<'a> {
     pub doc: &'a Document,
     pub input: Interaction,
+    cancel: Option<&'a AtomicBool>,
+    forms: OnceCell<Result<controls::DisabledStates, controls::Error>>,
 }
-impl Snapshot<'_> {
+impl<'a> Snapshot<'a> {
+    pub fn new(doc: &'a Document, input: Interaction, cancel: Option<&'a AtomicBool>) -> Self {
+        Self { doc, input, cancel, forms: OnceCell::new() }
+    }
+    fn disabled(&self, node: NodeId) -> selectors::Result<Option<bool>> {
+        if self.doc.namespace(node)? != Some(Namespace::Html) || !controls::eligible(self.doc.name(node)?) {
+            return Ok(None);
+        }
+        let map = |error| match error {
+            controls::Error::Limit => selectors::Error::MatchLimit,
+            controls::Error::Cancelled => selectors::Error::Cancelled,
+            controls::Error::Dom(error) => selectors::Error::Dom(error),
+            _ => selectors::Error::InvalidNode,
+        };
+        let forms = self.forms.get_or_init(|| controls::DisabledStates::new(self.doc, Default::default(), self.cancel)).as_ref().map_err(|e| map(*e))?;
+        forms.disabled(self.doc, node).map_err(map)
+    }
     fn within(&self, mut subject: Option<NodeId>, ancestor: NodeId) -> selectors::Result<bool> {
         while let Some(node) = subject {
             if node == ancestor {
@@ -53,7 +73,9 @@ impl StateSource for Snapshot<'_> {
             State::FocusWithin => self.within(self.input.focus, node)?,
             State::FocusVisible => self.input.keyboard_focus && self.input.focus == Some(node),
             State::Target => self.input.target == Some(node),
-            _ => return Err(selectors::Error::StateUnavailable),
+            State::Disabled => self.disabled(node)? == Some(true),
+            State::Enabled => self.disabled(node)? == Some(false),
+            _ => return Err(selectors::Error::UnsupportedState(state)),
         })
     }
 }

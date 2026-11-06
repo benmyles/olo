@@ -1,0 +1,429 @@
+{
+  "scope": "Live public-page diagnostics. Not full journeys, pixel comparison, deterministic replay or website acceptance.",
+  "captured_at": "2026-11-06T20:34:04.533345+00:00",
+  "browser_pid": 3871605,
+  "browser_sha256": "0491385794585f42979ac0c740e27868bb06e53903a50eb3c13444afcc4f2edd",
+  "server_pid": 3871491,
+  "server_sha256": "b4759412fe7674ed2e4724236d6518812f472ce90ac610c39ae8d5db0d281a25",
+  "source_revision": "8eecc555249151d35f4a88cdfd9a51fa9854ca0e",
+  "website_passes": 0,
+  "cases": [
+    {
+      "id": "hacker-news",
+      "url": "https://news.ycombinator.com/",
+      "elapsed_seconds": 0.5684746749902843,
+      "status": "flow layout Unsupported(\"missing decoded image\")",
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://news.ycombinator.com/",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "flow layout Unsupported(\"missing decoded image\")",
+            "x": 69.0,
+            "y": 734.0,
+            "width": 968.0,
+            "height": 16.0,
+            "enabled": true
+          }
+        ]
+      },
+      "result": "unaccepted diagnostic"
+    },
+    {
+      "id": "wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Web_browser",
+      "elapsed_seconds": 1.0855193180032074,
+      "status": "CSS style Cascade(Selectors(StateUnavailable))",
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://en.wikipedia.org/wiki/Web_browser",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS style Cascade(Selectors(StateUnavailable))",
+            "x": 69.0,
+            "y": 734.0,
+            "width": 968.0,
+            "height": 16.0,
+            "enabled": true
+          }
+        ]
+      },
+      "result": "unaccepted diagnostic"
+    },
+    {
+      "id": "github-rust",
+      "url": "https://github.com/rust-lang/rust",
+      "elapsed_seconds": 1.3979869789909571,
+      "status": "CSS style Cascade(Selectors(StateUnavailable))",
+      "tree": {
+        "window": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://github.com/rust-lang/rust",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "CSS style Cascade(Selectors(StateUnavailable))",
+            "x": 69.0,
+            "y": 734.0,
+            "width": 968.0,
+            "height": 16.0,
+            "enabled": true
+          }
+        ]
+      },
+      "result": "unaccepted diagnostic"
+    }
+  ],
+  "probe_source": "import subprocess,json,time,os,hashlib,socket,struct,datetime\nfrom pathlib import Path\nr=Path('/var/tmp/olo-browser-live-pages');screen='browser-live-pages';assert os.environ.get('OLO_SCREEN')==screen\nrun=lambda *a:subprocess.check_output(['olo-screen',*map(str,a)],text=True)\ndef tree():return next(w for w in json.loads(run('tree',screen,'--json'))if w['app_id']=='olo.browser')\nwindows=json.loads(run('windows',screen));w=next(w for w in windows if w['app_id']=='olo.browser');pid=int((r/'browser.pid').read_text());assert w['pid']==pid\nh=lambda p:hashlib.file_digest(Path(p).open('rb'),'sha256').hexdigest()\nwith socket.socket(socket.AF_UNIX)as s:\n s.connect(os.environ['OLO_SOCKET']);server=struct.unpack('3i',s.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))[0]\nreport=dict(scope='Live public-page diagnostics. Not full journeys, pixel comparison, deterministic replay or website acceptance.',captured_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),browser_pid=pid,browser_sha256=h(f'/proc/{pid}/exe'),server_pid=server,server_sha256=h(f'/proc/{server}/exe'),source_revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),website_passes=0,cases=[])\nfor name,url in [('hacker-news','https://news.ycombinator.com/'),('wikipedia','https://en.wikipedia.org/wiki/Web_browser'),('github-rust','https://github.com/rust-lang/rust')]:\n start=time.monotonic();run('set',screen,'--name','Address',url);run('click',screen,'--role','Button','--name','Go');seen=False;last=None\n while True:\n  current=tree();last=current['nodes'][-1].get('name','')\n  if last.startswith(('Loading','Parsing','Styling','Building','Preparing','Laying','Painting','Reading','Fetching')):seen=True\n  elif seen or time.monotonic()-start>.5:break\n  if time.monotonic()-start>45:\n   run('invoke',screen,'stop');current=tree();last='Timed out at45s; stopped';break\n  time.sleep(.1)\n row=dict(id=name,url=url,elapsed_seconds=time.monotonic()-start,status=last,tree=current,result='unaccepted diagnostic')\n report['cases'].append(row);(r/'report.json').write_text(json.dumps(report,indent=2)+'\\n');print(name,round(row['elapsed_seconds'],2),last,flush=True)\n"
+}

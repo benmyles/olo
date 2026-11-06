@@ -62,6 +62,7 @@ pub enum Error {
     Cancelled,
     InvalidNode,
     StateUnavailable,
+    UnsupportedState(State),
     Dom(crate::dom::Error),
 }
 impl From<crate::dom::Error> for Error {
