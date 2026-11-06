@@ -82,6 +82,9 @@ impl Host for Context {
     fn device_scale(&self) -> f64 {
         1.
     }
+    fn font_context(&self) -> u64 {
+        1
+    }
     fn font(&self, request: &FontRequest) -> style::Result<FontMetrics> {
         self.requests.borrow_mut().push(request.clone());
         let mono = request.families.as_slice().first() == Some(&Family::Generic(GenericFamily::Monospace));

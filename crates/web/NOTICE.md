@@ -129,3 +129,12 @@ ports check acceptance; selected computed ports run the original document
 style job with supplied metrics. Missing original contexts and browser drivers
 remain non-passes. No font files, JS, CSSOM serializer, face matching, shaping,
 layout or rasterization is executed by these assertions.
+
+Native font matching uses original Rust algorithms and ttf-parser 0.25.1
+(MIT/Apache-2.0) for OpenType binary table access. The generated fonts in
+`tests/font-native-fixtures/fonts` are original literal geometry/metadata under
+the repository license; the independent generator uses fontTools 4.60.1.
+Existing Noto data used by references stays under its SIL OFL in `data/fonts`.
+Unicode 18.0.0 default case-fold facts are generated from the unchanged normative
+CaseFolding.txt in `tests/font-native-fixtures/ucd`, with Unicode License V3
+included there. SOURCE.json records the data hashes and retrieval provenance.

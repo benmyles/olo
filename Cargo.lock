@@ -7836,6 +7836,7 @@ dependencies = [
  "simdutf8",
  "smallvec",
  "triomphe",
+ "ttf-parser",
  "wide",
 ]
 

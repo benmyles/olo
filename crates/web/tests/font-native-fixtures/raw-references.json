@@ -1,0 +1,198 @@
+{
+  "fonttools": "4.60.1",
+  "scope": "Independent raw HVAR/MVAR reads at normalized 2.14 coordinates; not shaping or rasterization.",
+  "optical": [
+    {
+      "css_size": 8,
+      "coordinates": {
+        "opsz": 8
+      },
+      "normalized": {
+        "opsz": -1.0
+      },
+      "units": {
+        "ch": 500.0,
+        "ex": 480.0,
+        "cap": 680.0,
+        "ascent": 780.0,
+        "descent": -200,
+        "line_gap": 100
+      },
+      "upem": 1000,
+      "sha256": "e2086f623b194561278e85df4cb8f2300dd11cc4c94fe3e4b7143b75912f270f"
+    },
+    {
+      "css_size": 12,
+      "coordinates": {
+        "opsz": 12
+      },
+      "normalized": {
+        "opsz": -0.5
+      },
+      "units": {
+        "ch": 550.0,
+        "ex": 490.0,
+        "cap": 690.0,
+        "ascent": 790.0,
+        "descent": -200,
+        "line_gap": 100
+      },
+      "upem": 1000,
+      "sha256": "e2086f623b194561278e85df4cb8f2300dd11cc4c94fe3e4b7143b75912f270f"
+    },
+    {
+      "css_size": 16,
+      "coordinates": {
+        "opsz": 16
+      },
+      "normalized": {
+        "opsz": 0.0
+      },
+      "units": {
+        "ch": 600.0,
+        "ex": 500.0,
+        "cap": 700.0,
+        "ascent": 800.0,
+        "descent": -200,
+        "line_gap": 100
+      },
+      "upem": 1000,
+      "sha256": "e2086f623b194561278e85df4cb8f2300dd11cc4c94fe3e4b7143b75912f270f"
+    },
+    {
+      "css_size": 20,
+      "coordinates": {
+        "opsz": 20
+      },
+      "normalized": {
+        "opsz": 0.0714111328125
+      },
+      "units": {
+        "ch": 642.8466796875,
+        "ex": 507.14111328125,
+        "cap": 707.14111328125,
+        "ascent": 807.14111328125,
+        "descent": -200,
+        "line_gap": 100
+      },
+      "upem": 1000,
+      "sha256": "e2086f623b194561278e85df4cb8f2300dd11cc4c94fe3e4b7143b75912f270f"
+    },
+    {
+      "css_size": 32,
+      "coordinates": {
+        "opsz": 32
+      },
+      "normalized": {
+        "opsz": 0.28570556640625
+      },
+      "units": {
+        "ch": 771.42333984375,
+        "ex": 528.570556640625,
+        "cap": 728.570556640625,
+        "ascent": 828.570556640625,
+        "descent": -200,
+        "line_gap": 100
+      },
+      "upem": 1000,
+      "sha256": "e2086f623b194561278e85df4cb8f2300dd11cc4c94fe3e4b7143b75912f270f"
+    },
+    {
+      "css_size": 72,
+      "coordinates": {
+        "opsz": 72
+      },
+      "normalized": {
+        "opsz": 1.0
+      },
+      "units": {
+        "ch": 1200.0,
+        "ex": 600.0,
+        "cap": 800.0,
+        "ascent": 900.0,
+        "descent": -200,
+        "line_gap": 100
+      },
+      "upem": 1000,
+      "sha256": "e2086f623b194561278e85df4cb8f2300dd11cc4c94fe3e4b7143b75912f270f"
+    },
+    {
+      "css_size": 120,
+      "coordinates": {
+        "opsz": 72
+      },
+      "normalized": {
+        "opsz": 1.0
+      },
+      "units": {
+        "ch": 1200.0,
+        "ex": 600.0,
+        "cap": 800.0,
+        "ascent": 900.0,
+        "descent": -200,
+        "line_gap": 100
+      },
+      "upem": 1000,
+      "sha256": "e2086f623b194561278e85df4cb8f2300dd11cc4c94fe3e4b7143b75912f270f"
+    }
+  ],
+  "noto": [
+    {
+      "css_size": 20,
+      "coordinates": {
+        "wght": 400
+      },
+      "normalized": {
+        "wght": 0.0
+      },
+      "units": {
+        "ch": 572.0,
+        "ex": 536.0,
+        "cap": 714,
+        "ascent": 1069,
+        "descent": -293,
+        "line_gap": 0
+      },
+      "upem": 1000,
+      "sha256": "fb53504de62e767a54695416123d68d67f71c9b69722175184ad56e7dd13547b"
+    },
+    {
+      "css_size": 20,
+      "coordinates": {
+        "wght": 650.5
+      },
+      "normalized": {
+        "wght": 0.81329345703125
+      },
+      "units": {
+        "ch": 572.0,
+        "ex": 544.1329345703125,
+        "cap": 714,
+        "ascent": 1069,
+        "descent": -293,
+        "line_gap": 0
+      },
+      "upem": 1000,
+      "sha256": "fb53504de62e767a54695416123d68d67f71c9b69722175184ad56e7dd13547b"
+    },
+    {
+      "css_size": 20,
+      "coordinates": {
+        "wght": 900
+      },
+      "normalized": {
+        "wght": 1.0
+      },
+      "units": {
+        "ch": 572.0,
+        "ex": 546.0,
+        "cap": 714,
+        "ascent": 1069,
+        "descent": -293,
+        "line_gap": 0
+      },
+      "upem": 1000,
+      "sha256": "fb53504de62e767a54695416123d68d67f71c9b69722175184ad56e7dd13547b"
+    }
+  ]
+}

@@ -4,6 +4,7 @@
 
 pub mod css;
 pub mod dom;
+pub mod font;
 pub mod html;
 
 pub mod text;

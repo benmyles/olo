@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>Loaded font metric reference</title>
+<style>
+@font-face {font-family: Optical;src:url(fonts/optical.ttf);font-style:normal}
+@font-face {font-family: Noto;src:url(fonts/NotoSans.ttf);font-weight:100 900}
+body {font:14px sans-serif} .probe {position:absolute;display:block;margin:0;padding:0;border:0;white-space:nowrap}
+</style><h1>Loaded font metric reference</h1><pre id="result">loading</pre>
+<script>
+(async()=>{
+ await Promise.all([document.fonts.load('20px Optical'),document.fonts.load('650.5 20px Noto')]);
+ await document.fonts.ready;
+ const cases=[];
+ for(const family of ['Optical','Noto']) for(const size of [16,20,32,72])
+ for(const variation of ['auto','none','12','16']) {
+  const node=document.createElement('span');node.className='probe';node.textContent='0';
+  Object.assign(node.style,{fontFamily:family,fontSize:size+'px',fontWeight:family==='Noto'?'650.5':'400',fontOpticalSizing:variation==='none'?'none':'auto',fontVariationSettings:['12','16'].includes(variation)?'"opsz" '+variation:'normal'});
+  document.body.append(node);
+  const units={};for(const unit of ['ch','ex','cap','ic']){node.style.width='100'+unit;units[unit]=node.getBoundingClientRect().width/100;}
+  cases.push({family,size,variation,units});node.remove();
+ }
+ result.textContent='';
+ for(const [label,value] of [['USERAGENT',navigator.userAgent],['LOADED',[...document.fonts].map(f=>({family:f.family,status:f.status}))],...cases.map(c=>['FONTCASE',c])]) {
+  const line=document.createElement('p');line.textContent=label+' '+JSON.stringify(value);result.append(line);
+ }
+})().catch(e=>result.textContent='ERROR: '+e);
+</script>

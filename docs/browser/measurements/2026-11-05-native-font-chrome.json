@@ -1,0 +1,368 @@
+{
+  "cases": [
+    {
+      "family": "Optical",
+      "size": 16,
+      "variation": "auto",
+      "units": {
+        "ch": 9.6,
+        "ex": 8,
+        "cap": 11.2,
+        "ic": 16
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 16,
+      "variation": "none",
+      "units": {
+        "ch": 9.6,
+        "ex": 8,
+        "cap": 11.2,
+        "ic": 16
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 16,
+      "variation": "12",
+      "units": {
+        "ch": 8.8,
+        "ex": 7.84,
+        "cap": 11.04,
+        "ic": 16
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 16,
+      "variation": "16",
+      "units": {
+        "ch": 9.6,
+        "ex": 8,
+        "cap": 11.2,
+        "ic": 16
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 20,
+      "variation": "auto",
+      "units": {
+        "ch": 12.85984375,
+        "ex": 10.14,
+        "cap": 14.14,
+        "ic": 20
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 20,
+      "variation": "none",
+      "units": {
+        "ch": 11.99984375,
+        "ex": 10,
+        "cap": 14,
+        "ic": 20
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 20,
+      "variation": "12",
+      "units": {
+        "ch": 10.99984375,
+        "ex": 9.8,
+        "cap": 13.8,
+        "ic": 20
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 20,
+      "variation": "16",
+      "units": {
+        "ch": 11.99984375,
+        "ex": 10,
+        "cap": 14,
+        "ic": 20
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 32,
+      "variation": "auto",
+      "units": {
+        "ch": 24.67203125,
+        "ex": 16.92796875,
+        "cap": 23.32796875,
+        "ic": 32
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 32,
+      "variation": "none",
+      "units": {
+        "ch": 19.2,
+        "ex": 16,
+        "cap": 22.4,
+        "ic": 32
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 32,
+      "variation": "12",
+      "units": {
+        "ch": 17.6,
+        "ex": 15.68,
+        "cap": 22.08,
+        "ic": 32
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 32,
+      "variation": "16",
+      "units": {
+        "ch": 19.2,
+        "ex": 16,
+        "cap": 22.4,
+        "ic": 32
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 72,
+      "variation": "auto",
+      "units": {
+        "ch": 86.4,
+        "ex": 43.2,
+        "cap": 57.6,
+        "ic": 72
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 72,
+      "variation": "none",
+      "units": {
+        "ch": 43.2,
+        "ex": 36,
+        "cap": 50.4,
+        "ic": 72
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 72,
+      "variation": "12",
+      "units": {
+        "ch": 39.6,
+        "ex": 35.28,
+        "cap": 49.67984375,
+        "ic": 72
+      }
+    },
+    {
+      "family": "Optical",
+      "size": 72,
+      "variation": "16",
+      "units": {
+        "ch": 43.2,
+        "ex": 36,
+        "cap": 50.4,
+        "ic": 72
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 16,
+      "variation": "auto",
+      "units": {
+        "ch": 9.151875,
+        "ex": 8.70390625,
+        "cap": 11.42390625,
+        "ic": 16
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 16,
+      "variation": "none",
+      "units": {
+        "ch": 9.151875,
+        "ex": 8.70390625,
+        "cap": 11.42390625,
+        "ic": 16
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 16,
+      "variation": "12",
+      "units": {
+        "ch": 9.151875,
+        "ex": 8.70390625,
+        "cap": 11.42390625,
+        "ic": 16
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 16,
+      "variation": "16",
+      "units": {
+        "ch": 9.151875,
+        "ex": 8.70390625,
+        "cap": 11.42390625,
+        "ic": 16
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 20,
+      "variation": "auto",
+      "units": {
+        "ch": 11.43984375,
+        "ex": 10.87984375,
+        "cap": 14.28,
+        "ic": 20
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 20,
+      "variation": "none",
+      "units": {
+        "ch": 11.43984375,
+        "ex": 10.87984375,
+        "cap": 14.28,
+        "ic": 20
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 20,
+      "variation": "12",
+      "units": {
+        "ch": 11.43984375,
+        "ex": 10.87984375,
+        "cap": 14.28,
+        "ic": 20
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 20,
+      "variation": "16",
+      "units": {
+        "ch": 11.43984375,
+        "ex": 10.87984375,
+        "cap": 14.28,
+        "ic": 20
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 32,
+      "variation": "auto",
+      "units": {
+        "ch": 18.30390625,
+        "ex": 17.40796875,
+        "cap": 22.84796875,
+        "ic": 32
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 32,
+      "variation": "none",
+      "units": {
+        "ch": 18.30390625,
+        "ex": 17.40796875,
+        "cap": 22.84796875,
+        "ic": 32
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 32,
+      "variation": "12",
+      "units": {
+        "ch": 18.30390625,
+        "ex": 17.40796875,
+        "cap": 22.84796875,
+        "ic": 32
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 32,
+      "variation": "16",
+      "units": {
+        "ch": 18.30390625,
+        "ex": 17.40796875,
+        "cap": 22.84796875,
+        "ic": 32
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 72,
+      "variation": "auto",
+      "units": {
+        "ch": 41.18390625,
+        "ex": 39.16796875,
+        "cap": 51.40796875,
+        "ic": 72
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 72,
+      "variation": "none",
+      "units": {
+        "ch": 41.18390625,
+        "ex": 39.16796875,
+        "cap": 51.40796875,
+        "ic": 72
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 72,
+      "variation": "12",
+      "units": {
+        "ch": 41.18390625,
+        "ex": 39.16796875,
+        "cap": 51.40796875,
+        "ic": 72
+      }
+    },
+    {
+      "family": "Noto",
+      "size": 72,
+      "variation": "16",
+      "units": {
+        "ch": 41.18390625,
+        "ex": 39.16796875,
+        "cap": 51.40796875,
+        "ic": 72
+      }
+    }
+  ],
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  "loaded": [
+    {
+      "family": "Optical",
+      "status": "loaded"
+    },
+    {
+      "family": "Noto",
+      "status": "loaded"
+    }
+  ],
+  "scope": "Structured CSSOM observations on an owned Olo Agent Screen, loaded generated Optical and repository Noto fonts; no visual claim."
+}

@@ -134,8 +134,12 @@ pub struct FontRequest {
 pub struct Font {
     pub request: FontRequest,
     pub metrics: FontMetrics,
+    context: u64,
 }
 impl Font {
+    pub fn context(&self) -> u64 {
+        self.context
+    }
     fn new(host: &impl Host, request: FontRequest) -> Result<Self> {
         if !request.size.is_finite()
             || request.size.is_sign_negative()
@@ -146,11 +150,15 @@ impl Font {
         {
             return Err(Error::ContextUnavailable);
         }
+        let context = host.font_context();
         let metrics = host.font(&request)?;
+        if host.font_context() != context {
+            return Err(Error::Stale);
+        }
         if [request.size, request.weight, metrics.ex, metrics.cap, metrics.ch, metrics.ic, metrics.normal_line_height].into_iter().any(|v| !v.is_finite() || v.is_sign_negative()) {
             return Err(Error::ContextUnavailable);
         }
-        Ok(Self { request, metrics })
+        Ok(Self { request, metrics, context })
     }
 }
 /// All callbacks belong to one immutable generation. Viewport/container/tree
@@ -160,6 +168,10 @@ pub trait Host {
     fn scheme(&self) -> color::Scheme;
     fn system_color(&self, color: color::SystemColor, scheme: color::Scheme) -> color::Result<color::Color>;
     fn font(&self, request: &FontRequest) -> Result<FontMetrics>;
+    /// Stable selection context within this generation, including language,
+    /// generic-family policy and any subject-specific font inputs. Equal CSS
+    /// requests can share selected metrics only when this identity also agrees.
+    fn font_context(&self) -> u64;
     fn font_size(&self, keyword: Keyword, parent_size: f64) -> Result<f64>;
     /// Device pixels per CSS pixel, including page zoom. The revision changes
     /// with this scale; computed border widths must be snapped for it.
@@ -183,6 +195,9 @@ impl<H: Host + ?Sized> Host for &H {
     }
     fn font(&self, r: &FontRequest) -> Result<FontMetrics> {
         (**self).font(r)
+    }
+    fn font_context(&self) -> u64 {
+        (**self).font_context()
     }
     fn font_size(&self, k: Keyword, parent: f64) -> Result<f64> {
         (**self).font_size(k, parent)
@@ -266,6 +281,7 @@ impl Defaults {
             return Err(Error::Limit);
         }
         let revision = host.revision();
+        let font_context = host.font_context();
         let mut specified = Vec::with_capacity(Property::ALL.len());
         for &property in Property::ALL {
             check(cancelled)?;
@@ -293,7 +309,7 @@ impl Defaults {
         for (i, entry) in defaults.values.iter().enumerate() {
             defaults.positions[entry.property as usize] = i as u8;
         }
-        if host.revision() != revision {
+        if host.revision() != revision || host.font_context() != font_context {
             return Err(Error::Stale);
         }
         check(cancelled)?;
@@ -380,6 +396,10 @@ impl Style {
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
         check(cancelled)?;
+        let font_context = host.font_context();
+        if options.root && font_context != defaults.initial_font.context {
+            return Err(Error::Stale);
+        }
         if host.revision() != defaults.revision || parent.is_some_and(|p| !Arc::ptr_eq(&p.defaults, &defaults)) || root.is_some_and(|r| !r.root || !Arc::ptr_eq(&r.defaults, &defaults)) {
             return Err(Error::Stale);
         }
@@ -401,7 +421,7 @@ impl Style {
         } else {
             Arc::from(computed.values)
         };
-        if host.revision() != defaults.revision {
+        if host.revision() != defaults.revision || host.font_context() != font_context || computed.font.context != font_context {
             return Err(Error::Stale);
         }
         check(cancelled)?;

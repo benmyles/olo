@@ -1,0 +1,3189 @@
+{
+  "parent": "239cdb4bf9d14d7473bd7748fd561dbfe3b32ded",
+  "features": [],
+  "platform": "Linux-7.2.15-300.fc45.x86_64-x86_64-with-glibc2.44",
+  "cpu": ": Intel(R) Core(TM) Ultra 7 356H",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "affinity": 0,
+  "method": "Three alternating release processes for common operations on CPU0, means per process, medians over processes. Native metrics use cache_entries=0 vs enabled in the same binary; first calls/max worker slices recorded separately. No concurrent builds/tests or GUI. Synthetic library costs, no browser/Chrome performance claim.",
+  "hashes": {
+    "before-style_bench": "a1861e7fde4e4e154d9e6c5e21afb499718a6683bc85234a8a987e47e83f3706",
+    "before-font_bench": "c39450ddbf8b5319c79dddfca4bae2c9dd8a95193d2289a4f6bf624e90b697fc",
+    "before-cascade_property_bench": "43325d57db5c74c495e25dfbacfabd0d0b9f09a9ea215764ecee320273cbc4e7",
+    "before-cascade_bench": "d3742a647e6eb4cbe661442b21467e25a1498bbdeca1d1fefe3784fa26bfddf5",
+    "after-style_bench": "0db4d887934bb2ade6f17c0550782751d5337be30af1eecbdd4f0ce7b8e3313e",
+    "after-font_bench": "ac2852c9ec450210180974ab4cfd12d154b2c8b5886502f93021c4c49518739b",
+    "after-cascade_property_bench": "faebfd6ac20c85290310af555ae447841961fe7d72ad91a7b30fd1b63ed2c4bf",
+    "after-cascade_bench": "d87b05b048a995d432eccb085652d04e6ba4fa0fe7d7fc9f18c14d9d709415da",
+    "after-font_native_bench": "380c3b7417edb9197c2f4c9ca61e4e4466fecbd0cbc0c16216ee0e5fea062e9d"
+  },
+  "source_hashes": {
+    "crates/web/src/font/casefold.rs": "cff7f67d5fd17960b64457158d57d0e22cc15d677bd9806dd545f83dd7791ba7",
+    "crates/web/src/font/mod.rs": "cc4fe0eafd4e64595c1903469edb157a0faa653f423578950b5ebc24275fa300",
+    "crates/web/src/font/casefold_data.rs": "ae7e61fbed916829ed32c92ace1572e11ec830805623e8f82de6aa63867cfe52",
+    "crates/web/src/font/catalog.rs": "baf0f610375b5086024c697b65a0f130f56dd5797cbe33308e1ec1c426a87d03",
+    "crates/web/src/font/matching.rs": "4ff00ebeae6eb758de776bb319b1a24a9c7596dbecbe496cd42568125ecaae63",
+    "crates/web/src/font/scope.rs": "fa6135c66934158bab4767f5dffb56682876a9cdea51b178fd5c46a2e5fbfe22",
+    "crates/web/src/font/metrics.rs": "c012a859f28eb2aecd22ea144ecef0d9488d676a188438c4daa6b581433683e9",
+    "crates/web/src/css/style/mod.rs": "33d921927a366c716071069740c9e0f50b1fb7fdc02011e8c57d634c8616f984",
+    "crates/web/src/css/style/context.rs": "6931b74cb52fcca3ae22a334bdc7390138d86de29c1e7b1988ec74a0ebc38067",
+    "crates/web/src/css/style/coupled.rs": "6e7d274e67085630ef8cb90f2ade74c0827e2a1093df526aab1a6106d28d1710",
+    "crates/web/src/css/style/compute.rs": "f445a23f63f1e422867a659e925a561b984d341f1c7892584ac9535d02364f55",
+    "crates/web/src/css/style/job.rs": "4610e0945170005e3b71cf5cb12d9dbd1bc8e4b4e1b42725906c788c0a2e39e5",
+    "crates/web/src/css/style/memory.rs": "3ed7aa97f7bad64e33f1822d7e4c96224f0ca8f052e08de7a1ed1f1aa3f6501a",
+    "crates/web/examples/style_bench.rs": "f112ec597845fcb387beccd0f08434be2b1a1ed5a4b7387c0d3d82ea33ee5c8b",
+    "crates/web/examples/font_bench.rs": "add4d815ed7d8aba7c274e591d4f22d7f7a74c2d97c23296fd32a7af4df521cd",
+    "crates/web/examples/font_native_bench.rs": "9e74dcb28f3bfe5afa8f80d764fc3c436c5d845def440e65a8ffc8093e9d8238",
+    "crates/web/examples/cascade_property_bench.rs": "07b7c2e42df7f2c9e3517ca3ecd591e3e25e340ef34985f5b788af2c3a0051e1",
+    "crates/web/examples/cascade_bench.rs": "e21b8d7ef1a7603ff930ef68f1715636476bdb64804f79a98d2018f12233f95a",
+    "crates/web/tests/support/style_host.rs": "b2b6a62486f0f1268bebd1c7fd801b586c48a0927f67c641859dce87e59b8dea",
+    "crates/web/tests/support/native_font_host.rs": "35e7fa9d87f9b61255034d3283ade51271a84d4970e753ef87a29266164e5691",
+    "crates/web/tests/font-native-fixtures/SOURCE.json": "37cde9ab2fc0ec81b13b0f5fe1deedd3fb643dc15773f72f3dcaa229cf0cd78a",
+    "/home/ben/worktrees/olo/browser/docs/browser/measurements/2026-11-05-native-font-measure.py": "45be14aea62e8b574e2afe4dd864fbc9fb4af1427ad3946f16cc8edcd3195136",
+    "Cargo.toml": "7b4bc7441d54b292af325542559b818740072d324345eeb7787f87e297b7a773",
+    "Cargo.lock": "972f4d5500a9d07f6b2b17e8c2bd81edad1cbc0d8c32fc1c5420046ef84da6bd",
+    "crates/web/Cargo.toml": "60b5aa766c2213305e33aa07a445b075d2c134191977ee7c8921f8576007de3d"
+  },
+  "runs": [
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "bare"
+      ],
+      "maximum_rss_kib": 4180,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 86592,
+            "accounted_style_tree_bytes": 116864,
+            "build_drop_ms": 1.4767996,
+            "custom_bytes": 40,
+            "defaults_us": 55.002,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 1.559088,
+            "first_max_step_us": 214.351,
+            "font_bytes": 120,
+            "max_step_us": 196.92399999999998,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 9.404557,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "bare"
+      ],
+      "maximum_rss_kib": 4284,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 86600,
+            "accounted_style_tree_bytes": 116872,
+            "build_drop_ms": 1.4561289,
+            "custom_bytes": 40,
+            "defaults_us": 83.036,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 1.545568,
+            "first_max_step_us": 207.97299999999998,
+            "font_bytes": 128,
+            "max_step_us": 203.36599999999999,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 9.348782,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 4284,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 87064,
+            "accounted_style_tree_bytes": 117336,
+            "build_drop_ms": 2.1342114,
+            "custom_bytes": 40,
+            "defaults_us": 55.062000000000005,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.19069,
+            "first_max_step_us": 305.84299999999996,
+            "font_bytes": 240,
+            "max_step_us": 304.704,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 14.993682,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 3968,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 87080,
+            "accounted_style_tree_bytes": 117352,
+            "build_drop_ms": 2.1015551,
+            "custom_bytes": 40,
+            "defaults_us": 46.729,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.145473,
+            "first_max_step_us": 313.47900000000004,
+            "font_bytes": 256,
+            "max_step_us": 301.873,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 15.030286,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "varying"
+      ],
+      "maximum_rss_kib": 4712,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 382768,
+            "accounted_style_tree_bytes": 413040,
+            "build_drop_ms": 2.8055394,
+            "custom_bytes": 40,
+            "defaults_us": 42.963,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.907096,
+            "first_max_step_us": 403.996,
+            "font_bytes": 240,
+            "max_step_us": 383.80199999999996,
+            "numeric_bytes": 0,
+            "override_bytes": 296128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 17.473004,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "varying"
+      ],
+      "maximum_rss_kib": 4536,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 382784,
+            "accounted_style_tree_bytes": 413056,
+            "build_drop_ms": 2.9917002,
+            "custom_bytes": 40,
+            "defaults_us": 42.932,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.897609,
+            "first_max_step_us": 390.659,
+            "font_bytes": 256,
+            "max_step_us": 2844.0969999999998,
+            "numeric_bytes": 0,
+            "override_bytes": 296128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 30.0882,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "bare"
+      ],
+      "maximum_rss_kib": 7816,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 806592,
+            "accounted_style_tree_bytes": 1775744,
+            "build_drop_ms": 14.5156735,
+            "custom_bytes": 40,
+            "defaults_us": 53.507,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 25.453087,
+            "first_max_step_us": 7343.917,
+            "font_bytes": 120,
+            "max_step_us": 381.81800000000004,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 9.7350453,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "bare"
+      ],
+      "maximum_rss_kib": 7860,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 806600,
+            "accounted_style_tree_bytes": 1775752,
+            "build_drop_ms": 14.4185733,
+            "custom_bytes": 40,
+            "defaults_us": 53.554,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 14.861947,
+            "first_max_step_us": 351.016,
+            "font_bytes": 128,
+            "max_step_us": 378.389,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 9.825486,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 8144,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 807064,
+            "accounted_style_tree_bytes": 1776216,
+            "build_drop_ms": 21.0470484,
+            "custom_bytes": 40,
+            "defaults_us": 43.449999999999996,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 21.637362,
+            "first_max_step_us": 453.849,
+            "font_bytes": 240,
+            "max_step_us": 628.7330000000001,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 16.4177964,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 8368,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 807080,
+            "accounted_style_tree_bytes": 1776232,
+            "build_drop_ms": 21.598082299999998,
+            "custom_bytes": 40,
+            "defaults_us": 46.589999999999996,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 23.566976,
+            "first_max_step_us": 2771.955,
+            "font_bytes": 256,
+            "max_step_us": 7876.8640000000005,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 17.0114601,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "varying"
+      ],
+      "maximum_rss_kib": 14148,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 3766768,
+            "accounted_style_tree_bytes": 4735920,
+            "build_drop_ms": 28.406582000000004,
+            "custom_bytes": 40,
+            "defaults_us": 44.082,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 28.635078,
+            "first_max_step_us": 528.999,
+            "font_bytes": 240,
+            "max_step_us": 730.593,
+            "numeric_bytes": 0,
+            "override_bytes": 2960128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 19.0125638,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "varying"
+      ],
+      "maximum_rss_kib": 13900,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 3766784,
+            "accounted_style_tree_bytes": 4735936,
+            "build_drop_ms": 30.6937271,
+            "custom_bytes": 40,
+            "defaults_us": 46.784,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 28.160465,
+            "first_max_step_us": 548.033,
+            "font_bytes": 256,
+            "max_step_us": 9351.059,
+            "numeric_bytes": 0,
+            "override_bytes": 2960128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 19.2718006,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-font_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 15104,
+      "result": {
+        "cases": [
+          {
+            "accounted_style_tree_bytes": 451578,
+            "build_drop_ms": 3.0830413,
+            "elements": 1000,
+            "families_bytes": 106,
+            "first_build_ms": 3.270644,
+            "first_max_step_us": 423.175,
+            "font_bytes": 120120,
+            "max_step_us": 412.129
+          },
+          {
+            "accounted_style_tree_bytes": 5122458,
+            "build_drop_ms": 31.104114799999998,
+            "elements": 10000,
+            "families_bytes": 106,
+            "first_build_ms": 30.962608999999997,
+            "first_max_step_us": 853.1850000000001,
+            "font_bytes": 1200120,
+            "max_step_us": 875.894
+          }
+        ],
+        "method": "Release compile/drop and full build/drop means, first calls and maximum observed 128-node steps separate. Referenced payload deduplicates shared arrays/fonts and includes Arc controls and tree capacities, excludes allocator/hash controls and borrowed DOM/rules; not process RSS. All generated scalars checked outside timings.",
+        "parsing": [
+          {
+            "compile_drop_us": 0.29727400000000004,
+            "first_compile_us": 7.924,
+            "property": "font-family",
+            "value": "New Century Schoolbook, \"serif\", monospace, generic(kai)"
+          },
+          {
+            "compile_drop_us": 0.6465972000000001,
+            "first_compile_us": 1.371,
+            "property": "font-family",
+            "value": "a b c d e f, one, two, three, four, five, serif"
+          },
+          {
+            "compile_drop_us": 0.1400179,
+            "first_compile_us": 4.507000000000001,
+            "property": "font-style",
+            "value": "oblique 10grad"
+          },
+          {
+            "compile_drop_us": 0.33125889999999997,
+            "first_compile_us": 3.121,
+            "property": "font-style",
+            "value": "oblique calc(sign(1ex - 10px) * 10deg)"
+          },
+          {
+            "compile_drop_us": 0.3291438,
+            "first_compile_us": 1.3230000000000002,
+            "property": "font-width",
+            "value": "calc(100% + sign(1ex - 10px) * 5%)"
+          },
+          {
+            "compile_drop_us": 0.051439599999999995,
+            "first_compile_us": 0.38,
+            "property": "font-stretch",
+            "value": "semi-condensed"
+          }
+        ],
+        "rounds": 10,
+        "scope": "Original font longhand compilation and initial style document jobs with generated varying face requests. Supplied fixed numeric metrics, no font loading/matching/shaping, UA sheet, CSSOM, layout/rasterization, network/JS/UI or website/Chrome performance evidence."
+      },
+      "repeat": 0,
+      "benchmark": "font_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-font_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 15224,
+      "result": {
+        "cases": [
+          {
+            "accounted_style_tree_bytes": 459586,
+            "build_drop_ms": 3.1217604999999997,
+            "elements": 1000,
+            "families_bytes": 106,
+            "first_build_ms": 3.354087,
+            "first_max_step_us": 439.362,
+            "font_bytes": 128128,
+            "max_step_us": 407.872
+          },
+          {
+            "accounted_style_tree_bytes": 5202466,
+            "build_drop_ms": 33.8418052,
+            "elements": 10000,
+            "families_bytes": 106,
+            "first_build_ms": 31.077611,
+            "first_max_step_us": 755.2579999999999,
+            "font_bytes": 1280128,
+            "max_step_us": 10305.688
+          }
+        ],
+        "method": "Release compile/drop and full build/drop means, first calls and maximum observed 128-node steps separate. Referenced payload deduplicates shared arrays/fonts and includes Arc controls and tree capacities, excludes allocator/hash controls and borrowed DOM/rules; not process RSS. All generated scalars checked outside timings.",
+        "parsing": [
+          {
+            "compile_drop_us": 0.27595749999999997,
+            "first_compile_us": 7.576,
+            "property": "font-family",
+            "value": "New Century Schoolbook, \"serif\", monospace, generic(kai)"
+          },
+          {
+            "compile_drop_us": 0.6289905,
+            "first_compile_us": 1.371,
+            "property": "font-family",
+            "value": "a b c d e f, one, two, three, four, five, serif"
+          },
+          {
+            "compile_drop_us": 0.1345259,
+            "first_compile_us": 2.735,
+            "property": "font-style",
+            "value": "oblique 10grad"
+          },
+          {
+            "compile_drop_us": 0.32535749999999997,
+            "first_compile_us": 3.1599999999999997,
+            "property": "font-style",
+            "value": "oblique calc(sign(1ex - 10px) * 10deg)"
+          },
+          {
+            "compile_drop_us": 0.33998700000000004,
+            "first_compile_us": 2.666,
+            "property": "font-width",
+            "value": "calc(100% + sign(1ex - 10px) * 5%)"
+          },
+          {
+            "compile_drop_us": 0.053231600000000004,
+            "first_compile_us": 0.49500000000000005,
+            "property": "font-stretch",
+            "value": "semi-condensed"
+          }
+        ],
+        "rounds": 10,
+        "scope": "Original font longhand compilation and initial style document jobs with generated varying face requests. Supplied fixed numeric metrics, no font loading/matching/shaping, UA sheet, CSSOM, layout/rasterization, network/JS/UI or website/Chrome performance evidence."
+      },
+      "repeat": 0,
+      "benchmark": "font_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "before-cascade_property_bench",
+      "args": [
+        "30000000"
+      ],
+      "maximum_rss_kib": 3296,
+      "result": {
+        "cases": [
+          {
+            "first_ns": 327,
+            "ns_per_query": 10.6165505,
+            "property": "width"
+          },
+          {
+            "first_ns": 36,
+            "ns_per_query": 10.5452536,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 79,
+            "ns_per_query": 7.637557933333333,
+            "property": "color"
+          },
+          {
+            "first_ns": 59,
+            "ns_per_query": 2.732273466666667,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      },
+      "repeat": 0,
+      "benchmark": "cascade_property_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-cascade_property_bench",
+      "args": [
+        "30000000"
+      ],
+      "maximum_rss_kib": 2940,
+      "result": {
+        "cases": [
+          {
+            "first_ns": 392,
+            "ns_per_query": 10.6571111,
+            "property": "width"
+          },
+          {
+            "first_ns": 35,
+            "ns_per_query": 10.677799966666667,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 630,
+            "ns_per_query": 7.9489513,
+            "property": "color"
+          },
+          {
+            "first_ns": 59,
+            "ns_per_query": 2.6724665666666665,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      },
+      "repeat": 0,
+      "benchmark": "cascade_property_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "before-cascade_bench",
+      "args": [
+        "100"
+      ],
+      "maximum_rss_kib": 8472,
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.56599322,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.6206160000000001,
+            "first_match_us": 10.444,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.26710808999999996,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.06202345,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 0.9921610000000001,
+            "first_match_us": 8.647,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.54067821,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.09596445,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 2.0194509999999997,
+            "first_match_us": 10.876000000000001,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.07621018,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 100,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "cascade_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-cascade_bench",
+      "args": [
+        "100"
+      ],
+      "maximum_rss_kib": 8576,
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.5760643299999999,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.613164,
+            "first_match_us": 4.976,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.27278285999999996,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.06368994,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 1.034606,
+            "first_match_us": 6.744,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.57075331,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.35157661,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 2.024483,
+            "first_match_us": 10.997,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.0944295,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 100,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      },
+      "repeat": 0,
+      "benchmark": "cascade_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "after-font_native_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 19324,
+      "result": {
+        "catalog_build_drop_us": 5.8063,
+        "catalog_payload_bytes": 3925359,
+        "faces": 6,
+        "first_catalog_us": 41.106,
+        "first_metrics_us": 7.24,
+        "jobs": [
+          {
+            "build_drop_ms": 3.6351413999999997,
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "elements": 1000,
+            "first_build_ms": 3.684551,
+            "first_max_step_us": 492.79,
+            "font_bytes": 127744,
+            "label": "cache_off",
+            "max_step_us": 481.505,
+            "style_payload_bytes": 430209
+          },
+          {
+            "build_drop_ms": 2.3663149,
+            "cache_conservative_bytes": 349806,
+            "cache_entries": 303,
+            "elements": 1000,
+            "first_build_ms": 2.75297,
+            "first_max_step_us": 465.574,
+            "font_bytes": 127744,
+            "label": "cache_on",
+            "max_step_us": 313.05,
+            "style_payload_bytes": 430209
+          },
+          {
+            "build_drop_ms": 36.763095699999994,
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "elements": 10000,
+            "first_build_ms": 36.864204,
+            "first_max_step_us": 833.9060000000001,
+            "font_bytes": 1275904,
+            "label": "cache_off",
+            "max_step_us": 928.093,
+            "style_payload_bytes": 4241169
+          },
+          {
+            "build_drop_ms": 26.175989700000002,
+            "cache_conservative_bytes": 698771,
+            "cache_entries": 605,
+            "elements": 10000,
+            "first_build_ms": 24.320140000000002,
+            "first_max_step_us": 604.962,
+            "font_bytes": 1275904,
+            "label": "cache_on",
+            "max_step_us": 12337.461,
+            "style_payload_bytes": 4241169
+          }
+        ],
+        "method": "Means over repetitions; cold first calls; maximum observed 128-node worker slice. Same binary/cache contract with cache_entries=0 control. Source/catalog/cache payload counts exclude allocator controls/RSS; style job payload excludes borrowed source/catalog/cache. No Font interner yet.",
+        "metrics": [
+          {
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "cap": 14.280000000000001,
+            "ch": 11.44,
+            "ex": 10.88265869140625,
+            "label": "cache_off",
+            "metrics_ns": 1034.7688
+          },
+          {
+            "cache_conservative_bytes": 1537,
+            "cache_entries": 1,
+            "cap": 14.280000000000001,
+            "ch": 11.44,
+            "ex": 10.88265869140625,
+            "label": "cache_on",
+            "metrics_ns": 25.8997
+          }
+        ],
+        "rounds": 10,
+        "scope": "Native installed-file table loading/matching/metric lookup and original static CSS jobs. Six repository Noto sources, pre-read/shared source bytes. No disk I/O in timings, shaping/rasterization/layout/network/V8/UI or website claim.",
+        "select_family_ns": 41.1673,
+        "source_bytes": 3923244
+      },
+      "repeat": 0,
+      "benchmark": "native",
+      "variant": "after"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "bare"
+      ],
+      "maximum_rss_kib": 4332,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 86600,
+            "accounted_style_tree_bytes": 116872,
+            "build_drop_ms": 1.4335285,
+            "custom_bytes": 40,
+            "defaults_us": 51.327,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 1.490533,
+            "first_max_step_us": 211.23,
+            "font_bytes": 128,
+            "max_step_us": 189.286,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 9.346069,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "bare"
+      ],
+      "maximum_rss_kib": 4248,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 86592,
+            "accounted_style_tree_bytes": 116864,
+            "build_drop_ms": 1.4350648000000001,
+            "custom_bytes": 40,
+            "defaults_us": 54.357,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 1.5188860000000002,
+            "first_max_step_us": 206.97299999999998,
+            "font_bytes": 120,
+            "max_step_us": 191.71800000000002,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 9.419191,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 4200,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 87080,
+            "accounted_style_tree_bytes": 117352,
+            "build_drop_ms": 2.0743276,
+            "custom_bytes": 40,
+            "defaults_us": 45.299,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.151309,
+            "first_max_step_us": 303.57300000000004,
+            "font_bytes": 256,
+            "max_step_us": 286.36,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 16.833687,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 4272,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 87064,
+            "accounted_style_tree_bytes": 117336,
+            "build_drop_ms": 2.1066861,
+            "custom_bytes": 40,
+            "defaults_us": 43.655,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.196527,
+            "first_max_step_us": 301.466,
+            "font_bytes": 240,
+            "max_step_us": 283.947,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 16.436696,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "varying"
+      ],
+      "maximum_rss_kib": 4828,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 382784,
+            "accounted_style_tree_bytes": 413056,
+            "build_drop_ms": 2.7652139,
+            "custom_bytes": 40,
+            "defaults_us": 46.17,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.988091,
+            "first_max_step_us": 405.42699999999996,
+            "font_bytes": 256,
+            "max_step_us": 379.747,
+            "numeric_bytes": 0,
+            "override_bytes": 296128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 18.150549,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "varying"
+      ],
+      "maximum_rss_kib": 4816,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 382768,
+            "accounted_style_tree_bytes": 413040,
+            "build_drop_ms": 2.8562087,
+            "custom_bytes": 40,
+            "defaults_us": 48.492999999999995,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.926835,
+            "first_max_step_us": 397.575,
+            "font_bytes": 240,
+            "max_step_us": 388.83299999999997,
+            "numeric_bytes": 0,
+            "override_bytes": 296128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 18.202004,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "bare"
+      ],
+      "maximum_rss_kib": 7880,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 806600,
+            "accounted_style_tree_bytes": 1775752,
+            "build_drop_ms": 14.3763014,
+            "custom_bytes": 40,
+            "defaults_us": 52.431,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 14.764507,
+            "first_max_step_us": 367.725,
+            "font_bytes": 128,
+            "max_step_us": 425.821,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 9.7390679,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "bare"
+      ],
+      "maximum_rss_kib": 7860,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 806592,
+            "accounted_style_tree_bytes": 1775744,
+            "build_drop_ms": 14.258217300000002,
+            "custom_bytes": 40,
+            "defaults_us": 54.02,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 15.034091,
+            "first_max_step_us": 351.53799999999995,
+            "font_bytes": 120,
+            "max_step_us": 356.805,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 9.704373,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 8148,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 807080,
+            "accounted_style_tree_bytes": 1776232,
+            "build_drop_ms": 23.1045278,
+            "custom_bytes": 40,
+            "defaults_us": 44.209,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 21.22559,
+            "first_max_step_us": 475.046,
+            "font_bytes": 256,
+            "max_step_us": 9903.453,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 16.8536409,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 8144,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 807064,
+            "accounted_style_tree_bytes": 1776216,
+            "build_drop_ms": 20.6988202,
+            "custom_bytes": 40,
+            "defaults_us": 43.638,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 21.597907,
+            "first_max_step_us": 446.144,
+            "font_bytes": 240,
+            "max_step_us": 664.931,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 16.3804116,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "varying"
+      ],
+      "maximum_rss_kib": 14152,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 3766784,
+            "accounted_style_tree_bytes": 4735936,
+            "build_drop_ms": 30.250768700000002,
+            "custom_bytes": 40,
+            "defaults_us": 45.355999999999995,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 27.976231000000002,
+            "first_max_step_us": 549.838,
+            "font_bytes": 256,
+            "max_step_us": 10733.501,
+            "numeric_bytes": 0,
+            "override_bytes": 2960128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 19.1134859,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "varying"
+      ],
+      "maximum_rss_kib": 14048,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 3766768,
+            "accounted_style_tree_bytes": 4735920,
+            "build_drop_ms": 27.9585193,
+            "custom_bytes": 40,
+            "defaults_us": 44.618,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 28.212118,
+            "first_max_step_us": 570.369,
+            "font_bytes": 240,
+            "max_step_us": 712.2860000000001,
+            "numeric_bytes": 0,
+            "override_bytes": 2960128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 18.8961957,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-font_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 15224,
+      "result": {
+        "cases": [
+          {
+            "accounted_style_tree_bytes": 459586,
+            "build_drop_ms": 3.0791971,
+            "elements": 1000,
+            "families_bytes": 106,
+            "first_build_ms": 3.319304,
+            "first_max_step_us": 435.514,
+            "font_bytes": 128128,
+            "max_step_us": 417.902
+          },
+          {
+            "accounted_style_tree_bytes": 5202466,
+            "build_drop_ms": 32.5331883,
+            "elements": 10000,
+            "families_bytes": 106,
+            "first_build_ms": 30.497283,
+            "first_max_step_us": 859.913,
+            "font_bytes": 1280128,
+            "max_step_us": 8921.393999999998
+          }
+        ],
+        "method": "Release compile/drop and full build/drop means, first calls and maximum observed 128-node steps separate. Referenced payload deduplicates shared arrays/fonts and includes Arc controls and tree capacities, excludes allocator/hash controls and borrowed DOM/rules; not process RSS. All generated scalars checked outside timings.",
+        "parsing": [
+          {
+            "compile_drop_us": 0.2829932,
+            "first_compile_us": 7.329,
+            "property": "font-family",
+            "value": "New Century Schoolbook, \"serif\", monospace, generic(kai)"
+          },
+          {
+            "compile_drop_us": 0.6184437,
+            "first_compile_us": 1.37,
+            "property": "font-family",
+            "value": "a b c d e f, one, two, three, four, five, serif"
+          },
+          {
+            "compile_drop_us": 0.13766420000000001,
+            "first_compile_us": 2.687,
+            "property": "font-style",
+            "value": "oblique 10grad"
+          },
+          {
+            "compile_drop_us": 0.3173326,
+            "first_compile_us": 4.335999999999999,
+            "property": "font-style",
+            "value": "oblique calc(sign(1ex - 10px) * 10deg)"
+          },
+          {
+            "compile_drop_us": 0.3391405,
+            "first_compile_us": 1.356,
+            "property": "font-width",
+            "value": "calc(100% + sign(1ex - 10px) * 5%)"
+          },
+          {
+            "compile_drop_us": 0.0495428,
+            "first_compile_us": 0.25,
+            "property": "font-stretch",
+            "value": "semi-condensed"
+          }
+        ],
+        "rounds": 10,
+        "scope": "Original font longhand compilation and initial style document jobs with generated varying face requests. Supplied fixed numeric metrics, no font loading/matching/shaping, UA sheet, CSSOM, layout/rasterization, network/JS/UI or website/Chrome performance evidence."
+      },
+      "repeat": 1,
+      "benchmark": "font_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "before-font_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 15048,
+      "result": {
+        "cases": [
+          {
+            "accounted_style_tree_bytes": 451578,
+            "build_drop_ms": 3.0852288,
+            "elements": 1000,
+            "families_bytes": 106,
+            "first_build_ms": 3.207138,
+            "first_max_step_us": 422.165,
+            "font_bytes": 120120,
+            "max_step_us": 424.07300000000004
+          },
+          {
+            "accounted_style_tree_bytes": 5122458,
+            "build_drop_ms": 30.857606300000004,
+            "elements": 10000,
+            "families_bytes": 106,
+            "first_build_ms": 30.952321,
+            "first_max_step_us": 855.094,
+            "font_bytes": 1200120,
+            "max_step_us": 858.837
+          }
+        ],
+        "method": "Release compile/drop and full build/drop means, first calls and maximum observed 128-node steps separate. Referenced payload deduplicates shared arrays/fonts and includes Arc controls and tree capacities, excludes allocator/hash controls and borrowed DOM/rules; not process RSS. All generated scalars checked outside timings.",
+        "parsing": [
+          {
+            "compile_drop_us": 0.2865768,
+            "first_compile_us": 9.616000000000001,
+            "property": "font-family",
+            "value": "New Century Schoolbook, \"serif\", monospace, generic(kai)"
+          },
+          {
+            "compile_drop_us": 0.6391283999999999,
+            "first_compile_us": 1.4869999999999999,
+            "property": "font-family",
+            "value": "a b c d e f, one, two, three, four, five, serif"
+          },
+          {
+            "compile_drop_us": 0.13860820000000001,
+            "first_compile_us": 2.464,
+            "property": "font-style",
+            "value": "oblique 10grad"
+          },
+          {
+            "compile_drop_us": 0.3238775,
+            "first_compile_us": 3.382,
+            "property": "font-style",
+            "value": "oblique calc(sign(1ex - 10px) * 10deg)"
+          },
+          {
+            "compile_drop_us": 0.3300325,
+            "first_compile_us": 1.3,
+            "property": "font-width",
+            "value": "calc(100% + sign(1ex - 10px) * 5%)"
+          },
+          {
+            "compile_drop_us": 0.0523246,
+            "first_compile_us": 0.33999999999999997,
+            "property": "font-stretch",
+            "value": "semi-condensed"
+          }
+        ],
+        "rounds": 10,
+        "scope": "Original font longhand compilation and initial style document jobs with generated varying face requests. Supplied fixed numeric metrics, no font loading/matching/shaping, UA sheet, CSSOM, layout/rasterization, network/JS/UI or website/Chrome performance evidence."
+      },
+      "repeat": 1,
+      "benchmark": "font_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-cascade_property_bench",
+      "args": [
+        "30000000"
+      ],
+      "maximum_rss_kib": 2980,
+      "result": {
+        "cases": [
+          {
+            "first_ns": 396,
+            "ns_per_query": 10.5930409,
+            "property": "width"
+          },
+          {
+            "first_ns": 61,
+            "ns_per_query": 11.4598434,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 82,
+            "ns_per_query": 7.1438152,
+            "property": "color"
+          },
+          {
+            "first_ns": 62,
+            "ns_per_query": 2.7131947,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      },
+      "repeat": 1,
+      "benchmark": "cascade_property_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "before-cascade_property_bench",
+      "args": [
+        "30000000"
+      ],
+      "maximum_rss_kib": 3240,
+      "result": {
+        "cases": [
+          {
+            "first_ns": 526,
+            "ns_per_query": 10.705813733333333,
+            "property": "width"
+          },
+          {
+            "first_ns": 263,
+            "ns_per_query": 11.450836466666667,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 177,
+            "ns_per_query": 7.1614687,
+            "property": "color"
+          },
+          {
+            "first_ns": 58,
+            "ns_per_query": 2.7479394,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      },
+      "repeat": 1,
+      "benchmark": "cascade_property_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-cascade_bench",
+      "args": [
+        "100"
+      ],
+      "maximum_rss_kib": 8644,
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.55610251,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.621991,
+            "first_match_us": 9.817,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.27428312,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.0554502700000001,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 0.9827530000000001,
+            "first_match_us": 8.168999999999999,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.5473117200000001,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.1180086,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 2.1437470000000003,
+            "first_match_us": 4.728000000000001,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.22236706,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 100,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "cascade_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "before-cascade_bench",
+      "args": [
+        "100"
+      ],
+      "maximum_rss_kib": 8616,
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.56235326,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.623101,
+            "first_match_us": 5.4430000000000005,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.26953168,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.050818,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 1.0197509999999999,
+            "first_match_us": 7.584,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.54239189,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.04557608,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 2.029543,
+            "first_match_us": 9.071,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.0982505500000002,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 100,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      },
+      "repeat": 1,
+      "benchmark": "cascade_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-font_native_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 19292,
+      "result": {
+        "catalog_build_drop_us": 5.6785,
+        "catalog_payload_bytes": 3925359,
+        "faces": 6,
+        "first_catalog_us": 41.156,
+        "first_metrics_us": 7.308,
+        "jobs": [
+          {
+            "build_drop_ms": 3.6007968,
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "elements": 1000,
+            "first_build_ms": 3.702718,
+            "first_max_step_us": 492.397,
+            "font_bytes": 127744,
+            "label": "cache_off",
+            "max_step_us": 476.891,
+            "style_payload_bytes": 430209
+          },
+          {
+            "build_drop_ms": 2.3517666999999998,
+            "cache_conservative_bytes": 349806,
+            "cache_entries": 303,
+            "elements": 1000,
+            "first_build_ms": 2.729898,
+            "first_max_step_us": 466.419,
+            "font_bytes": 127744,
+            "label": "cache_on",
+            "max_step_us": 309.66799999999995,
+            "style_payload_bytes": 430209
+          },
+          {
+            "build_drop_ms": 39.4458152,
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "elements": 10000,
+            "first_build_ms": 36.935582000000004,
+            "first_max_step_us": 935.675,
+            "font_bytes": 1275904,
+            "label": "cache_off",
+            "max_step_us": 10914.221,
+            "style_payload_bytes": 4241169
+          },
+          {
+            "build_drop_ms": 24.4479162,
+            "cache_conservative_bytes": 698771,
+            "cache_entries": 605,
+            "elements": 10000,
+            "first_build_ms": 24.431331,
+            "first_max_step_us": 627.982,
+            "font_bytes": 1275904,
+            "label": "cache_on",
+            "max_step_us": 747.4209999999999,
+            "style_payload_bytes": 4241169
+          }
+        ],
+        "method": "Means over repetitions; cold first calls; maximum observed 128-node worker slice. Same binary/cache contract with cache_entries=0 control. Source/catalog/cache payload counts exclude allocator controls/RSS; style job payload excludes borrowed source/catalog/cache. No Font interner yet.",
+        "metrics": [
+          {
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "cap": 14.280000000000001,
+            "ch": 11.44,
+            "ex": 10.88265869140625,
+            "label": "cache_off",
+            "metrics_ns": 1040.676
+          },
+          {
+            "cache_conservative_bytes": 1537,
+            "cache_entries": 1,
+            "cap": 14.280000000000001,
+            "ch": 11.44,
+            "ex": 10.88265869140625,
+            "label": "cache_on",
+            "metrics_ns": 25.3514
+          }
+        ],
+        "rounds": 10,
+        "scope": "Native installed-file table loading/matching/metric lookup and original static CSS jobs. Six repository Noto sources, pre-read/shared source bytes. No disk I/O in timings, shaping/rasterization/layout/network/V8/UI or website claim.",
+        "select_family_ns": 44.1753,
+        "source_bytes": 3923244
+      },
+      "repeat": 1,
+      "benchmark": "native",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "bare"
+      ],
+      "maximum_rss_kib": 4088,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 86592,
+            "accounted_style_tree_bytes": 116864,
+            "build_drop_ms": 1.460459,
+            "custom_bytes": 40,
+            "defaults_us": 54.003,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 1.4720090000000001,
+            "first_max_step_us": 195.839,
+            "font_bytes": 120,
+            "max_step_us": 219.319,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 9.368099,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "bare"
+      ],
+      "maximum_rss_kib": 3940,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 86600,
+            "accounted_style_tree_bytes": 116872,
+            "build_drop_ms": 1.4322365,
+            "custom_bytes": 40,
+            "defaults_us": 50.765,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 1.494888,
+            "first_max_step_us": 196.428,
+            "font_bytes": 128,
+            "max_step_us": 201.854,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 9.357499,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 3932,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 87064,
+            "accounted_style_tree_bytes": 117336,
+            "build_drop_ms": 2.1594170999999998,
+            "custom_bytes": 40,
+            "defaults_us": 54.756,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.235981,
+            "first_max_step_us": 311.191,
+            "font_bytes": 240,
+            "max_step_us": 350.04900000000004,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 14.955568,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 4000,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 87080,
+            "accounted_style_tree_bytes": 117352,
+            "build_drop_ms": 2.3582076,
+            "custom_bytes": 40,
+            "defaults_us": 45.323,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 3.302517,
+            "first_max_step_us": 1314.6670000000001,
+            "font_bytes": 256,
+            "max_step_us": 2186.079,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 15.293245,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "varying"
+      ],
+      "maximum_rss_kib": 4856,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 382768,
+            "accounted_style_tree_bytes": 413040,
+            "build_drop_ms": 2.795318,
+            "custom_bytes": 40,
+            "defaults_us": 44.078,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.933329,
+            "first_max_step_us": 393.982,
+            "font_bytes": 240,
+            "max_step_us": 453.47999999999996,
+            "numeric_bytes": 0,
+            "override_bytes": 296128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 17.385316,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "1000",
+        "varying"
+      ],
+      "maximum_rss_kib": 4724,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 382784,
+            "accounted_style_tree_bytes": 413056,
+            "build_drop_ms": 2.7420197,
+            "custom_bytes": 40,
+            "defaults_us": 43.101,
+            "elements": 1000,
+            "families_bytes": 32,
+            "first_build_ms": 2.991723,
+            "first_max_step_us": 416.846,
+            "font_bytes": 256,
+            "max_step_us": 378.057,
+            "numeric_bytes": 0,
+            "override_bytes": 296128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 80320,
+            "styled_nodes": 1004,
+            "three_queries_ns": 17.916394,
+            "tree_container_bytes": 30272
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "bare"
+      ],
+      "maximum_rss_kib": 7692,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 806592,
+            "accounted_style_tree_bytes": 1775744,
+            "build_drop_ms": 14.139680800000002,
+            "custom_bytes": 40,
+            "defaults_us": 50.09,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 14.775416,
+            "first_max_step_us": 366.552,
+            "font_bytes": 120,
+            "max_step_us": 369.90900000000005,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 9.9039173,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "bare"
+      ],
+      "maximum_rss_kib": 7780,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 806600,
+            "accounted_style_tree_bytes": 1775752,
+            "build_drop_ms": 16.4336716,
+            "custom_bytes": 40,
+            "defaults_us": 51.003,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 14.75356,
+            "first_max_step_us": 377.416,
+            "font_bytes": 128,
+            "max_step_us": 6577.813,
+            "numeric_bytes": 0,
+            "override_bytes": 72,
+            "scene": "bare",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 9.5877615,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 8252,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 807064,
+            "accounted_style_tree_bytes": 1776216,
+            "build_drop_ms": 20.8429549,
+            "custom_bytes": 40,
+            "defaults_us": 43.939,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 21.541772,
+            "first_max_step_us": 466.894,
+            "font_bytes": 240,
+            "max_step_us": 630.019,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 16.2958408,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "uniform"
+      ],
+      "maximum_rss_kib": 8244,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 807080,
+            "accounted_style_tree_bytes": 1776232,
+            "build_drop_ms": 20.3104066,
+            "custom_bytes": 40,
+            "defaults_us": 46.958,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 21.141854000000002,
+            "first_max_step_us": 511.278,
+            "font_bytes": 256,
+            "max_step_us": 568.084,
+            "numeric_bytes": 0,
+            "override_bytes": 424,
+            "scene": "uniform",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 18.0114012,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "varying"
+      ],
+      "maximum_rss_kib": 13960,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 3766768,
+            "accounted_style_tree_bytes": 4735920,
+            "build_drop_ms": 28.0251374,
+            "custom_bytes": 40,
+            "defaults_us": 43.257999999999996,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 28.271311,
+            "first_max_step_us": 519.938,
+            "font_bytes": 240,
+            "max_step_us": 721.5360000000001,
+            "numeric_bytes": 0,
+            "override_bytes": 2960128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 19.0206182,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "before"
+    },
+    {
+      "binary": "after-style_bench",
+      "args": [
+        "10",
+        "10000",
+        "varying"
+      ],
+      "maximum_rss_kib": 13912,
+      "result": {
+        "baseline_style_dense": false,
+        "cases": [
+          {
+            "accounted_style_payload_bytes": 3766784,
+            "accounted_style_tree_bytes": 4735936,
+            "build_drop_ms": 27.7597393,
+            "custom_bytes": 40,
+            "defaults_us": 44.96,
+            "elements": 10000,
+            "families_bytes": 32,
+            "first_build_ms": 28.091504,
+            "first_max_step_us": 563.332,
+            "font_bytes": 256,
+            "max_step_us": 711.307,
+            "numeric_bytes": 0,
+            "override_bytes": 2960128,
+            "scene": "varying",
+            "shared_defaults_bytes": 6008,
+            "style_headers_bytes": 800320,
+            "styled_nodes": 10004,
+            "three_queries_ns": 21.7028405,
+            "tree_container_bytes": 969152
+          }
+        ],
+        "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+        "rounds": 10,
+        "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "style",
+      "variant": "after"
+    },
+    {
+      "binary": "before-font_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 15060,
+      "result": {
+        "cases": [
+          {
+            "accounted_style_tree_bytes": 451578,
+            "build_drop_ms": 3.119123,
+            "elements": 1000,
+            "families_bytes": 106,
+            "first_build_ms": 3.288652,
+            "first_max_step_us": 430.325,
+            "font_bytes": 120120,
+            "max_step_us": 413.604
+          },
+          {
+            "accounted_style_tree_bytes": 5122458,
+            "build_drop_ms": 31.1488443,
+            "elements": 10000,
+            "families_bytes": 106,
+            "first_build_ms": 30.97413,
+            "first_max_step_us": 893.855,
+            "font_bytes": 1200120,
+            "max_step_us": 757.067
+          }
+        ],
+        "method": "Release compile/drop and full build/drop means, first calls and maximum observed 128-node steps separate. Referenced payload deduplicates shared arrays/fonts and includes Arc controls and tree capacities, excludes allocator/hash controls and borrowed DOM/rules; not process RSS. All generated scalars checked outside timings.",
+        "parsing": [
+          {
+            "compile_drop_us": 0.2929928,
+            "first_compile_us": 11.937,
+            "property": "font-family",
+            "value": "New Century Schoolbook, \"serif\", monospace, generic(kai)"
+          },
+          {
+            "compile_drop_us": 0.6508412,
+            "first_compile_us": 1.347,
+            "property": "font-family",
+            "value": "a b c d e f, one, two, three, four, five, serif"
+          },
+          {
+            "compile_drop_us": 0.140877,
+            "first_compile_us": 2.8619999999999997,
+            "property": "font-style",
+            "value": "oblique 10grad"
+          },
+          {
+            "compile_drop_us": 0.3273462,
+            "first_compile_us": 3.124,
+            "property": "font-style",
+            "value": "oblique calc(sign(1ex - 10px) * 10deg)"
+          },
+          {
+            "compile_drop_us": 0.32747800000000005,
+            "first_compile_us": 1.667,
+            "property": "font-width",
+            "value": "calc(100% + sign(1ex - 10px) * 5%)"
+          },
+          {
+            "compile_drop_us": 0.051188899999999996,
+            "first_compile_us": 0.49100000000000005,
+            "property": "font-stretch",
+            "value": "semi-condensed"
+          }
+        ],
+        "rounds": 10,
+        "scope": "Original font longhand compilation and initial style document jobs with generated varying face requests. Supplied fixed numeric metrics, no font loading/matching/shaping, UA sheet, CSSOM, layout/rasterization, network/JS/UI or website/Chrome performance evidence."
+      },
+      "repeat": 2,
+      "benchmark": "font_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-font_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 15368,
+      "result": {
+        "cases": [
+          {
+            "accounted_style_tree_bytes": 459586,
+            "build_drop_ms": 3.1010075,
+            "elements": 1000,
+            "families_bytes": 106,
+            "first_build_ms": 3.3556,
+            "first_max_step_us": 442.593,
+            "font_bytes": 128128,
+            "max_step_us": 430.137
+          },
+          {
+            "accounted_style_tree_bytes": 5202466,
+            "build_drop_ms": 31.2605074,
+            "elements": 10000,
+            "families_bytes": 106,
+            "first_build_ms": 31.018902,
+            "first_max_step_us": 873.62,
+            "font_bytes": 1280128,
+            "max_step_us": 889.12
+          }
+        ],
+        "method": "Release compile/drop and full build/drop means, first calls and maximum observed 128-node steps separate. Referenced payload deduplicates shared arrays/fonts and includes Arc controls and tree capacities, excludes allocator/hash controls and borrowed DOM/rules; not process RSS. All generated scalars checked outside timings.",
+        "parsing": [
+          {
+            "compile_drop_us": 0.28089519999999996,
+            "first_compile_us": 8.839,
+            "property": "font-family",
+            "value": "New Century Schoolbook, \"serif\", monospace, generic(kai)"
+          },
+          {
+            "compile_drop_us": 0.6392720000000001,
+            "first_compile_us": 1.472,
+            "property": "font-family",
+            "value": "a b c d e f, one, two, three, four, five, serif"
+          },
+          {
+            "compile_drop_us": 0.1366094,
+            "first_compile_us": 2.624,
+            "property": "font-style",
+            "value": "oblique 10grad"
+          },
+          {
+            "compile_drop_us": 0.3256273,
+            "first_compile_us": 3.427,
+            "property": "font-style",
+            "value": "oblique calc(sign(1ex - 10px) * 10deg)"
+          },
+          {
+            "compile_drop_us": 0.32763719999999996,
+            "first_compile_us": 1.454,
+            "property": "font-width",
+            "value": "calc(100% + sign(1ex - 10px) * 5%)"
+          },
+          {
+            "compile_drop_us": 0.0506783,
+            "first_compile_us": 0.6819999999999999,
+            "property": "font-stretch",
+            "value": "semi-condensed"
+          }
+        ],
+        "rounds": 10,
+        "scope": "Original font longhand compilation and initial style document jobs with generated varying face requests. Supplied fixed numeric metrics, no font loading/matching/shaping, UA sheet, CSSOM, layout/rasterization, network/JS/UI or website/Chrome performance evidence."
+      },
+      "repeat": 2,
+      "benchmark": "font_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "before-cascade_property_bench",
+      "args": [
+        "30000000"
+      ],
+      "maximum_rss_kib": 3004,
+      "result": {
+        "cases": [
+          {
+            "first_ns": 510,
+            "ns_per_query": 11.406251233333334,
+            "property": "width"
+          },
+          {
+            "first_ns": 500,
+            "ns_per_query": 10.587444666666666,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 87,
+            "ns_per_query": 7.1524193,
+            "property": "color"
+          },
+          {
+            "first_ns": 60,
+            "ns_per_query": 2.7557807,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      },
+      "repeat": 2,
+      "benchmark": "cascade_property_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-cascade_property_bench",
+      "args": [
+        "30000000"
+      ],
+      "maximum_rss_kib": 3016,
+      "result": {
+        "cases": [
+          {
+            "first_ns": 276,
+            "ns_per_query": 11.084724433333333,
+            "property": "width"
+          },
+          {
+            "first_ns": 32,
+            "ns_per_query": 10.6172149,
+            "property": "margin-left"
+          },
+          {
+            "first_ns": 169,
+            "ns_per_query": 7.100551533333333,
+            "property": "color"
+          },
+          {
+            "first_ns": 64,
+            "ns_per_query": 2.6895510333333332,
+            "property": "height"
+          }
+        ],
+        "rounds": 30000000,
+        "scope": "Repeated raw declared-property queries on one frozen snapshot; no layout, UI or website evidence.",
+        "snapshot_payload_bytes": 416
+      },
+      "repeat": 2,
+      "benchmark": "cascade_property_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "before-cascade_bench",
+      "args": [
+        "100"
+      ],
+      "maximum_rss_kib": 8592,
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.5574729,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.618453,
+            "first_match_us": 13.945,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.26637273,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.28266822,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 0.989476,
+            "first_match_us": 4.789000000000001,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.5377335200000001,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.05726059,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 1.9242110000000001,
+            "first_match_us": 5.557,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.07697709,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 100,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "cascade_bench",
+      "variant": "before"
+    },
+    {
+      "binary": "after-cascade_bench",
+      "args": [
+        "100"
+      ],
+      "maximum_rss_kib": 8512,
+      "result": {
+        "baseline_rule_scan": false,
+        "cases": [
+          {
+            "accounted_rule_payload_bytes": 358909,
+            "checksum_per_round": 50500.0,
+            "compile_drop_ms": 0.57451297,
+            "declaration_array_bytes": 64000,
+            "elements": 1000,
+            "first_compile_ms": 0.639686,
+            "first_match_us": 9.964,
+            "index_entries": 1000,
+            "index_key_value_capacity_bytes": 71680,
+            "index_vector_bytes": 16000,
+            "match_resolve_ms": 0.2804663,
+            "rule_array_bytes": 40960,
+            "rules": 1000,
+            "selected_rules_per_round": 1000,
+            "selector_reserved_bytes": 166269,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 24810
+          },
+          {
+            "accounted_rule_payload_bytes": 718909,
+            "checksum_per_round": 101000.0,
+            "compile_drop_ms": 1.05633515,
+            "declaration_array_bytes": 128000,
+            "elements": 2000,
+            "first_compile_ms": 1.001467,
+            "first_match_us": 6.137,
+            "index_entries": 2000,
+            "index_key_value_capacity_bytes": 143360,
+            "index_vector_bytes": 32000,
+            "match_resolve_ms": 0.56497032,
+            "rule_array_bytes": 81920,
+            "rules": 2000,
+            "selected_rules_per_round": 2000,
+            "selector_reserved_bytes": 333629,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 50730
+          },
+          {
+            "accounted_rule_payload_bytes": 1438909,
+            "checksum_per_round": 202000.0,
+            "compile_drop_ms": 2.11253585,
+            "declaration_array_bytes": 256000,
+            "elements": 4000,
+            "first_compile_ms": 1.9951999999999999,
+            "first_match_us": 4.817,
+            "index_entries": 4000,
+            "index_key_value_capacity_bytes": 286720,
+            "index_vector_bytes": 64000,
+            "match_resolve_ms": 1.2726837699999998,
+            "rule_array_bytes": 163840,
+            "rules": 4000,
+            "selected_rules_per_round": 4000,
+            "selector_reserved_bytes": 668349,
+            "snapshot_payload_bytes": 416,
+            "source_bytes": 102570
+          }
+        ],
+        "method": "Mean compile/drop or all-element match/default/numeric resolve over rounds; source/HTML parsing excluded. RuleSet retained for resolution and matching scratch reused; every generated width independently checked in an untimed warm-up. Payload counts capacities, not total allocator/RSS/borrowed Syntax/DOM/index hash controls/custom maps/typed heaps. All benchmark values are independent scalar widths with no typed heap programs.",
+        "rounds": 100,
+        "scope": "Prebuilt Syntax stylesheet compilation and native DOM selector/cascade/numeric-width resolution. No layout, rendering, JS, network, UI, browser or Chrome evidence."
+      },
+      "repeat": 2,
+      "benchmark": "cascade_bench",
+      "variant": "after"
+    },
+    {
+      "binary": "after-font_native_bench",
+      "args": [
+        "10"
+      ],
+      "maximum_rss_kib": 19224,
+      "result": {
+        "catalog_build_drop_us": 5.2780000000000005,
+        "catalog_payload_bytes": 3925359,
+        "faces": 6,
+        "first_catalog_us": 41.936,
+        "first_metrics_us": 7.197,
+        "jobs": [
+          {
+            "build_drop_ms": 4.7000564,
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "elements": 1000,
+            "first_build_ms": 3.792404,
+            "first_max_step_us": 500.296,
+            "font_bytes": 127744,
+            "label": "cache_off",
+            "max_step_us": 10289.151,
+            "style_payload_bytes": 430209
+          },
+          {
+            "build_drop_ms": 2.3993911,
+            "cache_conservative_bytes": 349806,
+            "cache_entries": 303,
+            "elements": 1000,
+            "first_build_ms": 2.8282,
+            "first_max_step_us": 481.72299999999996,
+            "font_bytes": 127744,
+            "label": "cache_on",
+            "max_step_us": 321.218,
+            "style_payload_bytes": 430209
+          },
+          {
+            "build_drop_ms": 37.3777911,
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "elements": 10000,
+            "first_build_ms": 37.59509,
+            "first_max_step_us": 933.6560000000001,
+            "font_bytes": 1275904,
+            "label": "cache_off",
+            "max_step_us": 1035.1760000000002,
+            "style_payload_bytes": 4241169
+          },
+          {
+            "build_drop_ms": 24.9285634,
+            "cache_conservative_bytes": 698771,
+            "cache_entries": 605,
+            "elements": 10000,
+            "first_build_ms": 24.21605,
+            "first_max_step_us": 691.674,
+            "font_bytes": 1275904,
+            "label": "cache_on",
+            "max_step_us": 653.458,
+            "style_payload_bytes": 4241169
+          }
+        ],
+        "method": "Means over repetitions; cold first calls; maximum observed 128-node worker slice. Same binary/cache contract with cache_entries=0 control. Source/catalog/cache payload counts exclude allocator controls/RSS; style job payload excludes borrowed source/catalog/cache. No Font interner yet.",
+        "metrics": [
+          {
+            "cache_conservative_bytes": 0,
+            "cache_entries": 0,
+            "cap": 14.280000000000001,
+            "ch": 11.44,
+            "ex": 10.88265869140625,
+            "label": "cache_off",
+            "metrics_ns": 1028.0988
+          },
+          {
+            "cache_conservative_bytes": 1537,
+            "cache_entries": 1,
+            "cap": 14.280000000000001,
+            "ch": 11.44,
+            "ex": 10.88265869140625,
+            "label": "cache_on",
+            "metrics_ns": 25.213900000000002
+          }
+        ],
+        "rounds": 10,
+        "scope": "Native installed-file table loading/matching/metric lookup and original static CSS jobs. Six repository Noto sources, pre-read/shared source bytes. No disk I/O in timings, shaping/rasterization/layout/network/V8/UI or website claim.",
+        "select_family_ns": 50.4858,
+        "source_bytes": 3923244
+      },
+      "repeat": 2,
+      "benchmark": "native",
+      "variant": "after"
+    }
+  ],
+  "style_medians": [
+    {
+      "elements": 1000,
+      "scene": "bare",
+      "before": {
+        "accounted_style_payload_bytes": 86592,
+        "accounted_style_tree_bytes": 116864,
+        "build_drop_ms": 1.460459,
+        "custom_bytes": 40,
+        "defaults_us": 54.357,
+        "families_bytes": 32,
+        "first_build_ms": 1.5188860000000002,
+        "first_max_step_us": 206.97299999999998,
+        "font_bytes": 120,
+        "max_step_us": 196.92399999999998,
+        "numeric_bytes": 0,
+        "override_bytes": 72,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 80320,
+        "styled_nodes": 1004,
+        "three_queries_ns": 9.404557,
+        "tree_container_bytes": 30272,
+        "maximum_rss_kib": 4180
+      },
+      "after": {
+        "accounted_style_payload_bytes": 86600,
+        "accounted_style_tree_bytes": 116872,
+        "build_drop_ms": 1.4335285,
+        "custom_bytes": 40,
+        "defaults_us": 51.327,
+        "families_bytes": 32,
+        "first_build_ms": 1.494888,
+        "first_max_step_us": 207.97299999999998,
+        "font_bytes": 128,
+        "max_step_us": 201.854,
+        "numeric_bytes": 0,
+        "override_bytes": 72,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 80320,
+        "styled_nodes": 1004,
+        "three_queries_ns": 9.348782,
+        "tree_container_bytes": 30272,
+        "maximum_rss_kib": 4284
+      }
+    },
+    {
+      "elements": 1000,
+      "scene": "uniform",
+      "before": {
+        "accounted_style_payload_bytes": 87064,
+        "accounted_style_tree_bytes": 117336,
+        "build_drop_ms": 2.1342114,
+        "custom_bytes": 40,
+        "defaults_us": 54.756,
+        "families_bytes": 32,
+        "first_build_ms": 2.196527,
+        "first_max_step_us": 305.84299999999996,
+        "font_bytes": 240,
+        "max_step_us": 304.704,
+        "numeric_bytes": 0,
+        "override_bytes": 424,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 80320,
+        "styled_nodes": 1004,
+        "three_queries_ns": 14.993682,
+        "tree_container_bytes": 30272,
+        "maximum_rss_kib": 4272
+      },
+      "after": {
+        "accounted_style_payload_bytes": 87080,
+        "accounted_style_tree_bytes": 117352,
+        "build_drop_ms": 2.1015551,
+        "custom_bytes": 40,
+        "defaults_us": 45.323,
+        "families_bytes": 32,
+        "first_build_ms": 2.151309,
+        "first_max_step_us": 313.47900000000004,
+        "font_bytes": 256,
+        "max_step_us": 301.873,
+        "numeric_bytes": 0,
+        "override_bytes": 424,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 80320,
+        "styled_nodes": 1004,
+        "three_queries_ns": 15.293245,
+        "tree_container_bytes": 30272,
+        "maximum_rss_kib": 4000
+      }
+    },
+    {
+      "elements": 1000,
+      "scene": "varying",
+      "before": {
+        "accounted_style_payload_bytes": 382768,
+        "accounted_style_tree_bytes": 413040,
+        "build_drop_ms": 2.8055394,
+        "custom_bytes": 40,
+        "defaults_us": 44.078,
+        "families_bytes": 32,
+        "first_build_ms": 2.926835,
+        "first_max_step_us": 397.575,
+        "font_bytes": 240,
+        "max_step_us": 388.83299999999997,
+        "numeric_bytes": 0,
+        "override_bytes": 296128,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 80320,
+        "styled_nodes": 1004,
+        "three_queries_ns": 17.473004,
+        "tree_container_bytes": 30272,
+        "maximum_rss_kib": 4816
+      },
+      "after": {
+        "accounted_style_payload_bytes": 382784,
+        "accounted_style_tree_bytes": 413056,
+        "build_drop_ms": 2.7652139,
+        "custom_bytes": 40,
+        "defaults_us": 43.101,
+        "families_bytes": 32,
+        "first_build_ms": 2.988091,
+        "first_max_step_us": 405.42699999999996,
+        "font_bytes": 256,
+        "max_step_us": 379.747,
+        "numeric_bytes": 0,
+        "override_bytes": 296128,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 80320,
+        "styled_nodes": 1004,
+        "three_queries_ns": 18.150549,
+        "tree_container_bytes": 30272,
+        "maximum_rss_kib": 4724
+      }
+    },
+    {
+      "elements": 10000,
+      "scene": "bare",
+      "before": {
+        "accounted_style_payload_bytes": 806592,
+        "accounted_style_tree_bytes": 1775744,
+        "build_drop_ms": 14.258217300000002,
+        "custom_bytes": 40,
+        "defaults_us": 53.507,
+        "families_bytes": 32,
+        "first_build_ms": 15.034091,
+        "first_max_step_us": 366.552,
+        "font_bytes": 120,
+        "max_step_us": 369.90900000000005,
+        "numeric_bytes": 0,
+        "override_bytes": 72,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 800320,
+        "styled_nodes": 10004,
+        "three_queries_ns": 9.7350453,
+        "tree_container_bytes": 969152,
+        "maximum_rss_kib": 7816
+      },
+      "after": {
+        "accounted_style_payload_bytes": 806600,
+        "accounted_style_tree_bytes": 1775752,
+        "build_drop_ms": 14.4185733,
+        "custom_bytes": 40,
+        "defaults_us": 52.431,
+        "families_bytes": 32,
+        "first_build_ms": 14.764507,
+        "first_max_step_us": 367.725,
+        "font_bytes": 128,
+        "max_step_us": 425.821,
+        "numeric_bytes": 0,
+        "override_bytes": 72,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 800320,
+        "styled_nodes": 10004,
+        "three_queries_ns": 9.7390679,
+        "tree_container_bytes": 969152,
+        "maximum_rss_kib": 7860
+      }
+    },
+    {
+      "elements": 10000,
+      "scene": "uniform",
+      "before": {
+        "accounted_style_payload_bytes": 807064,
+        "accounted_style_tree_bytes": 1776216,
+        "build_drop_ms": 20.8429549,
+        "custom_bytes": 40,
+        "defaults_us": 43.638,
+        "families_bytes": 32,
+        "first_build_ms": 21.597907,
+        "first_max_step_us": 453.849,
+        "font_bytes": 240,
+        "max_step_us": 630.019,
+        "numeric_bytes": 0,
+        "override_bytes": 424,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 800320,
+        "styled_nodes": 10004,
+        "three_queries_ns": 16.3804116,
+        "tree_container_bytes": 969152,
+        "maximum_rss_kib": 8144
+      },
+      "after": {
+        "accounted_style_payload_bytes": 807080,
+        "accounted_style_tree_bytes": 1776232,
+        "build_drop_ms": 21.598082299999998,
+        "custom_bytes": 40,
+        "defaults_us": 46.589999999999996,
+        "families_bytes": 32,
+        "first_build_ms": 21.22559,
+        "first_max_step_us": 511.278,
+        "font_bytes": 256,
+        "max_step_us": 7876.8640000000005,
+        "numeric_bytes": 0,
+        "override_bytes": 424,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 800320,
+        "styled_nodes": 10004,
+        "three_queries_ns": 17.0114601,
+        "tree_container_bytes": 969152,
+        "maximum_rss_kib": 8244
+      }
+    },
+    {
+      "elements": 10000,
+      "scene": "varying",
+      "before": {
+        "accounted_style_payload_bytes": 3766768,
+        "accounted_style_tree_bytes": 4735920,
+        "build_drop_ms": 28.0251374,
+        "custom_bytes": 40,
+        "defaults_us": 44.082,
+        "families_bytes": 32,
+        "first_build_ms": 28.271311,
+        "first_max_step_us": 528.999,
+        "font_bytes": 240,
+        "max_step_us": 721.5360000000001,
+        "numeric_bytes": 0,
+        "override_bytes": 2960128,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 800320,
+        "styled_nodes": 10004,
+        "three_queries_ns": 19.0125638,
+        "tree_container_bytes": 969152,
+        "maximum_rss_kib": 14048
+      },
+      "after": {
+        "accounted_style_payload_bytes": 3766784,
+        "accounted_style_tree_bytes": 4735936,
+        "build_drop_ms": 30.250768700000002,
+        "custom_bytes": 40,
+        "defaults_us": 45.355999999999995,
+        "families_bytes": 32,
+        "first_build_ms": 28.091504,
+        "first_max_step_us": 549.838,
+        "font_bytes": 256,
+        "max_step_us": 9351.059,
+        "numeric_bytes": 0,
+        "override_bytes": 2960128,
+        "shared_defaults_bytes": 6008,
+        "style_headers_bytes": 800320,
+        "styled_nodes": 10004,
+        "three_queries_ns": 19.2718006,
+        "tree_container_bytes": 969152,
+        "maximum_rss_kib": 13912
+      }
+    }
+  ]
+}

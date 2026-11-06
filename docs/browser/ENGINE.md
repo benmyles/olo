@@ -1277,3 +1277,105 @@ Primary rules: [CSS Fonts 4 families](https://drafts.csswg.org/css-fonts-4/#font
 consulted 2026-11-05. Native loading/matching, UA styling, layout, painting,
 networking, V8, native shell/agent control/Olo integrations and all website
 journeys remain required by the full goal.
+
+## Native font sources, matching and metric contexts
+
+`olo_web::font` adds a worker-only native source catalog. `Builder::load_file`
+reads at most 64 KiB between progress/cancellation checks; `add_owned` retains
+its Vec without copying it into another byte allocation, and `add_shared`
+leases caller-owned bytes. All faces in a TTC share one source. Failed additions
+publish no partial faces; `finish` freezes metadata and a folded family-name
+index. Scoped `FaceId`s reject other catalogs; a `Selection` keeps only its
+source alive after the catalog goes away. No processes, OS discovery, file
+watcher or font-service connection is hidden in these APIs.
+
+The handwritten matcher narrows **width, style, weight**, in that order, using
+CSS's directional searches and variable ranges. Localized legacy/typographic
+family aliases participate; full/PostScript/subfamily names do not become
+family names. Unicode 18.0.0 default full C/F folding uses the pinned normative
+input, without normalization or Turkic tailoring. OS/2 oblique remains distinct
+from labeled italic even when both have a nonzero post angle. Registered
+wght/wdth/slnt/ital/opsz coordinates clamp to actual font ranges, with OpenType's
+opposite slnt sign. CSS matching weight ranges clamp to 1–1000 while raw axes
+remain available. Synthesis flags request future drawing; no geometric stretch,
+bold or shear is rendered here. `font-style:left/right` explicitly reports
+Unsupported. Automatic optical sizing currently maps CSS-pixel font size to
+opsz, confirmed with an independently generated loaded variable font in Chrome.
+
+`ttf-parser` **0.25.1**, a pure Rust OpenType table reader, supplies binary access;
+it does not choose CSS faces or shape/render/layout text. The original module
+remains `forbid(unsafe_code)`. SFNT/TTC directory checks enforce sorted unique
+tags, table bounds/counts, file/retained payload limits, faces, names, axes and
+metadata work; default caps include 64 MiB per file, 256 MiB retained referenced
+payload, 16,384 faces, 256 collection faces, 512 tables and 63 axes (the decoder
+cannot set variations with 64 axes). Names/aliases/axes are charged before
+publishing. WOFF/WOFF2 is explicitly unsupported. These checks are **not a full
+font sanitizer or adversarial execution sandbox**: opaque decoder operations
+still need stronger whole-font CPU/cancellation bounds before web fonts.
+
+`FontSet` binds the catalog, immutable explicit UA generic policy and matching
+options. `scope(language)` normalizes a supplied language tag and creates an
+identity for one complete font context. A cloned Scope keeps the identity but
+starts with an empty worker-local cache. Bindings may specify language prefixes
+and scalar ranges; complete generics use UA defaults when their mapped families
+are unavailable, while incomplete generics allow the next CSS family. A present
+face lacking a glyph advances to the next family. This is explicit embedding
+policy, not automatic script/language inference or full cluster fallback.
+
+`Scope::metrics` computes the first available font independently of cmap
+fallback for `0` and `水`. A missing space glyph does not disqualify the first
+font. ex/cap/normal line height use actual tables; ch/ic scale the selected
+reference face's own units-per-em. Vertical mixed/upright/sideways policies pick
+horizontal or vertical advances and expose synthesis/estimate provenance.
+Fractional HVAR/VVAR and MVAR deltas survive until CSS-pixel scaling, with gvar
+phantom points as a bounded fallback when HVAR/VVAR is absent. Optional missing
+x/H-height inference only outlines simple TrueType glyphs with at most 4,096
+points, bounded glyph+gvar bytes (256 KiB default). Composite/CFF outlines skip
+this optional inference and use the documented CSS estimate; they cannot enter
+recursive outline traversal just for metric estimation. Reference coverage is
+cmap-only: GSUB, UVS, clusters, script features and shaping can change the final
+metrics and remain work.
+
+The FIFO cache retains family allocation identity to prevent address reuse,
+and keys every numeric request, slant kind and writing/direction/orientation
+axis. Defaults cap it at 4,096 entries and 4 MiB of conservative entry charges;
+HashMap/deque capacities are additionally reported, so this is not a total-RSS
+limit. Cancellation/errors do not publish cache entries. `Host::font_context`
+is mandatory: parent/default Font reuse requires equal context as well as equal
+request, and publication rejects context changes even when the stylesheet/font
+revision stayed equal. Root Defaults must be made using the root's context.
+`tests/support/native_font_host.rs` demonstrates the native Scope adapter.
+
+Independent evidence: `tests/font-native-fixtures` contains 20 original
+fontTools 4.60.1 fonts, deterministic generation, SHA-pinned Unicode input and
+independent raw HVAR/MVAR references, including the real repository Noto font.
+16 integration regression groups plus the full 1,606-record Unicode unit test
+cover matching, shared leases, hostile prefixes/limits/cancel, metric fallback,
+variable precision, cache bounds and style-job context coherence. The owned
+Chrome probe records 32 loaded-font cases; the native test compares 24 auto
+ch/ex/cap observations with an explicit one-font-unit plus 1/64 CSS-pixel
+rounding tolerance. Chrome rounds some integer-font-unit metrics; this is not
+exact CSSOM/rendering parity. No screenshot, scale/theme review or website
+compatibility follows from a structured metric probe.
+
+```sh
+cargo test --release -p olo-web --test font_native
+cargo run --release -p olo-web --example font_native_bench -- 10
+```
+
+The benchmark loads six pre-read shared repository Noto sources, freezes catalog
+metadata, selects faces, compares identical metrics with the cache enabled/
+disabled and builds static 1k/10k CSS jobs using real font metrics. Disk I/O,
+shaping, rasterization, layout, JS, network and UI are excluded. The comparison
+with parent 239cdb4b uses unchanged supplied-metric style/font/raw-cascade cases;
+there was no native font implementation in that parent to benchmark. Raw runs,
+source/binary hashes and replay commands live in
+`measurements/2026-11-05-native-font{.json,-measure.py}`. Repeated Font object
+interning and the prior raw width/margin query regression remain explicit TODOs.
+
+Primary rules: [CSS Fonts matching](https://drafts.csswg.org/css-fonts-4/#font-matching-algorithm),
+[font-relative units](https://drafts.csswg.org/css-values-4/#font-relative-lengths),
+[OpenType variations](https://learn.microsoft.com/en-us/typography/opentype/spec/otvaroverview),
+[loca](https://learn.microsoft.com/en-us/typography/opentype/spec/loca),
+[glyf](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf),
+[ttf-parser 0.25.1](https://docs.rs/ttf-parser/0.25.1/ttf_parser/).

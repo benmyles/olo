@@ -1,0 +1,72 @@
+{
+  "fonttools": "4.60.1",
+  "scope": "Independent fontTools instancer readings. Integer table readings may be rounded; raw HVAR/MVAR delta comparisons are recorded separately.",
+  "cases": [
+    {
+      "css_size": 16,
+      "opsz": 16,
+      "zero_units": 600,
+      "x_units": 500,
+      "cap_units": 700,
+      "ascent_units": 800,
+      "descent_units": -200,
+      "line_gap_units": 100,
+      "upem": 1000
+    },
+    {
+      "css_size": 20,
+      "opsz": 20,
+      "zero_units": 643,
+      "x_units": 507,
+      "cap_units": 707,
+      "ascent_units": 807,
+      "descent_units": -200,
+      "line_gap_units": 100,
+      "upem": 1000
+    },
+    {
+      "css_size": 32,
+      "opsz": 32,
+      "zero_units": 771,
+      "x_units": 529,
+      "cap_units": 729,
+      "ascent_units": 829,
+      "descent_units": -200,
+      "line_gap_units": 100,
+      "upem": 1000
+    },
+    {
+      "css_size": 72,
+      "opsz": 72,
+      "zero_units": 1200,
+      "x_units": 600,
+      "cap_units": 800,
+      "ascent_units": 900,
+      "descent_units": -200,
+      "line_gap_units": 100,
+      "upem": 1000
+    },
+    {
+      "css_size": 120,
+      "opsz": 72,
+      "zero_units": 1200,
+      "x_units": 600,
+      "cap_units": 800,
+      "ascent_units": 900,
+      "descent_units": -200,
+      "line_gap_units": 100,
+      "upem": 1000
+    },
+    {
+      "css_size": 20,
+      "opsz": 12,
+      "zero_units": 550,
+      "x_units": 490,
+      "cap_units": 690,
+      "ascent_units": 790,
+      "descent_units": -200,
+      "line_gap_units": 100,
+      "upem": 1000
+    }
+  ]
+}

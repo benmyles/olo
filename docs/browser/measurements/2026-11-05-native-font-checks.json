@@ -1,0 +1,40 @@
+{
+  "scope": "Native-font checkpoint validation. Existing unsupported conformance cases remain unsupported; website coverage remains zero.",
+  "checks": {
+    "tests_default": {
+      "command": "cargo test --release -p olo-web",
+      "passed": 157,
+      "failed": 0,
+      "log_sha256": "3331de6dac49ca0b54c02fa1db0decdf134c46c98109541c42a72c390849107c"
+    },
+    "tests_all": {
+      "command": "cargo test --release -p olo-web --all-features",
+      "passed": 156,
+      "failed": 0,
+      "log_sha256": "d60183960ed490da11ba62b7a9411e23bfb4639152657d72a5d3bbf4ba9153f8"
+    },
+    "clippy_default": {
+      "command": "cargo clippy --release -p olo-web --all-targets -- -D warnings",
+      "finished": true,
+      "log_sha256": "dffd1aaaf1b41c6732536ddcbb9e61571956b5bbc0049fc49c75e287e5640fe5"
+    },
+    "clippy_all": {
+      "command": "cargo clippy --release -p olo-web --all-targets --all-features -- -D warnings",
+      "finished": true,
+      "log_sha256": "a4ce269339520aa0208174771d7b082b84d3f52ad6d47362dd69e8ff1a4ea8a9"
+    },
+    "workspace": {
+      "command": "cargo build --release --workspace",
+      "finished": true,
+      "log_sha256": "dfed6c44cb69b23758602f5ee2404e9b67809ab7ce2ec31a112f0adfdef8d848",
+      "cargo_seconds": 2.97,
+      "wall_seconds": 3.07
+    }
+  },
+  "notes": [
+    "Workspace GPUI warnings and proc-macro-error2 future-compatibility notice remain.",
+    "Fixture generators reproduced all pinned font/reference/data hashes.",
+    "Owned Chrome probe captured structured CSSOM only; owned screen and HTTP server stopped. No personal session reload/install.",
+    "Native latency follow-up is additional evidence; it does not replace primary measurements."
+  ]
+}

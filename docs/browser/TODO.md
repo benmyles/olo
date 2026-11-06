@@ -89,16 +89,27 @@ item means implemented and verified; a partial implementation stays open.
   angles and percentage widths before subject metrics. 93/149 pinned native
   assertions/drivers pass; 56 unsupported. Match 17 selected local Chrome
   observations; six reference-feature gaps remain explicit.
-- [ ] Native font loading, CSS face matching/cache and fallback, actual metrics,
-  variable axes/synthesis, web fonts, font shorthand/remaining descriptors,
-  shaping/bidi and language/script-sensitive generic selection.
+- [x] Initial native TTF/OTF/TTC source catalog, original width/style/weight
+  matching, Unicode full family-name folding, variable-axis coordinates,
+  synthesis requests, first/reference fallback metrics, bounded worker-local
+  metric caches and explicit language/range generic policy. Native table/metric
+  work is a prerequisite; it does not render text.
+- [ ] Complete font selection: OS discovery/change watching, web fonts and
+  WOFF/WOFF2 validation/sanitization/isolation, unicode-range, full cluster/script/
+  variation-selector fallback, font-style left/right, optical policy/rounding
+  parity, synthesized drawing, font shorthand/remaining descriptors, shaping/bidi
+  and automatic language/script-sensitive generic policy. Composite/CFF missing
+  height inference currently uses estimates; full-font hostile-input CPU bounds
+  and cancellation inside third-party table operations remain.
 - [ ] Complete logical border/corner properties and remaining property groups;
   UA styles/presentational hints, flattened/shadow inheritance, conditional
   contexts, font-family/selection and layout/used-value hosts.
 - [ ] Profile temporary per-element style vectors, nonadjacent sharing and
   real mixed pages; initial full passes are not live incremental invalidation.
-- [ ] Scope font matching by language/script/subject context before sharing
-  selected fonts globally. Intern repeated nonadjacent selected requests: the
+- [x] Scope selected metric reuse by explicit immutable subject/language/font
+  context; reject context changes during publication and root Defaults mismatch.
+- [ ] Complete automatic script/cluster contexts before globally sharing
+  selected fonts. Intern repeated nonadjacent selected requests: the
   generated 10k font case currently retains 10,001 Font objects for repeating
   requests. Fixed supplied metrics are not real font-selection evidence.
 - [ ] Complete property registry/grammars (fonts/families, backgrounds/images,
@@ -176,3 +187,9 @@ remaining selector integrations, descriptor-aware parsing and
 HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostics, arbitrary namespaces, Web IDL/live DOM semantics
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.
+
+Next: intern repeated selected requests within immutable font contexts, then
+shaping/bidi and original inline/block layout. Initial native font catalogs,
+matching and metrics are validated prerequisites; whole-font sanitization,
+web-font loading, automatic generic policy and rendering remain open. No
+website acceptance claim.

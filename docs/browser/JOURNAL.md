@@ -2135,3 +2135,97 @@ UA/presentational defaults, remaining properties/conditions and live invalidatio
 then shaping/layout/rendering and the rest of the browser. No shell, V8,
 networking, all-site dark mode, agent control or Olo/password/passkey integration
 is supplied by this prerequisite milestone.
+
+## 2026-11-05 — native font sources, matching and scoped metrics
+
+Added a worker-only shared-source OpenType catalog, native bounded file I/O with
+progress/cancel, original CSS width → style → weight matching and immutable
+language/range generic policy. ttf-parser 0.25.1 supplies binary table access in
+Rust, not CSS face selection. TTC faces share source bytes; selected leases
+survive catalog eviction and IDs reject other catalogs. Family aliases use
+Unicode 18.0.0 full C/F folding without normalization/tailoring. The original
+input/license, generated facts and hashes are pinned. No system discovery,
+process, watcher, web-font decoder, shaper or rasterizer is introduced.
+
+First-available metrics are independent of cmap fallback for zero/water.
+Different units-per-em, vertical orientations, missing metrics and synthesized
+vertical advances have explicit provenance. Fractional HVAR/VVAR/MVAR deltas
+survive scaling; bounded gvar phantom points cover absent advance tables.
+Missing-height inference only enters simple TrueType outlines with ≤4,096
+points and bounded glyph/gvar bytes; composite/CFF inference uses CSS estimates.
+Directory/name/axis/payload/work checks are not a whole-font sanitizer or
+complete adversarial CPU/cancellation boundary. Stronger isolation remains
+required before web fonts. Native font-style left/right remains Unsupported.
+
+FontSet/Scope identities prevent cross-language/subject metric reuse. Host's
+new required font_context distinguishes identical requests under different
+policies/languages; parent/default reuse and final publication verify it, and
+root Defaults must use the root's context. Bounded worker-local FIFO caches
+retain family identity to prevent pointer reuse, with numeric/slant/all-axis
+keys. Their budget counts conservative entry charges, with additional actual
+container capacity reported; it is not a hard total-RSS budget. A cloned Scope
+keeps context and starts with an empty cache.
+
+20 original small fonts and independent numeric references are generated with
+fontTools 4.60.1 in an isolated /var/tmp venv; fixed timestamps make regeneration
+byte-identical. Includes static matching candidates, localized/Unicode names,
+TTC sharing, missing/composite heights, optical HVAR/MVAR and no-HVAR gvar,
+and a metadata-only registered-axis font. Real Noto data is SHA-checked. Tests
+caught the table reader's is_italic helper classifying a nonzero-angle oblique
+face as italic; OS/2 oblique is now kept distinct. They also disproved an assumed
+Noto 100–900 range: this repository file reports 400–700, tested with a clamped
+900 request. All 1,606 normative full-fold records are checked independently.
+
+An owned Olo Agent Screen loaded the generated optical font and actual Noto
+file in Chrome 157. 32 structured CSSOM cases record auto/none/explicit 12/16
+opsz at four sizes. Auto uses CSS pixels here, correcting an initial px-to-point
+assumption. Native checks compare 24 auto ch/ex/cap observations with explicit
+one-font-unit + 1/64 CSS-pixel rounding tolerance. Chrome rounds some font-unit
+metrics; native raw deltas are more precise, not exact Chrome parity. No visual
+or scale/theme check is claimed; the owned screen and HTTP server are stopped.
+
+Release evidence is in measurements/2026-11-05-native-font{.json,-measure.py},
+with binary/source hashes, means, cold calls, worker slices and separate RSS.
+Six pre-read shared Noto sources contain **3,923,244 B**; frozen catalog payload
+is **3,925,359 B** (2,115 B additional, excluding allocator controls/RSS).
+Three-process medians: catalog build/drop **5.679 µs**, first build **41.156 µs**;
+family match **44.18 ns**; first native metrics **7.24 µs**. Same-binary metrics
+cache-off → on **1,034.77 → 25.35 ns**. Real-metric CSS job build/drop 1k
+**3.635 → 2.366 ms**, 10k **37.378 → 24.929 ms**; 10k maximum 128-node slice
+medians **1,035 → 747 µs**. Job style payload is 4,241,169 B, excluding borrowed
+catalog/cache; cache-on ends with 605 entries / 698,771 B conservative payload.
+Whole native benchmark RSS is 19,224–19,324 KiB. No disk, shaping, layout, UI,
+network, V8 or browser performance is measured.
+
+Compared unchanged supplied-metric examples with parent 239cdb4b, alternating
+release processes on CPU0. 10k bare/uniform/varying build medians **14.258 →
+14.419 / 20.843 → 21.598 / 28.025 → 30.251 ms**. Supplied-font 10k **31.104 →
+32.533 ms**, accounted Font allocation payload **120 → 128 B** from the new
+context (8 B each; shared default/header behavior unchanged). Raw width/margin/
+color/missing **10.706 → 10.657 / 10.587 → 10.678 / 7.161 → 7.144 / 2.748 →
+2.690 ns**. Indexed 1k/2k/4k cascade **0.2671 → 0.2743 / 0.5407 → 0.5650 /
+1.0770 → 1.2224 ms**. Keep earlier width/margin regression and Font interning
+on TODO; no general speedup claim.
+
+Unexpected current-build 8–11 ms wall-clock worker slices triggered five extra
+alternating frozen-binary runs, preserved in native-font-latency.{json,py}.
+Follow-up 10k uniform build medians **20.760 → 21.533 ms**, varying **28.774 →
+28.460 ms**. Both binaries show large wall-clock outliers (parent up to 10.586 ms,
+current up to 12.625 ms); process CPU time is similar (uniform mostly .76 s,
+varying .93–.95 s), with many involuntary context switches. These whole-process
+counters do not establish the cause of individual slices. Preserve primary
+results and variability; there is no settled UI-latency or browser-performance
+acceptance here. This worker stage has no UI thread or polling/idle loop.
+
+All **157 default / 156 all-feature release tests** pass, including 16 new
+integration groups and the normative folding unit test. Strict release
+all-target default/all-feature clippy, formatting, diff/hash checks and fixture
+regeneration pass. Full workspace release build: cargo **2.97 s**, wall
+**3.07 s**; existing GPUI warnings/proc-macro-error2 notice remain. Detailed
+commands/counts are in native-font-checks.json. No personal session change.
+
+Full goal stays active: **0/3,000 website combinations, 0/100 sites**. Next:
+context-scoped selected-request interning, shaping/bidi and original layout,
+while tracking remaining font APIs/conditions/UA defaults/live invalidation.
+Browser shell, networking, V8, all-site dark mode, structured browser actions,
+passwords/passkeys and end-to-end Olo integrations remain unimplemented.

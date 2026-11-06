@@ -47,6 +47,7 @@ simdutf8 = "0.1"
 smallvec = "1"
 wide = "1.7"
 triomphe = { version = "0.1.17", default-features = false, features = ["std"] }
+ttf-parser = "0.25.1"
 
 [dev-dependencies]
 serde_json.workspace = true

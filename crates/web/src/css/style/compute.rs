@@ -295,9 +295,9 @@ pub(super) fn values(
         _ => return Err(Error::Invalid),
     };
     let request = FontRequest { size, weight, width: font_values[2].value.scalar().ok_or(Error::Invalid)?, slant, families: families.clone(), axes };
-    let font = if parent.is_some_and(|p| p.font.request == request) {
+    let font = if parent.is_some_and(|p| p.font.request == request && p.font.context == host.font_context()) {
         parent.unwrap().font.clone()
-    } else if defaults.initial_font.request == request {
+    } else if defaults.initial_font.request == request && defaults.initial_font.context == host.font_context() {
         defaults.initial_font.clone()
     } else {
         Arc::new(Font::new(host, request)?)
