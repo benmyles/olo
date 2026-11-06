@@ -1,7 +1,11 @@
 //! A PDF in a Viewer window: pages stacked in a scroll view at any zoom,
 //! rendered by the worker for the device scale on demand (a texture
 //! pixel to a device pixel, in tiles a few of which go to the GPU a
-//! frame), with the form fields and marks drawn (and edited) on top.
+//! frame), with the form fields and marks drawn (and edited) on top. Its
+//! text (`pdftext`, read by the worker) is selected by dragging over it
+//! (a word with a double-click, a line with a triple, ⇧ to extend),
+//! copied, found (⌘F, every match marked), and read by agents line by
+//! line.
 
 use std::{
     collections::HashMap,
@@ -13,8 +17,8 @@ use olo_ui::{
     Menu, agent,
     gpui::{
         self, App, Bounds, Context, CursorStyle, Entity, Focusable as _, Font, FontWeight, Hitbox, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent,
-        MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render, RenderImage, ScrollDelta, ScrollHandle, ScrollWheelEvent, Size, Styled as _, Subscription, Window,
-        actions, canvas, div, point, px, size,
+        MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render, RenderImage, ScrollDelta, ScrollHandle, ScrollWheelEvent, SharedString, Size, Styled as _, Subscription,
+        Window, actions, canvas, div, point, px, size,
     },
     style::{self, Align},
     theme,
@@ -23,8 +27,21 @@ use olo_ui::{
 
 use crate::{
     pdfdoc::{self, Field, FieldKind, Mark, MarkKind, Model, PageGeom, PdfRect, Value},
+    pdftext::PageText,
     pdfwork::{Event, Request, Tile},
 };
+
+/// A place in the text: a page and a caret on it (between characters).
+type Caret = (usize, usize);
+
+/// Find: what's looked for, where it is (page, carets), which is shown.
+struct Find {
+    field: Entity<TextField>,
+    _subscription: Subscription,
+    query: String,
+    matches: Vec<(usize, usize, usize)>,
+    current: Option<usize>,
+}
 
 /// Space around and between pages, in points.
 const GAP: f32 = 12.0;
@@ -93,6 +110,8 @@ enum Drag {
     Draw {
         page: usize,
     },
+    /// Selecting text: the selection's focus follows the pointer.
+    Text,
 }
 
 /// A page as rendered: at what scale, its size in pixels, its tiles and
@@ -146,6 +165,15 @@ pub struct PdfView {
     /// Images to take out of the window's atlas.
     dropped: Vec<Arc<RenderImage>>,
     font: Font,
+    /// Each page's text as the worker read it.
+    texts: HashMap<usize, Arc<PageText>>,
+    /// The text selected: where it began, where it goes to.
+    text_sel: Option<(Caret, Caret)>,
+    /// Every page's text has been asked for (Select All, Find).
+    asked_all: bool,
+    /// Copy waits for pages whose text isn't read yet.
+    copy_pending: bool,
+    find: Option<Find>,
 }
 
 /// Affine maps as [a b c d e f].
@@ -236,6 +264,230 @@ impl PdfView {
             origin: point(px(0.0), px(0.0)),
             dropped: Vec::new(),
             font: Font { family: family.into(), ..style::ui_font(FontWeight::NORMAL) },
+            texts: HashMap::new(),
+            text_sel: None,
+            asked_all: false,
+            copy_pending: false,
+            find: None,
+        }
+    }
+
+    // ---- text --------------------------------------------------------------
+
+    /// The selection in reading order.
+    fn ordered(sel: (Caret, Caret)) -> (Caret, Caret) {
+        if sel.0 <= sel.1 { sel } else { (sel.1, sel.0) }
+    }
+
+    /// Text is selected (not an empty caret).
+    pub fn has_text_selection(&self) -> bool {
+        self.text_sel.is_some_and(|s| {
+            let (a, b) = Self::ordered(s);
+            a.0 != b.0 || self.texts.get(&a.0).is_some_and(|t| a.1.min(t.chars.len()) < b.1.min(t.chars.len()))
+        })
+    }
+
+    /// The selected text, once every page it covers has been read.
+    fn selected_text(&self) -> Option<String> {
+        let (a, b) = Self::ordered(self.text_sel?);
+        let mut parts = Vec::new();
+        for page in a.0..=b.0 {
+            let t = self.texts.get(&page)?;
+            let from = if page == a.0 { a.1 } else { 0 };
+            let to = if page == b.0 { b.1.min(t.chars.len()) } else { t.chars.len() };
+            let part = t.between(from, to);
+            if !part.is_empty() {
+                parts.push(part);
+            }
+        }
+        Some(parts.join("\n\n"))
+    }
+
+    fn ask_all_text(&mut self) {
+        if !self.asked_all {
+            self.asked_all = true;
+            let _ = self.tx.send(Request::AllText);
+        }
+    }
+
+    /// Copy the selected text (when the pages it covers are read: at once
+    /// for what was dragged over, when the rest come for Select All).
+    pub fn copy(&mut self, cx: &mut Context<Self>) {
+        if !self.has_text_selection() {
+            return;
+        }
+        match self.selected_text() {
+            Some(text) => {
+                self.copy_pending = false;
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+            }
+            None => {
+                self.copy_pending = true;
+                self.ask_all_text();
+            }
+        }
+    }
+
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        if self.geoms.is_empty() {
+            return;
+        }
+        self.text_sel = Some(((0, 0), (self.geoms.len() - 1, usize::MAX)));
+        self.ask_all_text();
+        cx.notify();
+    }
+
+    /// A page's point in its rendered points.
+    fn page_point(&self, pr: Rect, at: [f32; 2]) -> [f32; 2] {
+        [(at[0] - pr.x0) / self.zoom, (at[1] - pr.y0) / self.zoom]
+    }
+
+    /// A press on a page that isn't on a field or mark: a selection
+    /// begins (a word, a line, or from the last with ⇧).
+    fn start_text(&mut self, page: usize, pr: Rect, at: [f32; 2], e: &MouseDownEvent) {
+        let Some(t) = self.texts.get(&page).cloned() else {
+            self.text_sel = None;
+            return;
+        };
+        let p = self.page_point(pr, at);
+        let caret = t.caret_at(p);
+        let on = t.char_at(p).unwrap_or(caret.min(t.chars.len().saturating_sub(1)));
+        match e.click_count {
+            2 if !t.chars.is_empty() => {
+                let (a, b) = t.word_at(on);
+                self.text_sel = Some(((page, a), (page, b)));
+            }
+            n if n >= 3 && !t.chars.is_empty() => {
+                let (a, b) = t.line_at(on);
+                self.text_sel = Some(((page, a), (page, b)));
+            }
+            _ => {
+                self.text_sel = match self.text_sel {
+                    Some((anchor, _)) if e.modifiers.shift => Some((anchor, (page, caret))),
+                    _ => Some(((page, caret), (page, caret))),
+                };
+                self.drag = Some(Drag::Text);
+            }
+        }
+    }
+
+    /// The caret under content point `at`: on the page there (or the
+    /// nearest, above or below).
+    fn caret_near(&self, at: [f32; 2]) -> Option<Caret> {
+        let layout = self.layout();
+        let page = layout.iter().position(|r| at[1] < r.y1 + GAP / 2.0).unwrap_or(layout.len().checked_sub(1)?);
+        let pr = layout[page];
+        let t = self.texts.get(&page)?;
+        let caret = if at[1] < pr.y0 {
+            0
+        } else if at[1] > pr.y1 {
+            t.chars.len()
+        } else {
+            t.caret_at(self.page_point(pr, at))
+        };
+        Some((page, caret))
+    }
+
+    // ---- find --------------------------------------------------------------
+
+    pub fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(f) = &self.find {
+            f.field.update(cx, |f, cx| {
+                f.focus(window);
+                f.select_all_text(cx);
+            });
+            return;
+        }
+        let field = text_field(cx, |f| f.hint("Find in document"));
+        let sub = cx.subscribe_in(&field, window, |v: &mut PdfView, field, e: &TextFieldEvent, window, cx| match e {
+            TextFieldEvent::Changed => {
+                let q = field.read(cx).text().to_lowercase();
+                v.set_query(q, cx);
+            }
+            TextFieldEvent::Entered => {
+                let back = window.modifiers().shift;
+                v.find_step(back, cx);
+            }
+            _ => {}
+        });
+        field.update(cx, |f, _| f.focus(window));
+        self.find = Some(Find { field, _subscription: sub, query: String::new(), matches: Vec::new(), current: None });
+        self.ask_all_text();
+        cx.notify();
+    }
+
+    pub fn close_find(&mut self, cx: &mut Context<Self>) {
+        self.find = None;
+        cx.notify();
+    }
+
+    pub fn finding(&self) -> bool {
+        self.find.as_ref().is_some_and(|f| !f.matches.is_empty())
+    }
+
+    fn set_query(&mut self, q: String, cx: &mut Context<Self>) {
+        let Some(f) = &mut self.find else { return };
+        f.query = q;
+        f.matches.clear();
+        f.current = None;
+        let mut pages: Vec<usize> = self.texts.keys().copied().collect();
+        pages.sort();
+        for page in pages {
+            let found = self.texts[&page].find(&f.query);
+            f.matches.extend(found.into_iter().map(|(a, b)| (page, a, b)));
+        }
+        // The first from the page in view.
+        let here = self.current_page;
+        f.current = f.matches.iter().position(|m| m.0 >= here).or((!f.matches.is_empty()).then_some(0));
+        self.show_match();
+        cx.notify();
+    }
+
+    /// A page's text came: its matches, in page order.
+    fn find_in(&mut self, page: usize) {
+        let Some(f) = &mut self.find else { return };
+        let Some(t) = self.texts.get(&page) else { return };
+        let at = f.matches.partition_point(|m| m.0 < page);
+        let found: Vec<(usize, usize, usize)> = t.find(&f.query).into_iter().map(|(a, b)| (page, a, b)).collect();
+        let n = found.len();
+        f.matches.splice(at..at, found);
+        match f.current {
+            Some(c) if c >= at => f.current = Some(c + n),
+            None if n > 0 => {
+                f.current = Some(at);
+                self.show_match();
+            }
+            _ => {}
+        }
+    }
+
+    pub fn find_step(&mut self, back: bool, cx: &mut Context<Self>) {
+        let Some(f) = &mut self.find else { return };
+        let n = f.matches.len();
+        if n == 0 {
+            return;
+        }
+        f.current = Some(match f.current {
+            Some(c) if back => (c + n - 1) % n,
+            Some(c) => (c + 1) % n,
+            None => 0,
+        });
+        self.show_match();
+        cx.notify();
+    }
+
+    /// The match shown: selected, and scrolled into view.
+    fn show_match(&mut self) {
+        let Some((page, a, b)) = self.find.as_ref().and_then(|f| f.matches.get(f.current?)).copied() else { return };
+        self.text_sel = Some(((page, a), (page, b)));
+        let Some(t) = self.texts.get(&page) else { return };
+        let Some(r) = t.boxes(a, b).first().copied() else { return };
+        let layout = self.layout();
+        if let Some(pr) = layout.get(page) {
+            // Scrolled to the middle of the view (as far as it goes).
+            let mid = pr.y0 + (r[1] + r[3]) / 2.0 * self.zoom;
+            let half = (self.view.height / 2.0 - GAP).max(3.0 * GAP);
+            self.reveal = Some((mid - half, mid + half));
         }
     }
 
@@ -252,6 +504,18 @@ impl PdfView {
                 self.model = model;
                 self.editable = editable;
                 true
+            }
+            Event::Text { page, text } => {
+                self.texts.insert(page, text);
+                self.find_in(page);
+                if self.copy_pending {
+                    self.copy(cx);
+                }
+                // (Drawn only where it's selected or found.)
+                if self.text_sel.is_some() || self.find.is_some() {
+                    cx.notify();
+                }
+                false
             }
             Event::Page { page, scale, size, tiles } => {
                 let uploaded = vec![false; tiles.len()];
@@ -664,6 +928,7 @@ impl PdfView {
         let Some((page, pr)) = self.page_at(at) else {
             self.end_editing(cx);
             self.sel = None;
+            self.text_sel = None;
             cx.notify();
             return;
         };
@@ -676,6 +941,10 @@ impl PdfView {
             }
         }
         if !self.editable {
+            if self.tool == Tool::Select {
+                self.start_text(page, pr, at, e);
+                cx.notify();
+            }
             return;
         }
         match self.tool {
@@ -707,6 +976,7 @@ impl PdfView {
                 } else {
                     self.end_editing(cx);
                     self.sel = None;
+                    self.start_text(page, pr, at, e);
                 }
             }
         }
@@ -786,6 +1056,14 @@ impl PdfView {
                 let u = self.user_point(page, layout[page], at);
                 self.resize_mark(mark, corner, start, u);
                 cx.notify();
+            }
+            Some(Drag::Text) => {
+                if let (Some(focus), Some((anchor, old))) = (self.caret_near(at), self.text_sel)
+                    && focus != old
+                {
+                    self.text_sel = Some((anchor, focus));
+                    cx.notify();
+                }
             }
             None => {}
         }
@@ -986,6 +1264,16 @@ impl PdfView {
             if self.tool != Tool::Select {
                 continue;
             }
+            // Over its text, an I-beam (fields and marks over it come
+            // after, and win).
+            if let Some(t) = self.texts.get(&i) {
+                for line in &t.lines {
+                    let r = Rect { x0: pr.x0 + line.rect[0] * self.zoom, y0: pr.y0 + line.rect[1] * self.zoom, x1: pr.x0 + line.rect[2] * self.zoom, y1: pr.y0 + line.rect[3] * self.zoom };
+                    if r.intersects(&visible) {
+                        hits.push((window.insert_hitbox(r.on(o), HitboxBehavior::Normal), CursorStyle::IBeam));
+                    }
+                }
+            }
             for field in &self.model.fields {
                 for w in field.widgets.iter().filter(|w| w.page == i) {
                     if field.read_only || !self.editable {
@@ -1069,8 +1357,53 @@ impl PdfView {
         self.paint_overlays(&layout, window, cx);
     }
 
+    /// The text in view: each line for agents, what's found, what's
+    /// selected (over the page's picture, where its text is).
+    fn paint_text(&self, layout: &[Rect], window: &mut Window, cx: &mut App) {
+        let p = theme::palette(cx);
+        let o = self.origin;
+        let visible = Rect { x0: self.offset.x, y0: self.offset.y, x1: self.offset.x + self.view.width, y1: self.offset.y + self.view.height };
+        let zoom = self.zoom;
+        let on_page = |pr: &Rect, r: [f32; 4]| Rect { x0: pr.x0 + r[0] * zoom, y0: pr.y0 + r[1] * zoom, x1: pr.x0 + r[2] * zoom, y1: pr.y0 + r[3] * zoom };
+        let sel = self.text_sel.map(Self::ordered);
+        let found = olo_ui::style::c(p.hue(olo_ui::palette::Hue::Yellow)).opacity(0.45);
+        let selected = style::selection_over(&p, window.is_window_active());
+        for (page, pr) in layout.iter().enumerate() {
+            if !pr.intersects(&visible) {
+                continue;
+            }
+            let Some(t) = self.texts.get(&page) else { continue };
+            for line in &t.lines {
+                let r = on_page(pr, line.rect);
+                if r.intersects(&visible) {
+                    agent::record(window, cx, agent::Node::label(SharedString::from(line.text.clone()), r.on(o)));
+                }
+            }
+            if let Some(f) = &self.find {
+                for (k, m) in f.matches.iter().enumerate().filter(|(_, m)| m.0 == page) {
+                    if f.current == Some(k) {
+                        continue;
+                    }
+                    for r in t.boxes(m.1, m.2) {
+                        window.paint_quad(gpui::fill(on_page(pr, r).on(o), found));
+                    }
+                }
+            }
+            if let Some((a, b)) = sel
+                && (a.0..=b.0).contains(&page)
+            {
+                let from = if page == a.0 { a.1 } else { 0 };
+                let to = if page == b.0 { b.1 } else { usize::MAX };
+                for r in t.boxes(from, to) {
+                    window.paint_quad(gpui::fill(on_page(pr, r).on(o), selected));
+                }
+            }
+        }
+    }
+
     /// Fields and marks over the pages in view, the stroke being drawn.
     fn paint_overlays(&mut self, layout: &[Rect], window: &mut Window, cx: &mut Context<Self>) {
+        self.paint_text(layout, window, cx);
         let p = theme::palette(cx);
         let o = self.origin;
         let visible = Rect { x0: self.offset.x, y0: self.offset.y, x1: self.offset.x + self.view.width, y1: self.offset.y + self.view.height };
@@ -1239,9 +1572,42 @@ impl Render for PdfView {
             holder = holder.child(if multiline { inner.items_start() } else { inner });
             body = body.child(holder);
         }
+        // A right-click: the text's commands.
+        let me = cx.entity();
+        body = body.on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
+            let selected = me.read(cx).has_text_selection();
+            let mut menu = Menu::new("Text");
+            if selected {
+                menu = menu.item("Copy", "copy").separator();
+            }
+            menu = menu.item("Select All", "select-all").item("Find…", "find");
+            let v = me.clone();
+            olo_ui::menu::context_menu(window, cx, menu, e.position, move |cmd, window, cx| {
+                v.update(cx, |v, cx| match cmd {
+                    "copy" => v.copy(cx),
+                    "select-all" => v.select_all(cx),
+                    "find" => v.open_find(window, cx),
+                    _ => {}
+                })
+            });
+        });
         let p = theme::palette(cx);
         let _ = window;
-        div().size_full().child(ScrollView::new("pdf-scroll", &self.scroll).horizontal(true).border(false).background(p.panel_background).child(body))
+        let scroll = ScrollView::new("pdf-scroll", &self.scroll).horizontal(true).border(false).background(p.panel_background).child(body);
+        let bar = self.find.as_ref().map(|f| self.find_bar(f, cx));
+        div().size_full().flex().flex_col().children(bar).child(div().flex_1().min_h(px(0.0)).child(scroll))
+    }
+}
+
+impl PdfView {
+    /// Find's bar over the pages: the field, how many it found (or that
+    /// it's still reading pages), Previous, Next and Close.
+    fn find_bar(&self, f: &Find, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let reading = self.texts.len() < self.geoms.len();
+        let looking = reading.then(|| format!("{} of {} pages", self.texts.len(), self.geoms.len()));
+        let said = olo_ui::widgets::find_said(&f.query, f.matches.len(), f.current, looking);
+        let (step, close) = (cx.entity(), cx.entity());
+        olo_ui::widgets::find_bar(&f.field, said, !f.matches.is_empty(), move |back, _, cx| step.update(cx, |v, cx| v.find_step(back, cx)), move |_, cx| close.update(cx, |v, cx| v.close_find(cx)))
     }
 }
 

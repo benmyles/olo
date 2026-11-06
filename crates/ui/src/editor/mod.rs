@@ -1644,14 +1644,7 @@ impl Editor {
         let origin = self.shown.origin;
         let focused = self.focus.is_focused(window) && window.is_window_active();
         let sel = self.selection();
-        let dark = p.mode == olo_theme::ThemeMode::Dark;
-        let fill = style::c(p.control_highlight).opacity(if !focused {
-            0.3
-        } else if dark {
-            0.75
-        } else {
-            0.55
-        });
+        let fill = style::selection_behind(&p, focused);
         let text_color = style::c(p.document_text);
         let clip = (f32::from(view.top()), f32::from(view.bottom()));
         let px1 = 1.0 / s;

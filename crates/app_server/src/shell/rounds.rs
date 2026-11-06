@@ -47,6 +47,13 @@ pub struct Round {
     began: Instant,
 }
 
+impl Round {
+    /// Whether it waits for `surface` to draw.
+    pub fn waits_for(&self, surface: &WlSurface) -> bool {
+        self.members.iter().any(|m| m.surface == *surface)
+    }
+}
+
 /// A window in a round.
 struct Member {
     surface: WlSurface,

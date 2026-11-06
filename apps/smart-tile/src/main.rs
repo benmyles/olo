@@ -318,6 +318,7 @@ mod tests {
             part: None,
             floating: false,
             float: None,
+            floats_always: false,
             output: None,
             tab: None,
             behind: false,

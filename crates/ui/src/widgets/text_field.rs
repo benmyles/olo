@@ -1180,15 +1180,7 @@ impl Element for FieldElement {
                 let x1 = left + line.x_for_index(selected.end);
                 let sel = Bounds::from_corners(point(x0, top), point(x1, top + height));
                 // The kit's selection: the highlight, see-through.
-                let dark = palette.mode == olo_theme::ThemeMode::Dark;
-                let ink = style::c(palette.control_highlight).opacity(if !focused {
-                    0.3
-                } else if dark {
-                    0.75
-                } else {
-                    0.55
-                });
-                style::fill_rect(window, sel, ink);
+                style::fill_rect(window, sel, style::selection_behind(&palette, focused));
             }
             let _ = line.paint(point(left, top), height, window, cx);
             crate::review::text(window, drawn, baseline, &text, size_px);
@@ -1303,14 +1295,7 @@ fn paint_multiline(entity: &Entity<TextField>, bounds: Bounds<Pixels>, window: &
     }
     let origin = point(bounds.origin.x, bounds.origin.y - scroll);
     window.with_content_mask(Some(gpui::ContentMask { bounds }), |window| {
-        let dark = palette.mode == olo_theme::ThemeMode::Dark;
-        let ink = style::c(palette.control_highlight).opacity(if !focused {
-            0.3
-        } else if dark {
-            0.75
-        } else {
-            0.55
-        });
+        let ink = style::selection_behind(&palette, focused);
         for b in bands {
             style::fill_rect(window, Bounds { origin: point(origin.x + b.origin.x, origin.y + b.origin.y), size: b.size }, ink);
         }

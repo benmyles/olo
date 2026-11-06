@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Coding agents' tab titles, end to end, as each agent runs the tool.
+
+  agent-title-check
+
+Starts a headless session of its own ("agtitle", HOME a folder of its own
+under /var/tmp) with Terminal in it, Preferences ▸ Terminal's agent
+settings on, its tab in that HOME, then sets the tab's title through
+`olo-terminal --mcp` (agent_title.rs) the way each agent runs it:
+
+  Codex:        a bare environment (Codex gives its MCP servers HOME, PATH,
+                LANG and a few more: no XDG_RUNTIME_DIR, no display),
+                started outside the tab's processes (in Codex's daemon),
+                the tab found by its folder.
+  Claude Code:  run from the tab's shell (its environment, the tab found
+                as an ancestor), and across an upgrade: the server's file
+                replaced under it and SIGURG sent, as olo-session does; it
+                becomes the new version between messages and the same
+                connection sets the title again.
+
+and checks the window's title each time. The server runs from a copy of
+the build in the session's folder, so the upgrade replaces the copy.
+"""
+import json, os, shutil, signal, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TS = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
+N = "agtitle"
+SCRATCH = f"/var/tmp/olo-agent-title-{os.getpid()}"
+HOME = os.path.join(SCRATCH, "home")
+BIN = os.path.join(ROOT, "target/release/olo-terminal")
+COPY = os.path.join(SCRATCH, "olo-terminal")
+
+
+def ts(*a):
+    return subprocess.run(TS + list(a), capture_output=True, text=True, env=dict(os.environ, TSESSION_PROFILE="release"))
+
+
+def ipc(r):
+    return json.loads(ts("ipc", N, json.dumps(r)).stdout or "{}")
+
+
+def titles():
+    return [w["title"] for w in ipc({"type": "list_windows"}).get("windows", [])]
+
+
+def wait_title(want, within=5.0):
+    end = time.time() + within
+    while time.time() < end:
+        if any(want in t for t in titles()):
+            return True
+        time.sleep(0.2)
+    return False
+
+
+# A client of the server: one initialize, then each title in turn; between
+# the first and the second, the server's file replaced and SIGURG sent if
+# asked. Prints each answer's text as a JSON line.
+CLIENT = r'''
+import json, os, shutil, signal, subprocess, sys, time
+server, out, upgrade, titles = sys.argv[1], sys.argv[2], sys.argv[3] == "upgrade", sys.argv[4:]
+env = json.loads(os.environ.pop("AGENT_ENV")) if "AGENT_ENV" in os.environ else dict(os.environ)
+p = subprocess.Popen([server, "--mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=env, cwd=os.getcwd())
+def ask(i, method, params=None):
+    p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": params or {}}) + "\n"); p.stdin.flush()
+    return json.loads(p.stdout.readline())
+said = [ask(1, "initialize")["result"]["serverInfo"]["name"]]
+for i, title in enumerate(titles):
+    if i == 1 and upgrade:
+        shutil.copyfile(server, server + ".new"); os.chmod(server + ".new", 0o755); os.rename(server + ".new", server)
+        os.kill(p.pid, signal.SIGURG); time.sleep(0.5)
+        said.append("exe " + os.readlink(f"/proc/{p.pid}/exe"))
+    r = ask(10 + i, "tools/call", {"name": "set_tab_title", "arguments": {"title": title, "cwd": os.getcwd()}})
+    said.append(r["result"]["content"][0]["text"])
+    time.sleep(1.0)
+p.stdin.close(); p.wait(timeout=5)
+open(out, "w").write(json.dumps(said))
+'''
+
+
+def main():
+    if not os.path.exists(BIN):
+        sys.exit("build first: cargo build --release -p olo-terminal")
+    os.makedirs(HOME, exist_ok=True)
+    subprocess.run(["cp", "--reflink=auto", BIN, COPY], check=True)
+    client = os.path.join(SCRATCH, "client.py")
+    open(client, "w").write(CLIENT)
+    failures = []
+
+    def check(ok, what):
+        print(("  ok  " if ok else "  FAIL ") + what)
+        if not ok:
+            failures.append(what)
+
+    try:
+        print(ts("start", N, "1600x1000", "--home", HOME).stdout.strip())
+        s = ipc({"type": "get_settings"})["settings"]
+        s["terminal"]["agent_titles"] = True
+        s["terminal"]["agent_context"] = True
+        ipc({"type": "set_settings", "settings": s})
+        ts("run", N, BIN, "-w", HOME)
+        ok = False
+        for _ in range(40):
+            time.sleep(0.25)
+            snap_path = f"{os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')}/olo-terminal-groups-{json.load(open(f'/tmp/olo-dev/{N}/env.json'))['WAYLAND_DISPLAY']}.json"
+            if os.path.exists(snap_path) and any(t.get("cwd") == HOME for t in json.load(open(snap_path))["tabs"]):
+                ok = True
+                break
+        check(ok, "Terminal's tab is in the agents' snapshot")
+
+        print("Codex (a bare environment, outside the tab, by folder):")
+        bare = {k: os.environ[k] for k in ("PATH", "LANG", "USER", "LOGNAME", "SHELL", "TERM") if k in os.environ}
+        bare["HOME"] = HOME
+        out = os.path.join(SCRATCH, "codex.json")
+        # (Reparented away from this process tree, as under Codex's daemon.)
+        env = dict(bare, AGENT_ENV=json.dumps(bare))
+        subprocess.run(["bash", "-c", f"( cd {HOME} && exec {sys.executable} {client} {COPY} {out} no 'Review PR 412' > {out}.log 2>&1 & )"], env=env)
+        check(wait_title("Review PR 412", 8), "the tab titled by the server Codex runs")
+        for _ in range(20):
+            if os.path.exists(out):
+                break
+            time.sleep(0.25)
+        said = json.load(open(out)) if os.path.exists(out) else open(out + ".log").read()
+        print("     ", said)
+
+        print("Claude Code (under the tab's shell, across an upgrade):")
+        out = os.path.join(SCRATCH, "claude.json")
+        ts("type", N, f"{sys.executable} {client} {COPY} {out} upgrade 'Fix login redirect' 'Write the tests'")
+        ts("key", N, "28")
+        check(wait_title("Fix login redirect", 8), "the tab titled by the server under its shell")
+        check(wait_title("Write the tests", 10), "titled again by the same server after it upgraded in place")
+        for _ in range(20):
+            if os.path.exists(out):
+                break
+            time.sleep(0.25)
+        said = json.load(open(out)) if os.path.exists(out) else []
+        print("     ", said)
+        check(any(s.startswith("exe ") and not s.endswith("(deleted)") for s in said), "the server became the new file")
+    finally:
+        ts("stop", N)
+        shutil.rmtree(SCRATCH, ignore_errors=True)
+    if failures:
+        sys.exit(f"{len(failures)} failed")
+    print("all as they should be")
+
+
+if __name__ == "__main__":
+    main()

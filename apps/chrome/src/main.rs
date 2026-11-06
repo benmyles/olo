@@ -13,6 +13,7 @@ mod install;
 mod prefs;
 mod profile;
 mod singleton;
+mod slack;
 
 use std::{
     os::unix::process::CommandExt,

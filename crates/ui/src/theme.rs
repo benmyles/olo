@@ -149,6 +149,8 @@ fn apply_outputs(outputs: &[OutputInfo]) -> bool {
             TextMode::Hinted | TextMode::Auto => gpui::TextRendering::Hinted,
         });
         changed |= gpui::set_display_text_rendering(&o.name, rendering);
+        // (Windows on it may draw HDR pictures as HDR.)
+        gpui::set_display_hdr(&o.name, o.hdr == Some(true));
     }
     changed
 }

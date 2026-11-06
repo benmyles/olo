@@ -44,13 +44,19 @@ fn socket_path(app_id: &str) -> PathBuf {
 }
 
 fn socket_on(app_id: &str, display: &str) -> PathBuf {
-    let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let rt = olo_xdg::runtime_dir();
     let display = if display.is_empty() { "wayland-0" } else { display };
     rt.join(format!("{app_id}-{display}.sock"))
 }
 
-/// If `app_id` is already running, hand it `args` and return true.
+/// If `app_id` is already running, hand it `args` and return true. Not
+/// when this process was moved here from another display (`moving`), or
+/// carries state (`restore`: re-executing): not a launch, and handed to
+/// the copy here its state would be lost.
 pub fn forward(app_id: &str, args: &[String]) -> bool {
+    if crate::moving::claim() || std::env::var_os(crate::restore::ENV).is_some() {
+        return false;
+    }
     send(socket_path(app_id), args)
 }
 
@@ -118,6 +124,11 @@ pub fn close() {
 
 fn listen_at(path: PathBuf, proxy: Proxy) {
     use std::os::unix::fs::MetadataExt as _;
+    // Another copy takes this display's launches already (this one was
+    // moved here from another display): it keeps them.
+    if UnixStream::connect(&path).is_ok() {
+        return;
+    }
     let _ = std::fs::remove_file(&path);
     let Ok(listener) = UnixListener::bind(&path) else { return };
     if let Ok(m) = std::fs::metadata(&path) {

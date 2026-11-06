@@ -803,7 +803,7 @@ fn init_encoder_impl(
     m.declutter()?;
     let pulsed = PulsedModel::new(&m, s, &1.to_dim())?;
     log::info!("Init encoder");
-    let m = pulsed.into_typed()?.into_optimized()?;
+    let m = optimized(pulsed.into_typed()?, "encoder")?;
     Ok(m)
 }
 fn init_encoder(m: &Path, df_cfg: &ini::Properties, n_ch: usize) -> Result<TypedModel> {
@@ -909,7 +909,7 @@ fn init_erb_decoder_impl(
     }
     m = m.with_outputs_by_name(&[output_name])?;
 
-    let m = m.into_optimized()?;
+    let m = optimized(m, "ERB decoder")?;
 
     Ok(m)
 }
@@ -971,7 +971,7 @@ fn init_df_decoder_impl(
     m.declutter()?;
     let pulsed = PulsedModel::new(&m, s, &1.to_dim())?;
     log::info!("Init DF decoder");
-    let m = pulsed.into_typed()?.into_optimized()?;
+    let m = optimized(pulsed.into_typed()?, "DF decoder")?;
     Ok(m)
 }
 fn init_df_decoder(
@@ -1072,4 +1072,69 @@ pub fn as_arrayview_mut_complex<'a>(
         let ptr = buffer.as_ptr() as *mut Complex32;
         ArrayViewMutD::from_shape_ptr(shape, ptr)
     }
+}
+
+/// Olo: the weight matrices of a typed model's matmuls in f16: each
+/// EinSum fed by a
+/// constant f32 of two or more dimensions (and some size) gets an f16
+/// copy of it instead, so the optimizer packs it as f16 and picks the
+/// kernels that take f16 weights and f32 activations (`f16f32`,
+/// `f32f16`), the activations and sums staying f32. Inside scans (the
+/// GRUs) too. Half the weights' bytes, for the caches between frames.
+pub fn half_weights(model: &mut TypedModel) -> Result<usize> {
+    use tract_core::ops::einsum::EinSum;
+    use tract_core::ops::konst::Const;
+    let mut changed = 0;
+    // Scans' bodies first.
+    for node in model.nodes.iter_mut() {
+        if let Some(scan) = node.op_as_mut::<tract_core::ops::scan::Scan>() {
+            changed += half_weights(&mut scan.body)?;
+        }
+    }
+    let ids: Vec<usize> = model.nodes.iter().filter(|n| n.op_is::<EinSum>()).map(|n| n.id).collect();
+    for id in ids {
+        let node = model.node(id).clone();
+        let op = node.op_as::<EinSum>().unwrap().clone();
+        if op.operating_dt != f32::datum_type() || op.q_params.is_some() || node.inputs.len() != 2 {
+            continue;
+        }
+        let consts: Vec<Option<Arc<Tensor>>> = node
+            .inputs
+            .iter()
+            .map(|i| model.node(i.node).op_as::<Const>().map(|c| c.val().clone()))
+            .collect();
+        let Some(slot) = consts.iter().position(|c| c.as_ref().is_some_and(|t| t.datum_type() == f32::datum_type() && t.rank() >= 2 && t.len() >= 256)) else {
+            continue;
+        };
+        let t16 = consts[slot].as_ref().unwrap().cast_to::<f16>()?.into_owned();
+        let mut patch = TypedModelPatch::default();
+        let mut wires = patch.taps(model, &node.inputs)?;
+        wires[slot] = patch.add_const(format!("{}.f16_weights", node.name), t16)?;
+        let out = patch.wire_node(&node.name, op, &wires)?;
+        patch.shunt_outside(model, node.id.into(), out[0])?;
+        patch.apply(model)?;
+        changed += 1;
+    }
+    Ok(changed)
+}
+
+/// The model optimized with its weights in f16 (`half_weights`), as
+/// measured on x86 with F16C (2026-11-05: a frame back to back 391 → 296
+/// µs, one every 10 ms as live 773 → 536 µs, the voice trials' SDR the
+/// same to a tenth of a dB); in f32 where that doesn't optimize (no
+/// kernels for it on this processor) or with `OLO_VOICE_F32` set.
+fn optimized(m: TypedModel, what: &str) -> Result<TypedModel> {
+    if std::env::var_os("OLO_VOICE_F32").is_none() {
+        let mut half = m.clone();
+        half.declutter()?;
+        let n = half_weights(&mut half)?;
+        match half.into_optimized() {
+            Ok(o) => {
+                log::info!("{what}: {n} weight matrices in f16");
+                return Ok(o);
+            }
+            Err(e) => log::warn!("{what}: weights in f16 didn't optimize ({e}); in f32"),
+        }
+    }
+    Ok(m.into_optimized()?)
 }

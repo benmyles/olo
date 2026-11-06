@@ -12,12 +12,86 @@
 //! ```text
 //! olo-screenshot --record [--window ID] [--display NAME] [--region [X,Y,W,H]]
 //!                [--seconds N] [--fps N] [--no-pointer]
-//!                [--encoder auto|cpu|nvidia] [--to PATH]
+//!                [--encoder auto|cpu|nvidia] [--codec h264|hevc|av1]
+//!                [--sound computer|microphone|both|none]
+//!                [--as-gif] [--show-clicks] [--show-keys] [--countdown N] [--background]
+//!                [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--camera [ID]]
+//!                [--to PATH]
+//! olo-screenshot --zoom-to X,Y,W,H|out [--display NAME]
+//! olo-screenshot --caption TEXT [--seconds N]   ("": taken down)
+//! olo-screenshot --mark TITLE    this moment marked: a chapter
+//! olo-screenshot --gif VIDEO.mp4 [--to PATH] [--fps N] [--width N]
+//! olo-screenshot --trim VIDEO.mp4 --start S --end E [--to PATH]
 //! olo-screenshot --stop          the recording on this display, finished
 //! olo-screenshot --pause         nothing recorded till --resume
 //! olo-screenshot --resume
 //! olo-screenshot --recording     whether one is going, as JSON
 //! ```
+//!
+//! `--codec` codes it as H.264 (plays everywhere: the default), HEVC
+//! (about half the size) or AV1 (for players that want it: no smaller on
+//! screens), the last two on NVIDIA's encoder only (`--encoder auto` on the processor makes H.264 then;
+//! `codec` in what's printed says which), as asked, else as Preferences ▸
+//! GPUs has it.
+//!
+//! `--sound` records what the computer plays, the microphone, both or
+//! neither (`sound.rs`: AAC beside the video), as asked, else as the
+//! settings say (the computer's, by default). With no sound server or no
+//! AAC encoder, the video is made without, and says so (`sound` null,
+//! `sound_note` why).
+//!
+//! `--as-gif` (or the settings' `gif`: Screenshot's Record… ▸ Save as GIF)
+//! makes the recording a GIF once it's done (no sound), the MP4 gone;
+//! `--gif` makes any of Olo's recordings one (`olo_video::gif`: 10 frames
+//! a second, at most 960 wide, one palette, each frame what changed).
+//!
+//! `--countdown N` shows N, N-1, … 1 in the middle of the screen a second
+//! each before the recording begins (app_server's `Request::Countdown`),
+//! while the encoder opens; ⌘⇧6 and Screenshot's Record… count down the
+//! settings' `countdown` (3), agents' recordings none.
+//!
+//! `--show-clicks` and `--show-keys` (or the settings', Record…'s ticks)
+//! have app_server show clicks (a ring) and shortcuts (a key cap) while
+//! it records (`Request::SetShowing`), and stop after.
+//!
+//! `--camera [ID]` (or the settings', Record… ▸ Show Camera) shows the
+//! camera in a bubble low in the screen's right corner while it records
+//! (`bubble.rs`, its own process: on the screen, so a recording of the
+//! screen or a region has it; a window's doesn't), started before the
+//! countdown and ended after; `camera` in what's printed names it,
+//! `camera_note` says why there's none. ID: a camera's node ("video0"),
+//! else the first colour camera.
+//!
+//! `--mark TITLE` marks this moment of the recording going on this
+//! display (SIGRTMIN+1; the title left in the runtime directory beside
+//! what's going), timed as the video is (pauses left out): a chapter of
+//! the video (`chpl`) and in what it prints (`marks`).
+//!
+//! `--caption TEXT` puts a caption in what's recorded (never on the
+//! screen: app_server draws it into captures only), low in the middle on
+//! a dark panel, wrapped to three lines, fading in and out, for
+//! `--seconds N` or till the next (an empty TEXT takes it down): an
+//! agent's narration of its demo.
+//!
+//! `--zoom-follow` (or the settings', Record… ▸ Zoom on Clicks) has a
+//! display's recording zoom in twice around each click, follow the
+//! pointer, and zoom out three seconds after the last click or key;
+//! `--zoom-to X,Y,W,H` zooms it to a part of the display and holds it
+//! there (`out`: back), for an agent showing a detail (app_server's
+//! `zoom`: the GPU draws the capture magnified, the screen as it is).
+//!
+//! `--pointer-size K` draws the pointer K times its size in the
+//! recording (1 to 4; the built-in cursors drawn at that size, not
+//! enlarged), and `--smooth-pointer` has it glide after the real one (a
+//! hand's jitter and an agent's jumps smoothed: app_server's
+//! `showing::captured_pointer`), as the settings say otherwise (Record… ▸
+//! Larger Pointer, 1.5×, and Smooth Pointer). Only in what's captured:
+//! the screen's pointer is as it was.
+//!
+//! `--background` (or the settings', Record… ▸ Window on a Background)
+//! shows a window's recording on the wallpaper, blurred, the window's
+//! corners rounded and a shadow under it (`backdrop.rs`): the video that
+//! much bigger. Only for a window; the screen and a region are as they are.
 //!
 //! `--region X,Y,W,H` records that part of the display (points from its
 //! top left, as windows' frames are given); `--region` alone has it
@@ -85,6 +159,57 @@ extern "C" fn on_resume(_: libc::c_int) {
     wake();
 }
 
+/// Marks asked for (SIGRTMIN+1: `--mark`), their titles waiting in
+/// `marks_path`.
+static MARK: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn on_mark(_: libc::c_int) {
+    MARK.store(true, Ordering::SeqCst);
+    wake();
+}
+
+/// The signal `--mark` sends.
+fn mark_signal() -> libc::c_int {
+    libc::SIGRTMIN() + 1
+}
+
+/// Where `--mark` leaves titles for the recorder on this display.
+fn marks_path() -> PathBuf {
+    going_path().with_extension("marks")
+}
+
+/// The titles left since the last look, taken (the file moved aside
+/// first, so a mark made meanwhile starts a new one).
+fn take_marks() -> Vec<String> {
+    let taking = marks_path().with_extension("marks.taking");
+    if std::fs::rename(marks_path(), &taking).is_err() {
+        return Vec::new();
+    }
+    let titles = std::fs::read_to_string(&taking).unwrap_or_default().lines().map(str::to_owned).collect();
+    let _ = std::fs::remove_file(&taking);
+    titles
+}
+
+/// `--mark TITLE`: this moment of the recording on this display marked,
+/// a chapter of the video (`chpl`) and in what it prints (`marks`).
+pub fn mark(args: &[String]) -> i32 {
+    let Some(g) = going() else {
+        eprintln!("olo-screenshot: nothing is being recorded on this display");
+        return 1;
+    };
+    let title = option(args, "--mark").unwrap_or("").replace(['\n', '\r'], " ").trim().to_owned();
+    let line = format!("{title}\n");
+    let written = std::fs::OpenOptions::new().create(true).append(true).open(marks_path()).and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()));
+    if let Err(e) = written {
+        eprintln!("olo-screenshot: {e}");
+        return 1;
+    }
+    // SAFETY: a signal to the recorder's process.
+    unsafe { libc::kill(g.pid as i32, mark_signal()) };
+    println!("{}", serde_json::json!({ "path": g.path, "mark": title }));
+    0
+}
+
 use olo_protocol::recording::{Going, going};
 
 fn going_path() -> PathBuf {
@@ -124,6 +249,123 @@ pub struct Made {
     pub height: u32,
     /// What encoded it ("NVIDIA's GPU (NVENC)").
     pub encoder: String,
+    /// What it's coded as: "H.264", "HEVC" or "AV1".
+    pub codec: &'static str,
+    /// Why it stopped before it was told to (the encoder failed twice,
+    /// the disk filled): what was recorded till then is kept.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stopped_early: Option<String>,
+    /// The sound in it ("computer", "microphone", "both"), if any.
+    pub sound: Option<String>,
+    /// Why there's none, when some was asked for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sound_note: Option<String>,
+    /// Made a GIF: its frames and size in bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gif: Option<GifMade>,
+    /// The camera shown in its bubble, if one was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub camera: Option<String>,
+    /// Why there's none, when one was asked for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub camera_note: Option<String>,
+    /// Its marks (`--mark`): when (seconds into it) and their titles,
+    /// its chapters.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<Mark>,
+}
+
+/// A moment of a recording marked.
+#[derive(Debug, Clone, Serialize)]
+pub struct Mark {
+    pub at: f64,
+    pub title: String,
+}
+
+/// A GIF made of a recording.
+#[derive(Debug, Clone, Serialize)]
+pub struct GifMade {
+    pub frames: usize,
+    pub width: u32,
+    pub height: u32,
+    pub bytes: u64,
+}
+
+/// `--trim VIDEO --start S --end E`: a recording cut to that stretch,
+/// copied (nothing encoded again: `olo_video::trim`), beside it as
+/// "NAME (trimmed).mp4" unless `--to`; what was made printed.
+pub fn trim(args: &[String]) -> i32 {
+    let run = || -> Result<serde_json::Value, String> {
+        let src = PathBuf::from(option(args, "--trim").ok_or("--trim takes the video to trim")?);
+        let secs = |flag: &str| option(args, flag).map(str::parse::<f64>).transpose().map_err(|_| format!("{flag} takes seconds"));
+        let start = secs("--start")?.unwrap_or(0.0);
+        let end = secs("--end")?.ok_or("--end takes where it ends (seconds)")?;
+        let dst = option(args, "--to").map_or_else(
+            || {
+                let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                src.with_file_name(format!("{stem} (trimmed).mp4"))
+            },
+            PathBuf::from,
+        );
+        let part = dst.with_extension("mp4.part");
+        let t = olo_video::trim::trim(&src, &part, start, end).inspect_err(|_| {
+            let _ = std::fs::remove_file(&part);
+        })?;
+        std::fs::rename(&part, &dst).map_err(|e| format!("{}: {e}", dst.display()))?;
+        Ok(serde_json::json!({ "path": dst, "seconds": t.seconds, "frames": t.frames, "sound": t.sound }))
+    };
+    match run() {
+        Ok(v) => {
+            println!("{v}");
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: the trim failed: {e}");
+            1
+        }
+    }
+}
+
+/// `--gif VIDEO`: a recording made a GIF; what was made printed.
+pub fn gif(args: &[String]) -> i32 {
+    let Some(src) = option(args, "--gif").map(PathBuf::from) else {
+        eprintln!("olo-screenshot: --gif takes the video to make a GIF of");
+        return 2;
+    };
+    let dst = option(args, "--to").map_or_else(|| src.with_extension("gif"), PathBuf::from);
+    let mut opts = olo_video::gif::Options::default();
+    if let Some(fps) = option(args, "--fps").and_then(|v| v.parse().ok()) {
+        opts.fps = fps;
+    }
+    if let Some(w) = option(args, "--width").and_then(|v| v.parse().ok()) {
+        opts.width = w;
+    }
+    match make_gif(&src, &dst, &opts) {
+        Ok(g) => {
+            println!("{}", serde_json::json!({ "path": dst, "frames": g.frames, "width": g.width, "height": g.height, "bytes": g.bytes }));
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: the GIF failed: {e}");
+            1
+        }
+    }
+}
+
+/// `src` made a GIF at `dst` (written beside it, then put in place);
+/// stopped by SIGINT/SIGTERM as a recording is.
+fn make_gif(src: &Path, dst: &Path, opts: &olo_video::gif::Options) -> Result<GifMade, String> {
+    let part = dst.with_extension("gif.part");
+    let made = olo_video::gif::from_mp4(src, &part, opts, &STOP, &|_| {});
+    let made = match made {
+        Ok(m) => m,
+        Err(e) => {
+            let _ = std::fs::remove_file(&part);
+            return Err(e);
+        }
+    };
+    std::fs::rename(&part, dst).map_err(|e| format!("{}: {e}", dst.display()))?;
+    Ok(GifMade { frames: made.frames, width: made.width, height: made.height, bytes: made.bytes })
 }
 
 /// `--record`: record until told to stop; what it made printed. Exit 0
@@ -156,6 +398,13 @@ fn scale_of(name: &str) -> f64 {
     outputs.iter().find(|o| o.name == name).map_or(1.0, |o| o.scale)
 }
 
+/// The scale of the display window `id` is on.
+fn window_scale(id: u64) -> f64 {
+    let reply = olo_protocol::Client::connect().ok().and_then(|mut c| c.request(&olo_protocol::Request::ListWindows).ok());
+    let Some(olo_protocol::Reply::Windows { windows }) = reply else { return 1.0 };
+    windows.iter().find(|w| w.id == id).and_then(|w| w.output.clone()).map_or(1.0, |o| scale_of(&o))
+}
+
 /// Points (`r`, from the display's top left) at `scale`: its pixels.
 fn in_pixels(r: [f64; 4], scale: f64) -> [u32; 4] {
     let x = (r[0] * scale).round();
@@ -172,6 +421,9 @@ fn crop_within(crop: Option<[u32; 4]>, w: u32, h: u32) -> [u32; 4] {
     }
     [x, y, cw.min(w - x), ch.min(h - y)]
 }
+
+/// How much a recording that follows clicks zooms in.
+const ZOOM: f64 = 2.0;
 
 /// A recording, or None: a region was to be picked, and none was.
 fn record(args: &[String]) -> Result<Option<Made>, String> {
@@ -201,15 +453,57 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
     }
     let fps: u32 = option(args, "--fps").map_or(Ok(30), str::parse).map_err(|_| "--fps takes a number")?;
     let fps = fps.clamp(1, 60);
-    // As asked, else as Preferences ▸ GPUs has it, else the most
-    // powerful there is.
-    let chosen = option(args, "--encoder").map(str::to_owned).or_else(|| match olo_protocol::Client::connect().ok()?.request(&olo_protocol::Request::GetSettings).ok()? {
-        olo_protocol::Reply::Settings { settings } => Some(settings.screen_recording.encoder),
+    let all = olo_protocol::Client::connect().ok().and_then(|mut c| match c.request(&olo_protocol::Request::GetSettings).ok()? {
+        olo_protocol::Reply::Settings { settings } => Some(settings),
         _ => None,
     });
+    let settings = all.as_ref().map(|s| s.screen_recording.clone());
+    // As asked, else as Preferences ▸ GPUs has it, else the most
+    // powerful there is.
+    let chosen = option(args, "--encoder").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.encoder.clone()));
+    // A window on a background: what it's made of.
+    let backdrop = match &source {
+        Source::Window { id, .. } if args.iter().any(|a| a == "--background") || settings.as_ref().is_some_and(|s| s.background) => Some(crate::backdrop::Look {
+            wallpaper: all.as_ref().and_then(|s| s.wallpaper.clone()),
+            dark: all.as_ref().is_some_and(|s| s.appearance.effective_theme == olo_ui::palette::ThemeMode::Dark),
+            colour: all.as_ref().and_then(|s| s.workspace_colors.first().copied()).unwrap_or([51, 102, 152]),
+            scale: window_scale(*id),
+        }),
+        _ => None,
+    };
+    let as_gif = args.iter().any(|a| a == "--as-gif") || settings.as_ref().is_some_and(|s| s.gif);
+    let show_clicks = args.iter().any(|a| a == "--show-clicks") || settings.as_ref().is_some_and(|s| s.show_clicks);
+    let show_keys = args.iter().any(|a| a == "--show-keys") || settings.as_ref().is_some_and(|s| s.show_keys);
+    let pointer_size: f64 = match option(args, "--pointer-size") {
+        Some(v) => v.parse().ok().filter(|k: &f64| (1.0..=4.0).contains(k)).ok_or("--pointer-size takes 1 to 4 (times the pointer's size)")?,
+        None => settings.as_ref().map_or(1.0, |s| s.pointer_size.clamp(1.0, 4.0)),
+    };
+    let smooth_pointer = args.iter().any(|a| a == "--smooth-pointer") || settings.as_ref().is_some_and(|s| s.smooth_pointer);
+    // Zoom following clicks: the whole display only (a region's part and a
+    // window are as they are).
+    let zoom_follow = args.iter().any(|a| a == "--zoom-follow") || settings.as_ref().is_some_and(|s| s.zoom_follow);
+    let countdown: u32 = option(args, "--countdown").map_or(Ok(0), str::parse).map_err(|_| "--countdown takes seconds")?;
+    let sound = match option(args, "--sound").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.sound.clone())) {
+        Some(s) => crate::sound::Which::parse(&s).ok_or("--sound is computer, microphone, both or none")?,
+        None => crate::sound::Which::Computer,
+    };
+    // (A GIF has no sound: none recorded.)
+    let sound = if as_gif { crate::sound::Which::Nothing } else { sound };
     let choice = match chosen.as_deref() {
-        Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu or nvidia")?,
+        Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu, nvidia or vaapi")?,
         None => olo_video::Choice::Auto,
+    };
+    // H.264, HEVC or AV1: as asked, else as Preferences ▸ GPUs has it (on
+    // the processor, H.264 whatever it says: the processor makes only that;
+    // through VA-API, AV1, the only one Fedora's drivers make).
+    let codec = match option(args, "--codec") {
+        Some(c) => olo_video::Codec::parse(c).ok_or("--codec is h264, hevc or av1")?,
+        None if choice == olo_video::Choice::Vaapi => olo_video::Codec::Av1,
+        None => match settings.as_ref().and_then(|s| olo_video::Codec::parse(&s.codec)) {
+            Some(_) if choice == olo_video::Choice::Cpu => olo_video::Codec::H264,
+            Some(c) => c,
+            None => olo_video::Codec::H264,
+        },
     };
     let seconds: Option<f64> = option(args, "--seconds").map(str::parse).transpose().map_err(|_| "--seconds takes a number")?;
     let path = option(args, "--to").map_or_else(default_path, PathBuf::from);
@@ -236,37 +530,168 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         libc::signal(libc::SIGTERM, on_stop as *const () as libc::sighandler_t);
         libc::signal(libc::SIGUSR1, on_pause as *const () as libc::sighandler_t);
         libc::signal(libc::SIGUSR2, on_resume as *const () as libc::sighandler_t);
+        libc::signal(mark_signal(), on_mark as *const () as libc::sighandler_t);
     }
     let what = match &source {
         Source::Window { id, .. } => format!("window {id}"),
         Source::Output(_) if crop.is_some() => "region".into(),
-        Source::Output(_) => "display".into(),
+        Source::Output(_) | Source::Display(_) => "display".into(),
     };
     let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false };
+    let g = Going { pid: std::process::id(), path: path.clone(), started: now_secs, what, paused: false, recording: false };
     let _ = std::fs::write(going_path(), serde_json::to_vec(&g).unwrap_or_default());
-    let result = record_into(&mut capture, &path, fps, seconds, choice, crop, &g, woken.as_raw_fd());
+    // Clicks and keys shown while it records, the pointer as asked, and
+    // as before after.
+    let zoom = if zoom_follow && matches!(source, Source::Output(_)) && crop.is_none() { ZOOM } else { 0.0 };
+    let showing = show_clicks || show_keys || pointer_size != 1.0 || smooth_pointer || zoom > 1.0;
+    let set_showing = |clicks: bool, keys: bool, pointer_size: f64, smooth_pointer: bool, zoom: f64| {
+        if let Ok(mut c) = olo_protocol::Client::connect() {
+            let _ = c.request(&olo_protocol::Request::SetShowing { clicks, keys, pointer_size, smooth_pointer, zoom });
+        }
+    };
+    if showing {
+        set_showing(show_clicks, show_keys, pointer_size, smooth_pointer, zoom);
+    }
+    // The camera in its bubble, on the screen from before the countdown
+    // till the end (a window's recording is only the window: not there).
+    let camera_wanted: Option<String> = match args.iter().position(|a| a == "--camera") {
+        Some(i) => Some(args.get(i + 1).filter(|v| !v.starts_with("--")).cloned().unwrap_or_else(|| "auto".into())),
+        None => settings.as_ref().map(|s| s.camera.clone()).filter(|c| !c.is_empty()),
+    };
+    // A window on a background has the camera drawn on its background's
+    // corner by the recorder itself (`inset.rs`); a window alone, none.
+    let mut inset: Option<crate::inset::Inset> = None;
+    let (bubble, camera, camera_note) = match camera_wanted {
+        None => (None, None, None),
+        Some(id) if matches!(source, Source::Window { .. }) && backdrop.is_some() => {
+            let (w, h) = capture.size().unwrap_or((1280, 800));
+            let m = crate::backdrop::margin(w, h);
+            let (vw, vh) = olo_video::even(w + 2 * m, h + 2 * m);
+            match crate::inset::Inset::start(&id, vw, vh) {
+                Ok(i) => {
+                    let name = i.name.clone();
+                    inset = Some(i);
+                    (None, Some(name), None)
+                }
+                Err(e) => {
+                    eprintln!("olo-screenshot: recording without the camera: {e}");
+                    (None, None, Some(e))
+                }
+            }
+        }
+        Some(_) if matches!(source, Source::Window { .. }) => {
+            (None, None, Some("a window's recording is only the window: the camera shows in recordings of the screen or a region, or of a window on a background".to_owned()))
+        }
+        Some(id) => match CameraBubble::start(&id) {
+            Ok((b, name)) => (Some(b), Some(name), None),
+            Err(e) => {
+                eprintln!("olo-screenshot: recording without the camera: {e}");
+                (None, None, Some(e))
+            }
+        },
+    };
+    let result = record_into(&mut capture, &path, fps, seconds, (choice, codec), crop, backdrop, inset, sound, countdown.min(10), &g, woken.as_raw_fd());
+    if showing {
+        set_showing(false, false, 1.0, false, 0.0);
+    }
+    drop(bubble);
     let _ = std::fs::remove_file(going_path());
     WAKE.store(-1, Ordering::SeqCst);
     drop(waker);
-    result.map(Some)
+    let mut made = result?;
+    (made.camera, made.camera_note) = (camera, camera_note);
+    if as_gif {
+        // Made a GIF beside it, the video gone (a stop now stops this).
+        STOP.store(false, Ordering::SeqCst);
+        let gif_path = made.path.with_extension("gif");
+        let g = make_gif(&made.path, &gif_path, &olo_video::gif::Options::default())?;
+        let _ = std::fs::remove_file(&made.path);
+        made.path = gif_path;
+        (made.width, made.height) = (g.width, g.height);
+        made.gif = Some(g);
+    }
+    Ok(Some(made))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64>, choice: olo_video::Choice, crop: Option<[u32; 4]>, going: &Going, woken: i32) -> Result<Made, String> {
-    let start = Instant::now();
-    let fd = capture.fd()?;
-    let every = Duration::from_secs_f64(1.0 / f64::from(fps));
-    // The encoder's: one picture waiting at most (a newer takes its place).
+fn record_into(
+    capture: &mut Capture,
+    path: &Path,
+    fps: u32,
+    seconds: Option<f64>,
+    (choice, codec): (olo_video::Choice, olo_video::Codec),
+    crop: Option<[u32; 4]>,
+    backdrop: Option<crate::backdrop::Look>,
+    inset: Option<crate::inset::Inset>,
+    which: crate::sound::Which,
+    countdown: u32,
+    going: &Going,
+    woken: i32,
+) -> Result<Made, String> {
+    // The encoder opened first, on its worker (NVENC's CUDA context takes
+    // over two seconds to make, and belongs to the thread that made it):
+    // till it's ready, frames would only replace each other. The video's
+    // size as the capture says it'll be (a part of it, for a region).
+    let size = capture.size().map(|(w, h)| {
+        let [_, _, cw, ch] = crop_within(crop, w, h);
+        olo_video::even(cw, ch)
+    });
+    // (The sound's description, once it's started, for the file.)
+    let sound_in: Arc<Mutex<Option<SoundIn>>> = Arc::default();
+    // Marks so far (`--mark`): milliseconds into the video, and titles.
+    let marks: Arc<Mutex<Vec<(u64, String)>>> = Arc::default();
+    let _ = std::fs::remove_file(marks_path());
     let slot: Arc<(Mutex<Option<Waiting>>, std::sync::Condvar)> = Arc::default();
     let ended = Arc::new(AtomicBool::new(false));
     // Where the video ends (milliseconds of it), for its last frame.
     let end = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let part = path.with_extension("mp4.part");
+    let (ready_tx, ready) = std::sync::mpsc::channel::<Result<(), String>>();
     let worker = {
-        let (slot, ended, end, part) = (slot.clone(), ended.clone(), end.clone(), part.clone());
-        std::thread::Builder::new().name("recording encoder".into()).spawn(move || encode(&slot, &ended, &end, &part, fps, choice)).map_err(|e| e.to_string())?
+        let (slot, ended, end, part, sound_in, marks) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone(), marks.clone());
+        std::thread::Builder::new()
+            .name("recording encoder".into())
+            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), inset, &ready_tx, &sound_in, &marks))
+            .map_err(|e| e.to_string())?
     };
+    // The countdown meanwhile, a number a second (a stop ends it).
+    let say = |n: u32| {
+        if let Ok(mut c) = olo_protocol::Client::connect() {
+            let _ = c.request(&olo_protocol::Request::Countdown { n });
+        }
+    };
+    for n in (1..=countdown).rev() {
+        say(n);
+        wait(-1, woken, Some(Duration::from_secs(1)));
+        if STOP.load(Ordering::SeqCst) {
+            break;
+        }
+    }
+    if countdown > 0 {
+        say(0);
+    }
+    if let Ok(Err(e)) = ready.recv() {
+        let _ = worker.join();
+        return Err(e);
+    }
+    let start = Instant::now();
+    // Said where Deskbar and agents look: recording from now.
+    let going = &Going { recording: true, ..going.clone() };
+    let _ = std::fs::write(going_path(), serde_json::to_vec(going).unwrap_or_default());
+    // The sound from now, if any asked for and there's a way.
+    let (sound, sound_note) = match which {
+        crate::sound::Which::Nothing => (None, None),
+        w => match crate::sound::Sound::start(w, start, &PAUSED) {
+            Ok(s) => (Some(s), None),
+            Err(e) => {
+                eprintln!("olo-screenshot: recording without sound: {e}");
+                (None, Some(e))
+            }
+        },
+    };
+    *sound_in.lock().unwrap_or_else(|e| e.into_inner()) = sound.as_ref().map(|s| (s.track().clone(), s.units()));
+    let fd = capture.fd()?;
+    let every = Duration::from_secs_f64(1.0 / f64::from(fps));
     let mut asked_at: Option<Instant> = None;
     // Time paused, left out of the video; and since when, if it is now.
     let mut paused_for = Duration::ZERO;
@@ -277,6 +702,11 @@ fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64
     let mut whole: Vec<u8> = Vec::new();
     let result: Result<(), String> = (|| {
         loop {
+            // Marks asked for, at this moment of the video.
+            if MARK.swap(false, Ordering::SeqCst) {
+                let at = recorded(paused_for, paused_at).as_millis() as u64;
+                marks.lock().unwrap_or_else(|e| e.into_inner()).extend(take_marks().into_iter().map(|t| (at, t)));
+            }
             if STOP.load(Ordering::SeqCst) || seconds.is_some_and(|s| recorded(paused_for, paused_at).as_secs_f64() >= s) {
                 return Ok(());
             }
@@ -354,15 +784,37 @@ fn record_into(capture: &mut Capture, path: &Path, fps: u32, seconds: Option<f64
         }
     })();
     let total = recorded(paused_for, paused_at);
+    // (A mark asked for as it stopped: at its end.)
+    marks.lock().unwrap_or_else(|e| e.into_inner()).extend(take_marks().into_iter().map(|t| (total.as_millis() as u64, t)));
+    // The sound's last, encoded and handed over before the file is.
+    let sounded = sound.as_ref().map(|_| which.name().to_owned());
+    if let Some(s) = sound {
+        s.finish();
+    }
     end.store(total.as_millis() as u64, Ordering::SeqCst);
     ended.store(true, Ordering::SeqCst);
     slot.1.notify_one();
     let made = worker.join().map_err(|_| "the encoder failed".to_string())?;
     result?;
-    let (frames, (width, height), encoder) = made?;
+    let (frames, (width, height), encoder, codec, stopped_early) = made?;
     // The file finished by the worker, then put where it goes.
     std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(Made { path: path.to_path_buf(), seconds: (total.as_millis() as f64 / 1000.0), frames, width, height, encoder: encoder.to_owned() })
+    Ok(Made {
+        path: path.to_path_buf(),
+        seconds: (total.as_millis() as f64 / 1000.0),
+        frames,
+        width,
+        height,
+        encoder: encoder.to_owned(),
+        codec: codec.name(),
+        stopped_early,
+        sound: sounded,
+        sound_note,
+        gif: None,
+        camera: None,
+        camera_note: None,
+        marks: marks.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(ms, title)| Mark { at: *ms as f64 / 1000.0, title: title.clone() }).collect(),
+    })
 }
 
 /// Wait until `fd` has something to read, a signal came (`woken`, the
@@ -384,19 +836,75 @@ fn wait(fd: i32, woken: i32, timeout: Option<Duration>) {
 /// next; at the end, the last held till then and the file finished.
 /// Frames encoded, and the video's size.
 /// (`end`: where the video ends, in milliseconds of it, once `ended`.)
+#[allow(clippy::too_many_arguments)]
 fn encode(
     slot: &(Mutex<Option<Waiting>>, std::sync::Condvar),
     ended: &AtomicBool,
     end: &std::sync::atomic::AtomicU64,
     part: &Path,
     fps: u32,
-    choice: olo_video::Choice,
-) -> Result<(usize, (u32, u32), &'static str), String> {
+    (choice, codec): (olo_video::Choice, olo_video::Codec),
+    size: Option<(u32, u32)>,
+    look: Option<&crate::backdrop::Look>,
+    mut inset: Option<crate::inset::Inset>,
+    ready: &std::sync::mpsc::Sender<Result<(), String>>,
+    sound: &Mutex<Option<SoundIn>>,
+    marks: &Mutex<Vec<(u64, String)>>,
+) -> Result<Encoded, String> {
+    // The sound's access units so far, into the file beside the pictures
+    // (its description given the file the first time).
+    let mut described = false;
+    let mut add_sound = |mp4: &mut olo_video::Mp4| -> Result<(), String> {
+        let s = sound.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((track, units)) = s.as_ref() {
+            if !std::mem::replace(&mut described, true) {
+                mp4.with_sound(track, olo_system::recording::RATE, crate::sound::BITRATE);
+            }
+            let got = std::mem::take(&mut *units.lock().unwrap_or_else(|e| e.into_inner()));
+            for au in got {
+                mp4.add_sound(&au).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    };
     let (m, cv) = slot;
     // Milliseconds: durations as they came.
     let mut video: Option<(olo_video::Encoder, olo_video::Mp4, Vec<u8>)> = None;
+    // A window on a background: the video its size (made with the
+    // encoder, before the recording starts).
+    let mut backdrop: Option<crate::backdrop::Backdrop> = None;
+    let open = |w: u32, h: u32, backdrop: &mut Option<crate::backdrop::Backdrop>| -> Result<(olo_video::Encoder, olo_video::Mp4, Vec<u8>), String> {
+        let (vw, vh) = match look {
+            Some(look) => {
+                let b = crate::backdrop::Backdrop::new(w, h, look);
+                let size = (b.width, b.height);
+                *backdrop = Some(b);
+                size
+            }
+            None => olo_video::even(w, h),
+        };
+        let enc = olo_video::Encoder::new(vw, vh, fps, choice, codec)?;
+        let mp4 = olo_video::Mp4::create_for(part, vw, vh, 1000, enc.codec()).map_err(|e| e.to_string())?;
+        Ok((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]))
+    };
+    // Opened now, at the size the capture says (before the recording
+    // starts: the recorder waits for this); else at the first picture.
+    if let Some((vw, vh)) = size {
+        let opened = open(vw, vh, &mut backdrop);
+        match opened {
+            Ok(v) => video = Some(v),
+            Err(e) => {
+                let _ = ready.send(Err(e.clone()));
+                return Err(e);
+            }
+        }
+    }
+    let _ = ready.send(Ok(()));
     let mut held: Option<(Vec<u8>, bool, Duration)> = None;
     let mut frames = 0usize;
+    // Why it stopped before it was told to, if it did.
+    let mut stopped: Option<String> = None;
+    let fail_at: Option<(usize, bool)> = std::env::var("OLO_RECORDING_FAIL_AT").ok().and_then(|v| Some((v.trim_end_matches('!').parse().ok()?, v.ends_with('!'))));
     loop {
         let next = {
             let mut g = m.lock().unwrap_or_else(|e| e.into_inner());
@@ -412,34 +920,125 @@ fn encode(
         };
         let Some(w) = next else { break };
         if video.is_none() {
-            let (vw, vh) = olo_video::even(w.width, w.height);
-            let enc = olo_video::Encoder::new(vw, vh, fps, choice)?;
-            let mp4 = olo_video::Mp4::create(part, vw, vh, 1000).map_err(|e| e.to_string())?;
-            video = Some((enc, mp4, vec![0u8; vw as usize * 4 * vh as usize]));
+            video = Some(open(w.width, w.height, &mut backdrop)?);
         }
         let (enc, mp4, canvas) = video.as_mut().unwrap();
         let (vw, vh) = enc.size();
         // The picture at the video's size: a window that grew is cut, one
-        // that shrank shown on black.
-        fit(&w, canvas, vw, vh);
-        let (bits, key) = enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra)?;
+        // that shrank shown on black (or on its background, centred).
+        match backdrop.as_mut() {
+            Some(b) => {
+                let (anew, window) = b.compose(&w.data, w.stride, w.width, w.height, canvas);
+                // The camera on the background's corner.
+                if let Some(i) = inset.as_mut() {
+                    i.draw(canvas, vw as usize, window, anew);
+                }
+            }
+            None => fit(&w, canvas, vw, vh),
+        }
+        // An encoder that fails is opened again, once: its first picture a
+        // key frame, the file goes on (if its parameter sets are the same;
+        // else `add` says so). Failing again, what was recorded is kept:
+        // the recording stops there, the file finished.
+        // (`OLO_RECORDING_FAIL_AT=N`, for tests: picture N fails; `N!`,
+        // the encoder opened again fails too.)
+        let failing = fail_at.is_some_and(|(n, _)| n == frames);
+        let coded = (if failing { Err("failed on purpose (OLO_RECORDING_FAIL_AT)".to_owned()) } else { enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra) }).or_else(|e| {
+            eprintln!("olo-screenshot: the encoder failed ({e}); opening it again");
+            *enc = olo_video::Encoder::new(vw, vh, fps, choice, codec).map_err(|again| format!("{e}; opened again: {again}"))?;
+            if failing && fail_at.is_some_and(|(_, again)| again) {
+                return Err(format!("{e}; and again"));
+            }
+            enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra)
+        });
+        let (bits, key) = match coded {
+            Ok(c) => c,
+            Err(e) => {
+                stopped = Some(format!("the encoder failed: {e}"));
+                break;
+            }
+        };
         if let Some((b, k, at)) = held.take() {
             let ms = w.at.saturating_sub(at).as_millis().max(1) as u32;
-            mp4.add(&b, k, ms).map_err(|e| e.to_string())?;
+            if let Err(e) = mp4.add(&b, k, ms) {
+                stopped = Some(format!("the file took no more: {e}"));
+                break;
+            }
             frames += 1;
+            add_sound(mp4)?;
         }
         held = Some((bits, key, w.at));
     }
-    let Some((enc, mut mp4, _)) = video else { return Err("nothing was shown to record".into()) };
-    if let Some((b, k, at)) = held {
-        let ms = Duration::from_millis(end.load(Ordering::SeqCst)).saturating_sub(at).as_millis().max(1) as u32;
-        mp4.add(&b, k, ms).map_err(|e| e.to_string())?;
-        frames += 1;
+    if let Some(why) = &stopped {
+        // (The recorder stops too: nothing more would be kept.)
+        eprintln!("olo-screenshot: recording stopped early: {why}");
+        on_stop(0);
     }
+    let Some((enc, mut mp4, _)) = video else { return Err(stopped.unwrap_or_else(|| "nothing was shown to record".into())) };
+    if let Some((b, k, at)) = held {
+        // (Stopped early, the last picture held a moment, not to the end.)
+        let till = if stopped.is_some() { at + Duration::from_millis(100) } else { Duration::from_millis(end.load(Ordering::SeqCst)) };
+        let ms = till.saturating_sub(at).as_millis().max(1) as u32;
+        if mp4.add(&b, k, ms).is_ok() {
+            frames += 1;
+        }
+    }
+    add_sound(&mut mp4)?;
+    mp4.chapters(marks.lock().unwrap_or_else(|e| e.into_inner()).clone());
     let made = mp4.size();
     mp4.finish().map_err(|e| e.to_string())?;
-    Ok((frames, made, enc.name()))
+    Ok((frames, made, enc.name(), enc.codec(), stopped))
 }
+
+/// The camera bubble's process (`bubble.rs`), while a recording shows
+/// the camera; ended when dropped.
+struct CameraBubble(std::process::Child);
+
+impl CameraBubble {
+    /// Started for camera `id` ("auto": the first colour camera), once
+    /// its first frame is on the screen; and the camera's name.
+    fn start(id: &str) -> Result<(CameraBubble, String), String> {
+        use std::io::BufRead as _;
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let mut child = std::process::Command::new(exe)
+            .args(["--camera-bubble", "--camera", id])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("the camera bubble: {e}"))?;
+        let Some(out) = child.stdout.take() else { return Err("the camera bubble said nothing".into()) };
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            let _ = std::io::BufReader::new(out).read_line(&mut line);
+            let _ = tx.send(line);
+        });
+        let bubble = CameraBubble(child);
+        match rx.recv_timeout(Duration::from_secs(6)) {
+            Ok(line) => match line.trim().strip_prefix("ready") {
+                Some(name) => Ok((bubble, name.trim().to_owned())),
+                None if line.trim().is_empty() => Err("the camera bubble quit".into()),
+                None => Err(line.trim().to_owned()),
+            },
+            Err(_) => Err("the camera took too long to start".into()),
+        }
+    }
+}
+
+impl Drop for CameraBubble {
+    fn drop(&mut self) {
+        // SAFETY: a signal to our own child.
+        unsafe { libc::kill(self.0.id() as i32, libc::SIGTERM) };
+        let _ = self.0.wait();
+    }
+}
+
+/// What the encoder's worker made: frames, the video's size, which encoder
+/// and codec, and why it stopped early if it did.
+type Encoded = (usize, (u32, u32), &'static str, olo_video::Codec, Option<String>);
+
+/// The sound's description, and its access units as they come.
+type SoundIn = (olo_video::aac::Track, Arc<Mutex<Vec<Vec<u8>>>>);
 
 /// `w`'s picture into `canvas` (`vw` × `vh`, BGRA): cut, or padded black.
 fn fit(w: &Waiting, canvas: &mut [u8], vw: u32, vh: u32) {
@@ -462,7 +1061,13 @@ pub fn toggle(args: &[String]) -> i32 {
     if going().is_some() {
         return stop();
     }
-    match record(args) {
+    // A person's start: counted down, as the settings say (unless given).
+    let mut args = args.to_vec();
+    if option(&args, "--countdown").is_none() {
+        let n = olo_ui::settings::current().map_or(3, |s| s.screen_recording.countdown);
+        args.extend(["--countdown".to_owned(), n.to_string()]);
+    }
+    match record(&args) {
         Ok(Some(made)) => {
             tell(&made);
             println!("{}", serde_json::to_string_pretty(&made).unwrap_or_default());
@@ -544,6 +1149,71 @@ pub fn pause(on: bool) -> i32 {
     unsafe { libc::kill(g.pid as i32, if on { libc::SIGUSR1 } else { libc::SIGUSR2 }) };
     println!("{}", serde_json::json!({ "path": g.path, "paused": on }));
     0
+}
+
+/// `--caption TEXT [--seconds N]`: a caption in what's recorded (and
+/// shared), never on the screen: TEXT low in the middle for N seconds,
+/// else till the next; an empty TEXT takes it down (app_server's
+/// `Request::Caption`).
+pub fn caption(args: &[String]) -> i32 {
+    let text = option(args, "--caption").map(str::to_owned);
+    let seconds = match option(args, "--seconds").map(str::parse::<f64>).transpose() {
+        Ok(s) => s,
+        Err(_) => {
+            eprintln!("olo-screenshot: --seconds takes a number");
+            return 2;
+        }
+    };
+    match olo_protocol::Client::connect().map_err(|e| e.to_string()).and_then(|mut c| c.request(&olo_protocol::Request::Caption { text: text.clone(), seconds }).map_err(|e| e.to_string())) {
+        Ok(olo_protocol::Reply::Error { message }) => {
+            eprintln!("olo-screenshot: {message}");
+            1
+        }
+        Ok(_) => {
+            println!("{}", serde_json::json!({ "caption": text.filter(|t| !t.is_empty()), "seconds": seconds }));
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: {e}");
+            1
+        }
+    }
+}
+
+/// `--zoom-to X,Y,W,H|out [--display NAME]`: the recording on this
+/// display zoomed to that part (points from the display's top left, as
+/// windows' frames are given), gliding there and held, or back out
+/// (app_server's `Request::ZoomTo`).
+pub fn zoom_to(args: &[String]) -> i32 {
+    let rect = match option(args, "--zoom-to") {
+        Some("out") => None,
+        Some(v) => match rect(v) {
+            Some(r) if r[2] > 0.0 && r[3] > 0.0 => Some(r),
+            _ => {
+                eprintln!("olo-screenshot: --zoom-to takes X,Y,W,H (points from the display's top left) or out");
+                return 2;
+            }
+        },
+        None => {
+            eprintln!("olo-screenshot: --zoom-to takes X,Y,W,H or out");
+            return 2;
+        }
+    };
+    let display = option(args, "--display").map(str::to_owned);
+    match olo_protocol::Client::connect().map_err(|e| e.to_string()).and_then(|mut c| c.request(&olo_protocol::Request::ZoomTo { rect, display }).map_err(|e| e.to_string())) {
+        Ok(olo_protocol::Reply::Error { message }) => {
+            eprintln!("olo-screenshot: {message}");
+            1
+        }
+        Ok(_) => {
+            println!("{}", serde_json::json!({ "zoomed": rect }));
+            0
+        }
+        Err(e) => {
+            eprintln!("olo-screenshot: {e}");
+            1
+        }
+    }
 }
 
 /// `--recording`: what's being recorded on this display, as JSON (null:

@@ -55,12 +55,146 @@ fn lost_compositor(cx: &mut App, binary: &Binary) {
     } else {
         tracing::warn!("the compositor is gone: re-executing to reconnect, with the state saved");
     }
+    let state = saved_state(cx);
+    // The person's app on an agent screen that has gone goes back to
+    // their display.
+    let env = (!gpu).then(going_home).flatten();
+    binary.exec_with(state, gpu, env.as_ref());
+}
+
+/// What the app carries over ([`on_upgrade`]), asked now.
+fn saved_state(cx: &mut App) -> Option<String> {
     let save = cx.try_global::<Saving>().is_some().then(|| cx.global_mut::<Saving>().0.take()).flatten();
     let state = save.as_ref().and_then(|save| save(cx));
     if let Some(save) = save {
         cx.global_mut::<Saving>().0 = Some(save);
     }
-    binary.exec(state, gpu);
+    state
+}
+
+/// The way back to the person's display, if this is their app on an
+/// agent screen that has ended (its compositor lost: stopped, or its
+/// app_server restarting, which keeps the screen's session and sockets;
+/// a session ending takes a moment to remove them, so a little wait).
+fn going_home() -> Option<olo_kit_base::moving::MoveTo> {
+    use olo_kit_base::moving;
+    let home = moving::home()?;
+    let until = std::time::Instant::now() + HOME_WAIT;
+    while !moving::screen_gone() {
+        if std::time::Instant::now() > until {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    tracing::warn!("the agent screen this app was moved to has gone: back to the person's display");
+    Some(moving::env_for(&home, |k| std::env::var(k).ok()))
+}
+
+/// How long a lost compositor's screen has to be seen to end.
+const HOME_WAIT: Duration = Duration::from_secs(2);
+
+/// What a copy of the app on another display needs to open one of its
+/// windows as it is here ([`on_move_window`]).
+pub struct WindowMove {
+    /// The copy's arguments.
+    pub args: Vec<String>,
+    /// The state it finds in [`restored_state`].
+    pub state: Option<String>,
+    /// Lets the window go here once the copy has started, the app's own
+    /// way (without what closing it would end: a Terminal's shell).
+    pub gone: Box<dyn FnOnce(&mut App)>,
+}
+
+type MoveWindow = Box<dyn Fn(gpui::AnyWindowHandle, &mut App) -> Result<WindowMove, String>>;
+
+struct MovingWindows(Option<MoveWindow>);
+
+impl Global for MovingWindows {}
+
+/// How the app moves one of its windows to another display (an agent
+/// screen's) while it keeps the others: what a copy of it there needs to
+/// open that window ([`WindowMove`]), or why that one can't go. Without
+/// it, only an app with one window can move (all of it).
+pub fn on_move_window(cx: &mut App, f: impl Fn(gpui::AnyWindowHandle, &mut App) -> Result<WindowMove, String> + 'static) {
+    cx.set_global(MovingWindows(Some(Box::new(f))));
+}
+
+type Refusing = Box<dyn Fn(&App) -> Option<String>>;
+
+struct RefusingMoves(Refusing);
+
+impl Global for RefusingMoves {}
+
+/// While `why` says something, the app stays on its display, whole or a
+/// window of it (Terminal started on an agent screen: its shells end with
+/// the screen).
+pub fn refuse_moves_while(cx: &mut App, why: impl Fn(&App) -> Option<String> + 'static) {
+    cx.set_global(RefusingMoves(Box::new(why)));
+}
+
+/// Go to another display (`commands`' `move`): one window, by a copy of
+/// the app there, or the whole app, re-executed there with its state.
+pub(crate) fn move_to(cx: &mut App, to: olo_kit_base::moving::MoveTo, reply: std::sync::mpsc::Sender<olo_kit_base::moving::Moved>) {
+    use olo_kit_base::moving::{self, Moved};
+    let env = moving::env_for(&to, |k| std::env::var(k).ok());
+    if let Some(why) = cx.try_global::<RefusingMoves>().and_then(|r| (r.0)(cx)) {
+        let _ = reply.send(Moved::failed(why));
+        return;
+    }
+    let window = to.surface.and_then(|s| crate::agent::by_surface(cx, s));
+    if to.surface.is_some() && window.is_none() {
+        let _ = reply.send(Moved::failed("it has no such window"));
+        return;
+    }
+    let windows = cx.windows();
+    let shell = windows.iter().any(|w| w.update(cx, |_, window, _| matches!(window.window_kind(), gpui::WindowKind::LayerShell | gpui::WindowKind::SessionLock)).unwrap_or(false));
+    let others = windows.iter().filter(|w| Some(**w) != window).count();
+    let stays = shell || crate::app::resident(cx);
+    if let Some(w) = window
+        && (others > 0 || stays)
+    {
+        // One of several: a copy there opens it.
+        let hook = cx.try_global::<MovingWindows>().is_some().then(|| cx.global_mut::<MovingWindows>().0.take()).flatten();
+        let made = match &hook {
+            Some(f) => f(w, cx),
+            None => Err("it can't move one of its windows by itself yet".into()),
+        };
+        if let Some(hook) = hook {
+            cx.global_mut::<MovingWindows>().0 = Some(hook);
+        }
+        let made = match made {
+            Ok(m) => m,
+            Err(why) => {
+                let _ = reply.send(Moved::failed(why));
+                return;
+            }
+        };
+        match moving::start_copy(&made.args, made.state.as_deref(), &env) {
+            Ok(pid) => {
+                (made.gone)(cx);
+                let _ = reply.send(Moved { ok: true, error: None, pid: Some(pid) });
+            }
+            Err(e) => {
+                let _ = reply.send(Moved::failed(format!("a copy of it couldn't be started there: {e}")));
+            }
+        }
+        return;
+    }
+    if stays {
+        let _ = reply.send(Moved::failed("it is part of the desktop here, so it stays whole: move its windows one by one"));
+        return;
+    }
+    // The whole app: said first (it is under way), then re-executed there
+    // with its state, once the answer has gone.
+    let _ = reply.send(Moved { ok: true, error: None, pid: Some(std::process::id()) });
+    tracing::info!("moving to another display");
+    let binary = Binary::current();
+    cx.spawn(async move |cx| {
+        cx.background_executor().timer(Duration::from_millis(150)).await;
+        let state = cx.update(saved_state).ok().flatten();
+        binary.exec_with(state, false, Some(&env));
+    })
+    .detach();
 }
 
 /// How soon the GPU lost again means it's broken, not reset.
@@ -160,9 +294,18 @@ impl Binary {
     /// Replaces this process with the binary now on disk, handing it
     /// `state` (and, when the GPU device was lost, when that was).
     fn exec(&self, state: Option<String>, gpu_lost: bool) {
+        self.exec_with(state, gpu_lost, None);
+    }
+
+    /// [`Self::exec`], with the environment `env` changes (another
+    /// display's: a move).
+    fn exec_with(&self, state: Option<String>, gpu_lost: bool, env: Option<&olo_kit_base::moving::MoveTo>) {
         let mut cmd = std::process::Command::new(&self.path);
         cmd.args(std::env::args_os().skip(1));
         olo_xdg::upgrade_env(&mut cmd);
+        if let Some(env) = env {
+            olo_kit_base::moving::apply(env, &mut cmd);
+        }
         olo_kit_base::restore::hand_over(&mut cmd, state.as_deref());
         if gpu_lost {
             let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();

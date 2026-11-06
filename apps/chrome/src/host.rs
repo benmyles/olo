@@ -18,6 +18,9 @@
 //! It also answers agents' questions about Chrome's windows (a kit app's
 //! `tree` socket, for Chrome's process): `{tree: n}` goes to the
 //! extension, which answers `{tree: n, windows}` (background.js, tree.js).
+//!
+//! In olo-slack's Chrome, `{slack: …}` joins Slack to Olo (slack.rs), and
+//! the socket also has Slack's commands for the palette.
 
 use olo_sync::Mutex;
 use std::{
@@ -35,12 +38,15 @@ use olo_keychain::{CallError, Request, Response};
 use olo_kit_base::commands::{self, WindowTree};
 use serde_json::{Value, json};
 
-use crate::downloads::{Download, Downloads};
+use crate::downloads::{self, Download, Downloads};
 use crate::profile;
+use crate::slack::{self, Slack};
 use zeroize::Zeroize;
 
-/// The largest message taken from Chrome.
+/// The largest message taken from Chrome (Slack's Chrome: a picture for
+/// the Viewer, in base64).
 const MAX_IN: usize = 1 << 20;
+const MAX_IN_SLACK: usize = slack::MAX_PICTURE / 3 * 4 + (64 << 10);
 
 /// Tree questions waiting for the extension's answer, by number.
 type Waiting = Arc<Mutex<HashMap<u64, mpsc::Sender<Vec<WindowTree>>>>>;
@@ -63,13 +69,20 @@ fn make_way() {
 }
 
 pub fn run() {
+    // (Before any thread starts: it changes our environment.)
+    let slack_here = slack::take_env();
     olo_kit_base::restore::on_upgrade(|| {
         UPGRADED.store(true, Ordering::SeqCst);
         make_way();
     });
     let out = Arc::new(Mutex::new(std::io::stdout()));
     let trees: Waiting = Arc::default();
-    serve_trees(out.clone(), trees.clone());
+    let mut slack = slack_here.map(|here| Slack::new(here, out.clone()));
+    serve_trees(out.clone(), trees.clone(), slack.as_ref());
+    if let Some(s) = &slack {
+        s.hello();
+    }
+    let max_in = if slack.is_some() { MAX_IN_SLACK } else { MAX_IN };
     // (Made when Chrome first tells of a download.)
     let mut downloads: Option<Downloads> = None;
     let mut input = std::io::stdin().lock();
@@ -80,7 +93,7 @@ pub fn run() {
             return;
         }
         let n = u32::from_le_bytes(len) as usize;
-        if n > MAX_IN {
+        if n > max_in {
             eprintln!("olo-chrome: a message of {n} bytes from Chrome is too big");
             return;
         }
@@ -100,11 +113,20 @@ pub fn run() {
             }
             continue;
         }
+        // olo-slack's Chrome's Slack (slack.rs).
+        if let Ok(m) = &message
+            && let Some(s) = &mut slack
+            && let Some(sm) = m.get("slack")
+        {
+            s.message(sm);
+            continue;
+        }
         // Chrome's downloads (downloads.rs).
         if let Ok(m) = &message
             && (m.get("downloads").is_some() || m.get("downloaded").is_some())
         {
-            let downloads = downloads.get_or_insert_with(Downloads::new);
+            let whose = if slack.is_some() { downloads::SLACK } else { downloads::CHROME };
+            let downloads = downloads.get_or_insert_with(|| Downloads::new(whose));
             if let Some(list) = m.get("downloads").cloned().and_then(|v| serde_json::from_value::<Vec<Download>>(v).ok()) {
                 downloads.going(&list);
             }
@@ -139,10 +161,10 @@ pub fn run() {
 /// Chrome's windows' widget trees for agents (Agent Screens' `tree`),
 /// answered on Chrome's own process's socket (Chrome starts us), so they
 /// are found as a kit app's are: each is asked of the extension.
-fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting) {
+fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting, slack: Option<&Slack>) {
     let chrome = std::os::unix::process::parent_id();
     let next = AtomicU64::new(1);
-    let served = commands::serve_trees(chrome, "google-chrome", move || {
+    let trees = move || {
         let n = next.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel();
         waiting.lock().unwrap_or_else(|e| e.into_inner()).insert(n, tx);
@@ -150,13 +172,18 @@ fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting) {
         let got = rx.recv_timeout(commands::TREE_WAIT_FOR).unwrap_or_default();
         waiting.lock().unwrap_or_else(|e| e.into_inner()).remove(&n);
         got
-    });
+    };
+    let served = match slack {
+        // Slack's channels and people, Jump To… and Search…, for the palette.
+        Some(s) => commands::serve(chrome, commands::Served { app_id: "olo.slack".into(), trees: Box::new(trees), menus: Box::new(s.menus()), invoke: Box::new(s.invoke()) }),
+        None => commands::serve_trees(chrome, "google-chrome", trees),
+    };
     if let Err(e) = served {
         eprintln!("olo-chrome: can't answer for Chrome's widget trees: {e}");
     }
 }
 
-fn send(out: &Mutex<std::io::Stdout>, reply: &Value) {
+pub(crate) fn send(out: &Mutex<std::io::Stdout>, reply: &Value) {
     let Ok(mut bytes) = serde_json::to_vec(reply) else { return };
     let mut out = out.lock().unwrap_or_else(|e| e.into_inner());
     let _ = out.write_all(&(bytes.len() as u32).to_le_bytes());

@@ -1,5 +1,5 @@
 //! Olo's locks. In release builds they are `std::sync`'s; in debug builds
-//! (tests, test sessions, `wm-fuzz` and `wm-sweep`) they are
+//! (tests, test sessions, the fuzzers on debug builds and `wm-sweep`) they are
 //! [tracing-mutex](https://docs.rs/tracing-mutex)'s: every acquisition
 //! adds an edge from the locks the thread holds to the one it takes, and
 //! one that would close a cycle (taking a lock again on the thread that

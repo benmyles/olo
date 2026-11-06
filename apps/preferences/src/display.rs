@@ -1,26 +1,32 @@
 //! Display: an arrangement map of the connected screens (click one to pick
 //! it, drag one to move it; it snaps edge to edge with the others), and the
 //! chosen screen's resolution, refresh rate and scale. Changes apply at
-//! once through app_server's ConfigureOutput; a new resolution reverts by
-//! itself unless kept within `KEEP_SECS`, in case the screen went dark.
+//! once through app_server's ConfigureOutput; a new resolution (or HDR
+//! turned on) reverts by itself unless kept within `KEEP_SECS`, in case
+//! the screen went dark: an alert asks, counting down.
 //! With more than one GPU, what each draws (Graphics: each display is
 //! composed by the GPU it's wired to).
 
 use std::{
+    cell::Cell,
+    rc::Rc,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-use olo_protocol::{Client, GpuInfo, Mode, OutputConfig, OutputInfo, PowerStatus, Reply, Request, color::ColorMode};
+use olo_protocol::{
+    Client, GpuInfo, Mode, OutputConfig, OutputInfo, PowerStatus, Reply, Request,
+    color::{self, ColorMode},
+};
 use olo_ui::{
     gpui::{
-        Bounds, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, SharedString, Styled as _, canvas, div,
-        point, px, rgb, size,
+        Bounds, Context, DispatchPhase, FontWeight, IntoElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, SharedString, Styled as _,
+        WindowHandle, canvas, div, point, px, rgb, size,
     },
     metrics as m,
     style::{self, c},
     theme,
-    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView, TabView},
+    widgets::{Button, CheckBox, EmptyState, MenuField, Slider, StringView, TabView, Timeout, open_timed_alert},
 };
 
 use crate::{PanelView, form::Ui, panel, server::Server};
@@ -39,9 +45,8 @@ pub struct State {
     /// The screen being dragged in the map: where the press was and
     /// where the pointer is.
     drag: Option<(String, Point<Pixels>, Point<Pixels>)>,
-    /// A change waiting to be kept: the screen, how to undo it (its
-    /// previous mode, or HDR off), and when it changed.
-    confirm: Option<(String, Undo, Instant)>,
+    /// A change waiting to be kept, asked about in an alert.
+    confirm: Option<Confirm>,
     /// The GPUs (app_server's `Request::Gpus`), once asked: None until
     /// it answers.
     gpus: Arc<Mutex<Option<Vec<GpuInfo>>>>,
@@ -52,6 +57,15 @@ pub struct State {
 #[cfg(test)]
 pub(crate) fn colour_tab(st: &mut State) {
     st.side_tab = 1;
+}
+
+/// A change waiting to be kept: the screen, how to undo it, when it's
+/// undone by itself, and the alert asking.
+struct Confirm {
+    name: String,
+    undo: Undo,
+    until: Rc<Cell<Instant>>,
+    alert: Option<WindowHandle<olo_ui::Frame>>,
 }
 
 /// How a change waiting to be kept is undone.
@@ -237,7 +251,7 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
     let has_color = o.color.as_ref().is_some_and(|c| c.primaries().is_some());
     let facts = if has_color {
         let tab = st.side_tab.min(1);
-        let items = ui.collect(|ui| if tab == 0 { panel_box(ui, &o, label_w, server) } else { color_box(ui, &o, label_w, server, st) });
+        let items = ui.collect(|ui| if tab == 0 { panel_box(ui, &o, label_w, server) } else { color_box(ui, &o, &title, label_w, server, st) });
         let pick = ui.on_view(|v, i: usize, _, cx| {
             if let Some(st) = state_of(v) {
                 st.side_tab = i;
@@ -257,7 +271,7 @@ fn panel(ui: &mut Ui, outputs: &[OutputInfo], power: Option<&PowerStatus>, serve
     };
     let column = |items: Vec<olo_ui::gpui::AnyElement>| div().flex_1().min_w_0().flex().flex_col().children(items);
     ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(settings)).child(column(facts)));
-    keep_band(ui, outputs, server, st);
+    forget_gone(ui, outputs, st);
     graphics(ui, outputs, st);
 }
 
@@ -398,18 +412,12 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     // A new mode, to be kept or reverted (to what worked before, even
     // after several changes).
     let change = {
-        let (name, current, server) = (o.name.clone(), current.clone(), server.clone());
-        move |v: &mut PanelView, chosen: Mode| {
+        let (name, shown, current, server) = (o.name.clone(), shown_name(o, outputs), current.clone(), server.clone());
+        move |v: &mut PanelView, chosen: Mode, cx: &mut Context<PanelView>| {
             if chosen == current {
                 return;
             }
-            if let Some(st) = state_of(v) {
-                if st.confirm.as_ref().is_none_or(|(n, u, _)| *n != name || !matches!(u, Undo::Mode(_))) {
-                    st.confirm = Some((name.clone(), Undo::Mode(current.clone()), Instant::now()));
-                } else if let Some(c) = st.confirm.as_mut() {
-                    c.2 = Instant::now();
-                }
-            }
+            ask_to_keep(v, cx, &name, &shown, Undo::Mode(current.clone()), &server);
             server.configure_output(&name, OutputConfig { mode: Some(chosen), ..Default::default() });
         }
     };
@@ -420,7 +428,7 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
             let (w, h) = sizes[i];
             // Keep the refresh rate if the new size offers it, else the fastest.
             let chosen = modes.iter().filter(|m| (m.width, m.height) == (w, h)).min_by_key(|m| ((m.refresh - current.refresh).abs(), -m.refresh)).cloned().unwrap_or(current.clone());
-            change(v, chosen);
+            change(v, chosen, cx);
             cx.notify();
         });
         let names = names.into_iter().map(SharedString::from).collect();
@@ -435,7 +443,7 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     {
         let (rates, current, change) = (rates.clone(), current.clone(), change.clone());
         let on = ui.on_view(move |v, i: usize, _, cx| {
-            change(v, Mode { refresh: rates[i], ..current.clone() });
+            change(v, Mode { refresh: rates[i], ..current.clone() }, cx);
             cx.notify();
         });
         ui.add(MenuField::new(format!("hz-{}", o.name), rate_names, ri).label("Refresh rate:").divider(label_w).enabled(several).on_change(on));
@@ -611,7 +619,7 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
 /// The display's colours: what it can show, how sRGB's colours are shown
 /// on a wide one, and HDR on one that has it (app_server's `color`). (Its
 /// rows, for the tab beside the panel's.)
-fn color_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server, st: &mut State) {
+fn color_box(ui: &mut Ui, o: &OutputInfo, shown: &str, label_w: f32, server: &Server, st: &mut State) {
     let Some(color) = o.color.clone() else { return };
     let Some(primaries) = color.primaries() else { return };
     (|ui: &mut Ui| {
@@ -661,12 +669,12 @@ fn color_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server, st: &mu
                     .child(StringView::new("HDR needs a setting at the computer's start: Olo Doctor offers it (“The built-in display's HDR is off”).").dim(true).wrap(true)),
             );
         }
-        // HDR, kept only once seen to work (the band above reverts it).
+        // HDR, kept only once seen to work (an alert asks, and reverts it).
         if let Some(hdr) = o.hdr {
-            let (name, to) = (o.name.clone(), server.clone());
+            let (name, shown, to) = (o.name.clone(), shown.to_owned(), server.clone());
             let on = ui.on_view(move |v, on: bool, _, cx| {
-                if on && let Some(st) = state_of(v) {
-                    st.confirm = Some((name.clone(), Undo::Hdr, Instant::now()));
+                if on {
+                    ask_to_keep(v, cx, &name, &shown, Undo::Hdr, &to);
                 }
                 to.configure_output(&name, OutputConfig { hdr: Some(on), ..Default::default() });
                 cx.notify();
@@ -682,9 +690,16 @@ fn color_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server, st: &mu
                     to.configure_output(&name, OutputConfig { sdr_nits: Some(v), ..Default::default() });
                     cx.notify();
                 });
-                ui.add(Slider::new(format!("sdr-{}", o.name), nits, 80.0..=480.0).step(1.0).label("Everything else's brightness").value_text(format!("{nits:.0} cd/m²")).on_change(set));
+                ui.add(
+                    Slider::new(format!("sdr-{}", o.name), nits, color::MIN_SDR_NITS..=color::MAX_SDR_NITS)
+                        .step(1.0)
+                        .label("Everything else's brightness")
+                        .value_text(format!("{nits:.0} cd/m²"))
+                        .on_change(set),
+                );
                 let peak = color.peak_nits.unwrap_or(1000.0);
-                ui.add(div().pl(px(m::TEXT_INSET)).child(StringView::new(format!("HDR video and pictures shine up to {peak:.0} cd/m²; everything else is shown this bright.")).dim(true).wrap(true)));
+                // Level with the slider's label, which it draws at its own left.
+                ui.add(StringView::new(format!("HDR video and pictures shine up to {peak:.0} cd/m²; everything else is shown this bright.")).dim(true).wrap(true));
             }
         }
     })(ui);
@@ -716,61 +731,71 @@ fn rearrange(outputs: &[OutputInfo], name: &str, delta: (f32, f32), k: f32, serv
     server.configure_output(name, OutputConfig { position: Some(at), ..Default::default() });
 }
 
-/// "Keep this resolution?" (or HDR) with a countdown; reverts by itself.
-fn keep_band(ui: &mut Ui, outputs: &[OutputInfo], server: &Server, st: &mut State) {
-    let Some((name, undo, at)) = st.confirm.clone() else { return };
-    if !outputs.iter().any(|o| o.name == name) {
-        st.confirm = None;
+/// Asks in an alert whether to keep a change just made to `name` (shown
+/// as `shown`), undone by `undo` unless kept within `KEEP_SECS`: BeOS's
+/// Screen preferences' "Do you wish to keep these settings?", an alert
+/// rather than a line in the window, so it isn't missed. Changed again
+/// while it asks (another resolution), it asks on with the time renewed,
+/// undone to what worked before the first change; another change (another
+/// display, HDR) keeps the first and asks about the new one.
+fn ask_to_keep(v: &mut PanelView, cx: &mut Context<PanelView>, name: &str, shown: &str, undo: Undo, server: &Server) {
+    let Some(st) = state_of(v) else { return };
+    let until = Instant::now() + Duration::from_secs(KEEP_SECS);
+    if let Some(c) = &st.confirm
+        && c.name == name
+        && matches!((&c.undo, &undo), (Undo::Mode(_), Undo::Mode(_)) | (Undo::Hdr, Undo::Hdr))
+    {
+        c.until.set(until);
         return;
     }
+    if let Some(alert) = st.confirm.take().and_then(|c| c.alert) {
+        cx.defer(move |cx| {
+            let _ = alert.update(cx, |_, window, _| window.remove_window());
+        });
+    }
+    let until = Rc::new(Cell::new(until));
     let question = match undo {
-        Undo::Mode(_) => "Keep this resolution?",
-        Undo::Hdr => "Keep HDR on?",
+        Undo::Mode(_) => format!("Keep the new resolution of {shown}?"),
+        Undo::Hdr => format!("Keep HDR on for {shown}?"),
     };
-    let revert = {
-        let (name, server) = (name.clone(), server.clone());
-        move || match &undo {
-            Undo::Mode(previous) => server.configure_output(&name, OutputConfig { mode: Some(previous.clone()), ..Default::default() }),
-            Undo::Hdr => server.configure_output(&name, OutputConfig { hdr: Some(false), ..Default::default() }),
+    let says = Rc::new(|left: u64| if left == 1 { "Reverting in 1 second.".to_owned() } else { format!("Reverting in {left} seconds.") });
+    let view = cx.weak_entity();
+    let answered = {
+        let (name, undo, until, server) = (name.to_owned(), undo.clone(), until.clone(), server.clone());
+        move |choice: Option<usize>, cx: &mut olo_ui::gpui::App| {
+            // Keep is the second button; Revert, Escape, the alert closed
+            // or the time up undo it.
+            if choice != Some(1) {
+                match &undo {
+                    Undo::Mode(previous) => server.configure_output(&name, OutputConfig { mode: Some(previous.clone()), ..Default::default() }),
+                    Undo::Hdr => server.configure_output(&name, OutputConfig { hdr: Some(false), ..Default::default() }),
+                }
+            }
+            let _ = view.update(cx, |v, cx| {
+                if let Some(st) = state_of(v)
+                    && st.confirm.as_ref().is_some_and(|c| Rc::ptr_eq(&c.until, &until))
+                {
+                    st.confirm = None;
+                }
+                cx.notify();
+            });
         }
     };
-    let left = KEEP_SECS.saturating_sub(at.elapsed().as_secs());
-    if left == 0 {
-        revert();
-        st.confirm = None;
-        return;
+    let alert = open_timed_alert(cx, "Display", "display", &question, &["Revert", "Keep"], Timeout { at: until.clone(), choice: 0, says }, answered);
+    if let Some(st) = state_of(v) {
+        st.confirm = Some(Confirm { name: name.to_owned(), undo, until, alert });
     }
-    // Drawn again as the seconds go.
-    ui.cx
-        .spawn(async move |view, cx| {
-            cx.background_executor().timer(Duration::from_millis(250)).await;
-            let _ = view.update(cx, |_, cx| cx.notify());
-        })
-        .detach();
-    let keep = ui.on_click_view(|v, _, cx| {
-        if let Some(st) = state_of(v) {
-            st.confirm = None;
-        }
-        cx.notify();
-    });
-    let back = ui.on_click_view(move |v, _, cx| {
-        revert();
-        if let Some(st) = state_of(v) {
-            st.confirm = None;
-        }
-        cx.notify();
-    });
-    ui.add(
-        div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(m::SPACING))
-            .pt(px(m::SPACING))
-            .child(div().flex_1().child(StringView::new(format!("{question} Reverting in {left} s."))))
-            .child(Button::new("Revert").on_click(back))
-            .child(Button::new("Keep").default(true).on_click(keep)),
-    );
+}
+
+/// A display asked about that's gone (unplugged): its alert closes.
+fn forget_gone(ui: &mut Ui, outputs: &[OutputInfo], st: &mut State) {
+    if st.confirm.as_ref().is_some_and(|c| !outputs.iter().any(|o| o.name == c.name))
+        && let Some(alert) = st.confirm.take().and_then(|c| c.alert)
+    {
+        ui.cx.defer(move |cx| {
+            let _ = alert.update(cx, |_, window, _| window.remove_window());
+        });
+    }
 }
 
 /// With more than one GPU: what each drives (each display is composed by

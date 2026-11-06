@@ -35,6 +35,11 @@ function connect() {
       windowTrees().then((windows) => port?.postMessage({ tree: m.tree, windows }));
       return;
     }
+    // olo-slack's host, about Slack.
+    if (m.slack) {
+      fromSlackHost(m.slack);
+      return;
+    }
     const w = waiting.get(m.id);
     if (!w) return;
     waiting.delete(m.id);
@@ -235,6 +240,8 @@ function buildMenu(url, tabId, frameId) {
     if (menuFor === key) return;
     menuFor = key;
     await chrome.contextMenus.removeAll();
+    // olo-slack's: a picture in the Viewer.
+    if (slack) await create({ id: "slack-picture", title: "Open in Viewer", contexts: ["image"], documentUrlPatterns: [`${slack.origin}/*`] });
     const origin = originOf(url);
     const who = (k) => k.user_name || k.title;
     if (keys.length) {
@@ -359,6 +366,7 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === "slack-picture") return slackPicture(info.srcUrl);
   let kind, origin, vault, id;
   try {
     [kind, origin, vault, id] = JSON.parse(info.menuItemId);
@@ -400,6 +408,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 chrome.runtime.onMessage.addListener((m, sender, reply) => {
   const fromPage = sender.tab && sender.url;
+  if (m.type?.startsWith("slack-")) {
+    if (fromPage) fromSlack(m, sender);
+    return;
+  }
   if (m.type === "passkey" && fromPage) {
     if (!web(sender.url) || !m.request) return reply({ native: true });
     passkey(sender, m.rid, m.request).then(reply, () => reply({ native: true }));
@@ -736,6 +748,193 @@ function stitch(results) {
   add(top, { x: 0, y: 0 }, null, 0, 0);
   return { ...top, nodes, truncated: results.some((r) => r.result?.truncated) };
 }
+
+// ---- olo-slack ----
+
+// In olo-slack's Chrome (its host says so as it starts: {slack: {url,
+// open}}), Slack is joined to Olo: slack-page.js and slack.js go into
+// Slack's pages, which tell of their notifications and unread count; a
+// link opening a new tab is opened by Olo instead (the person's own
+// browser); a picture's context menu has Open in Viewer; and the palette
+// asks for Slack's channels and people (slack.rs, slack.js).
+let slack = null;
+// The unread count as the page's app badge says it (once it has), and as
+// its title does; what the host was told.
+const slackBadge = { app: undefined, title: 0, told: null };
+// Notifications shown: ours (unique across tabs) ↔ the page's.
+const slackNotes = new Map();
+let slackNext = 1;
+
+const SLACK_SCRIPTS = ["olo-slack-page", "olo-slack"];
+
+async function slackScripts(origin) {
+  const matches = [`${origin}/*`];
+  const want = [
+    { id: "olo-slack-page", matches, js: ["slack-page.js"], runAt: "document_start", world: "MAIN", allFrames: false },
+    { id: "olo-slack", matches, js: ["slack.js"], runAt: "document_start", allFrames: false },
+  ];
+  const have = await chrome.scripting.getRegisteredContentScripts({ ids: SLACK_SCRIPTS });
+  if (have.length === want.length && have.every((h) => JSON.stringify(h.matches) === JSON.stringify(matches))) return;
+  if (have.length) await chrome.scripting.unregisterContentScripts({ ids: have.map((h) => h.id) });
+  await chrome.scripting.registerContentScripts(want);
+  // Slack open already (the first start, or the extension updated): its
+  // page loaded without them, its notifications already Chrome's; once
+  // again, with them from the start.
+  for (const tab of await chrome.tabs.query({ url: matches })) chrome.tabs.reload(tab.id).catch(() => {});
+}
+
+// Slack's tab: the one in its app window, else any.
+async function slackTab() {
+  if (!slack) return null;
+  const tabs = await chrome.tabs.query({ url: `${slack.origin}/*` });
+  for (const t of tabs) {
+    const w = await chrome.windows.get(t.windowId).catch(() => null);
+    if (w?.type === "app") return t;
+  }
+  return tabs[0] || null;
+}
+
+async function fromSlackHost(m) {
+  if (m.url !== undefined) {
+    const origin = originOf(m.url);
+    if (!origin) return;
+    slack = { origin, url: m.url };
+    menuFor = null;
+    buildMenu("");
+    await slackScripts(origin).catch((e) => console.warn("olo-slack: scripts", e));
+    // A new host (Olo upgraded, or this worker started again): the page
+    // says its count again, for Deskbar.
+    slackBadge.told = null;
+    const open = await slackTab();
+    if (open) chrome.tabs.sendMessage(open.id, { type: "slack-hello" }).catch(() => {});
+    // A link olo-slack was started with: there once Slack's page is.
+    if (m.open && web(m.open)) {
+      for (let i = 0; i < 20; i++) {
+        const tab = await slackTab();
+        if (tab) {
+          chrome.tabs.update(tab.id, { url: m.open });
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+  } else if (m.clicked !== undefined || m.closed !== undefined) {
+    const n = m.clicked ?? m.closed;
+    const note = slackNotes.get(n);
+    if (!note) return;
+    if (m.closed !== undefined) slackNotes.delete(n);
+    chrome.tabs.sendMessage(note.tab, { type: m.clicked !== undefined ? "slack-clicked" : "slack-closed", n: note.n }).catch(() => {});
+  } else if (m.menus !== undefined) {
+    const tab = await slackTab();
+    const r = tab ? await chrome.tabs.sendMessage(tab.id, { type: "slack-menus" }).catch(() => null) : null;
+    port?.postMessage({ slack: { menus: m.menus, items: r?.items || [] } });
+  } else if (m.go) {
+    const tab = await slackTab();
+    if (tab) chrome.tabs.sendMessage(tab.id, { type: "slack-go", command: m.go }).catch(() => {});
+  }
+}
+
+const base64 = (buf) => {
+  const u8 = new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+
+// What `url` holds (with Slack's sign-in, as the page would have it), as
+// base64, if it is no bigger than `most` bytes.
+async function fetched(url, most) {
+  const r = await fetch(url, { credentials: "include" });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  const buf = await r.arrayBuffer();
+  if (buf.byteLength > most) throw new Error("too big");
+  return base64(buf);
+}
+
+function tellSlackBadge() {
+  const n = slackBadge.app ?? slackBadge.title;
+  if (n === slackBadge.told) return;
+  slackBadge.told = n;
+  tellHost({ slack: { badge: n } });
+}
+
+async function fromSlack(m, sender) {
+  if (!slack || originOf(sender.url) !== slack.origin) return;
+  if (m.type === "slack-note") {
+    const n = slackNext++;
+    slackNotes.set(n, { tab: sender.tab.id, n: m.n });
+    // (Kept to the latest few hundred: the page's own close or a click
+    // ends most.)
+    if (slackNotes.size > 500) slackNotes.delete(slackNotes.keys().next().value);
+    let icon = null;
+    if (web(m.icon)) icon = await fetched(m.icon, 1 << 20).catch(() => null);
+    tellHost({ slack: { note: { n, title: m.title, body: m.body, tag: m.tag ? `${sender.tab.id}:${m.tag}` : "", icon, icon_url: icon ? m.icon : "", silent: m.silent } } });
+  } else if (m.type === "slack-unnote") {
+    for (const [n, note] of slackNotes)
+      if (note.tab === sender.tab.id && note.n === m.n) {
+        slackNotes.delete(n);
+        tellHost({ slack: { unnote: n } });
+      }
+  } else if (m.type === "slack-badge") {
+    if (m.from === "app") slackBadge.app = m.count ?? 0;
+    else slackBadge.title = m.count || 0;
+    tellSlackBadge();
+  } else if (m.type === "slack-open" && web(m.url)) {
+    tellHost({ slack: { open: m.url } });
+  }
+}
+
+async function slackPicture(src) {
+  if (!slack || !web(src)) return;
+  try {
+    const data = await fetched(src, 40 << 20);
+    const name = decodeURIComponent(new URL(src).pathname.split("/").pop() || "") || "picture";
+    tellHost({ slack: { picture: { name, data } } });
+  } catch (e) {
+    notify("Slack", `The picture couldn't be opened: ${e.message}`);
+  }
+}
+
+// Slack's own pages (its sign-in, a workspace's) stay here; anything else
+// a new tab would open goes to Olo (the person's own browser).
+function slackOwn(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return true;
+  }
+  if (!/^https?:$/.test(u.protocol) || u.origin === slack.origin) return true;
+  const h = u.hostname;
+  return h === "slack.com" || h.endsWith(".slack.com") || h.endsWith(".slack-edge.com") || h === "slack-files.com" || h.endsWith(".slack-files.com");
+}
+
+// (slack.js catches links as they are clicked; this catches the rest, a
+// page's `window.open`.) A sign-in's popup is left alone: it needs its
+// opener.
+async function slackNewTab(tab) {
+  if (!slack) return;
+  let url = tab.pendingUrl || tab.url;
+  if (!web(url)) {
+    // Opened blank and sent somewhere next: wait for where (briefly).
+    url = await new Promise((resolve) => {
+      const done = (u) => {
+        chrome.tabs.onUpdated.removeListener(heard);
+        clearTimeout(timer);
+        resolve(u);
+      };
+      const heard = (id, change) => id === tab.id && change.url && web(change.url) && done(change.url);
+      const timer = setTimeout(() => done(null), 3000);
+      chrome.tabs.onUpdated.addListener(heard);
+    });
+  }
+  if (!url || slackOwn(url)) return;
+  const w = await chrome.windows.get(tab.windowId).catch(() => null);
+  if (!w || w.type === "popup") return;
+  tellHost({ slack: { open: url } });
+  chrome.tabs.remove(tab.id).catch(() => {});
+}
+chrome.tabs.onCreated.addListener((tab) => slack && slackNewTab(tab));
 
 // The host serves the trees only while it runs: keep it running.
 connect();

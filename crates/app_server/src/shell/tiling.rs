@@ -726,7 +726,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 None => ZoomedAlong { axis: stays, from: zoomed_from.or(pre).unwrap_or(here), kept: zoomed_from.is_some(), tile },
             };
             Self::set_tiled(window, None);
-            self.set_frame(window, zoom_along(z.from, area, stays), true);
+            // Back to the frame it had zoomed that way, as it was when it
+            // zoomed both ways (`ZoomedFrom`), not as that way's zoom began:
+            // sized along the other axis since, or taken from its group's,
+            // it came back at the old size.
+            let frame = match (along, zoomed_from) {
+                (Some(a), Some(f)) if a.axis == stays => f,
+                _ => zoom_along(z.from, area, stays),
+            };
+            self.set_frame(window, frame, true);
             Self::set_zoomed_along(window, Some(z));
         } else if let Some(z) = along.filter(|z| z.axis == axis) {
             // Back that way.
@@ -744,12 +752,14 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             {
                 p.0.borrow_mut().take();
             }
-        } else if let Some(z) = along {
+        } else if along.is_some() {
             // Zoomed the other way already: both ways is zoomed, and
-            // unzooms back to just that way.
+            // unzooms back to just that way, as it is now. (Not as the
+            // way's zoom began: sized by hand along the other axis since,
+            // or taken from its group's, it came back at that width.)
             self.zoom_window(window);
             if let Some(f) = window.user_data().get::<ZoomedFrom>() {
-                *f.0.borrow_mut() = Some(zoom_along(z.from, area, z.axis));
+                *f.0.borrow_mut() = Some(here);
             }
         } else if let Some(pre) = pre.filter(|_| tile.is_none() && spans(here, area, axis)) {
             // Zoomed this way, then sized or moved by hand the other way

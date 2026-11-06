@@ -1189,6 +1189,27 @@ pub(crate) fn display_text_rendering(name: &str) -> Option<TextRendering> {
     DISPLAY_TEXT_RENDERING.read().get(name).copied()
 }
 
+/// Olo: the displays (by their names, as `wl_output` gives them) whose
+/// HDR is on, as the compositor says (the kit follows app_server's):
+/// a window on one may draw HDR pictures as HDR (`Window::on_hdr_display`).
+static DISPLAYS_HDR: parking_lot::RwLock<Vec<String>> = parking_lot::RwLock::new(Vec::new());
+
+/// Olo: display `name`'s HDR is on or off; whether that changed.
+pub fn set_display_hdr(name: &str, on: bool) -> bool {
+    let mut displays = DISPLAYS_HDR.write();
+    let was = displays.iter().any(|d| d == name);
+    if on && !was {
+        displays.push(name.to_owned());
+    } else if !on && was {
+        displays.retain(|d| d != name);
+    }
+    on != was
+}
+
+pub(crate) fn display_hdr(name: &str) -> bool {
+    DISPLAYS_HDR.read().iter().any(|d| d == name)
+}
+
 /// The order of a display's colour stripes, as the window sees them
 /// (the display's rotation taken into account).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

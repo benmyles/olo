@@ -39,6 +39,13 @@ pub struct Screen {
     pub sound: bool,
     /// Seconds since the epoch.
     pub started: u64,
+    /// Its own session bus (`olo-bus`, in its session), and the person's
+    /// accessibility bus its programs use; None for a screen from before
+    /// (on the person's bus).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bus: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub a11y: Option<String>,
 }
 
 /// Where Chrome keeps its profile on screen `name` (`CHROME_CONFIG_HOME`,
@@ -189,17 +196,9 @@ impl Screen {
     /// screen), Chrome's profile of its own (`chrome_home`), and silence
     /// unless the screen has sound.
     pub fn env(&self) -> Vec<(String, String)> {
-        let mut env = vec![
-            ("WAYLAND_DISPLAY".to_owned(), self.wayland_display.clone()),
-            ("OLO_SOCKET".to_owned(), self.olo_socket.display().to_string()),
-            ("OLO_SESSION".to_owned(), "1".to_owned()),
-            ("OLO_SESSION_PID".to_owned(), self.pid.to_string()),
-            ("OLO_SCREEN".to_owned(), self.name.clone()),
-            ("CHROME_CONFIG_HOME".to_owned(), chrome_home(&self.name).display().to_string()),
-        ];
-        if !self.sound {
-            env.push(("PULSE_SERVER".to_owned(), format!("unix:{}", dir().join("no-sound").display())));
-        }
+        // (The kit's, which moves to a screen use too.)
+        let mut env = olo_ui::moving::screen_env(&self.name, &self.wayland_display, &self.olo_socket, self.pid, self.sound);
+        env.extend(olo_ui::moving::bus_env(self.bus.as_deref(), self.a11y.as_deref()));
         env
     }
 
@@ -208,10 +207,17 @@ impl Screen {
     pub fn run(&self, argv: &[String]) -> Result<u32, String> {
         let program = argv.first().ok_or("no program to run")?;
         let path = if program.contains('/') { PathBuf::from(program) } else { olo_xdg::find_program(program).ok_or_else(|| format!("{program} isn't installed"))? };
-        let mut cmd = Command::new(path);
+        let mut cmd = Command::new(&path);
         cmd.args(&argv[1..]).env_remove("DISPLAY").stdin(Stdio::null());
         for (k, v) in self.env() {
             cmd.env(k, v);
+        }
+        // An Electron app's single-instance lock is in its config: the
+        // screen's own, or it hands itself to the person's copy.
+        if olo_xdg::electron::is_electron(path.as_os_str()) {
+            let config = crate::history::dir(&self.name).join("config");
+            let _ = std::fs::create_dir_all(&config);
+            cmd.env("XDG_CONFIG_HOME", config);
         }
         let log = std::fs::File::create(dir().join(format!("{}-{}.log", self.name, sanitize(program))));
         if let Ok(log) = log {
@@ -393,9 +399,16 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
     // Pixels, as the backend takes them.
     let (pw, ph) = ((opts.width as f64 * opts.scale).round() as i32, (opts.height as f64 * opts.scale).round() as i32);
+    // A session bus of its own, so a program there never finds the
+    // person's copy of itself (GTK's), and dialogs it asks for show there;
+    // the person's accessibility bus still, for `tree`.
+    let bus = format!("unix:path={}", dir.join(format!("{name}.bus")).display());
+    let a11y = person_a11y_bus();
     let mut cmd = Command::new(session);
     cmd.arg("--headless")
         .arg(format!("{pw}x{ph}"))
+        .arg("--own-bus")
+        .arg(&bus)
         .env("OLO_APP_SERVER_SETTINGS", &settings_path)
         .env("OLO_SCREEN", name)
         .env("CHROME_CONFIG_HOME", chrome_home(name))
@@ -411,6 +424,10 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
     if !opts.sound {
         cmd.env("PULSE_SERVER", format!("unix:{}", dir.join("no-sound").display()));
     }
+    match &a11y {
+        Some(a) => cmd.env("OLO_A11Y_BUS", a),
+        None => cmd.env_remove("OLO_A11Y_BUS"),
+    };
     use std::os::unix::process::CommandExt;
     cmd.process_group(0);
     let mut child = cmd.spawn().map_err(|e| format!("the screen couldn't be started: {e}"))?;
@@ -440,6 +457,9 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
         scale: opts.scale,
         sound: opts.sound,
         started: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+        // (Its session says if it couldn't have its own.)
+        bus: (!std::fs::read_to_string(&log_path).unwrap_or_default().contains("shares the person's")).then_some(bus),
+        a11y,
     };
     loop {
         if matches!(screen.request(&Request::Ping), Ok(Reply::Pong { .. })) {
@@ -475,6 +495,17 @@ pub fn start(name: &str, opts: &Options) -> Result<Screen, String> {
         }
     }
     Ok(screen)
+}
+
+/// The person's accessibility bus (at-spi's), asked of their session bus
+/// (starting it if need be), for a screen's programs to use: where
+/// `olo-screen tree` reads GTK and Qt programs.
+fn person_a11y_bus() -> Option<String> {
+    // (A bus that leaves a call to a name nobody has unanswered must not
+    // hold the screen up.)
+    let conn = zbus::blocking::connection::Builder::session().ok()?.method_timeout(Duration::from_secs(2)).build().ok()?;
+    let reply = conn.call_method(Some("org.a11y.Bus"), "/org/a11y/bus", Some("org.a11y.Bus"), "GetAddress", &()).ok()?;
+    reply.body().deserialize::<String>().ok().filter(|a| !a.is_empty())
 }
 
 /// "session: WAYLAND_DISPLAY=wayland-4 OLO_SOCKET=/run/…" → its parts.
@@ -514,6 +545,8 @@ fn stop_pid(pid: i32) {
 /// End a screen and everything started on it.
 pub fn stop(name: &str) -> Result<(), String> {
     let screen = get(name)?;
+    // The person's programs on it back to their display first.
+    crate::moving::send_home(&screen);
     stop_pid(screen.pid);
     let until = Instant::now() + Duration::from_secs(5);
     while screen.alive() && Instant::now() < until {
@@ -728,7 +761,7 @@ mod tests {
 
     #[test]
     fn chrome_has_a_profile_of_its_own() {
-        let s = Screen { name: "work".into(), wayland_display: "wayland-9".into(), olo_socket: "/x".into(), pid: 1, width: 1, height: 1, scale: 1.0, sound: false, started: 0 };
+        let s = Screen { name: "work".into(), wayland_display: "wayland-9".into(), olo_socket: "/x".into(), pid: 1, width: 1, height: 1, scale: 1.0, sound: false, started: 0, bus: None, a11y: None };
         let env: std::collections::HashMap<String, String> = s.env().into_iter().collect();
         let home = &env["CHROME_CONFIG_HOME"];
         assert!(home.ends_with("/screens/work"), "{home}");

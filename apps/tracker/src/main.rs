@@ -544,7 +544,7 @@ impl Tracker {
                     }
                     opened = true;
                 }
-                "--desktop" => {}
+                "--desktop" | FILE_MANAGER_ARG => {}
                 // Another window, always (not one brought forward): home.
                 "--new-window" => {
                     self.new_folder_window(fs::home(), self.default_view, (560, 380), |_| {}, cx);
@@ -561,7 +561,7 @@ impl Tracker {
                 }
             }
         }
-        if !opened && !args.iter().any(|a| a == "--desktop") {
+        if !opened && !args.iter().any(|a| a == "--desktop" || a == FILE_MANAGER_ARG) {
             self.open_folder(&fs::home(), cx);
         }
     }
@@ -1433,17 +1433,7 @@ impl Tracker {
         let mut saved = Saved { hidden: self.hidden, folders: Vec::new(), find: 0, desktop_selected: Vec::new() };
         for s in &self.windows {
             match &s.win {
-                Win::Folder(f) => {
-                    let f = f.read(cx);
-                    saved.folders.push(SavedFolder {
-                        path: f.path.clone(),
-                        size: f.size,
-                        view: f.view,
-                        sort: f.sort.unwrap_or((SortKey::Name, true)),
-                        own_sort: f.sort.is_some(),
-                        selected: f.selected_paths(),
-                    });
-                }
+                Win::Folder(f) => saved.folders.push(saved_folder(f.read(cx))),
                 Win::Find(_) => saved.find += 1,
                 Win::Desktop(d) => saved.desktop_selected = d.read(cx).selected_paths(),
                 _ => {}
@@ -1451,6 +1441,36 @@ impl Tracker {
         }
         serde_json::to_string(&saved).ok()
     }
+
+    /// One window to another display (an agent screen's, or from one to
+    /// the person's): a folder or Find window goes as a Tracker there
+    /// opens it, as it was; the desktop and the rest stay.
+    fn move_window(&mut self, handle: AnyWindowHandle, cx: &mut Context<Self>) -> Result<olo_ui::WindowMove, String> {
+        let s = self.windows.iter().find(|s| s.handle == handle).ok_or("it has no such window")?;
+        let mut saved = Saved { hidden: self.hidden, folders: Vec::new(), find: 0, desktop_selected: Vec::new() };
+        match &s.win {
+            Win::Folder(f) => saved.folders.push(saved_folder(f.read(cx))),
+            Win::Find(_) => saved.find = 1,
+            Win::Desktop(_) => return Err("the desktop stays with its display".into()),
+            _ => return Err("only folder and Find windows move".into()),
+        }
+        let key = s.key;
+        let me = cx.weak_entity();
+        Ok(olo_ui::WindowMove {
+            args: Vec::new(),
+            state: serde_json::to_string(&saved).ok(),
+            gone: Box::new(move |cx| {
+                if let Some(t) = me.upgrade() {
+                    t.update(cx, |t, cx| t.close_requested(key, cx));
+                }
+                let _ = handle.update(cx, |_, window, _| window.remove_window());
+            }),
+        })
+    }
+}
+
+fn saved_folder(f: &FolderWin) -> SavedFolder {
+    SavedFolder { path: f.path.clone(), size: f.size, view: f.view, sort: f.sort.unwrap_or((SortKey::Name, true)), own_sort: f.sort.is_some(), selected: f.selected_paths() }
 }
 
 /// Copies `clip` (each form's type and data) to the clipboard.
@@ -1458,6 +1478,15 @@ fn copy_clip(clip: olo_kit_base::clipboard::Clip, cx: &mut App) {
     let entries = clip.into_iter().map(|(mime, bytes)| gpui::ClipboardEntry::Data(gpui::ClipboardData { mime, bytes })).collect();
     cx.write_to_clipboard(gpui::ClipboardItem::from_entries(entries));
 }
+
+/// Started by D-Bus to be the file manager other programs ask
+/// (`filemanager`): serving `org.freedesktop.FileManager1` without the
+/// desktop and without opening a window of its own (Olo Doctor's "Always
+/// Use Tracker" names it in the user's activation file for the name, so
+/// D-Bus starts Tracker, never another file manager, when no Tracker has
+/// it: as Olo restarts after an upgrade, or outside an Olo session).
+/// Passed to a Tracker running already, it changes nothing.
+pub const FILE_MANAGER_ARG: &str = "--file-manager";
 
 fn main() {
     olo_crash::install();
@@ -1482,6 +1511,7 @@ fn main() {
             proxy.send(Msg::Settings(s.tracker))
         });
         let desktop = args.iter().any(|a| a == "--desktop");
+        let file_manager = desktop || args.iter().any(|a| a == FILE_MANAGER_ARG);
         let app = cx.new(|cx| Tracker {
             windows: Vec::new(),
             hidden: false,
@@ -1502,6 +1532,8 @@ fn main() {
         olo_ui::message_handler(cx, move |message, cx| messages.update(cx, |t, cx| t.message(message, cx)));
         let saving = app.clone();
         olo_ui::on_upgrade(cx, move |cx| saving.read(cx).save_state(cx));
+        let moving = app.clone();
+        olo_ui::on_move_window(cx, move |handle, cx| moving.update(cx, |t, cx| t.move_window(handle, cx)));
         // A file operation under way: the new version waits for it.
         let busy = app.clone();
         olo_ui::upgrade_waits_while(cx, move |cx| !busy.read(cx).jobs.is_empty());
@@ -1516,8 +1548,12 @@ fn main() {
                     t.register(key, handle.into(), Win::Desktop(d), cx);
                 }
             });
+        }
+        if file_manager {
+            // (Started by D-Bus for the name alone: it stays to answer.)
+            olo_ui::stay_resident(cx);
             // Other programs' "show in folder", while the desktop's Tracker
-            // runs (`filemanager`).
+            // runs, or one D-Bus started for it (`filemanager`).
             let proxy = olo_ui::proxy(cx);
             let _ = std::thread::Builder::new().name("tracker-filemanager".into()).spawn(move || {
                 let reveal = move |paths: Vec<PathBuf>| {
@@ -1525,9 +1561,14 @@ fn main() {
                     proxy.send(Launch { args, cwd: None, taken: None });
                 };
                 match filemanager::serve(reveal) {
-                    Ok(_conn) => loop {
-                        std::thread::park();
-                    },
+                    Ok((_conn, ours)) => {
+                        if !ours {
+                            tracing::info!("tracker: {} is another program's for now: waiting for it", filemanager::NAME);
+                        }
+                        loop {
+                            std::thread::park();
+                        }
+                    }
                     Err(e) => tracing::info!("tracker: not serving {}: {e}", filemanager::NAME),
                 }
             });

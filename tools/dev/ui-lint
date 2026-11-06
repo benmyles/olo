@@ -284,7 +284,13 @@ def lint_one(spec, slot, master, screen, scales, show_review, work):
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     lines = []
     try:
-        sh("start", name, screen, "--light", "--scale", "2", "--home", home, check=True)
+        # (--owner: the session ends with this run, killed or not.)
+        # (At 2×, as most screens are; at the first scale asked for when
+        # 2× isn't one, so the screen is the size asked at it: 1280x800 at
+        # 1× opened at 2× was 640 × 400 points, and the windows opened on
+        # it stayed that cramped at 1×.)
+        first = "2" if 2 in scales else f"{scales[0]:g}"
+        sh("start", name, screen, "--light", "--scale", first, "--home", home, "--owner", str(os.getpid()), check=True)
         sh("run", name, f"HOME={home}", f"PULSE_SERVER=unix:{pulse}", "OLO_NO_FINGERPRINT=1", "OLO_ACTIVITY_HELPER=off", "OLO_DOCTOR_HELPER=off", *[f"{k}={v}" for k, v in env.items()], *argv)
         exe = argv[0]
         pid = None

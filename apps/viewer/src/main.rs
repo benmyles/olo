@@ -6,6 +6,7 @@
 
 mod crop;
 mod pdfdoc;
+mod pdftext;
 mod pdfview;
 mod pdfwork;
 mod signature;
@@ -52,6 +53,9 @@ enum Msg {
     OnDisk(Vec<PathBuf>),
     /// A look following a file panel (`--follow`): the file to show now.
     LookAt(PathBuf),
+    /// A video trimmed (`Doc::trim`): where the trimmed copy went, or why
+    /// not.
+    Trimmed(EntityId, Result<PathBuf, String>),
 }
 
 enum Content {
@@ -125,6 +129,8 @@ struct Doc {
     focus: FocusHandle,
     /// A press on the picture while cropping, and whether it has dragged.
     crop_press: Option<bool>,
+    /// A video being trimmed into a copy, on a worker.
+    trimming: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -196,6 +202,7 @@ impl Viewer {
             after_save: After::Nothing,
             awake: false,
             edit: None,
+            trimming: false,
             on_disk: None,
             focus: cx.focus_handle(),
             crop_press: None,
@@ -386,6 +393,23 @@ impl Viewer {
                     doc.update(cx, |d, cx| d.edit_event(ev, cx));
                 }
             }
+            Msg::Trimmed(id, result) => {
+                if let Some(doc) = self.doc_of(id) {
+                    doc.update(cx, |d, cx| {
+                        d.trimming = false;
+                        match result {
+                            // The trimmed copy shown in this window.
+                            Ok(path) => d.load(path, cx),
+                            Err(e) => {
+                                if let Some(v) = d.viewer.upgrade() {
+                                    v.update(cx, |v, cx| v.show_error(format!("The video couldn’t be trimmed.\n\n{e}"), cx));
+                                }
+                            }
+                        }
+                        cx.notify();
+                    });
+                }
+            }
             Msg::Siblings(id, path, list) => {
                 if let Some(doc) = self.doc_of(id) {
                     doc.update(cx, |d, _| {
@@ -456,6 +480,35 @@ impl Doc {
         }
     }
 
+    /// As `set_gamut`, for what `gamut` its picture is in; and with
+    /// `hdr_video` (a preview playing HDR video), in HDR10 when the window
+    /// is on a display whose HDR is on and can draw in it, the video's
+    /// pictures then HDR10's; else as the picture is (P3 for a wide one),
+    /// the video's mapped for SDR.
+    fn set_video_gamut(&mut self, gamut: olo_ui::gpui::Gamut, hdr_video: Option<Entity<PreviewView>>, cx: &mut Context<Self>) {
+        use olo_ui::gpui::Gamut;
+        let Some(win) = self.win else { return };
+        cx.defer(move |cx| {
+            let _ = win.update(cx, |_, window, cx| {
+                let hdr = hdr_video.is_some() && window.on_hdr_display() && window.set_gamut(Gamut::Hdr10);
+                if let Some(p) = &hdr_video {
+                    p.read(cx).draw_video_hdr(hdr);
+                }
+                if !hdr {
+                    // (Wide still: an HDR video's pictures are BT.2020's.)
+                    let gamut = if hdr_video.is_some() {
+                        Gamut::DisplayP3
+                    } else if gamut == Gamut::Hdr10 {
+                        Gamut::DisplayP3
+                    } else {
+                        gamut
+                    };
+                    window.set_gamut(gamut);
+                }
+            });
+        });
+    }
+
     /// The window's title, and the file it shows (its tab's Open in
     /// Tracker).
     fn set_title(&self, cx: &mut Context<Self>) {
@@ -480,9 +533,15 @@ impl Doc {
                 let sub = cx.subscribe(&preview, |d: &mut Doc, prev, e: &PreviewEvent, cx| {
                     // A photo wider than sRGB shown whole: the window draws
                     // in Display P3 while it shows one (`Gamut`).
-                    if *e == PreviewEvent::Shown {
-                        let gamut = prev.read(cx).image_view().read(cx).gamut();
-                        d.set_gamut(gamut, cx);
+                    // A video wider than sRGB (BT.2020, P3) too, from its
+                    // first picture; an HDR one in HDR10 on a display
+                    // whose HDR is on.
+                    if matches!(*e, PreviewEvent::Shown | PreviewEvent::Gamut) {
+                        let (gamut, hdr) = {
+                            let p = prev.read(cx);
+                            (p.gamut(cx), p.video_is_hdr())
+                        };
+                        d.set_video_gamut(gamut, hdr.then(|| prev.clone()), cx);
                     }
                     if *e == PreviewEvent::Shown && !d.sized {
                         d.sized = true;
@@ -776,6 +835,44 @@ impl Doc {
         }
         file = file.item(olo_ui::tracker::LABEL, olo_ui::tracker::COMMAND).separator().item("Close", "close").key("w").item("Quit", "quit").key("q");
         let mut menus = vec![file];
+        // A video: Trim… (and while trimming, Cancel and Trim there too).
+        if let Content::Other(prev) = &self.content
+            && prev.read(cx).is_video()
+        {
+            let trimming = prev.read(cx).trimming().is_some();
+            menus.push(
+                Menu::new("Edit")
+                    .item("Trim…", "trim")
+                    .key("t")
+                    .enabled(!trimming && !self.trimming)
+                    .item("Trim to Selection", "trim-save")
+                    .enabled(trimming)
+                    .item("Cancel Trimming", "trim-cancel")
+                    .enabled(trimming),
+            );
+        }
+        if let Content::Other(prev) = &self.content
+            && prev.read(cx).has_text()
+        {
+            let prev = prev.read(cx);
+            menus.push(
+                Menu::new("Edit")
+                    .item("Copy", "copy")
+                    .key("c")
+                    .enabled(prev.has_text_selection(cx))
+                    .item("Select All", "select-all")
+                    .key("a")
+                    .separator()
+                    .item("Find…", "find")
+                    .key("f")
+                    .item("Find Next", "find-next")
+                    .key("g")
+                    .enabled(prev.finding(cx))
+                    .item("Find Previous", "find-previous")
+                    .shift_key("g")
+                    .enabled(prev.finding(cx)),
+            );
+        }
         if picture {
             menus.push(Menu::new("Edit").item("Undo", "undo").key("z").enabled(editor.is_some_and(|e| e.can_undo())).item("Redo", "redo").shift_key("z").enabled(editor.is_some_and(|e| e.can_redo())));
         }
@@ -789,8 +886,22 @@ impl Doc {
                     .shift_key("z")
                     .enabled(v.can_redo())
                     .separator()
+                    .item("Copy", "copy")
+                    .key("c")
+                    .enabled(v.has_text_selection())
+                    .item("Select All", "select-all")
+                    .key("a")
                     .item("Delete", "delete")
-                    .enabled(v.has_selection()),
+                    .enabled(v.has_selection())
+                    .separator()
+                    .item("Find…", "find")
+                    .key("f")
+                    .item("Find Next", "find-next")
+                    .key("g")
+                    .enabled(v.finding())
+                    .item("Find Previous", "find-previous")
+                    .shift_key("g")
+                    .enabled(v.finding()),
             );
             menus.push(
                 Menu::new("View")
@@ -849,6 +960,25 @@ impl Doc {
             .item("Next File", "next-file")
             .key("]")
             .enabled(pos.is_some_and(|i| i + 1 < self.siblings.len()));
+        // A video's chapters (an Olo recording's marks).
+        if let Content::Other(prev) = &self.content {
+            let prev = prev.read(cx);
+            let chapters = prev.chapters();
+            if !chapters.is_empty() {
+                let now = prev.position().unwrap_or(0.0);
+                go = go
+                    .separator()
+                    .item("Previous Chapter", "prev-chapter")
+                    .enabled(chapters.iter().any(|(at, _)| *at < now - 1.0))
+                    .item("Next Chapter", "next-chapter")
+                    .enabled(chapters.iter().any(|(at, _)| *at > now + 0.05))
+                    .separator();
+                for (k, (at, title)) in chapters.iter().enumerate() {
+                    let name = if title.is_empty() { format!("Chapter {}", k + 1) } else { title.clone() };
+                    go = go.item(format!("{name}  ({})", olo_preview::media::format_duration(*at)), format!("chapter-{k}"));
+                }
+            }
+        }
         if let Some(v) = pdf {
             let n = v.geoms.len();
             go = go
@@ -932,8 +1062,47 @@ impl Doc {
             }
             return;
         }
+        if matches!(command, "trim" | "trim-cancel" | "trim-save") {
+            return self.trim_command(command, cx);
+        }
+        // A chapter of the video: where it starts, the one after the
+        // position, or before it (within a second of a chapter's start:
+        // the one before that, as players do).
+        if (command.starts_with("chapter-") || command == "next-chapter" || command == "prev-chapter")
+            && let Content::Other(prev) = &self.content
+        {
+            let prev = prev.clone();
+            prev.update(cx, |p, cx| {
+                let (chapters, now) = (p.chapters(), p.position().unwrap_or(0.0));
+                let to = match command {
+                    "next-chapter" => chapters.iter().map(|c| c.0).find(|&at| at > now + 0.05),
+                    "prev-chapter" => chapters.iter().map(|c| c.0).rev().find(|&at| at < now - 1.0),
+                    _ => command.strip_prefix("chapter-").and_then(|k| k.parse::<usize>().ok()).and_then(|k| chapters.get(k)).map(|c| c.0),
+                };
+                if let Some(at) = to {
+                    p.seek_to(at, cx);
+                }
+            });
+            return;
+        }
         if matches!(command, "rotate-left" | "rotate-right" | "flip-h" | "flip-v" | "crop" | "crop-cancel" | "resize" | "revert") || (self.edit.is_some() && matches!(command, "undo" | "redo")) {
             return self.picture_command(command, window, cx);
+        }
+        // A text or a formatted document: its text copied, all of it
+        // selected, found.
+        if let Content::Other(prev) = &self.content
+            && prev.read(cx).has_text()
+            && matches!(command, "copy" | "select-all" | "find" | "find-next" | "find-previous")
+        {
+            let prev = prev.clone();
+            prev.update(cx, |p, cx| match command {
+                "copy" => p.copy(cx),
+                "select-all" => p.select_all(cx),
+                "find" => p.open_find(window, cx),
+                "find-next" => p.find_step(false, cx),
+                _ => p.find_step(true, cx),
+            });
+            return;
         }
         if let Content::Other(prev) = &self.content {
             let image = prev.read(cx).image_view().clone();
@@ -953,6 +1122,11 @@ impl Doc {
             "undo" => v.undo(cx),
             "redo" => v.redo(cx),
             "delete" => v.delete_selection(cx),
+            "copy" => v.copy(cx),
+            "select-all" => v.select_all(cx),
+            "find" => v.open_find(window, cx),
+            "find-next" => v.find_step(false, cx),
+            "find-previous" => v.find_step(true, cx),
             "zoom-in" => v.zoom_step(true, cx),
             "zoom-out" => v.zoom_step(false, cx),
             "zoom-100" => v.set_zoom(1.0, None, cx),
@@ -1073,6 +1247,10 @@ impl Doc {
         if !follow || e.keystroke.modifiers.modified() || !matches!(key, "up" | "down" | "left" | "right") {
             return;
         }
+        // (← and → move a video's or a sound's time: `keys`.)
+        if matches!(key, "left" | "right") && matches!(&self.content, Content::Other(p) if p.read(cx).has_media_time()) {
+            return;
+        }
         use std::io::Write as _;
         let by = if matches!(key, "up" | "left") { -1 } else { 1 };
         let mut out = std::io::stdout().lock();
@@ -1104,7 +1282,16 @@ impl Doc {
         }
         match &self.content {
             Content::Other(prev) if plain && prev.read(cx).arrows_free() => {
+                // A video or a sound: ← and → move its time by 10 s, ↑ and ↓
+                // go to the next file.
+                let media = prev.read(cx).has_media_time();
                 match key {
+                    "left" if media => {
+                        prev.update(cx, |p, cx| p.skip(-olo_preview::ui::PreviewView::SKIP_SECS, cx));
+                    }
+                    "right" if media => {
+                        prev.update(cx, |p, cx| p.skip(olo_preview::ui::PreviewView::SKIP_SECS, cx));
+                    }
                     "left" | "up" => self.step(-1, window, cx),
                     "right" | "down" => self.step(1, window, cx),
                     "space" | "p" => {
@@ -1199,6 +1386,71 @@ impl Doc {
         .absolute()
         .size_full();
         div().relative().h(px(m::TOOLBAR_HEIGHT)).w_full().px(px(m::SPACING)).flex().items_center().gap(px(m::SPACING)).child(ground).child(left).child(info).child(right).into_any_element()
+    }
+
+    /// Trim… (a video): handles on its timeline (the player's own,
+    /// `PreviewView::set_trimming`), Cancel and Trim over it; Trim copies
+    /// the stretch kept into "NAME (trimmed).mp4" beside it on a worker
+    /// (`olo_video::trim`: nothing encoded again) and shows that.
+    fn trim_command(&mut self, command: &str, cx: &mut Context<Self>) {
+        let Content::Other(prev) = &self.content else { return };
+        let prev = prev.clone();
+        match command {
+            "trim" => prev.update(cx, |p, cx| p.set_trimming(true, cx)),
+            "trim-cancel" => prev.update(cx, |p, cx| p.set_trimming(false, cx)),
+            _ => {
+                let Some((from, to)) = prev.read(cx).trimming() else { return };
+                prev.update(cx, |p, cx| {
+                    p.stop();
+                    p.set_trimming(false, cx);
+                });
+                self.trimming = true;
+                let (src, id, proxy) = (self.path.clone(), cx.entity_id(), olo_ui::proxy(cx));
+                std::thread::spawn(move || {
+                    let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                    let dst = src.with_file_name(format!("{stem} (trimmed).mp4"));
+                    let part = dst.with_extension("mp4.part");
+                    let r = olo_video::trim::trim(&src, &part, from, to).and_then(|_| std::fs::rename(&part, &dst).map_err(|e| e.to_string()));
+                    if r.is_err() {
+                        let _ = std::fs::remove_file(&part);
+                    }
+                    proxy.send(Msg::Trimmed(id, r.map(|()| dst)));
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    /// While trimming: Cancel and Trim, floating over the bottom of the
+    /// picture, above the timeline.
+    fn trim_bar(&self, prev: &Entity<PreviewView>, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (from, to) = prev.read(cx).trimming()?;
+        let (trim_doc, cancel_doc) = (cx.entity(), cx.entity());
+        let bw = m::BUTTON_MIN_WIDTH;
+        let kept = format!("{} kept", olo_preview::media::format_duration(to - from));
+        let p = theme::palette(cx);
+        Some(
+            div()
+                .absolute()
+                .bottom(px(olo_preview::ui::UNDER_VIDEO + m::SPACING))
+                .left_0()
+                .right_0()
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(m::SPACING))
+                        .p(px(6.0))
+                        .rounded(px(6.0))
+                        .bg(style::c(p.scrim))
+                        .child(olo_ui::widgets::StringView::new(kept).color(style::c(p.desktop_text)))
+                        .child(Button::new("Cancel").min_width(bw).on_click(move |_, cx| cancel_doc.update(cx, |d, cx| d.trim_command("trim-cancel", cx))))
+                        .child(Button::new("Trim").default(true).min_width(bw).enabled(to - from >= 0.1).on_click(move |_, cx| trim_doc.update(cx, |d, cx| d.trim_command("trim-save", cx)))),
+                )
+                .into_any_element(),
+        )
     }
 
     /// The picture's crop frame, over the preview, and its Crop and
@@ -1322,6 +1574,9 @@ impl Render for Doc {
                 let mut area = div().relative().size_full().child(prev.clone());
                 if let Some(overlay) = self.crop_overlay(&prev, cx) {
                     area = area.child(overlay);
+                }
+                if let Some(bar) = self.trim_bar(&prev, cx) {
+                    area = area.child(bar);
                 }
                 if self.edit.as_ref().is_some_and(|e| e.editor.busy || e.editor.saving) {
                     let spin = canvas(

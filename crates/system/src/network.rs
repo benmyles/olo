@@ -67,42 +67,112 @@ pub fn wifi() -> Result<Option<Wifi>> {
     Ok(None)
 }
 
-/// [`wifi`], and the objects whose changes change it: NetworkManager,
-/// the adapter, its access point.
-fn wifi_and_paths() -> Result<(Option<Wifi>, Vec<String>)> {
-    let conn = conn()?;
-    let mut paths = vec![NM_PATH.to_owned()];
-    for dev in devices_paths()? {
-        let kind: u32 = bus::property(conn, DEST, dev.as_str(), DEVICE, "DeviceType")?;
-        if kind != TYPE_WIFI {
-            continue;
-        }
-        paths.push(dev.as_str().to_owned());
-        let ap: OwnedObjectPath = bus::property(conn, DEST, dev.as_str(), WIRELESS, "ActiveAccessPoint")?;
-        if ap.as_str() == "/" {
-            return Ok((Some(Wifi { ssid: None, strength: 0 }), paths));
-        }
-        paths.push(ap.as_str().to_owned());
-        let ssid: Vec<u8> = bus::property(conn, DEST, ap.as_str(), AP, "Ssid")?;
-        let strength: u8 = bus::property(conn, DEST, ap.as_str(), AP, "Strength")?;
-        return Ok((Some(Wifi { ssid: Some(String::from_utf8_lossy(&ssid).into_owned()), strength: strength.min(100) as u32 }), paths));
-    }
-    Ok((None, paths))
+/// The links Deskbar's tray shows (Ben, 2026-11-05: "when ethernet is
+/// connected it should also show an ethernet icon ... if both are
+/// connected at once the one that is the default route/link should be
+/// shown as "stronger""): Wi-Fi ([`wifi`]) and its adapter, the first
+/// wired link that's up, and which kind carries the default route.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Links {
+    pub wifi: Option<Wifi>,
+    /// The Wi-Fi adapter: its addresses, gateway, DNS and rate.
+    pub wifi_device: Option<Device>,
+    /// The first wired link that's connected.
+    pub wired: Option<Device>,
+    /// What carries the default route (NetworkManager's primary
+    /// connection): None for neither (a VPN, nothing).
+    pub primary: Option<Kind>,
 }
 
-/// Calls `changed` with the first Wi-Fi adapter's state ([`wifi`]) now
-/// and whenever it changes, on threads of its own, following
+/// [`Links`] now, and the objects whose changes change them besides
+/// NetworkManager's own: each link connected and its addresses, the
+/// access point joined.
+fn links_and_paths() -> Result<(Links, Vec<String>)> {
+    let c = conn()?;
+    let mut links = Links::default();
+    let mut paths = vec![NM_PATH.to_owned()];
+    for p in devices_paths()? {
+        let Ok(d) = device(&p) else { continue };
+        let first_wifi = d.kind == Kind::Wifi && links.wifi_device.is_none();
+        if !first_wifi && !(d.kind == Kind::Ethernet && links.wired.is_none() && d.connected()) {
+            continue;
+        }
+        if d.connected() {
+            paths.push(d.path.clone());
+            let ip4: OwnedObjectPath = bus::property(c, DEST, p.as_str(), DEVICE, "Ip4Config")?;
+            if ip4.as_str() != "/" {
+                paths.push(ip4.as_str().to_owned());
+            }
+        }
+        if !first_wifi {
+            links.wired = Some(d);
+            continue;
+        }
+        let ap: OwnedObjectPath = bus::property(c, DEST, p.as_str(), WIRELESS, "ActiveAccessPoint")?;
+        links.wifi = Some(if ap.as_str() == "/" {
+            Wifi { ssid: None, strength: 0 }
+        } else {
+            paths.push(ap.as_str().to_owned());
+            let ssid: Vec<u8> = bus::property(c, DEST, ap.as_str(), AP, "Ssid")?;
+            let strength: u8 = bus::property(c, DEST, ap.as_str(), AP, "Strength")?;
+            Wifi { ssid: Some(String::from_utf8_lossy(&ssid).into_owned()), strength: strength.min(100) as u32 }
+        });
+        links.wifi_device = Some(d);
+    }
+    let primary: String = bus::property(c, DEST, NM_PATH, NM, "PrimaryConnectionType").unwrap_or_default();
+    links.primary = match primary.as_str() {
+        "802-11-wireless" => Some(Kind::Wifi),
+        "802-3-ethernet" => Some(Kind::Ethernet),
+        _ => None,
+    };
+    Ok((links, paths))
+}
+
+/// [`Links`] now.
+pub fn links() -> Result<Links> {
+    links_and_paths().map(|(l, _)| l)
+}
+
+/// A link's rate in words: "1 Gb/s", "866 Mb/s".
+pub fn speed_text(mbps: u32) -> String {
+    if mbps >= 1000 && mbps.is_multiple_of(1000) {
+        format!("{} Gb/s", mbps / 1000)
+    } else if mbps >= 1000 {
+        format!("{:.1} Gb/s", mbps as f32 / 1000.0)
+    } else {
+        format!("{mbps} Mb/s")
+    }
+}
+
+/// A link's bytes received and sent so far (its interface's counters).
+pub fn traffic(interface: &str) -> Option<(u64, u64)> {
+    let read = |what: &str| std::fs::read_to_string(format!("/sys/class/net/{interface}/statistics/{what}")).ok()?.trim().parse::<u64>().ok();
+    Some((read("rx_bytes")?, read("tx_bytes")?))
+}
+
+/// [`watch_links`] for Wi-Fi alone.
+pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()> {
+    watch_links(move |l| changed(l.wifi))
+}
+
+/// Calls `changed` with the links ([`Links`]) now and whenever they
+/// change, on threads of its own, following
 /// NetworkManager's signals (nothing polled), on a bus connection of its
 /// own that the bus sends only these: any device's state changing,
-/// NetworkManager's own (devices coming and going), and while connected,
-/// the adapter's properties (moving to another access point) and its
-/// access point's (the strength). An adapter that isn't connected scans
+/// NetworkManager's own (devices coming and going, the default route
+/// moving), and for each link connected, its properties (moving to
+/// another access point), its addresses' and its access point's (the
+/// strength). An adapter that isn't connected scans
 /// often, its list of access points changing several times a second:
 /// those aren't asked for. Quick runs of changes come together. Err if
 /// NetworkManager can't be reached.
-pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()> {
+pub fn watch_links(changed: impl Fn(Links) + Send + 'static) -> Result<()> {
     use zbus::{MatchRule, message::Type};
-    let conn = zbus::blocking::Connection::system()?;
+    // A connection of its own (it hears every signal asked for).
+    let conn = match std::env::var("OLO_NM_BUS") {
+        Ok(address) if !address.is_empty() => zbus::blocking::connection::Builder::address(address.as_str())?.build()?,
+        _ => zbus::blocking::Connection::system()?,
+    };
     let dbus = zbus::blocking::fdo::DBusProxy::new(&conn)?;
     let props = |path: &str| -> Result<MatchRule<'static>> {
         Ok(MatchRule::builder().msg_type(Type::Signal).sender(DEST)?.path(path.to_owned())?.interface("org.freedesktop.DBus.Properties")?.member("PropertiesChanged")?.build())
@@ -113,42 +183,54 @@ pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()>
     let messages = zbus::blocking::MessageIterator::from(&conn);
     dbus.add_match_rule(states)?;
     dbus.add_match_rule(own)?;
-    let (first, paths) = wifi_and_paths()?;
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
-    std::thread::Builder::new().name("wifi-signals".into()).spawn(move || {
+    let (first, paths) = links_and_paths()?;
+    let (tx, rx) = std::sync::mpsc::channel::<zbus::Message>();
+    std::thread::Builder::new().name("network-signals".into()).spawn(move || {
         for m in messages.flatten() {
-            if m.message_type() == Type::Signal && m.header().sender().is_some_and(|s| s.as_str() != "org.freedesktop.DBus") && tx.send(()).is_err() {
+            if m.message_type() == Type::Signal && m.header().sender().is_some_and(|s| s.as_str() != "org.freedesktop.DBus") && tx.send(m).is_err() {
                 return;
             }
         }
     })?;
-    std::thread::Builder::new().name("wifi".into()).spawn(move || {
-        // What's asked for while connected: the adapter and its access
-        // point's properties.
-        let mut asked: Vec<MatchRule<'static>> = Vec::new();
-        let mut follow = |now: &Option<Wifi>, paths: &[String]| {
+    std::thread::Builder::new().name("network".into()).spawn(move || {
+        // What's asked for besides: the links connected, their addresses
+        // and the access point's properties (nothing while none is),
+        // asked again only when those change.
+        let (mut asked, mut followed): (Vec<MatchRule<'static>>, Vec<String>) = (Vec::new(), Vec::new());
+        let mut follow = |paths: &[String]| {
+            if paths == followed.as_slice() {
+                return;
+            }
             for rule in asked.drain(..) {
                 let _ = dbus.remove_match_rule(rule);
             }
-            if now.as_ref().is_some_and(|w| w.ssid.is_some()) {
-                for path in paths.iter().skip(1) {
-                    if let Ok(rule) = props(path)
-                        && dbus.add_match_rule(rule.clone()).is_ok()
-                    {
-                        asked.push(rule);
-                    }
+            for path in paths.iter().skip(1) {
+                if let Ok(rule) = props(path)
+                    && dbus.add_match_rule(rule.clone()).is_ok()
+                {
+                    asked.push(rule);
                 }
             }
+            followed = paths.to_vec();
         };
-        follow(&first, &paths);
+        follow(&paths);
         let mut last = first;
         changed(last.clone());
-        while rx.recv().is_ok() {
+        while let Ok(m) = rx.recv() {
             // Let a burst finish (joining changes a dozen properties).
             std::thread::sleep(std::time::Duration::from_millis(80));
-            while rx.try_recv().is_ok() {}
-            let Ok((now, paths)) = wifi_and_paths() else { continue };
-            follow(&now, &paths);
+            let mut burst = vec![m];
+            burst.extend(rx.try_iter());
+            // The strength or the rate alone (every few seconds) is in
+            // the signal; anything else is read again (two dozen calls).
+            let now = match quick(&last, &burst) {
+                Some(now) => now,
+                None => {
+                    let Ok((now, paths)) = links_and_paths() else { continue };
+                    follow(&paths);
+                    now
+                }
+            };
             if now != last {
                 changed(now.clone());
                 last = now;
@@ -156,6 +238,34 @@ pub fn watch_wifi(changed: impl Fn(Option<Wifi>) + Send + 'static) -> Result<()>
         }
     })?;
     Ok(())
+}
+
+/// `last` as `burst` changes it, if all it says is the access point's
+/// strength or the adapter's rate (`PropertiesChanged` carries the new
+/// values): None if anything else, to read them all again.
+fn quick(last: &Links, burst: &[zbus::Message]) -> Option<Links> {
+    let mut now = last.clone();
+    for m in burst {
+        let h = m.header();
+        if h.member()?.as_str() != "PropertiesChanged" {
+            return None;
+        }
+        let (iface, changed, invalidated): (String, HashMap<String, OwnedValue>, Vec<String>) = m.body().deserialize().ok()?;
+        if !invalidated.is_empty() {
+            return None;
+        }
+        for (name, v) in &changed {
+            match (iface.as_str(), name.as_str()) {
+                (AP, "Strength") => now.wifi.as_mut().filter(|w| w.ssid.is_some())?.strength = u8::try_from(v).ok()?.min(100) as u32,
+                (WIRELESS, "Bitrate") => {
+                    let d = now.wifi_device.as_mut().filter(|d| h.path().is_some_and(|p| p.as_str() == d.path))?;
+                    d.speed = Some(u32::try_from(v).ok()? / 1000).filter(|s| *s > 0);
+                }
+                _ => return None,
+            }
+        }
+    }
+    Some(now)
 }
 
 fn devices_paths() -> Result<Vec<OwnedObjectPath>> {
@@ -564,6 +674,251 @@ pub fn disconnect(device: &str) -> Result<()> {
     bus::call::<_, ()>(conn()?, DEST, device, DEVICE, "Disconnect", &())
 }
 
+/// A saved connection's settings, as NetworkManager gives them.
+pub type Settings = HashMap<String, HashMap<String, OwnedValue>>;
+
+fn owned(v: Value<'_>) -> Result<OwnedValue> {
+    v.try_to_owned().map_err(zbus::Error::Variant)
+}
+
+/// The saved connection a link uses: the one it's connected with, else
+/// the first it could use.
+pub fn profile_of(device: &str) -> Result<Option<String>> {
+    let c = conn()?;
+    let active: OwnedObjectPath = bus::property(c, DEST, device, DEVICE, "ActiveConnection")?;
+    if active.as_str() != "/" {
+        let p: OwnedObjectPath = bus::property(c, DEST, active.as_str(), ACTIVE, "Connection")?;
+        if p.as_str() != "/" {
+            return Ok(Some(p.as_str().to_owned()));
+        }
+    }
+    let available: Vec<OwnedObjectPath> = bus::property(c, DEST, device, DEVICE, "AvailableConnections").unwrap_or_default();
+    Ok(available.first().map(|p| p.as_str().to_owned()))
+}
+
+pub fn profile_settings(profile: &str) -> Result<Settings> {
+    bus::call(conn()?, DEST, profile, CONNECTION, "GetSettings", &())
+}
+
+/// `profile`'s settings as `change` makes them, saved (its secrets kept:
+/// NetworkManager keeps them when none are given).
+pub fn update_profile(profile: &str, change: impl FnOnce(&mut Settings) -> Result<()>) -> Result<()> {
+    let mut s = profile_settings(profile)?;
+    change(&mut s)?;
+    // NM_SETTINGS_UPDATE2_FLAG_TO_DISK.
+    let _: HashMap<String, OwnedValue> = bus::call(conn()?, DEST, profile, CONNECTION, "Update2", &(s, 1u32, HashMap::<String, Value>::new()))?;
+    Ok(())
+}
+
+/// Every Ethernet and Wi-Fi connection saved.
+pub fn link_profiles() -> Result<Vec<String>> {
+    let paths: Vec<OwnedObjectPath> = bus::call(conn()?, DEST, SETTINGS_PATH, SETTINGS, "ListConnections", &())?;
+    Ok(paths
+        .into_iter()
+        .filter(|p| {
+            profile_settings(p.as_str())
+                .ok()
+                .is_some_and(|s| matches!(get(&s, "connection", "type").and_then(|v| String::try_from(v.clone()).ok()).as_deref(), Some("802-3-ethernet" | "802-11-wireless")))
+        })
+        .map(|p| p.as_str().to_owned())
+        .collect())
+}
+
+/// A link's connection again, as saved now and with NetworkManager's
+/// defaults as they are now (a route metric), without disconnecting.
+pub fn reapply(device: &str) -> Result<()> {
+    bus::call::<_, ()>(conn()?, DEST, device, DEVICE, "Reapply", &(HashMap::<String, HashMap<String, Value>>::new(), 0u64, 0u32))
+}
+
+/// [`reapply`] for every link connected.
+pub fn reapply_all() -> Result<()> {
+    for p in devices_paths()? {
+        if device(&p).is_ok_and(|d| d.connected()) {
+            reapply(p.as_str())?;
+        }
+    }
+    Ok(())
+}
+
+/// Connect a wired link: with its saved connection, or a new one.
+pub fn connect(device: &str) -> Result<()> {
+    let c = conn()?;
+    let dev = zvariant::ObjectPath::try_from(device)?;
+    let root = zvariant::ObjectPath::try_from("/")?;
+    match profile_of(device)? {
+        Some(p) => {
+            let p = zvariant::ObjectPath::try_from(p.as_str())?;
+            let _: OwnedObjectPath = bus::call(c, DEST, NM_PATH, NM, "ActivateConnection", &(p, dev, root))?;
+        }
+        None => {
+            let settings: HashMap<&str, HashMap<&str, Value>> = HashMap::from([("connection", HashMap::from([("type", Value::from("802-3-ethernet"))]))]);
+            let _: (OwnedObjectPath, OwnedObjectPath) = bus::call(c, DEST, NM_PATH, NM, "AddAndActivateConnection", &(settings, dev, root))?;
+        }
+    }
+    Ok(())
+}
+
+/// How a connection gets its IPv6 address.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Ipv6 {
+    /// From the router's advertisements (and DHCPv6).
+    #[default]
+    Auto,
+    /// Only the link's own (fe80::), to reach what's on it.
+    LinkLocal,
+    Off,
+    /// Addresses of its own, set elsewhere: left as they are.
+    Manual,
+}
+
+impl Ipv6 {
+    fn method(self) -> &'static str {
+        match self {
+            Ipv6::Auto => "auto",
+            Ipv6::LinkLocal => "link-local",
+            Ipv6::Off => "disabled",
+            Ipv6::Manual => "manual",
+        }
+    }
+}
+
+/// How a connection gets its addresses: IPv4 from DHCP or its own, DNS of
+/// its own, IPv6, and the link's MTU.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Addressing {
+    /// Its own IPv4 address, not DHCP's.
+    pub manual: bool,
+    /// "192.168.1.20/24" (manual).
+    pub address: String,
+    /// The router (manual).
+    pub gateway: String,
+    /// DNS servers of its own, asked instead of what DHCP says.
+    pub dns: Vec<String>,
+    #[serde(default)]
+    pub ipv6: Ipv6,
+    /// Bytes; 0 for the link's own.
+    #[serde(default)]
+    pub mtu: u32,
+}
+
+impl Addressing {
+    pub fn check(&self) -> std::result::Result<(), String> {
+        if self.mtu != 0 && !(576..=65535).contains(&self.mtu) {
+            return Err(format!("an MTU of {} isn't one a link has (576 to 65535)", self.mtu));
+        }
+        if self.mtu != 0 && self.mtu < 1280 && !matches!(self.ipv6, Ipv6::Off) {
+            return Err("IPv6 needs an MTU of 1280 or more".into());
+        }
+        if self.manual {
+            let (a, prefix) = self.address.split_once('/').unwrap_or((self.address.as_str(), "24"));
+            if a.parse::<std::net::Ipv4Addr>().is_err() || !prefix.parse::<u8>().is_ok_and(|p| (1..=32).contains(&p)) {
+                return Err(format!("“{}” isn't an IPv4 address (192.168.1.20/24)", self.address));
+            }
+            if !self.gateway.is_empty() && self.gateway.parse::<std::net::Ipv4Addr>().is_err() {
+                return Err(format!("“{}” isn't a router's address", self.gateway));
+            }
+        }
+        if let Some(bad) = self.dns.iter().find(|d| d.parse::<std::net::Ipv4Addr>().is_err()) {
+            return Err(format!("“{bad}” isn't an IPv4 address"));
+        }
+        Ok(())
+    }
+}
+
+/// A connection's IPv4 settings.
+pub fn profile_addressing(profile: &str) -> Result<Addressing> {
+    Ok(addressing_of(&profile_settings(profile)?))
+}
+
+pub fn addressing_of(s: &Settings) -> Addressing {
+    let text = |k: &str| get(s, "ipv4", k).and_then(|v| String::try_from(v.clone()).ok()).unwrap_or_default();
+    let address = get(s, "ipv4", "address-data")
+        .and_then(|v| Vec::<HashMap<String, OwnedValue>>::try_from(v.clone()).ok())
+        .and_then(|l| l.into_iter().next())
+        .and_then(|a| Some(format!("{}/{}", String::try_from(a.get("address")?.clone()).ok()?, u32::try_from(a.get("prefix")?).ok()?)))
+        .unwrap_or_default();
+    let dns = get(s, "ipv4", "dns").and_then(|v| Vec::<u32>::try_from(v.clone()).ok()).unwrap_or_default();
+    let dns = dns.into_iter().map(|a| std::net::Ipv4Addr::from(a.to_ne_bytes()).to_string()).collect();
+    let ipv6 = match get(s, "ipv6", "method").and_then(|v| String::try_from(v.clone()).ok()).as_deref() {
+        Some("link-local") => Ipv6::LinkLocal,
+        Some("disabled" | "ignore") => Ipv6::Off,
+        Some("manual") => Ipv6::Manual,
+        _ => Ipv6::Auto,
+    };
+    let mtu = ["802-3-ethernet", "802-11-wireless"].iter().find_map(|g| get(s, g, "mtu").and_then(|v| u32::try_from(v).ok())).unwrap_or(0);
+    // (From DHCP, an address or router of its own besides isn't what's
+    // edited here.)
+    match text("method") == "manual" {
+        true => Addressing { manual: true, address, gateway: text("gateway"), dns, ipv6, mtu },
+        false => Addressing { manual: false, dns, ipv6, mtu, ..Addressing::default() },
+    }
+}
+
+/// `v` written into `s`'s IPv4 settings.
+pub fn set_addressing_in(s: &mut Settings, v: &Addressing) -> Result<()> {
+    v.check().map_err(zbus::Error::Failure)?;
+    let ip = s.entry("ipv4".into()).or_default();
+    // (The old forms of the addresses go: the new win only alone.)
+    for k in ["addresses", "address-data", "gateway", "dns", "dns-data", "ignore-auto-dns"] {
+        ip.remove(k);
+    }
+    ip.insert("method".into(), owned(Value::from(if v.manual { "manual" } else { "auto" }))?);
+    if v.manual {
+        let (a, prefix) = v.address.split_once('/').unwrap_or((v.address.as_str(), "24"));
+        let entry: HashMap<String, Value> = HashMap::from([("address".to_owned(), Value::from(a.to_owned())), ("prefix".to_owned(), Value::from(prefix.parse::<u32>().unwrap_or(24)))]);
+        ip.insert("address-data".into(), owned(Value::from(vec![entry]))?);
+        if !v.gateway.is_empty() {
+            ip.insert("gateway".into(), owned(Value::from(v.gateway.as_str()))?);
+        }
+    }
+    let dns: Vec<u32> = v.dns.iter().filter_map(|d| d.parse::<std::net::Ipv4Addr>().ok()).map(|a| u32::from_ne_bytes(a.octets())).collect();
+    if !dns.is_empty() {
+        ip.insert("dns".into(), owned(Value::from(dns))?);
+        ip.insert("ignore-auto-dns".into(), owned(Value::from(true))?);
+    }
+    // IPv6, unless its own addresses were set elsewhere.
+    if v.ipv6 != Ipv6::Manual {
+        let ip6 = s.entry("ipv6".into()).or_default();
+        for k in ["addresses", "address-data", "gateway"] {
+            ip6.remove(k);
+        }
+        ip6.insert("method".into(), owned(Value::from(v.ipv6.method()))?);
+    }
+    let kind = get(s, "connection", "type").and_then(|v| String::try_from(v.clone()).ok()).unwrap_or_default();
+    if matches!(kind.as_str(), "802-3-ethernet" | "802-11-wireless") {
+        s.entry(kind).or_default().insert("mtu".into(), owned(Value::from(v.mtu))?);
+    }
+    Ok(())
+}
+
+/// Each Ethernet and Wi-Fi connection's search domains: `remove` taken
+/// out (what Olo gave them before), `add` put in.
+pub fn set_profile_searches(remove: &[String], add: &[String]) -> Result<()> {
+    for p in link_profiles()? {
+        let s = profile_settings(&p)?;
+        let mut changed = false;
+        let mut next = s.clone();
+        for family in ["ipv4", "ipv6"] {
+            let Some(group) = next.get_mut(family) else { continue };
+            let now: Vec<String> = group.get("dns-search").and_then(|v| Vec::<String>::try_from(v.clone()).ok()).unwrap_or_default();
+            let mut want: Vec<String> = now.iter().filter(|d| !remove.contains(d)).cloned().collect();
+            for d in add {
+                if !want.contains(d) {
+                    want.push(d.clone());
+                }
+            }
+            if want != now {
+                group.insert("dns-search".into(), owned(Value::from(want))?);
+                changed = true;
+            }
+        }
+        if changed {
+            let _: HashMap<String, OwnedValue> = bus::call(conn()?, DEST, p.as_str(), CONNECTION, "Update2", &(next, 1u32, HashMap::<String, Value>::new()))?;
+        }
+    }
+    Ok(())
+}
+
 /// A saved Wi-Fi network as a backup carries it to another computer: its
 /// name, how it's secured, and its password.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -636,16 +991,19 @@ pub fn has_wifi(ssid: &[u8]) -> Result<bool> {
     Ok(saved()?.iter().any(|(s, _)| s.as_bytes() == ssid))
 }
 
+/// A new connection's UUID (version 4).
+fn new_uuid() -> Result<String> {
+    let mut b = [0u8; 16];
+    getrandom::fill(&mut b).map_err(|e| zbus::Error::Failure(e.to_string()))?;
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
+    Ok(format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..]))
+}
+
 /// Save `w` here, as a network to join (not joined now).
 pub fn add_wifi(w: &SavedWifi) -> Result<()> {
-    let uuid = {
-        let mut b = [0u8; 16];
-        getrandom::fill(&mut b).map_err(|e| zbus::Error::Failure(e.to_string()))?;
-        b[6] = (b[6] & 0x0f) | 0x40;
-        b[8] = (b[8] & 0x3f) | 0x80;
-        let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
-        format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..])
-    };
+    let uuid = new_uuid()?;
     let mut settings: HashMap<&str, HashMap<&str, Value>> = HashMap::new();
     settings
         .insert("connection", HashMap::from([("id", Value::from(w.id.as_str())), ("type", Value::from("802-11-wireless")), ("uuid", Value::from(uuid)), ("autoconnect", Value::from(w.autoconnect))]));
@@ -666,6 +1024,348 @@ pub fn forget(ssid: &str) -> Result<()> {
     for (_, path) in saved()?.into_iter().filter(|(s, _)| s == ssid) {
         bus::call::<_, ()>(conn()?, DEST, path.as_str(), CONNECTION, "Delete", &())?;
     }
+    Ok(())
+}
+
+// ---- VPNs ----------------------------------------------------------------------
+
+/// A VPN saved: WireGuard, or one of NetworkManager's VPN plugins'
+/// (OpenVPN, IPsec…).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Vpn {
+    pub profile: String,
+    pub name: String,
+    /// "WireGuard", "OpenVPN", "IPsec"…
+    pub kind: String,
+    /// Its active connection, while it's up or coming up.
+    pub active: Option<String>,
+    /// NM_ACTIVE_CONNECTION_STATE_*: 1 connecting, 2 connected, 3
+    /// disconnecting (0 while it's down).
+    pub state: u32,
+}
+
+impl Vpn {
+    pub fn state_text(&self) -> &'static str {
+        match (self.active.is_some(), self.state) {
+            (false, _) => "Not connected",
+            (true, 1) => "Connecting…",
+            (true, 2) => "Connected",
+            (true, 3) => "Disconnecting…",
+            _ => "Not connected",
+        }
+    }
+}
+
+/// A VPN plugin's name as people know it.
+fn vpn_kind(service: &str) -> String {
+    let last = service.rsplit('.').next().unwrap_or(service);
+    match last {
+        "openvpn" => "OpenVPN".into(),
+        "vpnc" => "Cisco VPN".into(),
+        "openconnect" => "OpenConnect".into(),
+        "l2tp" => "L2TP".into(),
+        "pptp" => "PPTP".into(),
+        "strongswan" | "libreswan" | "openswan" => "IPsec".into(),
+        "fortisslvpn" => "Fortinet SSL VPN".into(),
+        "sstp" => "SSTP".into(),
+        other => other.to_owned(),
+    }
+}
+
+/// Every VPN saved, and whether each is up.
+pub fn vpns() -> Result<Vec<Vpn>> {
+    let c = conn()?;
+    let actives: Vec<OwnedObjectPath> = bus::property(c, DEST, NM_PATH, NM, "ActiveConnections").unwrap_or_default();
+    let up: Vec<(String, String, u32)> = actives
+        .iter()
+        .filter_map(|a| {
+            let profile: OwnedObjectPath = bus::property(c, DEST, a.as_str(), ACTIVE, "Connection").ok()?;
+            let state: u32 = bus::property(c, DEST, a.as_str(), ACTIVE, "State").unwrap_or(0);
+            Some((profile.as_str().to_owned(), a.as_str().to_owned(), state))
+        })
+        .collect();
+    let paths: Vec<OwnedObjectPath> = bus::call(c, DEST, SETTINGS_PATH, SETTINGS, "ListConnections", &())?;
+    let mut out = Vec::new();
+    for p in paths {
+        let Ok(s) = profile_settings(p.as_str()) else { continue };
+        let text = |g: &str, k: &str| get(&s, g, k).and_then(|v| String::try_from(v.clone()).ok()).unwrap_or_default();
+        let kind = match text("connection", "type").as_str() {
+            "wireguard" => "WireGuard".to_owned(),
+            "vpn" => vpn_kind(&text("vpn", "service-type")),
+            _ => continue,
+        };
+        let active = up.iter().find(|(prof, ..)| prof == p.as_str());
+        out.push(Vpn { profile: p.as_str().to_owned(), name: text("connection", "id"), kind, active: active.map(|a| a.1.clone()), state: active.map_or(0, |a| a.2) });
+    }
+    out.sort_by_key(|v| v.name.to_lowercase());
+    Ok(out)
+}
+
+/// The connections up now (their active connections' paths).
+pub fn active_connections() -> Result<Vec<String>> {
+    let actives: Vec<OwnedObjectPath> = bus::property(conn()?, DEST, NM_PATH, NM, "ActiveConnections")?;
+    Ok(actives.into_iter().map(|a| a.as_str().to_owned()).collect())
+}
+
+/// Bring a VPN up (NetworkManager chooses the link it goes over).
+pub fn vpn_up(profile: &str) -> Result<()> {
+    let root = zvariant::ObjectPath::try_from("/")?;
+    let p = zvariant::ObjectPath::try_from(profile)?;
+    let _: OwnedObjectPath = bus::call(conn()?, DEST, NM_PATH, NM, "ActivateConnection", &(p, root.clone(), root))?;
+    Ok(())
+}
+
+/// Take an active connection down (a VPN, a hotspot).
+pub fn deactivate(active: &str) -> Result<()> {
+    let a = zvariant::ObjectPath::try_from(active)?;
+    bus::call::<_, ()>(conn()?, DEST, NM_PATH, NM, "DeactivateConnection", &(a,))
+}
+
+/// Delete a saved connection.
+pub fn delete_profile(profile: &str) -> Result<()> {
+    bus::call::<_, ()>(conn()?, DEST, profile, CONNECTION, "Delete", &())
+}
+
+/// A WireGuard key: base64 of 32 bytes.
+fn wireguard_key(k: &str) -> bool {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.decode(k.trim()).is_ok_and(|b| b.len() == 32)
+}
+
+/// An interface name for a tunnel named `name`: its letters, digits, `-`
+/// and `_`, at most 15 ("wg0" if none).
+fn tunnel_name(name: &str) -> String {
+    let n: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').take(15).collect();
+    if n.is_empty() { "wg0".into() } else { n }
+}
+
+/// A WireGuard configuration as `wg-quick` reads it (`[Interface]`:
+/// PrivateKey, Address, DNS, ListenPort, MTU; each `[Peer]`: PublicKey,
+/// PresharedKey, AllowedIPs, Endpoint, PersistentKeepalive) as
+/// NetworkManager's settings for a connection named `name`. Its DNS
+/// servers are asked first and alone while it's up (a full tunnel's
+/// names don't leak), its addresses' families only are on.
+pub fn wireguard_settings(name: &str, text: &str) -> std::result::Result<HashMap<String, HashMap<String, Value<'static>>>, String> {
+    let mut section = String::new();
+    let mut iface: HashMap<String, String> = HashMap::new();
+    let mut peers: Vec<HashMap<String, String>> = Vec::new();
+    for (n, line) in text.lines().enumerate() {
+        let line = line.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(s) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            section = s.trim().to_lowercase();
+            if section == "peer" {
+                peers.push(HashMap::new());
+            }
+            continue;
+        }
+        let (k, v) = line.split_once('=').ok_or_else(|| format!("line {}: “{line}” isn't a setting", n + 1))?;
+        let (k, v) = (k.trim().to_lowercase(), v.trim().to_owned());
+        let into = match section.as_str() {
+            "interface" => &mut iface,
+            "peer" => peers.last_mut().expect("a peer"),
+            _ => return Err(format!("line {}: a setting outside [Interface] or [Peer]", n + 1)),
+        };
+        // (Repeated lines add to a list, as wg-quick reads them.)
+        into.entry(k).and_modify(|e| *e = format!("{e}, {v}")).or_insert(v);
+    }
+    let list = |s: Option<&String>| s.map(|s| s.split(',').map(str::trim).filter(|x| !x.is_empty()).map(str::to_owned).collect::<Vec<_>>()).unwrap_or_default();
+    let key = iface.get("privatekey").ok_or("there's no PrivateKey in [Interface]")?;
+    if !wireguard_key(key) {
+        return Err("the PrivateKey isn't a WireGuard key".into());
+    }
+    if peers.is_empty() {
+        return Err("there's no [Peer]".into());
+    }
+    let number = |s: Option<&String>, what: &str| -> std::result::Result<Option<u32>, String> { s.map(|v| v.parse::<u32>().map_err(|_| format!("the {what} isn't a number"))).transpose() };
+    let mut wg: HashMap<String, Value<'static>> = HashMap::from([("private-key".into(), Value::from(key.trim().to_owned())), ("private-key-flags".into(), Value::from(0u32))]);
+    if let Some(port) = number(iface.get("listenport"), "ListenPort")? {
+        wg.insert("listen-port".into(), Value::from(port));
+    }
+    if let Some(mtu) = number(iface.get("mtu"), "MTU")? {
+        wg.insert("mtu".into(), Value::from(mtu));
+    }
+    let mut out_peers: Vec<HashMap<String, Value<'static>>> = Vec::new();
+    for p in &peers {
+        let public = p.get("publickey").ok_or("a [Peer] has no PublicKey")?;
+        if !wireguard_key(public) {
+            return Err("a peer's PublicKey isn't a WireGuard key".into());
+        }
+        let mut peer: HashMap<String, Value<'static>> = HashMap::from([("public-key".into(), Value::from(public.trim().to_owned()))]);
+        let allowed = list(p.get("allowedips"));
+        if let Some(bad) = allowed.iter().find(|a| a.split('/').next().is_none_or(|ip| ip.parse::<std::net::IpAddr>().is_err())) {
+            return Err(format!("“{bad}” in AllowedIPs isn't an address"));
+        }
+        peer.insert("allowed-ips".into(), Value::from(allowed));
+        if let Some(e) = p.get("endpoint") {
+            peer.insert("endpoint".into(), Value::from(e.clone()));
+        }
+        if let Some(psk) = p.get("presharedkey") {
+            if !wireguard_key(psk) {
+                return Err("a peer's PresharedKey isn't a WireGuard key".into());
+            }
+            peer.insert("preshared-key".into(), Value::from(psk.trim().to_owned()));
+            peer.insert("preshared-key-flags".into(), Value::from(0u32));
+        }
+        if let Some(k) = number(p.get("persistentkeepalive"), "PersistentKeepalive")? {
+            peer.insert("persistent-keepalive".into(), Value::from(k));
+        }
+        out_peers.push(peer);
+    }
+    wg.insert("peers".into(), Value::from(out_peers));
+    // Addresses, and DNS: servers (IPv4 and IPv6) or search domains.
+    let (mut v4, mut v6) = (Vec::new(), Vec::new());
+    for a in list(iface.get("address")) {
+        let (ip, prefix) = a.split_once('/').map(|(i, p)| (i.to_owned(), p.parse::<u32>().ok())).unwrap_or((a.clone(), None));
+        match ip.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(_)) => v4.push(HashMap::from([("address".to_owned(), Value::from(ip)), ("prefix".to_owned(), Value::from(prefix.unwrap_or(32)))])),
+            Ok(std::net::IpAddr::V6(_)) => v6.push(HashMap::from([("address".to_owned(), Value::from(ip)), ("prefix".to_owned(), Value::from(prefix.unwrap_or(128)))])),
+            Err(_) => return Err(format!("“{a}” in Address isn't an address")),
+        }
+    }
+    let (mut dns4, mut dns6, mut searches): (Vec<u32>, Vec<Vec<u8>>, Vec<String>) = (Vec::new(), Vec::new(), Vec::new());
+    for d in list(iface.get("dns")) {
+        match d.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(a)) => dns4.push(u32::from_ne_bytes(a.octets())),
+            Ok(std::net::IpAddr::V6(a)) => dns6.push(a.octets().to_vec()),
+            Err(_) => searches.push(d),
+        }
+    }
+    let has_dns = !dns4.is_empty() || !dns6.is_empty();
+    let family = |addresses: Vec<HashMap<String, Value<'static>>>, v6: bool| -> HashMap<String, Value<'static>> {
+        if addresses.is_empty() {
+            return HashMap::from([("method".into(), Value::from("disabled"))]);
+        }
+        let mut f: HashMap<String, Value<'static>> = HashMap::from([("method".into(), Value::from("manual")), ("address-data".into(), Value::from(addresses))]);
+        if v6 && !dns6.is_empty() {
+            f.insert("dns".into(), Value::from(dns6.clone()));
+        }
+        if !v6 && !dns4.is_empty() {
+            f.insert("dns".into(), Value::from(dns4.clone()));
+        }
+        if !searches.is_empty() {
+            f.insert("dns-search".into(), Value::from(searches.clone()));
+        }
+        if has_dns {
+            // Asked first and alone while it's up.
+            f.insert("dns-priority".into(), Value::from(-50i32));
+        }
+        f
+    };
+    let id = name.trim();
+    Ok(HashMap::from([
+        (
+            "connection".to_owned(),
+            HashMap::from([
+                ("id".to_owned(), Value::from(if id.is_empty() { "WireGuard".to_owned() } else { id.to_owned() })),
+                ("type".to_owned(), Value::from("wireguard")),
+                ("interface-name".to_owned(), Value::from(tunnel_name(id))),
+                ("autoconnect".to_owned(), Value::from(false)),
+            ]),
+        ),
+        ("wireguard".to_owned(), wg),
+        ("ipv4".to_owned(), family(v4, false)),
+        ("ipv6".to_owned(), family(v6, true)),
+    ]))
+}
+
+// ---- A hotspot -------------------------------------------------------------------
+
+/// The name Olo's hotspot connection is saved under.
+const HOTSPOT: &str = "Olo Hotspot";
+
+/// A hotspot this computer is making.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hotspot {
+    pub device: String,
+    pub ssid: String,
+    /// Its active connection.
+    pub active: String,
+}
+
+/// The hotspot on, if one is: a Wi-Fi connection up in access point mode.
+pub fn hotspot() -> Result<Option<Hotspot>> {
+    let c = conn()?;
+    let actives: Vec<OwnedObjectPath> = bus::property(c, DEST, NM_PATH, NM, "ActiveConnections").unwrap_or_default();
+    for a in actives {
+        let Ok(profile) = bus::property::<OwnedObjectPath>(c, DEST, a.as_str(), ACTIVE, "Connection") else { continue };
+        let Ok(s) = profile_settings(profile.as_str()) else { continue };
+        if get(&s, "802-11-wireless", "mode").and_then(|v| String::try_from(v.clone()).ok()).as_deref() != Some("ap") {
+            continue;
+        }
+        let ssid = get(&s, "802-11-wireless", "ssid").and_then(|v| Vec::<u8>::try_from(v.clone()).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+        let devices: Vec<OwnedObjectPath> = bus::property(c, DEST, a.as_str(), ACTIVE, "Devices").unwrap_or_default();
+        return Ok(Some(Hotspot { device: devices.first().map(|d| d.as_str().to_owned()).unwrap_or_default(), ssid, active: a.as_str().to_owned() }));
+    }
+    Ok(None)
+}
+
+/// Make `device` a hotspot: a WPA2 network named `ssid` with `password`
+/// (8 to 63 characters), sharing this computer's connection (the
+/// adapter leaves the network it was on). Kept as Olo's hotspot
+/// connection, so its name and password are there next time.
+pub fn start_hotspot(device: &str, ssid: &str, password: &str) -> Result<()> {
+    if ssid.is_empty() || ssid.len() > 32 {
+        return Err(zbus::Error::Failure("a network's name is 1 to 32 bytes".into()));
+    }
+    if !(8..=63).contains(&password.len()) {
+        return Err(zbus::Error::Failure("a WPA2 password is 8 to 63 characters".into()));
+    }
+    let c = conn()?;
+    let mut s: HashMap<&str, HashMap<&str, Value>> = HashMap::new();
+    s.insert("connection", HashMap::from([("id", Value::from(HOTSPOT)), ("type", Value::from("802-11-wireless")), ("autoconnect", Value::from(false)), ("uuid", Value::from(new_uuid()?))]));
+    s.insert("802-11-wireless", HashMap::from([("ssid", Value::from(ssid.as_bytes().to_vec())), ("mode", Value::from("ap"))]));
+    s.insert(
+        "802-11-wireless-security",
+        HashMap::from([
+            ("key-mgmt", Value::from("wpa-psk")),
+            ("psk", Value::from(password)),
+            ("proto", Value::from(vec!["rsn"])),
+            ("pairwise", Value::from(vec!["ccmp"])),
+            ("group", Value::from(vec!["ccmp"])),
+        ]),
+    );
+    s.insert("ipv4", HashMap::from([("method", Value::from("shared"))]));
+    s.insert("ipv6", HashMap::from([("method", Value::from("ignore"))]));
+    // The one saved before goes: this one takes its place.
+    let paths: Vec<OwnedObjectPath> = bus::call(c, DEST, SETTINGS_PATH, SETTINGS, "ListConnections", &())?;
+    for p in paths {
+        if profile_settings(p.as_str()).ok().and_then(|x| get(&x, "connection", "id").and_then(|v| String::try_from(v.clone()).ok())).as_deref() == Some(HOTSPOT) {
+            let _ = delete_profile(p.as_str());
+        }
+    }
+    let dev = zvariant::ObjectPath::try_from(device)?;
+    let root = zvariant::ObjectPath::try_from("/")?;
+    let _: (OwnedObjectPath, OwnedObjectPath) = bus::call(c, DEST, NM_PATH, NM, "AddAndActivateConnection", &(s, dev, root))?;
+    Ok(())
+}
+
+/// The name and password Olo's hotspot had last (the password asked
+/// from NetworkManager, which may ask polkit).
+pub fn saved_hotspot() -> Result<Option<(String, String)>> {
+    let c = conn()?;
+    let paths: Vec<OwnedObjectPath> = bus::call(c, DEST, SETTINGS_PATH, SETTINGS, "ListConnections", &())?;
+    for p in paths {
+        let Ok(s) = profile_settings(p.as_str()) else { continue };
+        if get(&s, "connection", "id").and_then(|v| String::try_from(v.clone()).ok()).as_deref() != Some(HOTSPOT) {
+            continue;
+        }
+        let ssid = get(&s, "802-11-wireless", "ssid").and_then(|v| Vec::<u8>::try_from(v.clone()).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+        let secrets: Settings = bus::call(c, DEST, p.as_str(), CONNECTION, "GetSecrets", &("802-11-wireless-security",)).unwrap_or_default();
+        let psk = get(&secrets, "802-11-wireless-security", "psk").and_then(|v| String::try_from(v.clone()).ok()).unwrap_or_default();
+        return Ok(Some((ssid, psk)));
+    }
+    Ok(None)
+}
+
+/// Save a WireGuard configuration (a `.conf` file's text) as a VPN named
+/// `name` (not brought up).
+pub fn import_wireguard(name: &str, text: &str) -> Result<()> {
+    let mut s = wireguard_settings(name, text).map_err(zbus::Error::Failure)?;
+    s.get_mut("connection").expect("connection").insert("uuid".into(), Value::from(new_uuid()?));
+    let _: OwnedObjectPath = bus::call(conn()?, DEST, SETTINGS_PATH, SETTINGS, "AddConnection", &(s,))?;
     Ok(())
 }
 
@@ -721,5 +1421,109 @@ mod enterprise_tests {
         let e = Enterprise { eap: Eap::Ttls, identity: "a".into(), password: "p".into(), inner: "gtc".into(), ..Default::default() };
         assert!(!e.ready());
         assert!(Enterprise { inner: "pap".into(), ..e }.ready());
+    }
+}
+
+#[cfg(test)]
+mod links_tests {
+    use super::*;
+
+    fn changed(path: &str, iface: &str, name: &str, v: Value<'_>, invalidated: &[&str]) -> zbus::Message {
+        let props: HashMap<&str, Value> = HashMap::from([(name, v)]);
+        zbus::Message::signal(path, "org.freedesktop.DBus.Properties", "PropertiesChanged").unwrap().build(&(iface, props, invalidated.to_vec())).unwrap()
+    }
+
+    fn joined() -> Links {
+        let wlan = Device {
+            path: "/nm/Devices/2".into(),
+            interface: "wlan0".into(),
+            kind: Kind::Wifi,
+            state: 100,
+            reason: 0,
+            hw_address: String::new(),
+            connection: Some("Home".into()),
+            addresses: vec!["10.0.0.4/24".into()],
+            gateway: None,
+            dns: Vec::new(),
+            speed: Some(866),
+        };
+        Links { wifi: Some(Wifi { ssid: Some("Home".into()), strength: 80 }), wifi_device: Some(wlan), wired: None, primary: Some(Kind::Wifi) }
+    }
+
+    /// A strength or a rate is taken from the signal (every few seconds,
+    /// and nothing read again for it); anything else is read again.
+    #[test]
+    fn strength_and_rate_from_the_signal() {
+        let last = joined();
+        let now = quick(&last, &[changed("/nm/AccessPoint/7", AP, "Strength", Value::U8(31), &[])]).expect("a strength alone");
+        assert_eq!(now.wifi.as_ref().map(|w| w.strength), Some(31));
+        let now = quick(&now, &[changed("/nm/Devices/2", WIRELESS, "Bitrate", Value::U32(144_000), &[])]).expect("a rate alone");
+        assert_eq!(now.wifi_device.as_ref().and_then(|d| d.speed), Some(144));
+        // Another adapter's rate, another property, a value only named,
+        // a state change: read again.
+        assert!(quick(&last, &[changed("/nm/Devices/9", WIRELESS, "Bitrate", Value::U32(1), &[])]).is_none());
+        assert!(quick(&last, &[changed("/nm/Devices/2", WIRELESS, "ActiveAccessPoint", Value::from("/"), &[])]).is_none());
+        assert!(quick(&last, &[changed("/nm/AccessPoint/7", AP, "Strength", Value::U8(5), &["Ssid"])]).is_none());
+        let state = zbus::Message::signal("/nm/Devices/2", DEVICE, "StateChanged").unwrap().build(&(30u32, 100u32, 39u32)).unwrap();
+        assert!(quick(&last, &[changed("/nm/AccessPoint/7", AP, "Strength", Value::U8(5), &[]), state]).is_none());
+        // Not joined: no strength to change.
+        let off = Links { wifi: Some(Wifi { ssid: None, strength: 0 }), ..joined() };
+        assert!(quick(&off, &[changed("/nm/AccessPoint/7", AP, "Strength", Value::U8(5), &[])]).is_none());
+    }
+
+    #[test]
+    fn rates_and_counters() {
+        assert_eq!(speed_text(1000), "1 Gb/s");
+        assert_eq!(speed_text(2500), "2.5 Gb/s");
+        assert_eq!(speed_text(866), "866 Mb/s");
+        assert!(traffic("lo").is_some());
+        assert!(traffic("no-such-link").is_none());
+    }
+}
+
+#[cfg(test)]
+mod vpn_tests {
+    use super::*;
+
+    const CONF: &str = "[Interface]
+PrivateKey = yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=
+Address = 10.200.0.2/32, fd00:200::2/128
+DNS = 10.200.0.1, corp.example
+MTU = 1420
+
+[Peer]
+PublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=
+PresharedKey = /UwcSPg38hW/D9Y3tcS1FOV0K1wuURMbS0sesJEP5ak=
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = vpn.example.com:51820
+PersistentKeepalive = 25
+";
+
+    #[test]
+    fn a_wg_quick_file_as_networkmanagers() {
+        let s = wireguard_settings("Office (wg)", CONF).unwrap();
+        assert_eq!(s["connection"]["type"], Value::from("wireguard"));
+        assert_eq!(s["connection"]["interface-name"], Value::from("Officewg"));
+        assert_eq!(s["wireguard"]["mtu"], Value::from(1420u32));
+        let Value::Array(peers) = &s["wireguard"]["peers"] else { panic!("peers") };
+        assert_eq!(peers.len(), 1);
+        assert_eq!(s["ipv4"]["method"], Value::from("manual"));
+        assert_eq!(s["ipv4"]["dns"], Value::from(vec![u32::from_ne_bytes([10, 200, 0, 1])]));
+        assert_eq!(s["ipv4"]["dns-search"], Value::from(vec!["corp.example".to_owned()]));
+        assert_eq!(s["ipv4"]["dns-priority"], Value::from(-50i32));
+        assert_eq!(s["ipv6"]["method"], Value::from("manual"));
+        // IPv4 alone: IPv6 off.
+        let v4 = CONF.replace(", fd00:200::2/128", "");
+        assert_eq!(wireguard_settings("x", &v4).unwrap()["ipv6"]["method"], Value::from("disabled"));
+    }
+
+    #[test]
+    fn what_isnt_a_wireguard_file_is_said() {
+        assert!(wireguard_settings("x", "").unwrap_err().contains("PrivateKey"));
+        assert!(wireguard_settings("x", &CONF.replace("yAnz5TF", "nope")).unwrap_err().contains("PrivateKey"));
+        assert!(wireguard_settings("x", &CONF.replace("[Peer]", "[Pear]")).is_err());
+        assert!(wireguard_settings("x", &CONF.replace("0.0.0.0/0", "everything")).unwrap_err().contains("AllowedIPs"));
+        assert_eq!(tunnel_name("a very long name for a tunnel"), "averylongnamefo");
+        assert_eq!(vpn_kind("org.freedesktop.NetworkManager.openvpn"), "OpenVPN");
     }
 }

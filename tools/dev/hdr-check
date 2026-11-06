@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """HDR and wide colour, end to end: what a display would be sent.
 
-  hdr-check
+  hdr-check [--clip VIDEO]
 
 Starts a headless session of its own ("hdrc") whose screen pretends to be
 a Display P3 HDR panel (OLO_HEADLESS_COLOR=p3-hdr: 1600 cd/m² peak),
@@ -16,11 +16,28 @@ signal, not the sRGB picture screenshots are. Then checks, within a code:
                         wallpaper blue as P3's numbers (bluer numbers in
                         less saturated ones).
   HDR (PQ, BT.2020):   the untagged grey at 46 cd/m² (110), the PQ
-                        window at its own 100 cd/m² (130), SDR's white
-                        at 203 cd/m² (148) and nothing above it.
+                        window at its own 100 cd/m² (130), nothing above
+                        SDR's white at 203 cd/m² (148).
+  A GPUI window in HDR10 (the kit's `hdr_probe`, `Gamut::Hdr10`): its
+                        sRGB white at SDR's white (148), its HDR10
+                        pictures (`RenderImage::deep`) at their own
+                        1,000 cd/m² (192) and 100 (130).
+
+  An HDR wallpaper:    the pack's BeBox with its gain map, its lights
+                        well above SDR's white (≥ 170), its median not.
+  Screenshots and recordings of it (sRGB, what they are): SDR's
+                        white and the 1,000 cd/m² picture white (255),
+                        the 100 cd/m² one as SDR shows it (186), not PQ's
+                        codes read as sRGB's.
+
+  With --clip, an HDR video (PQ or HLG): Viewer plays it, on the HDR
+                        display drawing in HDR10, its highlights past
+                        SDR's white (more than 148); not compared with
+                        a value (what a clip holds is its own).
 
 Build first: `cargo build --release -p app_server --bin olo-app-server
---example color_probe`. Exits 1 on a mismatch.
+--example color_probe`, `cargo build --release -p olo-ui --example
+hdr_probe` and `cargo build --release -p olo-screenshot -p olo-screen`. Exits 1 on a mismatch.
 """
 
 import json
@@ -32,6 +49,7 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TSESSION = [sys.executable, os.path.join(ROOT, "tools/dev/tsession")]
 PROBE = os.path.join(ROOT, "target/release/examples/color_probe")
+GPUI_PROBE = os.path.join(ROOT, "target/release/examples/hdr_probe")
 NAME = "hdrc"
 OUT = "/var/tmp/olo-hdr-check"
 
@@ -65,13 +83,18 @@ def most(img, n=4):
 
 
 def main():
-    if not os.path.exists(PROBE):
-        sys.exit("build the probe first: cargo build --release -p app_server --example color_probe")
+    if not os.path.exists(PROBE) or not os.path.exists(GPUI_PROBE):
+        sys.exit("build the probes first: cargo build --release -p app_server --example color_probe; cargo build --release -p olo-ui --example hdr_probe")
     os.makedirs(OUT, exist_ok=True)
     ts("stop", NAME)
     ts("start", NAME, "1280x800", env={"OLO_HEADLESS_COLOR": "p3-hdr"})
     failures = []
     try:
+        # The desktop colour alone (a new install's wallpaper, the pack's,
+        # shines above SDR's white in HDR: checked by itself at the end).
+        settings = ipc({"type": "get_settings"})["settings"]
+        settings["wallpaper"] = None
+        ipc({"type": "set_settings", "settings": settings})
         ts("run", NAME, PROBE)
         time.sleep(1.0)
         ts("run", NAME, PROBE, "--untagged")
@@ -110,9 +133,96 @@ def main():
         present(hdr, (110, 110, 110), "the untagged grey at 46 cd/m²")
         present(hdr, (130, 130, 130), "the PQ window at its own 100 cd/m²")
         # (Everything here is SDR, or 100 cd/m²: nothing above SDR's
-        # white, which the tabs' and wallpaper's brightest reach.)
+        # white, which the tabs' brightest reach.)
         top = max(max(c) for c in set(pixels(hdr)))
-        near((top,), (148,), "the most light: SDR's white at 203 cd/m²")
+        ok = top <= 149
+        print(f"  {'ok ' if ok else 'BAD'} nothing above SDR's white (148): the most light {top}")
+        if not ok:
+            failures.append("nothing above SDR's white")
+
+        print("A GPUI window drawing in HDR10:")
+        ts("run", NAME, GPUI_PROBE)
+        time.sleep(3.0)
+        w = next((w for w in ipc({"type": "list_windows"}).get("windows", []) if w.get("app_id") == "olo.hdr-probe"), None)
+        if w is None:
+            print("  BAD the probe's window didn't come")
+            failures.append("the GPUI probe")
+        else:
+            img = shot("gpui", True)
+            # (The screen's device pixels against its logical ones.)
+            scale = img.size[0] / 1280 * 2
+            c = w["content"]
+            for i, (what, want) in enumerate([("its sRGB white at SDR's 203 cd/m²", 148), ("an HDR10 picture at its own 1,000 cd/m²", 192), ("an HDR10 picture at 100 cd/m²", 130)]):
+                at = (int((c["x"] + c["width"] * (i + 0.5) / 3) * scale), int((c["y"] + c["height"] / 2) * scale))
+                near(img.getpixel(at)[:3], (want,) * 3, what)
+
+            # What a screenshot and a recording of this HDR screen get: SDR
+            # pictures (sRGB), SDR's white as white, the 1,000 cd/m²
+            # picture past it (white), 100 cd/m² as SDR shows it (186), not
+            # PQ's codes taken for sRGB's (148, 192, 130).
+            print("Screenshots and recordings of the HDR screen (sRGB):")
+            spots = lambda img, scale, ox=0, oy=0: [img.getpixel((int((c["x"] - ox + c["width"] * (i + 0.5) / 3) * scale), int((c["y"] - oy + c["height"] / 2) * scale)))[:3] for i in range(3)]
+            wants = [("SDR's white", 255), ("the 1,000 cd/m² picture", 255), ("the 100 cd/m² picture", 186)]
+            srgb_img = shot("gpui-srgb", False)
+            for (what, want), got in zip(wants, spots(srgb_img, srgb_img.size[0] / 1280 * 2)):
+                near(got, (want,) * 3, f"a screenshot: {what}")
+            rec = os.path.join(OUT, "window.mp4")
+            out = ts("run", NAME, os.path.join(ROOT, "target/release/olo-screenshot"), "--record", "--seconds", "1.5", "--encoder", "cpu", "--window", str(w["id"]), "--to", rec).stdout.strip()
+            pid = int(out.split()[-1]) if out else 0
+            while pid and os.path.exists(f"/proc/{pid}"):
+                time.sleep(0.3)
+            frame = os.path.join(OUT, "window.png")
+            subprocess.run([os.path.join(ROOT, "target/release/olo-screen"), "video-frame", rec, frame, "--at", "1.0"], capture_output=True)
+            if os.path.exists(frame):
+                from PIL import Image
+
+                fimg = Image.open(frame).convert("RGB")
+                # (H.264's rounding: within two codes.)
+                for (what, want), got in zip(wants, spots(fimg, fimg.size[0] / c["width"], c["x"], c["y"])):
+                    ok = all(abs(g - want) <= 2 for g in got)
+                    print(f"  {'ok ' if ok else 'BAD'} a window's recording: {what}: {got} (want {(want,) * 3})")
+                    if not ok:
+                        failures.append(f"recording: {what}")
+            else:
+                print("  BAD the window's recording didn't come")
+                failures.append("the window's recording")
+
+        # The pack's wallpaper in HDR (its gain map): its lights above SDR's
+        # white, most of it at or below it.
+        print("An HDR wallpaper (the pack's BeBox, its gain map):")
+        for w in ipc({"type": "list_windows"}).get("windows", []):
+            ipc({"type": "minimize", "id": w["id"]})
+        settings = ipc({"type": "get_settings"})["settings"]
+        settings["wallpaper"] = "pack:bebox"
+        ipc({"type": "set_settings", "settings": settings})
+        time.sleep(3.0)
+        wall = shot("wallpaper", True)
+        values = sorted(max(p) for p in pixels(wall))
+        top, median = values[-1], values[len(values) // 2]
+        ok = top >= 170 and median <= 148
+        print(f"  {'ok ' if ok else 'BAD'} its lights above SDR's white (148), the rest not: brightest {top}, median {median}")
+        if not ok:
+            failures.append("the HDR wallpaper")
+
+        if "--clip" in sys.argv:
+            clip = sys.argv[sys.argv.index("--clip") + 1]
+            print(f"Viewer playing {os.path.basename(clip)}:")
+            ts("run", NAME, "olo-viewer", os.path.abspath(clip))
+            time.sleep(4.0)
+            w = next((w for w in ipc({"type": "list_windows"}).get("windows", []) if w.get("app_id") == "olo.viewer"), None)
+            if w is None:
+                print("  BAD Viewer's window didn't come")
+                failures.append("Viewer")
+            else:
+                img = shot("clip", True)
+                scale = img.size[0] / 1280 * 2
+                c = w["content"]
+                crop = img.crop((int(c["x"] * scale), int(c["y"] * scale), int((c["x"] + c["width"]) * scale), int((c["y"] + c["height"]) * scale)))
+                top = max(max(p) for p in pixels(crop))
+                ok = top > 150
+                print(f"  {'ok ' if ok else 'BAD'} its highlights past SDR's white: the brightest {top} (SDR's white 148)")
+                if not ok:
+                    failures.append("Viewer's HDR video")
     finally:
         ts("stop", NAME)
     if failures:

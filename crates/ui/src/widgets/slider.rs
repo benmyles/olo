@@ -134,7 +134,9 @@ impl RenderOnce for Slider {
                 let s = window.scale_factor();
                 let bar_top = px(((f32::from(track.center().y) - BAR_H / 2.0) * s).round() / s);
                 let bar = Bounds::from_corners(point(b.left(), bar_top), point(b.right(), bar_top + px(BAR_H)));
-                let t = if hi > lo { (value - lo) / (hi - lo) } else { 0.0 };
+                // A value outside the range (the setting's range grew elsewhere)
+                // is drawn at the end it's past, never off the track.
+                let t = if hi > lo { ((value - lo) / (hi - lo)).clamp(0.0, 1.0) } else { 0.0 };
                 let thumb_x = style::snap_coord(window, track.left() + track.size.width * t);
                 let fill = fill.unwrap_or(style::c(p.control_highlight));
                 let fill = if enabled { fill } else { fill.opacity(0.4) };

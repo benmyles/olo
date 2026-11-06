@@ -371,6 +371,47 @@ fn window_p3() -> bool {
     return (globals.pad & 1u) != 0u;
 }
 
+// Olo: a window drawing in HDR10 (`globals.pad` bit 2): every colour as
+// PQ's numbers in BT.2020, sRGB's white at 203 cd/m² (BT.2408's), an
+// HDR10 image's (`RenderImage::deep`) as they are.
+fn window_hdr10() -> bool {
+    return (globals.pad & 4u) != 0u;
+}
+
+// Whether colours are converted as they're drawn (not sRGB's window).
+fn window_converts() -> bool {
+    return (globals.pad & 5u) != 0u;
+}
+
+const SRGB_TO_BT2020 = mat3x3<f32>(vec3<f32>(0.627404, 0.069097, 0.016391), vec3<f32>(0.329283, 0.919540, 0.088013), vec3<f32>(0.043313, 0.011362, 0.895595));
+const P3_TO_BT2020 = mat3x3<f32>(vec3<f32>(0.753833, 0.045744, -0.001210), vec3<f32>(0.198597, 0.941777, 0.017602), vec3<f32>(0.047570, 0.012479, 0.983609));
+const BT2020_TO_SRGB = mat3x3<f32>(vec3<f32>(1.660491, -0.124550, -0.018151), vec3<f32>(-0.587641, 1.132900, -0.100579), vec3<f32>(-0.072850, -0.008349, 1.118730));
+const BT2020_TO_P3 = mat3x3<f32>(vec3<f32>(1.343578, -0.065297, 0.002822), vec3<f32>(-0.282180, 1.075788, -0.019598), vec3<f32>(-0.061399, -0.010490, 1.016777));
+const PQ_M1 = 0.1593017578125;
+const PQ_M2 = 78.84375;
+const PQ_C1 = 0.8359375;
+const PQ_C2 = 18.8515625;
+const PQ_C3 = 18.6875;
+const SDR_WHITE = 203.0;
+
+// Light (BT.2020, in SDR whites) to PQ's numbers.
+fn pq_encode(light: vec3<f32>) -> vec3<f32> {
+    let y = pow(clamp(light * (SDR_WHITE / 10000.0), vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(PQ_M1));
+    return pow((PQ_C1 + PQ_C2 * y) / (1.0 + PQ_C3 * y), vec3<f32>(PQ_M2));
+}
+
+// PQ's numbers to light (in SDR whites).
+fn pq_decode(e: vec3<f32>) -> vec3<f32> {
+    let p = pow(clamp(e, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / PQ_M2));
+    let y = pow(max(p - PQ_C1, vec3<f32>(0.0)) / (PQ_C2 - PQ_C3 * p), vec3<f32>(1.0 / PQ_M1));
+    return y * (10000.0 / SDR_WHITE);
+}
+
+// Gamma 2.2 numbers in some primaries (`m`: to BT.2020) as PQ's.
+fn to_pq(c: vec3<f32>, m: mat3x3<f32>) -> vec3<f32> {
+    return pq_encode(m * pow(max(c, vec3<f32>(0.0)), vec3<f32>(2.2)));
+}
+
 fn convert_gamma22(c: vec3<f32>, m: mat3x3<f32>) -> vec3<f32> {
     let light = m * pow(max(c, vec3<f32>(0.0)), vec3<f32>(2.2));
     return pow(clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2));
@@ -378,6 +419,9 @@ fn convert_gamma22(c: vec3<f32>, m: mat3x3<f32>) -> vec3<f32> {
 
 // An sRGB colour as the window draws it.
 fn to_window(c: vec3<f32>) -> vec3<f32> {
+    if (window_hdr10()) {
+        return to_pq(c, SRGB_TO_BT2020);
+    }
     if (window_p3()) {
         return convert_gamma22(c, SRGB_TO_P3);
     }
@@ -1113,7 +1157,7 @@ fn vs_path(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index) insta
 fn fs_path(input: PathVarying) -> @location(0) vec4<f32> {
     let sample = textureSample(t_sprite, s_sprite, input.texture_coords);
     // (Rasterized premultiplied in sRGB; Olo: into the window's colours.)
-    if (window_p3() && sample.a > 0.0) {
+    if (window_converts() && sample.a > 0.0) {
         return vec4<f32>(to_window(sample.rgb / sample.a) * sample.a, sample.a);
     }
     return sample;
@@ -1461,12 +1505,29 @@ fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
     }
     let alpha = sprite.opacity * saturate(0.5 - distance);
     // Olo: a Display P3 image (bit 1): its numbers as they are in a
-    // window drawing in P3, else converted into sRGB's.
+    // window drawing in P3, else converted into the window's.
     if ((sprite.nearest & 2u) != 0u) {
         if (window_p3()) {
             return blend_raw(color, alpha);
         }
+        if (window_hdr10()) {
+            return blend_raw(vec4<f32>(to_pq(color.rgb, P3_TO_BT2020), color.a), alpha);
+        }
         return blend_raw(vec4<f32>(convert_gamma22(color.rgb, P3_TO_SRGB), color.a), alpha);
+    }
+    // An HDR10 image (bit 2): as it is in a window drawing in HDR10; in
+    // another, its light up to SDR's white (what's brighter clipped:
+    // pictures for SDR are converted before, `olo_images::hdr`).
+    if ((sprite.nearest & 4u) != 0u) {
+        if (window_hdr10()) {
+            return blend_raw(color, alpha);
+        }
+        let light = min(pq_decode(color.rgb), vec3<f32>(1.0));
+        var shown = BT2020_TO_SRGB * light;
+        if (window_p3()) {
+            shown = BT2020_TO_P3 * light;
+        }
+        return blend_raw(vec4<f32>(pow(clamp(shown, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), color.a), alpha);
     }
     return blend_color(color, alpha);
 }

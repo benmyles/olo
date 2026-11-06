@@ -25,6 +25,9 @@ pub enum Request {
     Ended { session: u64, status: i32 },
     /// The suggestion shown was taken: whole, or a word of it.
     Accepted { session: u64, whole: bool },
+    /// Shell `session` carries on shell `from` (a Terminal tab restored
+    /// after a restart: its commands so far are the old one's).
+    Continues { session: u64, from: u64 },
     /// How it's doing (Activity Monitor ▸ AI).
     Stats,
     /// Learn from the history files (as the option is turned on): the
@@ -186,6 +189,24 @@ pub fn state_dir() -> PathBuf {
 
 pub fn home_dir() -> PathBuf {
     home()
+}
+
+/// A Terminal shell's id (`OLO_SHELL_ID`, hex), set by olo-termd: the
+/// shell's session for olo-complete, the same for its tab's whole life;
+/// and the shell a restored one stands in for (`OLO_SHELL_RESTORED`).
+pub const SHELL_ID_ENV: &str = "OLO_SHELL_ID";
+pub const SHELL_RESTORED_ENV: &str = "OLO_SHELL_RESTORED";
+
+/// A shell id from the environment variable `name`.
+pub fn shell_id(name: &str) -> Option<u64> {
+    std::env::var(name).ok().and_then(|v| u64::from_str_radix(v.trim(), 16).ok())
+}
+
+/// Where olo-termd keeps the end of shell `id`'s screen as text (the
+/// last lines, scrollback before them), for olo-complete to read what
+/// the commands printed: in the runtime folder, the user's alone.
+pub fn tail_path(id: u64) -> Option<PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).filter(|p| p.is_dir()).map(|d| d.join(format!("olo-shell-{id:016x}.tail")))
 }
 
 /// The socket: in the runtime folder (None without one), or

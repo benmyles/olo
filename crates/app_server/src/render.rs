@@ -36,6 +36,8 @@ smithay::backend::renderer::element::render_elements! {
     Pointer=PointerRenderElement<R>,
     Surface=WaylandSurfaceRenderElement<R>,
     Overlay=Exact<MemoryRenderBufferRenderElement<R>>,
+    /// A solid colour: the pixel that keeps the GPU's memory warm, and a
+    /// private window blacked out of a share (`private.rs`).
     Warm=smithay::backend::renderer::element::solid::SolidColorRenderElement,
     #[cfg(feature = "debug")]
     // Note: We would like to borrow this element instead, but that would introduce
@@ -90,6 +92,18 @@ impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug>
 pub struct Exact<E> {
     inner: E,
     rect: Rectangle<i32, Physical>,
+    /// What its texture holds, if not sRGB (`with_color`).
+    color: Option<smithay::backend::renderer::ColorSource>,
+}
+
+impl<E> Exact<E> {
+    /// Its texture holds `color` (an HDR wallpaper's linear light, above
+    /// SDR's white): drawn converted into the frame's colours, never put
+    /// on a plane as it is.
+    pub fn with_color(mut self, color: smithay::backend::renderer::ColorSource) -> Self {
+        self.color = Some(color);
+        self
+    }
 }
 
 impl<E: Element> Element for Exact<E> {
@@ -137,9 +151,18 @@ impl<R: Renderer, E: RenderElement<R>> RenderElement<R> for Exact<E> {
         opaque_regions: &[Rectangle<i32, Physical>],
         cache: Option<&UserDataMap>,
     ) -> Result<(), R::Error> {
-        self.inner.draw(frame, src, dst, damage, opaque_regions, cache)
+        let Some(color) = self.color else {
+            return self.inner.draw(frame, src, dst, damage, opaque_regions, cache);
+        };
+        smithay::backend::renderer::Frame::set_texture_color(frame, Some(color));
+        let drawn = self.inner.draw(frame, src, dst, damage, opaque_regions, cache);
+        smithay::backend::renderer::Frame::set_texture_color(frame, None);
+        drawn
     }
     fn underlying_storage(&self, renderer: &mut R) -> Option<UnderlyingStorage<'_>> {
+        if self.color.is_some() {
+            return None;
+        }
         self.inner.underlying_storage(renderer)
     }
 }
@@ -155,7 +178,7 @@ where
     let from = Rectangle::from_size((src.0 as f64, src.1 as f64).into());
     let size: Size<i32, Logical> = (rect.size.w, rect.size.h).into();
     let inner = MemoryRenderBufferRenderElement::from_buffer(renderer, rect.loc.to_f64(), buffer, alpha, Some(from), Some(size), kind).ok()?;
-    Some(Exact { inner, rect })
+    Some(Exact { inner, rect, color: None })
 }
 
 /// [`exact`] for a picture drawn at its own size, `size` device pixels,
@@ -576,12 +599,17 @@ where
     let indicator = crate::osd::element(renderer, output, screen).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
     // A tab's cut title, whole (`tabtip`), as high.
     let tab_tip = crate::tabtip::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
+    // Clicks and keys shown (`showing`), as high: in captures too.
+    let shown: Vec<_> = crate::showing::elements(renderer, output, screen).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))).collect();
     // Locked: nothing but what the caller passed (the pointer and the lock
     // screen) over an opaque background.
     if locked {
         let [r, g, b, a] = crate::lock::BACKGROUND;
         let mut elements: Vec<_> = custom_elements.into_iter().map(OutputRenderElements::from).collect();
         add_indicator(&mut elements, indicator);
+        for e in shown {
+            add_indicator(&mut elements, Some(e));
+        }
         return (elements, Color32F::new(r, g, b, a));
     }
     // (In Rescue a full-screen window is put away with the rest.)
@@ -592,6 +620,9 @@ where
         let elements = custom_elements.into_iter().map(OutputRenderElements::from).chain(window_render_elements.into_iter().map(|e| OutputRenderElements::Window(Wrap::from(e)))).collect::<Vec<_>>();
         let mut elements = elements;
         add_indicator(&mut elements, indicator);
+        for e in shown {
+            add_indicator(&mut elements, Some(e));
+        }
         (elements, CLEAR_COLOR_FULLSCREEN)
     } else {
         let mut output_render_elements = custom_elements.into_iter().map(OutputRenderElements::from).collect::<Vec<_>>();
@@ -599,6 +630,9 @@ where
         output_render_elements.extend(crate::identify::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
         add_indicator(&mut output_render_elements, indicator);
         add_indicator(&mut output_render_elements, tab_tip);
+        for e in shown {
+            add_indicator(&mut output_render_elements, Some(e));
+        }
 
         crate::shell::groups::mark_behind(space);
         crate::shell::modes::mark_covered(space);
@@ -784,13 +818,16 @@ where
 {
     let size = crate::capture::size(output).ok_or("output has no mode")?;
     let scale = output.current_scale().fractional_scale();
-    let (elements, clear_color) = capture_elements(renderer, output, space, overlays, overview, clear_color, locked, None);
+    // (A screenshot is the screen as it is: never a recording's zoom.)
+    let (elements, clear_color) = capture_elements(renderer, output, space, overlays, overview, clear_color, locked, None, false);
     offscreen(renderer, size, scale, &elements, clear_color)
 }
 
 /// What a picture of `output` shows (a mirror's is its source's, fitted),
 /// with the pointer over it when `pointer` gives where it is and what it
-/// shows; and the background.
+/// shows; and the background. `zoomable`: a capture session's (a
+/// recording, a screen share), drawn as a recording's zoom has it; a
+/// screenshot never is.
 #[allow(clippy::too_many_arguments)]
 pub fn capture_elements<R>(
     renderer: &mut R,
@@ -801,6 +838,7 @@ pub fn capture_elements<R>(
     clear_color: Color32F,
     locked: bool,
     pointer: Option<(Point<f64, Logical>, &smithay::input::pointer::CursorImageStatus)>,
+    zoomable: bool,
 ) -> (Vec<FrameElements<R, WindowRenderElement<R>>>, Color32F)
 where
     R: Renderer + ImportAll + ImportMem,
@@ -809,11 +847,46 @@ where
     let source = mirror_source(output);
     let fit = source.as_ref().map(|s| fit_outputs(output, s, space));
     let from = source.as_ref().unwrap_or(output);
+    // A recording's zoom (`zoom`; not a mirror's): drawn magnified, the
+    // shortcut's key cap apart, in its place over it.
+    let geo = space.output_geometry(from).unwrap_or_default();
+    let zoom = if zoomable && fit.is_none() && !locked { crate::zoom::view(&from.name(), geo.size.to_f64(), pointer.map(|(at, _)| at - geo.loc.to_f64())) } else { None };
     if let Some((at, status)) = pointer {
         overlays.splice(0..0, pointer_elements(renderer, from, space, at, status));
     }
-    let (elements, clear_color) = output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked);
-    (frame(elements, fit), clear_color)
+    // A recording's caption (captures only, over all, unzoomed).
+    let caption = |renderer: &mut R| -> Vec<FrameElements<R, WindowRenderElement<R>>> {
+        if !zoomable {
+            return Vec::new();
+        }
+        let size = crate::capture::size(output).unwrap_or_default();
+        crate::showing::caption_elements(renderer, size, output.current_scale().fractional_scale())
+            .into_iter()
+            .map(|e| FrameElements::Normal(OutputRenderElements::Custom(CustomRenderElements::Overlay(e))))
+            .collect()
+    };
+    // A share or recording (not a screenshot) never shows a private
+    // window, nor the lock screen (`private.rs`).
+    let shaded = |(mut elements, clear): (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)| {
+        if zoomable {
+            let shades = crate::private::blackouts(from, space, locked).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Warm(e)));
+            elements.splice(0..0, shades);
+        }
+        (elements, clear)
+    };
+    let Some((k, corner)) = zoom else {
+        let (elements, clear_color) = shaded(output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked));
+        let mut framed = frame(elements, fit);
+        framed.splice(0..0, caption(renderer));
+        return (framed, clear_color);
+    };
+    let ((elements, clear_color), chord) = crate::showing::apart(renderer, from, geo.size, |renderer| shaded(output_elements::<R>(from, space, overlays, renderer, overview, clear_color, locked)));
+    let scale = from.current_scale().fractional_scale();
+    let offset = Point::<f64, Logical>::from((-corner.x * k, -corner.y * k)).to_physical(scale).to_i32_round();
+    let mut framed = frame(elements, Some(Fit { factor: k, offset }));
+    framed.splice(0..0, chord.into_iter().map(|e| FrameElements::Normal(OutputRenderElements::Custom(CustomRenderElements::Overlay(e)))));
+    framed.splice(0..0, caption(renderer));
+    (framed, clear_color)
 }
 
 /// A picture of window `id` alone, for a screen share of it: only what
@@ -851,8 +924,7 @@ where
     (size.w > 0 && size.h > 0).then_some((elements, size, scale))
 }
 
-/// The pointer as drawn on `output`, if it is over it: the built-in
-/// cursor for a named shape, or the client's surface.
+/// The pointer as a capture of `output` draws it, if it is over it.
 pub fn pointer_elements<R>(
     renderer: &mut R,
     output: &Output,
@@ -865,16 +937,47 @@ where
     R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
 {
     let Some(geo) = space.output_geometry(output) else { return Vec::new() };
-    if !geo.to_f64().contains(at) {
+    captured_pointer(renderer, geo.to_f64(), output.current_scale().fractional_scale(), at, status)
+}
+
+/// The pointer as captures draw it into a picture of `area` (points, as
+/// the screen has them) at `scale`, the real one being at `at`: where and
+/// as large as `showing` has it for recordings (smoothed, larger), else
+/// as the screen shows it, the built-in cursor for a named shape or the
+/// client's surface. Larger, it's the built-in cursor drawn at that size
+/// (a client's own stood in for by it, as screenshots do), never
+/// enlarged. Nothing if it isn't over `area`.
+pub fn captured_pointer<R>(renderer: &mut R, area: Rectangle<f64, Logical>, scale: f64, at: Point<f64, Logical>, status: &smithay::input::pointer::CursorImageStatus) -> Vec<CustomRenderElements<R>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: smithay::backend::renderer::Texture + Clone + Send + 'static,
+{
+    let (at, size) = crate::showing::captured_pointer(at);
+    if !area.contains(at) {
         return Vec::new();
     }
-    let scale = output.current_scale().fractional_scale();
+    let local = at - area.loc;
+    if size > 1.0 {
+        let Some(shape) = crate::cursor::pictured(status) else { return Vec::new() };
+        let image = crate::cursor::image(shape, scale * size);
+        let corner = local.to_physical(scale) - Point::from((f64::from(image.hotspot.0), f64::from(image.hotspot.1)));
+        let side = image.size as i32;
+        return picture(renderer, corner, &crate::cursor::buffer(shape, scale * size), (side, side), None, Kind::Unspecified).map(CustomRenderElements::Overlay).into_iter().collect();
+    }
     let shape = crate::cursor::named(status).unwrap_or(crate::cursor::Shape::SystemDefault);
     let mut pointer = crate::drawing::PointerElement::default();
     pointer.set_buffer(crate::cursor::buffer(shape, scale), crate::cursor::image(shape, scale).size as i32);
     pointer.set_status(status.clone());
-    let location = (at - geo.loc.to_f64() - crate::cursor::hotspot(status).to_f64()).to_physical(scale).to_i32_round();
+    let location = (local - crate::cursor::hotspot(status).to_f64()).to_physical(scale).to_i32_round();
     pointer.render_elements(renderer, location, scale.into(), 1.0)
+}
+
+/// Where window `id`'s content (what its client draws) starts on the
+/// screen, if it's shown: as screenshots and Olo's IPC find it.
+pub fn content_origin(space: &Space<WindowElement>, id: u64) -> Option<Point<i32, Logical>> {
+    let w = space.elements().find(|w| w.id() == id)?;
+    let at = space.element_location(w)?;
+    Some(if w.decorated() { at - smithay::desktop::space::SpaceElement::geometry(w).loc + crate::shell::deco::content_offset() } else { at })
 }
 
 /// Draw `elements` into a new `size` buffer and read it back, top row first

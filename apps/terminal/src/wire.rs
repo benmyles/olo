@@ -161,11 +161,15 @@ impl Frame {
 }
 
 pub fn runtime_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
+    olo_xdg::runtime_dir()
 }
 
+/// The display whose olo-termd has the shells: this one, or, for the
+/// person's Terminal moved to an agent screen (`olo_kit_base::moving`),
+/// theirs, where its shells stay.
 pub fn display() -> String {
-    std::env::var("WAYLAND_DISPLAY").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| "wayland-0".into())
+    let home = olo_kit_base::moving::home().and_then(|h| h.set.into_iter().find(|(k, _)| k == "WAYLAND_DISPLAY").map(|(_, v)| v));
+    home.or_else(|| std::env::var("WAYLAND_DISPLAY").ok()).filter(|d| !d.is_empty()).unwrap_or_else(|| "wayland-0".into())
 }
 
 /// Where olo-termd listens (one per display).

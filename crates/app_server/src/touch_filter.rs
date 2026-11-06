@@ -25,14 +25,35 @@ use olo_protocol::TouchpadSettings;
 /// the click from the pressure of everything touching).
 pub const DEVICES: &[&str] = &["Apple MTP"];
 
+/// The ThinkPad pads it keeps palms palms on (`olo_palm::Kind::ThinkPad`:
+/// the P1 Gen 9's Goodix), by a part of their name: their firmware's palm
+/// held until it lifts, and their own palm model.
+pub const THINKPADS: &[&str] = &["GXTP5420"];
+
 const TEMPLATE: &str = include_str!("touchpad.lua");
 const FILE: &str = "50-olo-touchpad.lua";
 const QUIRKS_FILE: &str = "olo-touchpad.quirks";
 
-/// The quirk that lets pressure through to the plugin.
+/// The quirk that lets pressure through to the plugin. A ThinkPad's
+/// pressure is its haptic click's force, which libinput's own quirk drops
+/// (a pressure pad): let through for the palm model, libinput is told not
+/// to count touches by it (`AttrPressureRange=none`, its "pressure-based
+/// touch detection disabled": its default threshold, 240 of 2000, is past
+/// any fingertip here) nor palms (`AttrPalmPressureThreshold=0`: its
+/// default, 130, is under a fingertip's click, and a palm by pressure is
+/// one for good). Every line is one libinput's loader takes ([`takes`]):
+/// one it doesn't, and it loads no quirk at all, its own included (Olo's
+/// `AttrPressureRange=0:0` did, 2026-11-05: libinput's own quirk for the
+/// ThinkPad's pad went with it, and it counted touches by pressure, past
+/// any fingertip there, and the touchpad was dead).
 pub fn quirks() -> String {
-    let sections: Vec<String> =
+    let mut sections: Vec<String> =
         DEVICES.iter().map(|d| format!("[Olo touch filter: {d}]\nMatchUdevType=touchpad\nMatchName=*{d}*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPalmPressureThreshold=0\n")).collect();
+    sections.extend(
+        THINKPADS
+            .iter()
+            .map(|d| format!("[Olo touch filter: {d}]\nMatchUdevType=touchpad\nMatchName=*{d}*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPressureRange=none\nAttrPalmPressureThreshold=0\n")),
+    );
     format!("# Written by Olo's app_server while its touch filter is on (docs/TOUCHPAD.md).\n\n{}", sections.join("\n"))
 }
 
@@ -43,10 +64,13 @@ pub fn render(t: &TouchpadSettings) -> Option<String> {
         return None;
     }
     let devices: Vec<String> = DEVICES.iter().map(|d| format!("{d:?}")).collect();
-    let model = model_in_use(f).map(|m| format!(", palm_model = {}", olo_palm::lua(&m))).unwrap_or_default();
+    let thinkpads: Vec<String> = THINKPADS.iter().map(|d| format!("{d:?}")).collect();
+    let model = model_in_use(f, olo_palm::Kind::MacBook).map(|m| format!(", palm_model = {}", olo_palm::lua(&m))).unwrap_or_default();
+    let thinkpad_model = model_in_use(f, olo_palm::Kind::ThinkPad).map(|m| format!(", thinkpad_model = {}", olo_palm::lua(&m))).unwrap_or_default();
     let config = format!(
-        "local CONFIG = {{ devices = {{ {} }}, touch_on = {}, touch_off = {}, lift_ms = {}, palm_size = {}, click = {}, press = {}, release = {}{model} }}",
+        "local CONFIG = {{ devices = {{ {} }}, thinkpads = {{ {} }}, touch_on = {}, touch_off = {}, lift_ms = {}, palm_size = {}, click = {}, press = {}, release = {}{model}{thinkpad_model} }}",
         devices.join(", "),
+        thinkpads.join(", "),
         f.touch_on,
         f.touch_off.min(f.touch_on),
         f.lift_ms,
@@ -58,19 +82,22 @@ pub fn render(t: &TouchpadSettings) -> Option<String> {
     Some(TEMPLATE.replacen("local CONFIG = {} -- @CONFIG@ (replaced by app_server)", &config, 1))
 }
 
-/// The palm model the filter runs, when it's on: the person's, trained
-/// on their hands (Train for Your Palm), or Olo's own, made from real
-/// hands (`olo_palm::default_model`; Ben, 2026-11-03: "make this one
-/// that you're improving from my data the new default/untrained model").
-/// A model of another shape (from an older Olo) gives way to Olo's own.
-pub fn model_in_use(f: &olo_protocol::touchpad::TouchFilter) -> Option<olo_protocol::touchpad::PalmModel> {
-    if !f.use_palm_model {
-        return None;
-    }
-    match &f.palm_model {
-        Some(m) if m.w1.len() == olo_palm::HIDDEN * olo_palm::FEATURES && m.mean.len() == olo_palm::FEATURES => Some(m.clone()),
-        _ => Some(olo_palm::default_model()),
-    }
+/// The palm model the filter runs on a `kind` of pad, when it's on: the
+/// person's, trained on their hands on such a pad (Train for Your Palm),
+/// or Olo's own for that kind, made from real hands on it
+/// (`olo_palm::Kind::base_model`; Ben, 2026-11-03: "make this one that
+/// you're improving from my data the new default/untrained model";
+/// 2026-11-05: "each touchpad type should have its own specific custom
+/// model type and weights"). A model of another shape (from an older Olo)
+/// or kind gives way to Olo's own.
+pub fn model_in_use(f: &olo_protocol::touchpad::TouchFilter, kind: olo_palm::Kind) -> Option<olo_protocol::touchpad::PalmModel> {
+    f.use_palm_model.then(|| kind.model(f.palm_model.as_ref()))
+}
+
+/// The kind of pad among `devices` (a ThinkPad's if one is there, else a
+/// MacBook's), for what its model says of itself.
+pub fn kind_among(devices: &[olo_protocol::touchpad::InputDeviceInfo]) -> olo_palm::Kind {
+    if devices.iter().any(|d| d.kind == olo_protocol::touchpad::DeviceKind::Thinkpad) { olo_palm::Kind::ThinkPad } else { olo_palm::Kind::MacBook }
 }
 
 /// Where app_server keeps the plugins it writes (the session's own).
@@ -91,10 +118,23 @@ pub fn install(t: &TouchpadSettings) -> Option<String> {
     let plugin = render(t);
     let (dir, quirks_dir) = (dir(), quirks_dir());
     let (path, quirks_path) = (dir.join(FILE), quirks_dir.join(QUIRKS_FILE));
+    // (A quirk libinput wouldn't take is never written: it would take
+    // every quirk with it, the pads' own.)
+    let quirks = quirks();
+    let bad: Vec<&str> = quirks.lines().filter(|l| !takes(l)).collect();
+    if !bad.is_empty() {
+        tracing::error!(?bad, "the touch filter's quirk has lines libinput wouldn't take: written without it");
+    }
     match &plugin {
         Some(text) => {
-            let written =
-                std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text)).and_then(|_| std::fs::create_dir_all(&quirks_dir)).and_then(|_| std::fs::write(&quirks_path, quirks()));
+            let written = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text)).and_then(|_| {
+                if bad.is_empty() {
+                    std::fs::create_dir_all(&quirks_dir).and_then(|_| std::fs::write(&quirks_path, &quirks))
+                } else {
+                    let _ = std::fs::remove_file(&quirks_path);
+                    Ok(())
+                }
+            });
             if let Err(e) = written {
                 tracing::warn!(%e, path = %path.display(), "could not write the touch filter");
                 let _ = std::fs::remove_file(&path);
@@ -110,6 +150,50 @@ pub fn install(t: &TouchpadSettings) -> Option<String> {
     plugin
 }
 
+/// Whether libinput's quirks loader (1.32's `quirks.c`, `parse_match` and
+/// `parse_attr`, with `util-prop-parsers.c`) takes `line` of a quirks
+/// file, for what Olo writes: a section, a comment, and the matches and
+/// attributes Olo uses, as libinput parses them. Anything else isn't
+/// taken (Olo writes nothing it hasn't checked against the parser).
+pub fn takes(line: &str) -> bool {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return true;
+    }
+    if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+        return !name.is_empty();
+    }
+    let Some((key, value)) = line.split_once('=') else { return false };
+    match key {
+        "MatchUdevType" => matches!(value, "touchpad" | "mouse" | "pointingstick" | "keyboard" | "joystick" | "tablet" | "tablet-pad"),
+        "MatchName" => !value.is_empty(),
+        // `+` or `-` and a property's name (or its number, in hex), `;`
+        // between them.
+        "AttrInputProp" => value.split(';').all(|p| {
+            let (sign, name) = p.split_at(p.len().min(1));
+            matches!(sign, "+" | "-")
+                && (u32::from_str_radix(name.strip_prefix("0x").unwrap_or(name), 16).is_ok_and(|n| n <= 0x1f)
+                    || matches!(
+                        name,
+                        "INPUT_PROP_POINTER"
+                            | "INPUT_PROP_DIRECT"
+                            | "INPUT_PROP_BUTTONPAD"
+                            | "INPUT_PROP_SEMI_MT"
+                            | "INPUT_PROP_TOPBUTTONPAD"
+                            | "INPUT_PROP_POINTING_STICK"
+                            | "INPUT_PROP_ACCELEROMETER"
+                            | "INPUT_PROP_PRESSUREPAD"
+                    ))
+        }),
+        // `none`, or `high:low` with low under high (`0:0` is not taken).
+        "AttrPressureRange" | "AttrTouchSizeRange" => {
+            value == "none" || value.split_once(':').and_then(|(hi, lo)| Some((hi.parse::<i32>().ok()?, lo.parse::<i32>().ok()?))).is_some_and(|(hi, lo)| lo < hi)
+        }
+        "AttrPalmPressureThreshold" | "AttrThumbPressureThreshold" => value.parse::<u32>().is_ok(),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,13 +204,19 @@ mod tests {
         let lua = render(&t).unwrap();
         // On by default, untrained: Olo's own model...
         let own = olo_palm::lua(&olo_palm::default_model());
+        let thinkpad = olo_palm::lua(&olo_palm::thinkpad_model());
         assert!(lua.contains(&format!(
-            "local CONFIG = {{ devices = {{ \"Apple MTP\" }}, touch_on = 1, touch_off = 1, lift_ms = 60, palm_size = 1600, click = true, press = 120, release = 75, palm_model = {own} }}"
+            "local CONFIG = {{ devices = {{ \"Apple MTP\" }}, thinkpads = {{ \"GXTP5420\" }}, touch_on = 1, touch_off = 1, lift_ms = 60, palm_size = 1600, click = true, press = 120, release = 75, palm_model = {own}, thinkpad_model = {thinkpad} }}"
         )));
         // ...trained, the person's...
         t.filter.palm_model = Some(olo_palm::baseline());
         let theirs = render(&t).unwrap();
-        assert!(theirs.contains(&format!("release = 75, palm_model = {} }}", olo_palm::lua(&olo_palm::baseline()))));
+        assert!(theirs.contains(&format!("release = 75, palm_model = {}, thinkpad_model = {thinkpad} }}", olo_palm::lua(&olo_palm::baseline()))));
+        // (A model trained on a ThinkPad is the ThinkPad's: the MacBook's
+        // own stays.)
+        t.filter.palm_model = Some(olo_protocol::touchpad::PalmModel { trained: 3, ..olo_palm::thinkpad_model() });
+        let tp = render(&t).unwrap();
+        assert!(tp.contains(&format!("palm_model = {own},")) && tp.contains(&format!("thinkpad_model = {}", olo_palm::lua(t.filter.palm_model.as_ref().unwrap()))));
         // ...one of another shape, Olo's own; off, none.
         t.filter.palm_model = Some(olo_protocol::touchpad::PalmModel { w1: vec![0.0; 7], ..olo_palm::baseline() });
         assert!(render(&t).unwrap().contains(&own));
@@ -141,6 +231,25 @@ mod tests {
     fn the_quirk_lets_pressure_through() {
         let q = quirks();
         assert!(q.contains("[Olo touch filter: Apple MTP]\nMatchUdevType=touchpad\nMatchName=*Apple MTP*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPalmPressureThreshold=0\n"));
+        // A ThinkPad's: through, but no touch or palm by it in libinput.
+        assert!(q.contains("[Olo touch filter: GXTP5420]\nMatchUdevType=touchpad\nMatchName=*GXTP5420*\nAttrInputProp=-INPUT_PROP_PRESSUREPAD\nAttrPressureRange=none\nAttrPalmPressureThreshold=0\n"));
+        // Every line one libinput's loader takes.
+        for line in q.lines() {
+            assert!(takes(line), "libinput wouldn't take {line:?}");
+        }
+    }
+
+    /// As libinput 1.32's parser has them: what broke every quirk on the
+    /// ThinkPad (`0:0`), and what it takes.
+    #[test]
+    fn quirk_lines_as_libinput_takes_them() {
+        assert!(!takes("AttrPressureRange=0:0"), "0:0 fails libinput's parse_range_property (low must be under high)");
+        assert!(!takes("AttrPressureRange=10:20") && takes("AttrPressureRange=20:10") && takes("AttrPressureRange=none"));
+        assert!(takes("AttrInputProp=-INPUT_PROP_PRESSUREPAD") && takes("AttrInputProp=+INPUT_PROP_BUTTONPAD;-0x07"));
+        assert!(!takes("AttrInputProp=INPUT_PROP_PRESSUREPAD") && !takes("AttrInputProp=-INPUT_PROP_NOPE"));
+        assert!(takes("AttrPalmPressureThreshold=0") && !takes("AttrPalmPressureThreshold=-1"));
+        assert!(takes("MatchUdevType=touchpad") && !takes("MatchUdevType=pad"));
+        assert!(!takes("AttrSomethingNew=1"), "nothing Olo hasn't checked against the parser");
     }
 
     const SLOT: u32 = 0x3_002f;
@@ -151,6 +260,9 @@ mod tests {
     const POS_X: u32 = 0x3_0035;
     const POS_Y: u32 = 0x3_0036;
     const BTN_LEFT: u32 = 0x1_0110;
+    const TOOL: u32 = 0x3_0037;
+    const ABS_X: u32 = 0x3_0000;
+    const ABS_Y: u32 = 0x3_0001;
 
     /// The plugin in a stand-in for libinput's Lua API (usages are
     /// `type << 16 | code`; a frame is a list of `{usage, value}`).
@@ -170,7 +282,8 @@ mod tests {
             lua.load(format!(
                 "evdev = {{ ABS_MT_SLOT = {SLOT}, ABS_MT_TOUCH_MAJOR = {MAJOR}, ABS_MT_TOUCH_MINOR = {MINOR}, \
                  ABS_MT_TRACKING_ID = {ID}, ABS_MT_PRESSURE = {PRESSURE}, ABS_PRESSURE = 0x30018, BTN_LEFT = {BTN_LEFT}, \
-                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y}, ABS_MT_ORIENTATION = 0x30034, ABS_MT_WIDTH_MAJOR = 0x30032, KEY_ESC = 0x10001, KEY_A = 0x1001e, KEY_SPACE = 0x10039 }}
+                 ABS_MT_POSITION_X = {POS_X}, ABS_MT_POSITION_Y = {POS_Y}, ABS_MT_ORIENTATION = 0x30034, ABS_MT_WIDTH_MAJOR = 0x30032, KEY_ESC = 0x10001, KEY_A = 0x1001e, KEY_SPACE = 0x10039, \
+                 ABS_MT_TOOL_TYPE = {TOOL}, ABS_X = {ABS_X}, ABS_Y = {ABS_Y} }}
                  -- (A name libinput's table hasn't is nil there: an error here.)
                  setmetatable(evdev, {{ __index = function(_, k) error('libinput names no ' .. k) end }})
                  hooks = {{}}
@@ -189,6 +302,25 @@ mod tests {
             lua.load(source).exec().unwrap();
             lua.load("hooks.new(pad)").exec().unwrap();
             Pad { lua, time: 0 }
+        }
+
+        /// The plugin as `t` renders it, on a ThinkPad's pad (the Goodix:
+        /// no size, its firmware's palm, its pressure the click's force).
+        fn thinkpad(t: &TouchpadSettings) -> Pad {
+            let pad = Pad::with(&render(t).unwrap());
+            pad.lua
+                .load(format!(
+                    "local tp = {{ name = function() return 'GXTP5420:00 27C6:0F90 Touchpad' end,
+                                   usages = function() return {{ [{PRESSURE}] = true, [{TOOL}] = true, [{POS_X}] = true, [{POS_Y}] = true }} end,
+                                   absinfos = function() return {{ [{PRESSURE}] = {{ resolution = 0, minimum = 0, maximum = 2000 }},
+                                                                  [{POS_X}] = {{ minimum = 0, maximum = 3599, resolution = 27 }}, [{POS_Y}] = {{ minimum = 0, maximum = 1799, resolution = 21 }} }} end,
+                                   set_absinfo = function() end,
+                                   connect = function(_, _, f) hooks.frame = f end }}
+                     hooks.new(tp)"
+                ))
+                .exec()
+                .unwrap();
+            pad
         }
 
         /// One frame, `ms` after the last; what libinput is given (never
@@ -569,5 +701,178 @@ mod tests {
             print!("now, limit {limit:?}: ");
             run(&new, limit);
         }
+    }
+
+    /// Ben's hands on the ThinkPad's pad (crates/palm's captures), through
+    /// the plugin as libinput would have them: each report as the kernel
+    /// would send it (only what changed, a slot each contact; the
+    /// single-touch axes too). What libinput is told of each contact: a
+    /// palm is one from its first few reports until it lifts (across the
+    /// kernel's new ids for it), however often the firmware calls it a
+    /// finger again; a finger never is.
+    #[test]
+    fn a_thinkpads_palms_stay_palms() {
+        let captures = [
+            olo_palm::Capture::parse(include_bytes!("../../palm/data/thinkpad-2026-11-05.json")).unwrap(),
+            olo_palm::Capture::parse(include_bytes!("../../palm/data/thinkpad-2026-11-05-fingers.json")).unwrap(),
+        ];
+        let mut t = TouchpadSettings::default();
+        t.apply_profile("thinkpad");
+        let (mut flips, mut palms_held, mut fingers) = (0, 0, 0);
+        for cap in &captures {
+            let mut pad = Pad::thinkpad(&t);
+            // The kernel's slots (id, x, y, pressure, tool), and libinput's
+            // view of each slot's tool as the plugin leaves it.
+            let mut kernel: [(i32, i32, i32, i32, i32); 5] = [(-1, 0, 0, 0, 0); 5];
+            let mut given = [0i32; 5];
+            let (mut kernel_slot, mut seen_slot) = (0usize, 0usize);
+            let mut last_us = cap.reports.first().map_or(0, |r| r.0);
+            // Each contact: its label, its reports so far, and whether
+            // libinput was told palm after its first few.
+            let mut labels: std::collections::HashMap<i32, (bool, u32)> = Default::default();
+            // (A palm's new ids: what it is is its first id's.)
+            let mut same_as: std::collections::HashMap<i32, i32> = Default::default();
+            let mut ended: Vec<(u64, i32, i32, i32)> = Vec::new();
+            for (time_us, _, cs) in &cap.reports {
+                let mut events = Vec::new();
+                // Ended contacts first (their slot's id to -1).
+                for s in 0..5 {
+                    if kernel[s].0 >= 0 && !cs.iter().any(|c| c[0] == kernel[s].0) {
+                        if kernel_slot != s {
+                            events.push((SLOT, s as i32));
+                            kernel_slot = s;
+                        }
+                        events.push((ID, -1));
+                        ended.push((*time_us, kernel[s].0, kernel[s].1, kernel[s].2));
+                        kernel[s].0 = -1;
+                    }
+                }
+                for c in cs {
+                    let [id, x, y, p, tool] = *c;
+                    let s = match kernel.iter().position(|k| k.0 == id) {
+                        Some(s) => s,
+                        None => kernel.iter().position(|k| k.0 < 0).expect("a free slot"),
+                    };
+                    let mut e = Vec::new();
+                    if kernel[s].0 != id {
+                        e.push((ID, id));
+                        // A palm's contact back under a new id, nearby.
+                        if let Some(&(_, old, ..)) = ended.iter().rev().find(|(at, _, ex, ey)| time_us - at <= 40_000 && (ex - x).abs() < 140 && (ey - y).abs() < 110) {
+                            let root = *same_as.get(&old).unwrap_or(&old);
+                            same_as.insert(id, root);
+                        }
+                    }
+                    if kernel[s].1 != x || kernel[s].0 != id {
+                        e.push((POS_X, x));
+                    }
+                    if kernel[s].2 != y || kernel[s].0 != id {
+                        e.push((POS_Y, y));
+                    }
+                    if kernel[s].3 != p {
+                        e.push((PRESSURE, p));
+                    }
+                    if kernel[s].4 != tool {
+                        e.push((TOOL, tool));
+                    }
+                    if !e.is_empty() {
+                        if kernel_slot != s {
+                            events.push((SLOT, s as i32));
+                            kernel_slot = s;
+                        }
+                        events.extend(e);
+                    }
+                    if s == 0 && (kernel[0].1 != x || kernel[0].2 != y) {
+                        // (The single-touch axes follow the first contact.)
+                        events.push((ABS_X, x));
+                        events.push((ABS_Y, y));
+                    }
+                    kernel[s] = (id, x, y, p, tool);
+                }
+                ended.retain(|(at, ..)| time_us - at <= 40_000);
+                if events.is_empty() {
+                    continue;
+                }
+                let us = (*time_us - last_us).max(1) as i64;
+                last_us = *time_us;
+                let out = pad.raw_frame(us, &events);
+                assert!(out.len() <= events.len(), "a frame grew: {events:?} became {out:?}");
+                for (u, v) in out {
+                    if u == SLOT {
+                        seen_slot = v as usize;
+                    } else if u == TOOL {
+                        given[seen_slot] = v;
+                    }
+                }
+                seen_slot = kernel_slot;
+                for c in cs {
+                    let id = c[0];
+                    let root = *same_as.get(&id).unwrap_or(&id);
+                    let step_palm = cap.steps.iter().find(|s| (s.from_us..s.to_us).contains(time_us)).is_some_and(|s| s.palm);
+                    let first_palm = labels.get(&root).map(|l| l.0);
+                    let label = first_palm.unwrap_or(step_palm || cap.palms.contains(&id) || cap.palms.contains(&root));
+                    let l = labels.entry(root).or_insert((label, 0));
+                    l.1 += 1;
+                    let s = kernel.iter().position(|k| k.0 == id).unwrap();
+                    let told_palm = given[s] == olo_palm::MT_TOOL_PALM;
+                    if l.0 {
+                        if c[4] != olo_palm::MT_TOOL_PALM && l.1 > 5 {
+                            flips += 1;
+                        }
+                        if l.1 > 5 {
+                            assert!(told_palm, "a palm (contact {id}, its report {}) told a finger", l.1);
+                            palms_held += 1;
+                        }
+                    } else {
+                        assert!(!told_palm, "a finger (contact {id}, its report {}) told a palm", l.1);
+                        fingers += 1;
+                    }
+                }
+            }
+        }
+        // (The firmware's own flips back to a finger were there to hold.)
+        assert!(flips > 100 && palms_held > 1000 && fingers > 5000, "{flips} flips, {palms_held} palm reports, {fingers} finger reports");
+    }
+
+    /// What a frame costs on a ThinkPad's pad (Ben's fingers' capture,
+    /// replayed): `cargo test --release -p app_server --lib
+    /// thinkpad_frame_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn thinkpad_frame_cost() {
+        let cap = olo_palm::Capture::parse(include_bytes!("../../palm/data/thinkpad-2026-11-05-fingers.json")).unwrap();
+        let mut t = TouchpadSettings::default();
+        t.apply_profile("thinkpad");
+        // The frames as the kernel would send them: each contact's slot
+        // (in order), what changed.
+        let mut frames = Vec::new();
+        let mut kernel: [(i32, i32, i32, i32, i32); 5] = [(-1, 0, 0, 0, 0); 5];
+        for (_, _, cs) in &cap.reports {
+            let mut e = Vec::new();
+            for s in 0..5 {
+                if kernel[s].0 >= 0 && !cs.iter().any(|c| c[0] == kernel[s].0) {
+                    e.extend([(SLOT, s as i32), (ID, -1)]);
+                    kernel[s].0 = -1;
+                }
+            }
+            for c in cs {
+                let s = kernel.iter().position(|k| k.0 == c[0]).or_else(|| kernel.iter().position(|k| k.0 < 0)).unwrap();
+                e.push((SLOT, s as i32));
+                if kernel[s].0 != c[0] {
+                    e.push((ID, c[0]));
+                }
+                e.extend([(POS_X, c[1]), (POS_Y, c[2]), (PRESSURE, c[3]), (TOOL, c[4]), (ABS_X, c[1]), (ABS_Y, c[2])]);
+                kernel[s] = (c[0], c[1], c[2], c[3], c[4]);
+            }
+            frames.push(e);
+        }
+        let mut pad = Pad::thinkpad(&t);
+        let start = std::time::Instant::now();
+        for _ in 0..3 {
+            for f in &frames {
+                pad.raw_frame(7000, f);
+            }
+        }
+        let us = start.elapsed().as_secs_f64() * 1e6 / (3 * frames.len()) as f64;
+        println!("a ThinkPad's frame: {us:.2} µs ({} frames)", frames.len());
     }
 }

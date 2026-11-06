@@ -73,11 +73,28 @@ where
     match what {
         Target::Output => {
             let (overlays, overview, color, pointer) = screen();
-            let (elements, clear) = crate::render::capture_elements(renderer, output, space, overlays, overview, color, locked, pointer);
+            let (elements, clear) = crate::render::capture_elements(renderer, output, space, overlays, overview, color, locked, pointer, true);
             Some(Picture { elements, clear, size: size(output)?, scale: output.current_scale().fractional_scale() })
         }
         Target::Window(id) => {
-            let (elements, size, scale) = crate::render::window_picture(renderer, space, parked, output, id)?;
+            let (mut elements, size, scale) = crate::render::window_picture(renderer, space, parked, output, id)?;
+            // A private window's share shows it blacked out (`private.rs`).
+            if let Some(shade) = space.elements().chain(parked.iter()).find(|w| w.id() == id).and_then(|w| crate::private::window_blackout(w, size)) {
+                let shade = crate::render::FrameElements::Normal(crate::render::OutputRenderElements::Custom(crate::render::CustomRenderElements::Warm(shade)));
+                return Some(Picture { elements: vec![shade], clear: Color32F::TRANSPARENT, size, scale });
+            }
+            // The pointer, over the window's content (a shown window's).
+            let (_, _, _, pointer) = screen();
+            if let Some((at, status)) = pointer
+                && let Some(origin) = crate::render::content_origin(space, id)
+            {
+                let area = smithay::utils::Rectangle::new(origin.to_f64(), size.to_f64().to_logical(scale));
+                let drawn = crate::render::captured_pointer(renderer, area, scale, at, status);
+                elements.splice(0..0, drawn.into_iter().map(|e| crate::render::FrameElements::Normal(crate::render::OutputRenderElements::Custom(e))));
+            }
+            // A recording's caption, low on the window's picture.
+            let caption = crate::showing::caption_elements(renderer, size, scale);
+            elements.splice(0..0, caption.into_iter().map(|e| crate::render::FrameElements::Normal(crate::render::OutputRenderElements::Custom(crate::render::CustomRenderElements::Overlay(e)))));
             Some(Picture { elements, clear: Color32F::TRANSPARENT, size, scale })
         }
     }

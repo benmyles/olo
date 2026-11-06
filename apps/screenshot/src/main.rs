@@ -10,9 +10,13 @@
 //! (⌘⇧4) lets you drag out part of the screen first (region.rs). However
 //! it is saved, the file's path goes on the clipboard.
 
+mod backdrop;
+mod bubble;
 mod capture;
+mod inset;
 mod recording;
 mod region;
+mod sound;
 
 use std::{
     path::{Path, PathBuf},
@@ -58,6 +62,8 @@ enum Msg {
     /// A recording asked for from the window started (it goes on by
     /// itself: we're done), or why not.
     Recording(Result<(), String>),
+    /// The recording settings Record…'s ticks show.
+    Recordings(olo_protocol::ScreenRecordingSettings),
 }
 
 /// What the window's Record… records.
@@ -102,6 +108,9 @@ struct Screenshot {
     holding: bool,
     /// The window's keys (Return saves) when no field has them.
     focus: gpui::FocusHandle,
+    /// The recording settings, for Record…'s ticks (the sound, GIF,
+    /// clicks and keys shown).
+    recordings: olo_protocol::ScreenRecordingSettings,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -220,7 +229,59 @@ impl Screenshot {
             folders,
             holding: false,
             focus: cx.focus_handle(),
+            recordings: Default::default(),
         }
+    }
+
+    /// What Record…'s ticks show, read off the UI thread.
+    fn read_sound(cx: &mut Context<Self>) {
+        let proxy = olo_ui::proxy(cx);
+        std::thread::spawn(move || {
+            if let Some(s) = olo_ui::settings::current() {
+                proxy.send(Msg::Recordings(s.screen_recording));
+            }
+        });
+    }
+
+    /// One of Record…'s ticks turned over: kept in the settings (off the
+    /// UI thread).
+    fn toggle(&mut self, what: &str) {
+        let r = &mut self.recordings;
+        match what {
+            "sound-computer" | "sound-microphone" => {
+                let (mut computer, mut mic) = sound_parts(&r.sound);
+                if what == "sound-microphone" {
+                    mic = !mic;
+                } else {
+                    computer = !computer;
+                }
+                r.sound = match (computer, mic) {
+                    (true, true) => "both",
+                    (true, false) => "computer",
+                    (false, true) => "microphone",
+                    (false, false) => "none",
+                }
+                .into();
+            }
+            "gif" => r.gif = !r.gif,
+            "show-clicks" => r.show_clicks = !r.show_clicks,
+            "show-keys" => r.show_keys = !r.show_keys,
+            "background" => r.background = !r.background,
+            "pointer-size" => r.pointer_size = if r.pointer_size > 1.0 { 1.0 } else { 1.5 },
+            "smooth-pointer" => r.smooth_pointer = !r.smooth_pointer,
+            "zoom-follow" => r.zoom_follow = !r.zoom_follow,
+            "camera" => r.camera = if r.camera.is_empty() { "auto".into() } else { String::new() },
+            _ => return,
+        }
+        let mine = r.clone();
+        std::thread::spawn(move || {
+            let Some(mut settings) = olo_ui::settings::current() else { return };
+            // (The encoder is Preferences', left as it is there.)
+            settings.screen_recording = olo_protocol::ScreenRecordingSettings { encoder: settings.screen_recording.encoder, ..mine };
+            if let Ok(mut c) = olo_protocol::Client::connect() {
+                let _ = c.request(&olo_protocol::Request::SetSettings { settings });
+            }
+        });
     }
 
     fn name_text(&self, cx: &App) -> String {
@@ -288,12 +349,49 @@ impl Screenshot {
                 let menu = if g.paused { menu.item("Resume Recording", "resume") } else { menu.item("Pause Recording", "pause") };
                 menu.item("Stop Recording", "stop")
             }
-            None => Menu::new("Record").item("Record Screen", "screen").item("Record Active Window", "window").item("Record Region…", "region"),
+            None => {
+                let r = &self.recordings;
+                let (computer, mic) = sound_parts(&r.sound);
+                Menu::new("Record")
+                    .item("Record Screen", "screen")
+                    .item("Record Active Window", "window")
+                    .item("Record Region…", "region")
+                    .separator()
+                    .item("Record the Computer's Sound", "sound-computer")
+                    .checked(computer)
+                    .enabled(!r.gif)
+                    .item("Record the Microphone", "sound-microphone")
+                    .checked(mic)
+                    .enabled(!r.gif)
+                    .separator()
+                    .item("Show Clicks", "show-clicks")
+                    .checked(r.show_clicks)
+                    .item("Show Shortcuts", "show-keys")
+                    .checked(r.show_keys)
+                    .item("Larger Pointer", "pointer-size")
+                    .checked(r.pointer_size > 1.0)
+                    .item("Smooth Pointer", "smooth-pointer")
+                    .checked(r.smooth_pointer)
+                    .item("Zoom on Clicks", "zoom-follow")
+                    .checked(r.zoom_follow)
+                    .item("Show Camera", "camera")
+                    .checked(!r.camera.is_empty())
+                    .item("Window on a Background", "background")
+                    .checked(r.background)
+                    .separator()
+                    .item("Save as GIF", "gif")
+                    .checked(r.gif)
+            }
         }
     }
 
     fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let what = match command {
+            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" | "camera" => {
+                self.toggle(command);
+                cx.notify();
+                return;
+            }
             "screen" => Record::Screen,
             "window" => Record::Window,
             "region" => Record::Region,
@@ -533,6 +631,7 @@ impl Screenshot {
                 self.open_main(cx);
                 self.show_error(format!("Couldn't start recording.\n\n{e}"), cx);
             }
+            Msg::Recordings(r) => self.recordings = r,
         }
         cx.notify();
     }
@@ -711,6 +810,12 @@ fn main() -> std::process::ExitCode {
     if args.iter().any(|a| a == "--stop") {
         std::process::exit(recording::stop());
     }
+    if args.iter().any(|a| a == "--gif") {
+        std::process::exit(recording::gif(&args));
+    }
+    if args.iter().any(|a| a == "--trim") {
+        std::process::exit(recording::trim(&args));
+    }
     if args.iter().any(|a| a == "--toggle-record") {
         std::process::exit(recording::toggle(&args));
     }
@@ -722,6 +827,18 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--recording") {
         std::process::exit(recording::status());
+    }
+    if args.iter().any(|a| a == "--zoom-to") {
+        std::process::exit(recording::zoom_to(&args));
+    }
+    if args.iter().any(|a| a == "--mark") {
+        std::process::exit(recording::mark(&args));
+    }
+    if args.iter().any(|a| a == "--caption") && !args.iter().any(|a| a == "--record") {
+        std::process::exit(recording::caption(&args));
+    }
+    if args.iter().any(|a| a == "--camera-bubble") {
+        std::process::exit(bubble::run(&args));
     }
     // The Screenshot portal's PickColor: "R G B" (0–255), nothing if
     // cancelled.
@@ -760,7 +877,11 @@ fn main() -> std::process::ExitCode {
     std::thread::spawn(capture::sweep);
     olo_ui::run(APP_ID, |cx| {
         instance::listen(APP_ID, olo_ui::proxy(cx));
-        let app = cx.new(|cx| Screenshot::new(Settings::load(), cx));
+        let app = cx.new(|cx| {
+            let s = Screenshot::new(Settings::load(), cx);
+            Screenshot::read_sound(cx);
+            s
+        });
         let restored = olo_ui::restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok());
         app.update(cx, |s, cx| match restored {
             Some(Saved { png: Some(png), name }) if png.is_file() => {
@@ -793,4 +914,14 @@ fn main() -> std::process::ExitCode {
         .detach();
     });
     std::process::ExitCode::SUCCESS
+}
+
+/// The computer's sound and the microphone, as a sound setting has them.
+fn sound_parts(sound: &str) -> (bool, bool) {
+    match sound {
+        "both" => (true, true),
+        "microphone" => (false, true),
+        "none" => (false, false),
+        _ => (true, false),
+    }
 }

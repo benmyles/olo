@@ -18,7 +18,7 @@
 //! leaves the tab or gives an empty one.
 
 use std::{
-    io::{BufRead, Write},
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -65,7 +65,7 @@ fn find_tab(cwd: Option<&Path>) -> Option<TabInfo> {
     let snapshot = agent_context::read_all()?;
     let ancestors = agent_context::ancestors();
     let own = std::env::current_dir().ok();
-    agent_context::tab_of(&snapshot, &ancestors, cwd.or(own.as_deref())).cloned()
+    agent_context::tab_of(&snapshot, &ancestors, cwd.or(own.as_deref()), agent_context::own_agent(&ancestors)).cloned()
 }
 
 /// Set `tab`'s title through its Terminal.
@@ -119,30 +119,147 @@ fn answer(msg: &Value, set: &mut Set) -> Option<Value> {
 }
 
 /// `olo-terminal --mcp`: the server, until its agent closes its stdin.
+/// Neither agent starts a server again once it has gone (Claude Code
+/// till `/mcp` reconnects it, Codex till the session ends), so it stays
+/// as it is through upgrades: it doesn't become the new version
+/// (olo-session's SIGURG is left ignored; olo-session leaves alone what
+/// an agent started). A Codex server ended a few minutes after it had
+/// re-executed for the 22:27 upgrade on 2026-11-05, nothing saying why
+/// (the same in a test, with Codex's environment, carried on), and its
+/// session's titles failed from then on ("Transport closed"). The
+/// handover to Terminal (`--set-tab-title` through its instance socket)
+/// is kept the same from version to version. Its life is noted in
+/// `log_path()`: when it started, for whom, and how it ended.
 pub fn serve() -> std::process::ExitCode {
     let mut set = |title: &str, cwd: Option<&Path>| -> Result<String, String> {
         let tab = find_tab(cwd).ok_or("This session isn't in an Olo Terminal tab (or Terminal's setting for it is off).")?;
         hand_over(&tab, title)?;
         Ok(if title.is_empty() { "The tab's title is its own again.".into() } else { format!("The tab is titled \u{201c}{title}\u{201d}.") })
     };
-    let stdin = std::io::stdin();
+    note_life();
     let mut out = std::io::stdout().lock();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
+    let mut why = "";
+    let code = serve_on(0, None, &mut out, &mut set, &mut || {}, &mut why);
+    note(&format!("ended: {why}"));
+    code
+}
+
+/// Where the servers' lives are noted (a few lines each; kept short).
+pub fn log_path() -> PathBuf {
+    let state = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/state"));
+    state.join("olo/terminal-mcp.log")
+}
+
+/// A line in the log: when, this process, `what`.
+fn note(what: &str) {
+    let path = log_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // (Kept to its last 64 KB.)
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 64 * 1024)
+        && let Ok(text) = std::fs::read_to_string(&path)
+    {
+        let keep = &text[text.len() - 32 * 1024..];
+        let keep = keep.find('\n').map_or(keep, |i| &keep[i + 1..]);
+        let _ = std::fs::write(&path, keep);
+    }
+    let when = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{when} pid {} {what}", std::process::id());
+    }
+}
+
+/// Note the start (for which program), and the end if a signal brings
+/// it (written from the handler: a fixed line, then exit).
+fn note_life() {
+    let ppid = std::os::unix::process::parent_id();
+    let parent = std::fs::read_to_string(format!("/proc/{ppid}/comm")).unwrap_or_default();
+    note(&format!("started for {} (pid {ppid}), version {}", parent.trim(), env!("CARGO_PKG_VERSION")));
+    static LOG: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+    static LINE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    let Ok(f) = std::fs::OpenOptions::new().append(true).open(log_path()) else { return };
+    let _ = LINE.set(format!("- pid {} ended by a signal\n", std::process::id()).into_bytes());
+    LOG.store(std::os::fd::IntoRawFd::into_raw_fd(f), std::sync::atomic::Ordering::Relaxed);
+    extern "C" fn ended(_: libc::c_int) {
+        let fd = LOG.load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(line) = LINE.get() {
+            // SAFETY: write(2) and _exit(2) are async-signal-safe; the
+            // line was made before the handler was set.
+            unsafe { libc::write(fd, line.as_ptr().cast(), line.len()) };
         }
-        let reply = match serde_json::from_str::<Value>(&line) {
-            Ok(msg) => answer(&msg, &mut set),
-            Err(_) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": "parse error"}})),
-        };
-        if let Some(reply) = reply
-            && (writeln!(out, "{reply}").is_err() || out.flush().is_err())
-        {
-            break;
+        // SAFETY: as above.
+        unsafe { libc::_exit(0) };
+    }
+    for sig in [libc::SIGTERM, libc::SIGHUP, libc::SIGINT] {
+        // SAFETY: a handler that only writes and exits.
+        unsafe { libc::signal(sig, ended as *const () as libc::sighandler_t) };
+    }
+}
+
+/// The server's loop: requests read from `input` (a line each) into a
+/// buffer of its own, so none is half-read in a reader's buffer when it
+/// becomes the new version (`become_new`, once `upgrade` is readable and
+/// what came has been answered).
+fn serve_on(input: std::os::fd::RawFd, upgrade: Option<std::os::fd::RawFd>, out: &mut dyn Write, set: &mut Set, become_new: &mut dyn FnMut(), why: &mut &'static str) -> std::process::ExitCode {
+    let mut pending: Vec<u8> = Vec::new();
+    let mut upgrading = false;
+    let mut ended = false;
+    loop {
+        // Every whole line that came, answered.
+        while let Some(n) = pending.iter().position(|&b| b == b'\n').or(if ended && !pending.is_empty() { Some(pending.len() - 1) } else { None }) {
+            let line: Vec<u8> = pending.drain(..=n).collect();
+            let line = String::from_utf8_lossy(&line);
+            if line.trim().is_empty() {
+                continue;
+            }
+            let reply = match serde_json::from_str::<Value>(line.trim()) {
+                Ok(msg) => answer(&msg, set),
+                Err(_) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": "parse error"}})),
+            };
+            if let Some(reply) = reply
+                && (writeln!(out, "{reply}").is_err() || out.flush().is_err())
+            {
+                *why = "its agent stopped reading (a reply couldn't be written)";
+                return std::process::ExitCode::SUCCESS;
+            }
+        }
+        if ended {
+            *why = "its agent closed it (its input ended)";
+            return std::process::ExitCode::SUCCESS;
+        }
+        // Asked to upgrade, nothing half-read: the new version carries on.
+        if upgrading && pending.is_empty() {
+            upgrading = false;
+            become_new();
+        }
+        let mut fds = [libc::pollfd { fd: input, events: libc::POLLIN, revents: 0 }, libc::pollfd { fd: upgrade.unwrap_or(-1), events: libc::POLLIN, revents: 0 }];
+        // SAFETY: two pollfds of ours.
+        if unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) } < 0 {
+            if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            *why = "waiting for its input failed";
+            return std::process::ExitCode::FAILURE;
+        }
+        if fds[1].revents & libc::POLLIN != 0 {
+            let mut b = [0u8; 16];
+            // SAFETY: reading the signal's pipe into a buffer of ours.
+            unsafe { libc::read(fds[1].fd, b.as_mut_ptr().cast(), b.len()) };
+            upgrading = true;
+        }
+        if fds[0].revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0 {
+            let mut buf = [0u8; 8192];
+            // SAFETY: reading the input into a buffer of ours.
+            let n = unsafe { libc::read(input, buf.as_mut_ptr().cast(), buf.len()) };
+            match n {
+                0 => ended = true,
+                n if n > 0 => pending.extend_from_slice(&buf[..n as usize]),
+                _ if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted => {}
+                _ => ended = true,
+            }
         }
     }
-    std::process::ExitCode::SUCCESS
 }
 
 fn home() -> PathBuf {
@@ -311,6 +428,80 @@ pub fn register(on: bool, exe: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A pipe: (read end, write end).
+    fn pipe() -> (std::fs::File, std::fs::File) {
+        use std::os::fd::FromRawFd as _;
+        let mut fds = [0; 2];
+        // SAFETY: a new pipe, both ends ours.
+        unsafe {
+            assert_eq!(libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC), 0);
+            (std::fs::File::from_raw_fd(fds[0]), std::fs::File::from_raw_fd(fds[1]))
+        }
+    }
+
+    /// The server's loop on pipes, `script` writing to its input and its
+    /// upgrade signal: the replies, and how many had been written when it
+    /// became the new version (each time).
+    fn run(script: impl FnOnce(&mut std::fs::File, &mut std::fs::File) + Send + 'static) -> (Vec<Value>, Vec<usize>) {
+        use std::os::fd::AsRawFd as _;
+        let ((input, mut feed), (signal, mut poke)) = (pipe(), pipe());
+        let writer = std::thread::spawn(move || script(&mut feed, &mut poke));
+        let mut out: Vec<u8> = Vec::new();
+        let replies = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let mut set = |_: &str, _: Option<&Path>| -> Result<String, String> { Ok("done".into()) };
+        let counted = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        struct Counting<'a>(&'a mut Vec<u8>, std::rc::Rc<std::cell::Cell<usize>>);
+        impl Write for Counting<'_> {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.1.set(self.1.get() + b.iter().filter(|&&c| c == b'\n').count());
+                self.0.write(b)
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let execs = replies.clone();
+        let seen = counted.clone();
+        serve_on(input.as_raw_fd(), Some(signal.as_raw_fd()), &mut Counting(&mut out, counted), &mut set, &mut || execs.borrow_mut().push(seen.get()), &mut "");
+        writer.join().unwrap();
+        let got = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        (got, replies.take())
+    }
+
+    fn sleep() {
+        std::thread::sleep(std::time::Duration::from_millis(60));
+    }
+
+    #[test]
+    fn an_upgrade_waits_for_a_message_half_read() {
+        let (replies, execs) = run(|feed, poke| {
+            // The first message whole and half the second, and the upgrade.
+            feed.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n{\"jsonrpc\":\"2.0\",\"id\":2,").unwrap();
+            poke.write_all(&[1]).unwrap();
+            sleep();
+            feed.write_all(b"\"method\":\"tools/list\"}\n").unwrap();
+            sleep();
+            feed.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}").unwrap();
+        });
+        assert_eq!(replies.iter().map(|r| r["id"].clone()).collect::<Vec<_>>(), [json!(1), json!(2), json!(3)]);
+        assert_eq!(replies[1]["result"]["tools"][0]["name"], TOOL);
+        // Not with the second half-read: once it was answered.
+        assert_eq!(execs, [2]);
+    }
+
+    #[test]
+    fn an_upgrade_while_waiting_goes_at_once() {
+        let (replies, execs) = run(|feed, poke| {
+            feed.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n").unwrap();
+            sleep();
+            poke.write_all(&[1]).unwrap();
+            sleep();
+            feed.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}\n").unwrap();
+        });
+        assert_eq!(replies.len(), 2);
+        assert_eq!(execs, [1]);
+    }
 
     #[test]
     fn answers_as_a_tool_server() {

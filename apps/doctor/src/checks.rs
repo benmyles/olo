@@ -42,6 +42,10 @@ const HEALED_DRIVERS: &[&str] = &["brcmfmac"];
 const INPUT_RULE_PATH: &str = "etc/udev/rules.d/71-olo-input.rules";
 const DISPLAY_RULE_PATH: &str = "etc/udev/rules.d/70-olo-displays.rules";
 const IDLE_GPU_RULE_PATH: &str = "etc/udev/rules.d/72-olo-idle-gpu.rules";
+/// A FIDO security key's node for the person at the seat (`security_keys`).
+pub const SECURITY_KEY_RULE: &str = include_str!("../../../data/udev/74-olo-security-keys.rules");
+const SECURITY_KEY_RULE_PATH: &str = "etc/udev/rules.d/74-olo-security-keys.rules";
+
 /// The presence sensor's buffer for the session (`presence_rule`).
 pub const PRESENCE_RULE: &str = include_str!("../../../data/udev/73-olo-presence.rules");
 const PRESENCE_RULE_PATH: &str = "etc/udev/rules.d/73-olo-presence.rules";
@@ -187,6 +191,32 @@ pub struct Roots {
     /// The names of the packages with an update waiting (None: no
     /// PackageKit).
     pub updates: Box<dyn Fn() -> Option<Vec<String>> + Send + Sync>,
+    /// Where the session's programs keep temporary files (`temp_files`).
+    pub temp: TempFiles,
+}
+
+/// Where temporary files go: /tmp's file system, and the session's
+/// `TMPDIR` (systemd's user manager's, else ours) and whether it's in
+/// memory too; the user's config folder (for the fix's file) and data
+/// folder (for D-Bus activation files: `file_manager`).
+#[derive(Debug, Clone, Default)]
+pub struct TempFiles {
+    pub tmp_in_memory: bool,
+    pub tmpdir: Option<String>,
+    pub tmpdir_in_memory: bool,
+    pub config: PathBuf,
+    pub data: PathBuf,
+}
+
+impl TempFiles {
+    fn real() -> TempFiles {
+        let manager = olo_system::env::manager_environment().unwrap_or_default();
+        let tmpdir = manager.iter().find(|(k, _)| k == "TMPDIR").map(|(_, v)| v.clone()).or_else(|| std::env::var("TMPDIR").ok()).filter(|d| !d.is_empty());
+        let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+        let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".config"));
+        let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/share"));
+        TempFiles { tmp_in_memory: olo_system::env::in_memory(Path::new("/tmp")), tmpdir_in_memory: tmpdir.as_deref().is_some_and(|d| olo_system::env::in_memory(Path::new(d))), tmpdir, config, data }
+    }
 }
 
 /// PackageKit's answers, for [`Roots::real`].
@@ -217,7 +247,7 @@ impl Roots {
         let scope = scope_of(&std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default());
         // AirPods paired, as BlueZ says (the service needn't be running).
         let airpods = olo_system::bluetooth::status().map(|s| s.devices.iter().any(|d| d.paired && d.modalias.as_deref().is_some_and(olo_system::airpods::is_airpods))).unwrap_or(false);
-        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods, packages: Box::new(real_packages), updates: Box::new(real_updates) }
+        Roots { fs: PathBuf::from("/"), bin, uid, scope, units: Box::new(crate::fix::unit_state), airpods, packages: Box::new(real_packages), updates: Box::new(real_updates), temp: TempFiles::real() }
     }
 }
 
@@ -429,10 +459,123 @@ pub fn scan(roots: &Roots) -> Report {
     thunderbolt(roots, &mut r);
     login_keyring(roots, &mut r);
     presence_rule(roots, &mut r);
+    security_keys(roots, &mut r);
     panel_hdr(roots, &mut r);
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
+    temp_files(roots, &mut r);
+    file_manager(roots, &mut r);
     r
+}
+
+/// The D-Bus name other programs ask to show a file in its folder
+/// (Chrome's Show in folder, an app's Open Containing Folder).
+const FILE_MANAGER: &str = "org.freedesktop.FileManager1";
+
+/// The user's D-Bus activation file for [`FILE_MANAGER`] that starts
+/// Tracker (`olo-tracker --file-manager`, at `tracker`).
+fn file_manager_service(tracker: &Path) -> String {
+    format!(
+        "# Olo Doctor's \"Always Use Tracker\": D-Bus starts Tracker when a program asks for\n# the file manager and no Tracker has the name yet. Removing this file undoes it.\n[D-BUS Service]\nName={FILE_MANAGER}\nExec={} --file-manager\n",
+        tracker.display()
+    )
+}
+
+/// Whether programs' "show in folder" always reaches Tracker (Ben,
+/// 2026-11-05: "doctor should offer to install the change that makes it
+/// always use tracker"). The desktop's Tracker takes the name from
+/// whoever has it, but while none has it (as Olo restarts after an
+/// upgrade, or before Tracker starts) D-Bus starts the system's activation
+/// file's program for it: GNOME's Files (Nautilus) on Fedora, which then
+/// keeps the name till Tracker waits it out. A user's own activation file
+/// wins over the system's: the fix writes one that starts Tracker
+/// (`--file-manager`), and has the session bus read it at once. It is the
+/// user's, so it applies in another desktop's session on this account
+/// too.
+fn file_manager(roots: &Roots, r: &mut Report) {
+    let tracker = roots.bin.join("olo-tracker");
+    if !tracker.is_file() {
+        return;
+    }
+    let mine = roots.temp.data.join("dbus-1/services").join(format!("{FILE_MANAGER}.service"));
+    let content = file_manager_service(&tracker);
+    // (Read whole: `read` trims.)
+    if std::fs::read_to_string(&mine).is_ok_and(|t| t == content) {
+        r.fine.push(Fine {
+            title: "Programs' “Show in folder” opens Tracker".into(),
+            detail: format!("D-Bus starts Tracker when a program asks for the file manager and none is running yet ({}).", mine.display()),
+        });
+        return;
+    }
+    // What D-Bus would start now: the user's own file, else the system's.
+    let exec = |text: String| text.lines().find_map(|l| l.trim().strip_prefix("Exec=").map(|e| e.split_whitespace().next().unwrap_or("").to_owned()));
+    let theirs = read(&mine)
+        .and_then(exec)
+        .or_else(|| ["usr/local/share/dbus-1/services", "usr/share/dbus-1/services"].iter().find_map(|d| read(&roots.fs.join(d).join(format!("{FILE_MANAGER}.service"))).and_then(exec)));
+    let (title, now) = match theirs.as_deref().map(|p| Path::new(p).file_name().and_then(|n| n.to_str()).unwrap_or(p)) {
+        Some("nautilus") => {
+            ("Programs may open GNOME's Files instead of Tracker".to_owned(), "D-Bus starts GNOME's Files (Nautilus) for it, which then keeps the name till Tracker waits it out".to_owned())
+        }
+        Some(program) => (format!("Programs may open {program} instead of Tracker"), format!("D-Bus starts {program} for it")),
+        None => ("Programs' “Show in folder” can go nowhere".to_owned(), "nothing answers it".to_owned()),
+    };
+    r.findings.push(Finding {
+        id: "dbus:file-manager".into(),
+        severity: Severity::Advice,
+        title,
+        detail: format!(
+            "When a program asks the file manager to show something (Chrome's Show in folder, an app's Open Containing Folder) while no Tracker is answering yet (as Olo restarts after an upgrade), {now}. The fix installs {} so D-Bus always starts Tracker instead. It's yours alone, and also applies in another desktop's session on this account; removing it undoes it.",
+            mine.display()
+        ),
+        fix: Some(Fix { label: "Always Use Tracker".into(), root: false, steps: vec![Step::WriteFile { path: mine, content, mode: 0o644 }, Step::SessionBusReload] }),
+    });
+}
+
+/// Programs' temporary files on disk, not in memory (Ben, 2026-11-05:
+/// "have olo doctor check what the env vars are for telling processes what
+/// temp dir path to use and if they're not present or not set to /var/tmp
+/// then have it provide that as a fix"): with /tmp a tmpfs (Fedora's), a
+/// session whose `TMPDIR` is unset (so /tmp) or in memory too has every
+/// build directory, download and copy a program makes there take RAM.
+fn temp_files(roots: &Roots, r: &mut Report) {
+    let t = &roots.temp;
+    match &t.tmpdir {
+        Some(d) if !t.tmpdir_in_memory => {
+            r.fine.push(Fine { title: "Temporary files are kept on disk".into(), detail: format!("Programs keep them in {d} (TMPDIR), not in memory.") });
+            return;
+        }
+        None if !t.tmp_in_memory => {
+            r.fine.push(Fine { title: "Temporary files are kept on disk".into(), detail: "/tmp is on disk here.".into() });
+            return;
+        }
+        _ => {}
+    }
+    let file = t.config.join(olo_system::env::TMPDIR_FILE);
+    let vars: Vec<(String, String)> = olo_system::env::TMP_VARS.iter().map(|k| ((*k).to_owned(), olo_system::env::DISK_TMP.to_owned())).collect();
+    let content = format!(
+        "# Olo Doctor: programs' temporary files on disk ({}), not in memory.\n# Remove this file to undo (from the next login).\n{}",
+        olo_system::env::DISK_TMP,
+        vars.iter().map(|(k, v)| format!("{k}={v}\n")).collect::<String>()
+    );
+    let now = match &t.tmpdir {
+        Some(d) => format!("TMPDIR is {d}, in memory too"),
+        None => "TMPDIR isn't set, so they go to /tmp".into(),
+    };
+    r.findings.push(Finding {
+        id: "tmp:memory".into(),
+        severity: Severity::Advice,
+        title: "Temporary files take memory".into(),
+        detail: format!(
+            "/tmp is held in memory here, and programs keep their temporary files there ({now}): a build, a download, a copy of something big all take RAM until they're removed. The fix tells programs to use {disk} instead (TMPDIR, TMP and TEMP), on disk: for everything started from now on (programs already running keep theirs until they start again), and from each login after, through {file}. Removing that file undoes it.",
+            disk = olo_system::env::DISK_TMP,
+            file = file.display()
+        ),
+        fix: Some(Fix {
+            label: "Keep Temporary Files on Disk".into(),
+            root: false,
+            steps: vec![Step::WriteFile { path: file, content, mode: 0o644 }, Step::SetSessionEnvironment { vars }],
+        }),
+    });
 }
 
 fn remappers(roots: &Roots, procs: &[Proc], input_names: &[String], r: &mut Report) {
@@ -1098,6 +1241,65 @@ fn presence_rule(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// Each FIDO security key plugged in (its hidraw node, found by its
+/// report descriptor): one the person can't open can't approve anything
+/// (olo-fido, Preferences ▸ Security). systemd's rules give it to the
+/// person at the seat (fido_id, uaccess); Olo's rule does where they
+/// don't.
+fn security_keys(roots: &Roots, r: &mut Report) {
+    let hidraw = roots.fs.join("sys/class/hidraw");
+    let keys: Vec<(String, String)> = std::fs::read_dir(&hidraw)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| std::fs::read(e.path().join("device/report_descriptor")).is_ok_and(|rd| olo_fido::hid::is_fido(&rd)))
+        .map(|e| {
+            let node = e.file_name().to_string_lossy().into_owned();
+            let name = read(&e.path().join("device/uevent")).and_then(|u| u.lines().find_map(|l| l.strip_prefix("HID_NAME=").map(str::to_owned))).unwrap_or_else(|| node.clone());
+            (node, name)
+        })
+        .collect();
+    if keys.is_empty() {
+        return;
+    }
+    let shut: Vec<&(String, String)> = keys.iter().filter(|(node, _)| !can_read_write(&roots.fs.join("dev").join(node))).collect();
+    if shut.is_empty() {
+        let n = keys.len();
+        r.fine.push(Fine {
+            title: if n == 1 { "The security key plugged in can be used".into() } else { format!("The {n} security keys plugged in can be used") },
+            detail: format!(
+                "Its FIDO interface is yours to open, so a touch can approve sudo, Passwords and the lock screen ({}).",
+                keys.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(", ")
+            ),
+        });
+        return;
+    }
+    let names = shut.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(", ");
+    r.findings.push(Finding {
+        id: "rule:security-keys".into(),
+        severity: Severity::Advice,
+        title: "A security key plugged in can't be used".into(),
+        detail: format!(
+            "Its FIDO interface isn't yours to open ({names}), so it can't be set up in Preferences ▸ Security or approve anything with a touch. The fix installs /etc/udev/rules.d/74-olo-security-keys.rules, which gives a security key to the person at the computer, as systemd's own rules do elsewhere."
+        ),
+        fix: Some(Fix {
+            label: "Install the Rule".into(),
+            root: true,
+            steps: std::iter::once(Step::WriteFile { path: PathBuf::from("/").join(SECURITY_KEY_RULE_PATH), content: SECURITY_KEY_RULE.into(), mode: 0o644 })
+                // (A "change" applies it to the keys already there.)
+                .chain(shut.iter().map(|(node, _)| Step::WriteSysfs { path: PathBuf::from("/sys/class/hidraw").join(node).join("uevent"), value: "change".into() }))
+                .collect(),
+        }),
+    });
+}
+
+/// Whether this process may read and write `path`.
+fn can_read_write(path: &Path) -> bool {
+    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else { return false };
+    // SAFETY: a valid C string.
+    unsafe { libc::access(c.as_ptr(), libc::R_OK | libc::W_OK) == 0 }
+}
+
 /// A built-in HDR panel whose HDR the kernel doesn't drive: Intel's driver
 /// uses an eDP panel's own HDR interface (its PQ decoding, its brightness
 /// in nits) only if the firmware asks, the EDID has HDR static metadata,
@@ -1397,19 +1599,22 @@ mod tests {
         });
         // SAFETY: getuid has no preconditions.
         let uid = unsafe { libc::getuid() };
-        let roots = Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None) };
+        let roots =
+            Roots { fs: fs.clone(), bin, uid, scope: Some("session-2.scope".into()), units, airpods: true, packages: Box::new(|_| None), updates: Box::new(|| None), temp: TempFiles::default() };
         (fs, roots)
     }
 
     #[test]
     fn finds_what_is_wrong_and_what_is_fine() {
-        let (fs, roots) = machine("wrong");
+        let (fs, mut roots) = machine("wrong");
+        // Programs' temporary files in memory too.
+        roots.temp = TempFiles { tmp_in_memory: true, config: fs.join("home/me/.config"), data: fs.join("home/me/.local/share"), ..TempFiles::default() };
         let r = scan(&roots);
         let ids: Vec<&str> = r.findings.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(r.find("foreign").unwrap().title, "A program of another desktop runs in this session");
         assert_eq!(
             ids,
-            ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "voice-realtime", "airpods-listening", "uclamp", "stale", "login"],
+            ["remapper:keyd", "foreign", "rule:input", "autosuspend:3-1.3", "rule:displays", "wifi-heal", "rtkit", "voice-realtime", "airpods-listening", "uclamp", "stale", "login", "tmp:memory"],
             "{r:#?}"
         );
         let voice = r.find("voice-realtime").unwrap();
@@ -1512,8 +1717,75 @@ mod tests {
                 "Frames run on the fast cores",
                 "Every Olo program runs the installed version",
                 "Olo is on the login screen",
+                "Temporary files are kept on disk",
             ]
         );
+        let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    #[test]
+    fn a_security_key_the_person_cant_open() {
+        let (fs, roots) = machine("fido");
+        let w = |p: &str, c: &[u8]| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // A YubiKey's FIDO interface, and its OTP keyboard (not a key's).
+        w("sys/class/hidraw/hidraw4/device/report_descriptor", &[0x06, 0xD0, 0xF1, 0x09, 0x01, 0xA1, 0x01]);
+        w("sys/class/hidraw/hidraw4/device/uevent", b"HID_ID=0003:00001050:00000407\nHID_NAME=Yubico YubiKey OTP+FIDO+CCID\n");
+        w("sys/class/hidraw/hidraw3/device/report_descriptor", &[0x05, 0x01, 0x09, 0x06, 0xA1, 0x01]);
+        w("dev/hidraw4", b"");
+        w("dev/hidraw3", b"");
+        let ours = |r: &Report| r.findings.iter().any(|f| f.id == "rule:security-keys");
+        // Its node the person's: fine.
+        let r = scan(&roots);
+        assert!(!ours(&r) && r.fine.iter().any(|f| f.title == "The security key plugged in can be used"), "{:#?}", r.fine);
+        // Root's alone (as a test, not root): the rule, applied to it.
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(fs.join("dev/hidraw4"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let r = scan(&roots);
+        if unsafe { libc::geteuid() } != 0 {
+            let f = r.findings.iter().find(|f| f.id == "rule:security-keys").expect("the rule offered");
+            let steps = &f.fix.as_ref().unwrap().steps;
+            assert!(matches!(&steps[0], Step::WriteFile { content, .. } if content == SECURITY_KEY_RULE));
+            assert!(matches!(&steps[1], Step::WriteSysfs { path, .. } if path == Path::new("/sys/class/hidraw/hidraw4/uevent")));
+            assert_eq!(steps.len(), 2);
+        }
+        let _ = std::fs::remove_dir_all(&fs);
+    }
+
+    /// Programs' "show in folder" while no Tracker answers: Nautilus on
+    /// Fedora, unless the user's own activation file starts Tracker.
+    #[test]
+    fn programs_show_in_folder_with_tracker() {
+        let (fs, mut roots) = machine("filemanager");
+        roots.temp.data = fs.join("home/me/.local/share");
+        std::fs::write(roots.bin.join("olo-tracker"), "").unwrap();
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        w("usr/share/dbus-1/services/org.freedesktop.FileManager1.service", "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/usr/bin/nautilus --gapplication-service\n");
+        let r = scan(&roots);
+        let f = r.findings.iter().find(|f| f.id == "dbus:file-manager").expect("offered");
+        assert_eq!(f.title, "Programs may open GNOME's Files instead of Tracker");
+        let fix = f.fix.as_ref().unwrap();
+        assert!(!fix.root, "the user's own file");
+        let Step::WriteFile { path, content, .. } = &fix.steps[0] else { panic!("{:?}", fix.steps) };
+        assert_eq!(*path, fs.join("home/me/.local/share/dbus-1/services/org.freedesktop.FileManager1.service"));
+        assert!(content.contains(&format!("\nName=org.freedesktop.FileManager1\nExec={} --file-manager\n", roots.bin.join("olo-tracker").display())), "{content}");
+        assert_eq!(fix.steps[1], Step::SessionBusReload);
+        // Done (the bus left alone: a test), it's fine.
+        fix.steps[0].run().unwrap();
+        let r = scan(&roots);
+        assert!(!r.findings.iter().any(|f| f.id == "dbus:file-manager"));
+        assert!(r.fine.iter().any(|f| f.title == "Programs' “Show in folder” opens Tracker"));
+        // Another file manager in the user's own file: named, and replaced.
+        w("home/me/.local/share/dbus-1/services/org.freedesktop.FileManager1.service", "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/usr/bin/dolphin\n");
+        let r = scan(&roots);
+        assert_eq!(r.findings.iter().find(|f| f.id == "dbus:file-manager").map(|f| f.title.as_str()), Some("Programs may open dolphin instead of Tracker"));
         let _ = std::fs::remove_dir_all(&fs);
     }
 
@@ -1704,6 +1976,41 @@ mod tests {
         assert!(!same_healer(&built, &other));
         assert!(!same_healer(&built, &before));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn temporary_files_in_memory_are_moved_to_disk() {
+        let run = |tmp_in_memory: bool, tmpdir: Option<&str>, tmpdir_in_memory: bool| {
+            let mut r = Report::default();
+            let roots = Roots {
+                fs: PathBuf::from("/nonexistent"),
+                bin: PathBuf::new(),
+                uid: 1000,
+                scope: None,
+                units: Box::new(|_| Err("none".into())),
+                airpods: false,
+                packages: Box::new(|_| None),
+                updates: Box::new(|| None),
+                temp: TempFiles { tmp_in_memory, tmpdir: tmpdir.map(str::to_owned), tmpdir_in_memory, config: PathBuf::from("/home/me/.config"), data: PathBuf::from("/home/me/.local/share") },
+            };
+            temp_files(&roots, &mut r);
+            r
+        };
+        // Fedora's /tmp in memory and no TMPDIR: the fix.
+        let r = run(true, None, false);
+        let f = r.find("tmp:memory").expect("found");
+        let fix = f.fix.as_ref().unwrap();
+        assert!(!fix.root);
+        let Step::WriteFile { path, content, .. } = &fix.steps[0] else { panic!("{:?}", fix.steps) };
+        assert_eq!(path, &PathBuf::from("/home/me/.config/environment.d/60-olo-tmpdir.conf"));
+        assert!(content.contains("TMPDIR=/var/tmp\nTMP=/var/tmp\nTEMP=/var/tmp\n"), "{content}");
+        assert_eq!(fix.steps[1], Step::SetSessionEnvironment { vars: ["TMPDIR", "TMP", "TEMP"].map(|k| (k.to_owned(), "/var/tmp".to_owned())).to_vec() });
+        // TMPDIR in memory too (the runtime folder): the same.
+        assert!(run(true, Some("/run/user/1000"), true).find("tmp:memory").is_some());
+        // On disk: fine.
+        let r = run(true, Some("/var/tmp"), false);
+        assert!(r.find("tmp:memory").is_none() && r.fine.iter().any(|f| f.detail.contains("/var/tmp")));
+        assert!(run(false, None, false).find("tmp:memory").is_none());
     }
 
     #[test]

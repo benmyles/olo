@@ -14,4 +14,6 @@ olo-ui.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true
 olo-system.workspace = true
+olo-fido.workspace = true
+zeroize = "1"
 tracing.workspace = true

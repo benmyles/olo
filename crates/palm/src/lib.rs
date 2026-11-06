@@ -26,9 +26,14 @@ use std::collections::HashMap;
 
 pub use olo_protocol::touchpad::{PadAxes, PalmModel, TouchContact};
 
-/// How many features a contact has.
+mod kind;
+pub use kind::{Capture, Kind, MT_TOOL_PALM, THINKPAD_FEATURES, THINKPAD_HIDDEN, thinkpad_baseline, thinkpad_model};
+
+/// How many features a contact has, at most: a frame's slots (a
+/// MacBook's has all of them; each [`Kind`] its own number, the rest 0).
 pub const FEATURES: usize = 18;
-/// The hidden layer's size.
+/// A MacBook model's hidden layer (each model's is its own: `b1`'s
+/// length).
 pub const HIDDEN: usize = 32;
 /// A contact is judged in its first this many milliseconds on the glass;
 /// after, it stays what it was (a finger found to be a palm mid-gesture
@@ -58,6 +63,8 @@ struct Track {
     peak_size: f32,
     peak_pressure: f32,
     first_size: f32,
+    /// What the firmware has said of it (a ThinkPad's).
+    said: kind::Said,
 }
 
 /// Each contact's history, from which its features are made: from its
@@ -66,6 +73,12 @@ struct Track {
 #[derive(Debug)]
 pub struct Tracker {
     tracks: HashMap<i32, Track>,
+    /// Palms that just ended, when (microseconds): on a pad whose
+    /// firmware says palms, the kernel ends a palm right after reporting
+    /// it (its "pending palm" release) and it comes back at the same
+    /// place under a new id, sometimes called a finger from then on (a
+    /// ThinkPad's heel: Ben's hands, `data/`). It is the same contact.
+    ended: Vec<(u64, Track)>,
     /// Microseconds since a key was last pressed, as the caller knows
     /// (u64::MAX: never): palms rest while typing.
     pub since_key_us: u64,
@@ -73,17 +86,34 @@ pub struct Tracker {
 
 impl Default for Tracker {
     fn default() -> Self {
-        Tracker { tracks: HashMap::new(), since_key_us: u64::MAX }
+        Tracker { tracks: HashMap::new(), ended: Vec::new(), since_key_us: u64::MAX }
     }
 }
+
+/// A palm that ends and a contact that lands within this long
+/// (microseconds) and this near (millimetres) are one contact (the
+/// kernel's palm ended and back: 7 ms apart in Ben's captures).
+pub const AGAIN_US: u64 = 40_000;
+pub const AGAIN_MM: f32 = 5.0;
 
 impl Tracker {
     /// The features of each contact on the glass in a report at
     /// `time_us` (the pad's `axes`), as `(id, features, age in ms)`; a
     /// contact hovering, not touching yet, has none.
     pub fn frame(&mut self, axes: &PadAxes, time_us: u64, contacts: &[TouchContact]) -> Vec<(i32, [f32; FEATURES], u32)> {
-        self.tracks.retain(|id, _| contacts.iter().any(|c| c.id == *id));
-        let touching = |c: &TouchContact| axes.pressure_max <= 0 || c.pressure > 0;
+        let kind = Kind::of(axes);
+        // Palms ending, kept a moment for their contact to come back.
+        let gone: Vec<i32> = self.tracks.keys().copied().filter(|id| !contacts.iter().any(|c| c.id == *id)).collect();
+        for id in gone {
+            if let Some(t) = self.tracks.remove(&id)
+                && kind.firmware_palms()
+                && t.said.palm_reports > 0
+            {
+                self.ended.push((time_us, t));
+            }
+        }
+        self.ended.retain(|(at, _)| time_us.saturating_sub(*at) <= AGAIN_US);
+        let touching = |c: &TouchContact| kind.touching(axes, c);
         let w = (axes.x_max - axes.x_min).max(1) as f32;
         let h = (axes.y_max - axes.y_min).max(1) as f32;
         let size_max = axes.size_max.max(1) as f32;
@@ -96,6 +126,15 @@ impl Tracker {
             }
             let x = (c.x - axes.x_min) as f32 / w;
             let y = (c.y - axes.y_min) as f32 / h;
+            // A palm the kernel ended a moment ago, back under a new id.
+            if !self.tracks.contains_key(&c.id) && !self.ended.is_empty() {
+                let mm = |dx: f32, res: i32, span: f32| dx * span / res.max(1) as f32;
+                let near = |t: &Track| mm(x - t.x, axes.x_res, w).hypot(mm(y - t.y, axes.y_res, h)) <= AGAIN_MM;
+                if let Some(i) = self.ended.iter().position(|(_, t)| near(t)) {
+                    let (_, t) = self.ended.remove(i);
+                    self.tracks.insert(c.id, t);
+                }
+            }
             // The nearest other contact, in pad widths (1: none).
             let nearest = contacts.iter().filter(|o| o.id != c.id).map(|o| (((o.x - c.x) as f32 / w).powi(2) + ((o.y - c.y) as f32 / w).powi(2)).sqrt()).fold(1.0f32, f32::min);
             let orientation = if axes.orientation_max > 0 { (c.orientation as f32 / axes.orientation_max as f32).clamp(-1.0, 1.0) } else { 0.0 };
@@ -103,7 +142,7 @@ impl Tracker {
             let size = c.major.max(c.minor) as f32 / size_max;
             let small = c.major.min(c.minor) as f32 / size_max;
             let pressure = c.pressure as f32 / pressure_max;
-            let t = self.tracks.entry(c.id).or_insert(Track { down_us: time_us, x, y, at_us: time_us, speed: 0.0, peak_size: 0.0, peak_pressure: 0.0, first_size: size });
+            let t = self.tracks.entry(c.id).or_insert(Track { down_us: time_us, x, y, at_us: time_us, speed: 0.0, peak_size: 0.0, peak_pressure: 0.0, first_size: size, said: Default::default() });
             let dt = time_us.saturating_sub(t.at_us) as f32 / 1e6;
             if dt > 0.0 {
                 // Pad widths a second, smoothed.
@@ -116,6 +155,11 @@ impl Tracker {
             t.peak_size = t.peak_size.max(size);
             t.peak_pressure = t.peak_pressure.max(pressure);
             let age_ms = (time_us.saturating_sub(t.down_us) / 1000) as u32;
+            if kind == Kind::ThinkPad {
+                let f = kind::thinkpad_features(&mut t.said, c, t.speed, pressure, age_ms);
+                out.push((c.id, f, age_ms));
+                continue;
+            }
             let f = [
                 size,
                 small,
@@ -247,7 +291,7 @@ pub fn baseline() -> PalmModel {
     // (A palm past 2: on real hands, with the size rule beside it, as the
     // filter has them, the lowest that loses no finger the size rule
     // doesn't; at 0 it took half of a run's resting fingertips.)
-    PalmModel { mean, std, w1, b1, w2, b2: -1.0, threshold: 2.0, decide_ms: DECIDE_MS, min_age_ms: MIN_AGE_MS, ..Default::default() }
+    PalmModel { kind: "macbook".into(), mean, std, w1, b1, w2, b2: -1.0, threshold: 2.0, decide_ms: DECIDE_MS, min_age_ms: MIN_AGE_MS, ..Default::default() }
 }
 
 mod default_model;
@@ -262,6 +306,7 @@ pub fn default_model() -> PalmModel {
         return baseline();
     }
     PalmModel {
+        kind: "macbook".into(),
         mean: d::MEAN.to_vec(),
         std: d::STD.to_vec(),
         lo: d::LO.to_vec(),
@@ -280,16 +325,24 @@ pub fn default_model() -> PalmModel {
     }
 }
 
+/// Whether `m` has a model's shape: its features (as many as its kind's)
+/// and hidden units each with their weights.
+pub fn fits(m: &PalmModel) -> bool {
+    let (n, h) = (m.mean.len(), m.b1.len());
+    n == Kind::of_model(m).features() && h > 0 && m.std.len() == n && m.w1.len() == h * n && m.w2.len() == h
+}
+
 /// The model's score for a contact's features: above its threshold, a
-/// palm.
+/// palm. (Its size is its own: `mean`'s features, `b1`'s hidden units.)
 pub fn score(m: &PalmModel, f: &[f32; FEATURES]) -> f32 {
+    let n = m.mean.len().min(FEATURES);
     let held = held(m, f);
     let mut out = m.b2;
-    for (j, &w2) in m.w2.iter().enumerate().take(HIDDEN) {
+    for (j, &w2) in m.w2.iter().enumerate() {
         let mut a = m.b1.get(j).copied().unwrap_or(0.0);
-        for (i, &x) in held.iter().enumerate() {
-            let z = (x - m.mean.get(i).copied().unwrap_or(0.0)) / m.std.get(i).copied().unwrap_or(1.0);
-            a += m.w1.get(j * FEATURES + i).copied().unwrap_or(0.0) * z;
+        for (i, &x) in held.iter().enumerate().take(n) {
+            let z = (x - m.mean[i]) / m.std.get(i).copied().unwrap_or(1.0);
+            a += m.w1.get(j * n + i).copied().unwrap_or(0.0) * z;
         }
         out += w2 * a.max(0.0);
     }
@@ -298,10 +351,11 @@ pub fn score(m: &PalmModel, f: &[f32; FEATURES]) -> f32 {
 
 /// Features `f` held within what model `m` was trained on (`lo`, `hi`).
 fn held(m: &PalmModel, f: &[f32; FEATURES]) -> [f32; FEATURES] {
-    if m.lo.len() != FEATURES || m.hi.len() != FEATURES {
+    let n = m.mean.len().min(FEATURES);
+    if m.lo.len() != n || m.hi.len() != n {
         return *f;
     }
-    std::array::from_fn(|i| f[i].max(m.lo[i]).min(m.hi[i]))
+    std::array::from_fn(|i| if i < n { f[i].max(m.lo[i]).min(m.hi[i]) } else { f[i] })
 }
 
 /// One contact's samples: its features at each report in its first
@@ -364,12 +418,12 @@ impl Rng {
     }
 }
 
-/// Fit a model to `contacts` (every fifth kept back to judge it), saying
-/// how far along it is (0 to 1) as it goes; with how it did. None with
-/// too few of either kind. From [`default_model`], which it's judged
-/// against.
-pub fn train(contacts: &[Labelled], palm_size: u32, progress: impl FnMut(f32)) -> Option<(PalmModel, Report)> {
-    train_from(&default_model(), contacts, palm_size, progress)
+/// Fit a model for pad `kind` to `contacts` (every fifth kept back to
+/// judge it), saying how far along it is (0 to 1) as it goes; with how it
+/// did. None with too few of either kind. From the kind's own model
+/// ([`Kind::base_model`]), which it's judged against.
+pub fn train(kind: Kind, contacts: &[Labelled], palm_size: u32, progress: impl FnMut(f32)) -> Option<(PalmModel, Report)> {
+    train_from(&kind.base_model(), contacts, palm_size, progress)
 }
 
 /// How strongly training holds the weights near where they started.
@@ -400,27 +454,32 @@ pub fn train_from(base: &PalmModel, contacts: &[Labelled], palm_size: u32, mut p
     if samples.is_empty() {
         return None;
     }
+    // The base's own size: its kind's features, its hidden units.
+    let (nf, nh) = (base.mean.len().min(FEATURES), base.b1.len());
+    if nf == 0 || nh == 0 || base.w1.len() != nh * nf || base.w2.len() != nh {
+        return None;
+    }
     let n = samples.len() as f32;
-    let mut mean = [0.0f32; FEATURES];
+    let mut mean = vec![0.0f32; nf];
     for (f, _) in &samples {
-        for i in 0..FEATURES {
+        for i in 0..nf {
             mean[i] += f[i] / n;
         }
     }
-    let mut std = [0.0f32; FEATURES];
+    let mut std = vec![0.0f32; nf];
     for (f, _) in &samples {
-        for i in 0..FEATURES {
+        for i in 0..nf {
             std[i] += (f[i] - mean[i]).powi(2) / n;
         }
     }
-    let std = std.map(|v| v.sqrt().max(1e-3));
-    let (mut lo, mut hi) = ([f32::MAX; FEATURES], [f32::MIN; FEATURES]);
+    let std: Vec<f32> = std.iter().map(|v| v.sqrt().max(1e-3)).collect();
+    let (mut lo, mut hi) = (vec![f32::MAX; nf], vec![f32::MIN; nf]);
     for (f, _) in &samples {
-        for i in 0..FEATURES {
+        for i in 0..nf {
             (lo[i], hi[i]) = (lo[i].min(f[i]), hi[i].max(f[i]));
         }
     }
-    let z: Vec<([f32; FEATURES], f32)> = samples.iter().map(|(f, palm)| (std::array::from_fn(|i| (f[i] - mean[i]) / std[i]), if *palm { 1.0 } else { 0.0 })).collect();
+    let z: Vec<(Vec<f32>, f32)> = samples.iter().map(|(f, palm)| ((0..nf).map(|i| (f[i] - mean[i]) / std[i]).collect(), if *palm { 1.0 } else { 0.0 })).collect();
     let palm_frames = z.iter().filter(|(_, y)| *y > 0.5).count().max(1) as f32;
     let finger_frames = (z.len() as f32 - palm_frames).max(1.0);
     let weight = |y: f32| if y > 0.5 { 0.5 / palm_frames } else { 0.5 / finger_frames };
@@ -428,11 +487,11 @@ pub fn train_from(base: &PalmModel, contacts: &[Labelled], palm_size: u32, mut p
     // From Olo's own model (its weights in its own scale, taken to this
     // data's), refined by full-batch Adam on the weighted log loss: fine
     // tuning, so a few of the person's samples go a long way.
-    let mut w1: Vec<f32> = (0..HIDDEN * FEATURES).map(|k| base.w1[k] * std[k % FEATURES] / base.std[k % FEATURES]).collect();
-    let mut b1: Vec<f32> = (0..HIDDEN).map(|j| base.b1[j] + (0..FEATURES).map(|i| base.w1[j * FEATURES + i] * (mean[i] - base.mean[i]) / base.std[i]).sum::<f32>()).collect();
+    let mut w1: Vec<f32> = (0..nh * nf).map(|k| base.w1[k] * std[k % nf] / base.std[k % nf]).collect();
+    let mut b1: Vec<f32> = (0..nh).map(|j| base.b1[j] + (0..nf).map(|i| base.w1[j * nf + i] * (mean[i] - base.mean[i]) / base.std[i]).sum::<f32>()).collect();
     let mut w2 = base.w2.clone();
     let mut b2 = base.b2;
-    let params = HIDDEN * FEATURES + HIDDEN + HIDDEN + 1;
+    let params = nh * nf + nh + nh + 1;
     let (mut m, mut v) = (vec![0.0f32; params], vec![0.0f32; params]);
     // Held near where it started (`l2` on how far each weight has gone
     // from it, not on the weight): a few hundred touches can't say what
@@ -442,32 +501,32 @@ pub fn train_from(base: &PalmModel, contacts: &[Labelled], palm_size: u32, mut p
     let start: Vec<f32> = w1.iter().chain(&b1).chain(&w2).copied().chain([b2]).collect();
     let (lr, beta1, beta2, l2) = (0.01f32, 0.9f32, 0.999f32, l2_from_start());
     const EPOCHS: usize = 400;
-    let mut hidden = [0.0f32; HIDDEN];
+    let mut hidden = vec![0.0f32; nh];
     for epoch in 1..=EPOCHS {
         let mut g = vec![0.0f32; params];
         for (x, y) in &z {
             let mut out = b2;
-            for j in 0..HIDDEN {
+            for j in 0..nh {
                 let mut a = b1[j];
-                for i in 0..FEATURES {
-                    a += w1[j * FEATURES + i] * x[i];
+                for i in 0..nf {
+                    a += w1[j * nf + i] * x[i];
                 }
                 hidden[j] = a.max(0.0);
                 out += w2[j] * hidden[j];
             }
             let p = 1.0 / (1.0 + (-out).exp());
             let d = (p - y) * weight(*y);
-            let (gw1, rest) = g.split_at_mut(HIDDEN * FEATURES);
-            let (gb1, rest) = rest.split_at_mut(HIDDEN);
-            let (gw2, gb2) = rest.split_at_mut(HIDDEN);
+            let (gw1, rest) = g.split_at_mut(nh * nf);
+            let (gb1, rest) = rest.split_at_mut(nh);
+            let (gw2, gb2) = rest.split_at_mut(nh);
             gb2[0] += d;
-            for j in 0..HIDDEN {
+            for j in 0..nh {
                 gw2[j] += d * hidden[j];
                 if hidden[j] > 0.0 {
                     let dh = d * w2[j];
                     gb1[j] += dh;
-                    for i in 0..FEATURES {
-                        gw1[j * FEATURES + i] += dh * x[i];
+                    for i in 0..nf {
+                        gw1[j * nf + i] += dh * x[i];
                     }
                 }
             }
@@ -483,13 +542,13 @@ pub fn train_from(base: &PalmModel, contacts: &[Labelled], palm_size: u32, mut p
             *p -= lr * mh / (vh.sqrt() + 1e-8);
             *k += 1;
         };
-        for (p, gi) in w1.iter_mut().zip(&g[..HIDDEN * FEATURES]) {
+        for (p, gi) in w1.iter_mut().zip(&g[..nh * nf]) {
             step(p, *gi, &mut k);
         }
-        for (p, gi) in b1.iter_mut().zip(&g[HIDDEN * FEATURES..HIDDEN * FEATURES + HIDDEN]) {
+        for (p, gi) in b1.iter_mut().zip(&g[nh * nf..nh * nf + nh]) {
             step(p, *gi, &mut k);
         }
-        for (p, gi) in w2.iter_mut().zip(&g[HIDDEN * FEATURES + HIDDEN..params - 1]) {
+        for (p, gi) in w2.iter_mut().zip(&g[nh * nf + nh..params - 1]) {
             step(p, *gi, &mut k);
         }
         step(&mut b2, g[params - 1], &mut k);
@@ -497,8 +556,9 @@ pub fn train_from(base: &PalmModel, contacts: &[Labelled], palm_size: u32, mut p
             progress(epoch as f32 / EPOCHS as f32);
         }
     }
-    let mut model =
-        PalmModel { mean: mean.to_vec(), std: std.to_vec(), lo: lo.to_vec(), hi: hi.to_vec(), w1, b1, w2, b2, threshold: 0.0, decide_ms: DECIDE_MS, min_age_ms: MIN_AGE_MS, ..Default::default() };
+    // (Judged as its kind is: from its base's age on, to its base's
+    // decision.)
+    let mut model = PalmModel { kind: base.kind.clone(), mean, std, lo, hi, w1, b1, w2, b2, threshold: 0.0, decide_ms: base.decide_ms, min_age_ms: base.min_age_ms, ..Default::default() };
 
     // The threshold: a contact's verdict is its highest score in its
     // first `DECIDE_MS`; the lowest that takes at most `FINGER_LOSS` of
@@ -552,13 +612,17 @@ pub struct Run {
     /// [`Tracker`] does since 2026-11-03; before, from when the pad first
     /// saw it, hovering included: a run kept as a bare list of contacts.
     pub from_touch: bool,
+    /// The kind of pad it was on ([`Kind::id`]; "": a MacBook's), whose
+    /// features its contacts have.
+    #[serde(default)]
+    pub kind: String,
     pub contacts: Vec<Labelled>,
 }
 
 impl Run {
     /// A run from its file's bytes, either way it was kept.
     pub fn parse(bytes: &[u8]) -> Option<Run> {
-        serde_json::from_slice::<Run>(bytes).ok().or_else(|| Some(Run { from_touch: false, contacts: serde_json::from_slice(bytes).ok()? }))
+        serde_json::from_slice::<Run>(bytes).ok().or_else(|| Some(Run { from_touch: false, kind: String::new(), contacts: serde_json::from_slice(bytes).ok()? }))
     }
 
     /// Its contacts as [`Tracker`] follows them now: one kept before the
@@ -604,11 +668,11 @@ impl Run {
 /// the time, for Olo's own model to be tuned on real hands
 /// (`make_default_model`, docs/TOUCHPAD.md): the path written, or why
 /// not.
-pub fn keep_samples(dir: &std::path::Path, contacts: &[Labelled]) -> Result<std::path::PathBuf, String> {
+pub fn keep_samples(dir: &std::path::Path, kind: Kind, contacts: &[Labelled]) -> Result<std::path::PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let path = dir.join(format!("run-{secs}.json"));
-    let bytes = serde_json::to_vec(&Run { from_touch: true, contacts: contacts.to_vec() }).map_err(|e| e.to_string())?;
+    let bytes = serde_json::to_vec(&Run { from_touch: true, kind: kind.id().to_owned(), contacts: contacts.to_vec() }).map_err(|e| e.to_string())?;
     std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
     Ok(path)
 }
@@ -617,18 +681,21 @@ pub fn keep_samples(dir: &std::path::Path, contacts: &[Labelled]) -> Result<std:
 pub fn lua(m: &PalmModel) -> String {
     let list = |v: &[f32]| v.iter().map(|x| format!("{x:e}")).collect::<Vec<_>>().join(", ");
     format!(
-        "{{ mean = {{ {} }}, std = {{ {} }}, lo = {{ {} }}, hi = {{ {} }}, w1 = {{ {} }}, b1 = {{ {} }}, w2 = {{ {} }}, b2 = {:e}, threshold = {:e}, decide_ms = {}, min_age_ms = {}, features = {FEATURES}, hidden = {HIDDEN} }}",
+        "{{ kind = {:?}, mean = {{ {} }}, std = {{ {} }}, lo = {{ {} }}, hi = {{ {} }}, w1 = {{ {} }}, b1 = {{ {} }}, w2 = {{ {} }}, b2 = {:e}, threshold = {:e}, decide_ms = {}, min_age_ms = {}, features = {}, hidden = {} }}",
+        Kind::of_model(m).id(),
         list(&m.mean),
         list(&m.std),
-        list(if m.lo.len() == FEATURES && m.hi.len() == FEATURES { &m.lo } else { &[] }),
-        list(if m.lo.len() == FEATURES && m.hi.len() == FEATURES { &m.hi } else { &[] }),
+        list(if m.lo.len() == m.mean.len() && m.hi.len() == m.mean.len() { &m.lo } else { &[] }),
+        list(if m.lo.len() == m.mean.len() && m.hi.len() == m.mean.len() { &m.hi } else { &[] }),
         list(&m.w1),
         list(&m.b1),
         list(&m.w2),
         m.b2,
         m.threshold,
         m.decide_ms,
-        m.min_age_ms
+        m.min_age_ms,
+        m.mean.len(),
+        m.b1.len()
     )
 }
 
@@ -682,7 +749,7 @@ mod tests {
     fn learns_palms_without_losing_fingers() {
         let contacts = made(7, 400);
         let mut steps = 0;
-        let (model, report) = train(&contacts, 1600, |_| steps += 1).expect("trained");
+        let (model, report) = train(Kind::MacBook, &contacts, 1600, |_| steps += 1).expect("trained");
         assert!(steps >= 10);
         assert!(report.fingers_lost <= 0.05, "{report:?}");
         // It catches what the size rule misses (the light right-edge palms).
@@ -837,7 +904,7 @@ mod tests {
         // And trained on them (with the other kinds), on ones it never saw.
         let mut all = made_low(5, 200);
         all.extend(made(6, 200));
-        let (trained, _) = train(&all, 1600, |_| {}).expect("trained");
+        let (trained, _) = train(Kind::MacBook, &all, 1600, |_| {}).expect("trained");
         let fresh = made_low(77, 200);
         let t = judge(&trained, &fresh.iter().collect::<Vec<_>>(), 1600);
         eprintln!("trained, a hand resting low: {t:?}");
@@ -847,7 +914,7 @@ mod tests {
     #[test]
     fn too_few_to_train() {
         let contacts = made(1, 4);
-        assert!(train(&contacts, 1600, |_| {}).is_none());
+        assert!(train(Kind::MacBook, &contacts, 1600, |_| {}).is_none());
     }
 
     #[test]
@@ -1159,7 +1226,7 @@ mod captures {
                 }
             }
             for (other, train_on) in runs.iter().filter(|(n, _)| n != name) {
-                if let Some((m, _)) = train(train_on, 1600, |_| {}) {
+                if let Some((m, _)) = train(Kind::MacBook, train_on, 1600, |_| {}) {
                     let t = judge(&m, &all, 1600);
                     println!("  {}", line(&format!("trained on {}", &other[4..14]), t.palms_caught, t.fingers_lost));
                 }

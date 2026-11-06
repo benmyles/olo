@@ -38,7 +38,7 @@ use smithay::{
         presentation::Refresh,
     },
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::render::render_output;
 use crate::state::{AnvilState, Backend, take_presentation_feedback, update_primary_scanout_output};
@@ -196,6 +196,18 @@ impl Backend for HeadlessData {
         screen.damage_tracker = OutputDamageTracker::from_output(output);
         screen.hdr = None;
         info!(output = output.name(), drawing = ?crate::color::drawing(output), "colours (simulated)");
+        Ok(())
+    }
+
+    fn sdr_white_changed(&mut self, output: &Output) -> Result<(), String> {
+        // As udev's: the blending buffer composed whole again, nothing
+        // made anew.
+        let screen = self.screens.iter_mut().find(|s| s.output == *output).ok_or("no such screen")?;
+        match screen.hdr.as_mut() {
+            Some(hdr) => hdr.compose_whole(),
+            None => return self.color_changed(output),
+        }
+        debug!(output = output.name(), "SDR's white (simulated)");
         Ok(())
     }
 
@@ -384,6 +396,31 @@ pub fn run_headless(size_arg: Option<&str>) {
         }
     }
 
+    // A touch screen on the seat (`OLO_HEADLESS_TOUCH`: "0" at once, or
+    // after that many ms, as libinput finds a real one seconds after
+    // app_server starts): programs then ask for touches (wl_touch), and an
+    // upgrade's replay of them is tried as on the ThinkPad.
+    if let Some(ms) = std::env::var("OLO_HEADLESS_TOUCH").ok().and_then(|v| v.parse::<u64>().ok()) {
+        let _ = event_loop.handle().insert_source(Timer::from_duration(Duration::from_millis(ms)), |_, _, state| {
+            if state.seat.get_touch().is_none() {
+                state.seat.add_touch();
+                info!("headless touch screen added");
+            }
+            TimeoutAction::Drop
+        });
+    }
+
+    // A pen tablet on the seat (`OLO_HEADLESS_TABLET`), as the ThinkPad's
+    // screen has: programs bind it and keep a cursor of their own for it,
+    // and an upgrade tells them it went (it comes again from the next
+    // app_server).
+    if std::env::var_os("OLO_HEADLESS_TABLET").is_some() {
+        use smithay::input::tablet::{TabletDescriptor, TabletSeatTrait as _};
+        let dh = state.display_handle.clone();
+        state.seat.tablet_seat().add_wp_tablet(&dh, &TabletDescriptor { name: "Headless Pen".into(), usb_id: None, syspath: None });
+        info!("headless pen tablet added");
+    }
+
     // Each screen draws at its mode's rate, on time (`frames_due`).
     schedule_frames(&mut state.backend_data, std::time::Instant::now());
 
@@ -496,11 +533,24 @@ pub fn run_headless(size_arg: Option<&str>) {
 /// (or, while locked, the lock screen).
 fn twitcher_overlay(state: &mut AnvilState<HeadlessData>, output: &Output) -> Vec<crate::render::CustomRenderElements<GlesRenderer>> {
     if state.lock.locked() {
+        // (Never the veil over the lock screen, nor after it.)
+        state.veil = None;
         return crate::lock::elements(&state.lock, &mut state.backend_data.renderer, output);
     }
     let geo = state.space.output_geometry(output).unwrap_or_default();
     let scale = output.current_scale().fractional_scale();
-    let mut out: Vec<_> = state.hints.elements(&mut state.backend_data.renderer, geo, scale).into_iter().map(crate::render::CustomRenderElements::Overlay).collect();
+    // "Upgrading Olo", in front of all, while a restart's windows come back.
+    let (displays, back) = (state.space.outputs().filter(|o| o.current_mode().is_some()).count(), state.space.elements().count());
+    let shell = crate::veil::shell_up(&state.space);
+    let (mut out, again) = crate::veil::frame(&mut state.veil, false, displays, back, shell, &mut state.backend_data.renderer, output);
+    if again {
+        let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::immediate(), |_, _, state| {
+            state.backend_data.wake(None);
+            smithay::reexports::calloop::timer::TimeoutAction::Drop
+        });
+    }
+    out.extend(state.hints.elements(&mut state.backend_data.renderer, geo, scale).into_iter().map(crate::render::CustomRenderElements::Overlay));
+    out.extend(crate::private::shared_rings(output, &state.space, &state.shared_windows).into_iter().map(crate::render::CustomRenderElements::Warm));
     let Some(shown) = state.twitcher_entries() else { return out };
     out.extend(state.twitcher.elements(&mut state.backend_data.renderer, &shown, &output.name(), geo.size, scale).into_iter().map(crate::render::CustomRenderElements::Overlay));
     out

@@ -7,6 +7,7 @@ pub mod charts;
 pub mod color;
 pub mod control;
 pub mod dashboard;
+pub mod find_bar;
 pub mod image_view;
 pub mod key_hint;
 pub mod list;
@@ -28,14 +29,15 @@ pub mod tooltip;
 pub mod views;
 
 pub use alert::{
-    ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation, ConversationField, Unsaved, alert_height, alert_title, alert_width, ask_to_save, button_row, open_alert, paragraph,
-    paragraph_height,
+    ALERT_ICON, ALERT_TEXT_X, ALERT_WIDTH, AlertFrame, Conversation, ConversationField, Timeout, Unsaved, alert_height, alert_title, alert_width, ask_to_save, button_row, open_alert,
+    open_timed_alert, paragraph, paragraph_height,
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
 pub use buttons::{Button, CheckBox, LinkButton, RadioButton, button_width, check_box_look, link_button_width};
 pub use charts::{CellGrid, Graph, GraphLayer, GraphShelf, GridCell, LegendItem, SPECTRUM_LABELS, Series, Spectrum, SpectrumSeries, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, control};
+pub use find_bar::{find_bar, find_said};
 pub use image_view::{ImageView, image_view};
 pub use key_hint::KeyHint;
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};

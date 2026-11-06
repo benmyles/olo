@@ -19,8 +19,7 @@ pub mod hints;
 pub mod icon_theme;
 pub mod input_counts;
 pub mod input_handler;
-#[cfg(feature = "libei")]
-pub mod libei;
+pub mod remote;
 pub mod render;
 pub mod shell;
 pub mod state;
@@ -30,6 +29,7 @@ pub mod udev;
 #[cfg(feature = "winit")]
 pub mod winit;
 
+pub mod apple_keys;
 pub mod approve;
 pub mod desktop;
 pub mod dmabuf_check;
@@ -47,10 +47,13 @@ pub mod osd;
 pub mod overview;
 pub mod pace;
 pub mod power;
+pub mod private;
 pub mod rescue;
 pub mod saver;
 pub mod screenshot;
 pub mod scroll;
+pub mod security_key;
+pub mod showing;
 pub mod sockfile;
 pub mod spotlight;
 pub mod tabtip;
@@ -61,9 +64,11 @@ pub mod timings;
 pub mod toolkits;
 pub mod touch_filter;
 pub mod twitcher;
+pub mod veil;
 pub mod wallpaper;
 pub mod window_drop;
 pub mod xcursor;
+pub mod zoom;
 
 pub use state::{AnvilState, ClientState};
 

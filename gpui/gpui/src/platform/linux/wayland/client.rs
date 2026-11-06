@@ -2636,8 +2636,18 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandClientStatePtr {
                                 .set_icon(wl_pointer, serial, style.to_icon_names(), scale);
                         }
                     }
+                    // Where the pointer came in is where it is: hover and
+                    // the cursor follow from now, not from its first move
+                    // (a window opened or brought forward under a still
+                    // pointer: Olo's app_server enters it as it shows).
+                    let moved = PlatformInput::MouseMove(MouseMoveEvent {
+                        position: point(px(surface_x as f32), px(surface_y as f32)),
+                        pressed_button: None,
+                        modifiers: state.modifiers,
+                    });
                     drop(state);
                     window.set_hovered(true);
+                    window.handle_input(moved);
                 }
             }
             wl_pointer::Event::Leave { .. } => {

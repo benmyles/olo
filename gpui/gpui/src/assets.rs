@@ -36,6 +36,9 @@ pub struct ImageId(pub usize);
 pub(crate) struct RenderImageParams {
     pub(crate) image_id: ImageId,
     pub(crate) frame_index: usize,
+    /// Olo: sixteen bits a channel (`RenderImage::deep`), in an atlas of
+    /// its own.
+    pub(crate) deep: bool,
 }
 
 /// Olo: the colours a window draws in, or an image's numbers are in.
@@ -49,6 +52,10 @@ pub enum Gamut {
     Srgb,
     /// Display P3 (an iPhone's photos, Apple's and wide laptops' panels).
     DisplayP3,
+    /// HDR10: BT.2020's primaries, PQ's curve (absolute light, sRGB's
+    /// white at 203 cd/m²). A window drawing in it shows an HDR10 image
+    /// (`RenderImage::deep`) as it is, everything else converted.
+    Hdr10,
 }
 
 /// A cached and processed image, in BGRA format
@@ -60,6 +67,9 @@ pub struct RenderImage {
     data: SmallVec<[Frame; 1]>,
     /// Olo: what its numbers are in (sRGB unless said).
     pub(crate) color_space: Gamut,
+    /// Olo: a deep picture instead (`deep`): its size, and its RGBA as
+    /// half floats, eight bytes a pixel.
+    deep: Option<(Size<DevicePixels>, Vec<u8>)>,
 }
 
 impl PartialEq for RenderImage {
@@ -80,7 +90,31 @@ impl RenderImage {
             scale_factor: 1.0,
             data: data.into(),
             color_space: Gamut::Srgb,
+            deep: None,
         }
+    }
+
+    /// Olo: a picture of `width` × `height` deeper than eight bits a
+    /// channel: RGBA as half floats (`rgba`, four a pixel, IEEE 754
+    /// binary16 bits), its numbers in `space` (HDR10's PQ, which eight
+    /// bits would band). One frame.
+    pub fn deep(width: u32, height: u32, rgba: &[u16], space: Gamut) -> Self {
+        let mut image = Self::new(SmallVec::<[Frame; 1]>::new());
+        let bytes = rgba.iter().flat_map(|v| v.to_le_bytes()).collect();
+        image.deep = Some((
+            Size {
+                width: DevicePixels(width as i32),
+                height: DevicePixels(height as i32),
+            },
+            bytes,
+        ));
+        image.color_space = space;
+        image
+    }
+
+    /// Olo: a deep picture (`deep`).
+    pub fn is_deep(&self) -> bool {
+        self.deep.is_some()
     }
 
     /// Olo: its numbers are in `space` (a Display P3 photo kept so): drawn
@@ -97,6 +131,9 @@ impl RenderImage {
 
     /// Convert this image into a byte slice.
     pub fn as_bytes(&self, frame_index: usize) -> Option<&[u8]> {
+        if let Some((_, bytes)) = &self.deep {
+            return (frame_index == 0).then_some(bytes.as_slice());
+        }
         self.data
             .get(frame_index)
             .map(|frame| frame.buffer().as_raw().as_slice())
@@ -104,6 +141,9 @@ impl RenderImage {
 
     /// Get the size of this image, in pixels.
     pub fn size(&self, frame_index: usize) -> Size<DevicePixels> {
+        if let Some((size, _)) = &self.deep {
+            return *size;
+        }
         let (width, height) = self.data[frame_index].buffer().dimensions();
         size(width.into(), height.into())
     }
@@ -116,12 +156,19 @@ impl RenderImage {
 
     /// Get the delay of this frame from the previous
     pub fn delay(&self, frame_index: usize) -> Delay {
-        self.data[frame_index].delay()
+        match self.data.get(frame_index) {
+            Some(frame) => frame.delay(),
+            None => Delay::from_numer_denom_ms(0, 1),
+        }
     }
 
     /// Get the number of frames for this image.
     pub fn frame_count(&self) -> usize {
-        self.data.len()
+        if self.deep.is_some() {
+            1
+        } else {
+            self.data.len()
+        }
     }
 }
 

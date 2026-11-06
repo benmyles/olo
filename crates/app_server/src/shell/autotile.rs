@@ -327,7 +327,13 @@ impl SavedNode {
                 Some(slot) => kept(vec![slot], *holds),
                 None => SavedNode::Like { app_id: app_id.clone(), title: title.clone(), holds: *holds },
             },
-            Node::Kept(Kept { who: Who::Returning(s), holds, .. }) => kept(s.clone(), *holds),
+            // A place still kept from the restart before, for a window not
+            // back since: its slots were that save's numbering, which this
+            // one has given to other windows (seed 16 of auto --reloads:
+            // slot 4 kept twice, the second holding a fifth of the column
+            // for nobody until it timed out, 20 s on, and the tiles beside
+            // it then jumped). Its room goes to its neighbours.
+            Node::Kept(Kept { who: Who::Returning(_), .. }) => SavedNode::Room { holds: false },
             Node::Kept(Kept { who: Who::Nobody, holds, .. }) => SavedNode::Room { holds: *holds },
             Node::Split { cut, ratio, a, b } => {
                 SavedNode::Split { columns: *cut == Cut::Columns, ratio: *ratio, a: Box::new(SavedNode::of(a, slots, like)), b: Box::new(SavedNode::of(b, slots, like)) }
@@ -858,6 +864,15 @@ pub struct AutoTiler {
     /// ([`as_laid_out`]): what a restart keeps, though windows are
     /// closing as it comes (an upgrade re-executes their apps).
     laid: HashMap<(u32, String), Node>,
+    /// The saved places (slots) each window that came back took a kept
+    /// tile for: its group's, the others of which are its tabs to be
+    /// (`auto_output` gives them no tile of their own as they come).
+    kept_for: HashMap<u64, Vec<u64>>,
+    /// Windows put back from a restart, waiting for their group to form
+    /// (in a tile kept for it, or a mate's): no tile of their own given
+    /// meanwhile. Let go once in a tile or a tiled group, once a hand
+    /// groups or ungroups one (`auto_settled`), and as `RESTORING` ends.
+    awaiting: std::collections::HashSet<u64>,
     known: HashMap<u64, Known>,
     /// What each display's tiles were laid out for: its room, and its
     /// windows with their least frames (most learnt only as one first
@@ -891,6 +906,8 @@ impl Default for AutoTiler {
         AutoTiler {
             trees: HashMap::new(),
             laid: HashMap::new(),
+            kept_for: HashMap::new(),
+            awaiting: std::collections::HashSet::new(),
             known: HashMap::new(),
             seen: HashMap::new(),
             dirty: false,
@@ -1013,21 +1030,34 @@ impl<B: Backend + 'static> AnvilState<B> {
         w.user_data().get::<Float>().and_then(|f| f.0.get())
     }
 
+    /// Floats whatever is asked: picture in picture, a window that names
+    /// its parent (a dialog, Quick Look), an app's alert. Each belongs
+    /// over another window (or all its app's: `keep_children_above`), and
+    /// a tile can't be over the floats: tiled by hand, an alert stayed
+    /// over its app's floating windows as their child, a tile over floats.
+    pub fn floats_always(w: &WindowElement) -> bool {
+        if w.meta().pip.get() {
+            return true;
+        }
+        let WindowSurface::Wayland(t) = w.0.underlying_surface();
+        t.parent().is_some() || super::groups::is_parentless_alert(w)
+    }
+
     /// Whether `w` floats over auto-tiled windows rather than being in a
     /// tile: floated by hand, or a dialog, an alert or other fixed-size
     /// window, one whose largest size is less than its display's tiles,
     /// one tagged `floating`, or a kind that floats (`floating_kind`).
     /// Tiled by hand, it doesn't.
     pub fn floats(&self, w: &WindowElement) -> bool {
-        if w.meta().pip.get() {
+        let WindowSurface::Wayland(t) = w.0.underlying_surface();
+        if w.meta().pip.get() || t.parent().is_some() {
             return true;
         }
         if let Some(f) = Self::float_override(w) {
-            return f;
-        }
-        let WindowSurface::Wayland(t) = w.0.underlying_surface();
-        if t.parent().is_some() {
-            return true;
+            // (An alert tiled by hand before that was refused, from a
+            // restart's saved state: it floats. Asked only of those, not
+            // every window every turn.)
+            return f || super::groups::is_parentless_alert(w);
         }
         // (All it needs of the surface's state at one go: this is asked of
         // every window on every turn of the loop.)
@@ -1241,7 +1271,10 @@ impl<B: Backend + 'static> AnvilState<B> {
         if !self.auto.trees.values().any(|t| t.any_leaf(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(_), .. })))) {
             return;
         }
-        let back: Vec<(u64, u64)> = self.all_windows().iter().filter(|w| w.meta().placed.get() && w.meta().slot.get() > 0).map(|w| (w.meta().slot.get(), w.id())).collect();
+        // (Not one behind another in its group: its group's tile is the
+        // front's. Put back in a place kept for it, it was a tile of its own
+        // as well, seconds after a restart, once a hand had grouped it.)
+        let back: Vec<(u64, u64)> = self.all_windows().iter().filter(|w| w.meta().placed.get() && w.meta().slot.get() > 0 && !self.behind_in_group(w)).map(|w| (w.meta().slot.get(), w.id())).collect();
         if back.is_empty() {
             return;
         }
@@ -1251,9 +1284,19 @@ impl<B: Backend + 'static> AnvilState<B> {
                 if t.contains(id) {
                     continue;
                 }
+                let mut slots = None;
+                t.each_leaf(&mut |n| {
+                    if let Node::Kept(Kept { who: Who::Returning(s), .. }) = n
+                        && slots.is_none()
+                        && s.contains(&slot)
+                    {
+                        slots = Some(s.clone());
+                    }
+                });
                 let took = t.replace(&|n| matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&slot)), Node::Window(id));
                 if took {
                     info!(window = id, slot, "back in its tile");
+                    self.auto.kept_for.insert(id, slots.unwrap_or_else(|| vec![slot]));
                 }
                 changed |= took;
             }
@@ -1364,8 +1407,42 @@ impl<B: Backend + 'static> AnvilState<B> {
                 _ => false,
             })
         });
-        // The windows new to it.
-        let fresh: Vec<WindowElement> = units.iter().filter(|w| !tree.as_ref().is_some_and(|t| t.contains(w.id()))).cloned().collect();
+        // The windows new to it. (Not one just put back from a restart
+        // that's about to rejoin its group, a tab of a window here: given
+        // a tile of its own first, it split a neighbour's for a few
+        // frames, till the group formed.)
+        if self.auto.started.elapsed() >= RESTORING {
+            self.auto.kept_for.clear();
+            self.auto.awaiting.clear();
+        }
+        // Waiting no longer: in a tile, or in a group with one that is.
+        let in_trees = |id: u64, s: &Self| s.auto.trees.values().any(|t| t.contains(id)) || tree.as_ref().is_some_and(|t| t.contains(id));
+        let settled: Vec<u64> = self
+            .auto
+            .awaiting
+            .iter()
+            .copied()
+            .filter(|&id| match self.window_by_id(id) {
+                None => true,
+                Some(w) => in_trees(id, self) || self.groups.mates(&w).iter().any(|m| m.id() != id && in_trees(m.id(), self)),
+            })
+            .collect();
+        for id in settled {
+            self.auto.awaiting.remove(&id);
+        }
+        // (Its group's tile taken by a mate already, shown or not yet: its
+        // tabs may make a group of their own first, before the mate holding
+        // the tile shows to join.)
+        let mates_tile = |w: &WindowElement| {
+            let slot = w.meta().slot.get();
+            slot > 0 && self.auto.kept_for.iter().any(|(id, s)| *id != w.id() && s.contains(&slot) && tree.as_ref().is_some_and(|t| t.contains(*id)))
+        };
+        let fresh: Vec<WindowElement> = units
+            .iter()
+            .filter(|w| !tree.as_ref().is_some_and(|t| t.contains(w.id())))
+            .filter(|w| !(self.auto.awaiting.contains(&w.id()) && (mates_tile(w) || (self.groups.number_of(w).is_none() && self.joins_a_group(w)))))
+            .cloned()
+            .collect();
         for w in &fresh {
             self.auto_insert(&mut tree, w, area);
             // Gone from the place it left in another tree.
@@ -1671,15 +1748,39 @@ impl<B: Backend + 'static> AnvilState<B> {
             _ => false,
         };
         let Some(tree) = self.auto.trees.get_mut(&(ws, output.name())) else { return };
+        let mut slots = None;
+        tree.each_leaf(&mut |n| {
+            if let Node::Kept(Kept { who: Who::Returning(s), .. }) = n
+                && slots.is_none()
+                && s.contains(&slot)
+            {
+                slots = Some(s.clone());
+            }
+        });
         if !tree.replace(&mine, Node::Window(id)) {
             return;
         }
+        self.auto.kept_for.insert(id, slots.unwrap_or_else(|| vec![slot]));
         // On its display, so it is one of its tiles.
         let at = self.saved_location(&p);
         self.space.relocate_element(w, at);
         info!(window = id, app_id = w.app_id(), slot, "back into the tile kept for it");
         // At once, so its first configure has its tile's size.
         self.auto_output(&output);
+    }
+
+    /// `w` put back from a restart: it waits for its group to form before
+    /// it's given a tile of its own (`awaiting`).
+    pub(crate) fn auto_note_returning(&mut self, w: &WindowElement) {
+        if self.auto.started.elapsed() < RESTORING {
+            self.auto.awaiting.insert(w.id());
+        }
+    }
+
+    /// A hand grouped or ungrouped `w`: it's as it is now, not waiting for
+    /// the group it came back in.
+    pub(super) fn auto_settled(&mut self, w: &WindowElement) {
+        self.auto.awaiting.remove(&w.id());
     }
 
     /// In an auto-tiling tree on a display showing it: laid out by it.
@@ -1701,17 +1802,28 @@ impl<B: Backend + 'static> AnvilState<B> {
             && self.space.elements().any(|o| o != w && self.groupable(o) && self.group_key(o).as_ref() == Some(&key) && self.window_output(o) == display)
     }
 
-    /// Floating windows over the tiles of auto-tiled displays, in the
-    /// order they were.
-    fn keep_floating_above(&mut self) {
+    /// Floating windows over the tiles of auto-tiled displays, and among
+    /// themselves in the order they are (the one brought forward last on
+    /// top). Run as the tiles are laid out and wherever a window is raised
+    /// (`focus_window`: a tile activated comes over them only for a
+    /// moment).
+    pub(crate) fn keep_floating_above(&mut self) {
         if !self.auto.trees.keys().any(|(ws, o)| *ws == self.showing_named(o)) {
             return;
         }
         let leaves = self.auto_leaves();
         let order: Vec<WindowElement> = self.space.elements().cloned().collect();
         let Some(top_tile) = order.iter().rposition(|w| leaves.contains_key(&w.id())) else { return };
-        let under: Vec<WindowElement> = order[..top_tile].iter().filter(|w| !leaves.contains_key(&w.id()) && self.floats(w)).cloned().collect();
-        for w in under {
+        let float = |w: &&WindowElement| !leaves.contains_key(&w.id()) && self.floats(w);
+        if !order[..top_tile].iter().any(|w| float(&w)) {
+            return;
+        }
+        // Every one raised, bottom first: over the tiles, in the order they
+        // were. (Only those under a tile raised, one came over the float
+        // brought forward last, and kept doing so: Ben's "one of them keeps
+        // itself on top".)
+        let floats: Vec<WindowElement> = order.iter().filter(float).cloned().collect();
+        for w in floats {
             self.space.raise_element(&w, false);
         }
     }
@@ -1767,9 +1879,17 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// one tile or floats as its front window does, and whichever is in
     /// front (after a restart, another may be) must say the same.
     pub fn set_floating(&mut self, w: &WindowElement, floating: Option<bool>) {
+        if Self::floats_always(w) {
+            info!(window = w.id(), ?floating, "floating: it floats always (a dialog, an alert): left as it is");
+            return;
+        }
         let was = self.floats(w);
         for m in self.groups.mates(w).iter().chain(std::iter::once(w)) {
             Self::restore_float_override(m, floating);
+            // (On purpose: what a restart saved isn't put back over it.
+            // Floated by an agent, a window that came back as a tile was
+            // put back in its old tile's place, floating, 11 s later.)
+            m.meta().moved_on_purpose.set(true);
         }
         if self.floats(w) && !was && self.auto_tiled(w) {
             let own = w.user_data().get::<PreZoom>().and_then(|p| *p.0.borrow());
@@ -2226,6 +2346,23 @@ mod tests {
         assert!(one_size(420, 420));
         // A real largest size goes by the display's tiles.
         assert!(bounded(800));
+    }
+
+    /// A place kept from an earlier restart isn't saved under its old
+    /// slots, which this save numbers afresh: no slot is kept twice.
+    #[test]
+    fn an_old_kept_place_isnt_saved_by_its_old_slots() {
+        let old = Node::Kept(Kept { who: Who::Returning(vec![4]), holds: true, until: None });
+        let tree = Node::split(Cut::Rows, 0.8, Node::Window(9), old);
+        let saved = SavedNode::of(&tree, &|id| if id == 9 { vec![4] } else { Vec::new() }, &|_, _| None);
+        let restored = saved.node(Instant::now() + Duration::from_secs(20));
+        let mut fours = 0;
+        restored.each_leaf(&mut |n| {
+            if matches!(n, Node::Kept(Kept { who: Who::Returning(s), .. }) if s.contains(&4)) {
+                fours += 1;
+            }
+        });
+        assert_eq!(fours, 1, "{restored}");
     }
 
     #[test]

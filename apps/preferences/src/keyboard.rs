@@ -139,7 +139,7 @@ const KEYBOARD_PICTURE: f32 = 64.0;
 
 /// A keyboard Olo knows: its picture beside what it is, and its Touch ID
 /// as it stands here.
-fn known_keyboard(ui: &mut Ui, model: &'static olo_protocol::keyboards::Model) {
+fn known_keyboard(ui: &mut Ui, model: &'static olo_protocol::keyboards::Model, name: &str) {
     use olo_ui::{gpui::canvas, widgets::StringView};
     let mut facts = vec![format!("{} {}", model.maker, model.model)];
     facts.push(if model.keypad { "full size, with a numeric keypad".into() } else { "compact".into() });
@@ -163,6 +163,22 @@ fn known_keyboard(ui: &mut Ui, model: &'static olo_protocol::keyboards::Model) {
         let words =
             div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT)).child(StringView::new(facts.join(" · ")).wrap(true)).children(touch_id.map(|t| StringView::new(t).dim(true).wrap(true)));
         ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(picture).child(words));
+        if model.fn_row {
+            // Its own: the top row's way round (by its name, as Alt and
+            // the Windows key), and the Globe key (every Apple keyboard).
+            let k = &ui.s.keyboard;
+            let (first, globe) = (k.fkeys_first.iter().any(|n| n == name), k.globe_emoji);
+            let key = name.to_owned();
+            ui.check("Use F1, F2, etc. as standard function keys", first, move |s, v| {
+                let list = &mut s.keyboard.fkeys_first;
+                list.retain(|n| *n != key);
+                if v {
+                    list.push(key.clone());
+                }
+            });
+            ui.note(if first { "Hold Fn (🌐) for what's printed on them: brightness, Mission Control, Spotlight, media and volume." } else { "Hold Fn (🌐) for F1 to F12." });
+            ui.check("Press 🌐 alone to show emoji", globe, |s, v| s.keyboard.globe_emoji = v);
+        }
     });
 }
 
@@ -184,8 +200,8 @@ fn keyboards(ui: &mut Ui, st: &State) {
     }
     // Keyboards Olo knows: each in a box of its own, with its picture and
     // what it has.
-    for model in plugged.iter().filter_map(|n| olo_protocol::keyboards::identify(n)) {
-        known_keyboard(ui, model);
+    for (name, model) in plugged.iter().filter_map(|n| olo_protocol::keyboards::identify(n).map(|m| (n, m))) {
+        known_keyboard(ui, model, name);
     }
     ui.bbox("Swap Alt and the Windows Key", |ui| {
         for (name, here) in all {

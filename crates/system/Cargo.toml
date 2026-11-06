@@ -43,5 +43,9 @@ name = "nm-fake"
 path = "src/bin/nm_fake.rs"
 
 [[bin]]
+name = "olo-net-admin"
+path = "src/bin/net_admin.rs"
+
+[[bin]]
 name = "olo-gpu-tune"
 path = "src/bin/gpu_tune.rs"

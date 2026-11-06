@@ -21,6 +21,14 @@ pub struct Going {
     /// paused left out of the video.
     #[serde(default)]
     pub paused: bool,
+    /// Its clock has started (the encoder is open: NVENC takes a couple
+    /// of seconds); before, nothing is recorded yet.
+    #[serde(default = "yes")]
+    pub recording: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// The display a program is on (`WAYLAND_DISPLAY`'s name).

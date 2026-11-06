@@ -1,0 +1,3 @@
+folder|a plain closed folder for files, drawn as Workbench draws a drawer
+folder-open|an open Workbench drawer, pulled out, with a few white papers sticking out of it
+tracker|a file manager: an open Workbench drawer with a large magnifying glass leaning against it

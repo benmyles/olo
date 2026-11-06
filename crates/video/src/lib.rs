@@ -1,10 +1,16 @@
 //! Video made in process, nothing shelled out to: pictures (BGRA or
-//! RGBA rows) to H.264 ([`H264`], OpenH264 in its screen-content mode)
-//! into an MP4 ([`Mp4`], written as it goes: each sample to disk as it
-//! comes, with its own duration, the index at the end), for the screen
-//! recorder (olo-screenshot) and Agent Screens' Export Video.
+//! RGBA rows) to H.264 ([`H264`], OpenH264 in its screen-content mode),
+//! or through NVIDIA's encoder to H.264, HEVC or AV1 ([`Codec`]), into an
+//! MP4 ([`Mp4`], written as it goes: each sample to disk as it comes,
+//! with its own duration, the index at the end), for the screen recorder
+//! (olo-screenshot) and Agent Screens' Export Video.
 
+pub mod aac;
+pub mod config;
+pub mod gif;
 pub mod nvenc;
+pub use olo_vaapi as vaapi;
+pub mod trim;
 
 use std::{
     fs::File,
@@ -17,6 +23,20 @@ use openh264::{
     encoder::{BitRate, Complexity, Encoder as OpenH264Encoder, EncoderConfig, FrameRate, FrameType, IntraFramePeriod, RateControlMode, UsageType},
     formats::{BgraSliceU8, RgbaSliceU8, YUVBuffer},
 };
+
+/// A parameter set (or sequence header) kept for the sample entry: the
+/// first; one that differs later is an error, as the entry describes only
+/// one (an encoder opened again with other settings).
+fn keep(held: &mut Option<Vec<u8>>, set: &[u8]) -> std::io::Result<()> {
+    match held {
+        Some(h) if h.as_slice() != set => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "the stream's parameter sets changed")),
+        Some(_) => Ok(()),
+        None => {
+            *held = Some(set.to_vec());
+            Ok(())
+        }
+    }
+}
 
 /// The NAL units of an Annex B stream (start codes taken off).
 pub fn nal_units(stream: &[u8]) -> Vec<&[u8]> {
@@ -60,6 +80,81 @@ pub fn bitrate(width: u32, height: u32, fps: u32) -> u32 {
     (f64::from(width) * f64::from(height) * f64::from(fps) * 0.1).clamp(1e6, 80e6) as u32
 }
 
+/// What a video is coded as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Codec {
+    /// Plays everywhere; the processor's encoder makes only this.
+    #[default]
+    H264,
+    /// About half H.264's size for the same picture (NVIDIA's encoder).
+    Hevc,
+    /// For players that want it (NVIDIA's encoder, from its Ada GPUs on):
+    /// no smaller than H.264 on screens.
+    Av1,
+}
+
+impl Codec {
+    pub fn parse(s: &str) -> Option<Codec> {
+        match s.to_ascii_lowercase().as_str() {
+            "h264" | "h.264" | "avc" => Some(Codec::H264),
+            "hevc" | "h265" | "h.265" => Some(Codec::Hevc),
+            "av1" => Some(Codec::Av1),
+            _ => None,
+        }
+    }
+
+    /// As said to a person and to agents ("HEVC").
+    pub fn name(self) -> &'static str {
+        match self {
+            Codec::H264 => "H.264",
+            Codec::Hevc => "HEVC",
+            Codec::Av1 => "AV1",
+        }
+    }
+
+    /// Its setting's value ("hevc").
+    pub fn id(self) -> &'static str {
+        match self {
+            Codec::H264 => "h264",
+            Codec::Hevc => "hevc",
+            Codec::Av1 => "av1",
+        }
+    }
+
+    /// The MP4 sample entry's kind.
+    fn entry(self) -> &'static [u8; 4] {
+        match self {
+            Codec::H264 => b"avc1",
+            Codec::Hevc => b"hvc1",
+            Codec::Av1 => b"av01",
+        }
+    }
+
+    fn of_entry(kind: &[u8]) -> Option<Codec> {
+        match kind {
+            b"avc1" | b"avc3" => Some(Codec::H264),
+            b"hvc1" | b"hev1" => Some(Codec::Hevc),
+            b"av01" => Some(Codec::Av1),
+            _ => None,
+        }
+    }
+}
+
+/// NVENC's rate for `codec`: a constant quality, as many bits as keep it
+/// (at most twice `bps`). Each keeps a screen's text as the bitrate did
+/// (48.4–48.9 dB luma PSNR on a 1280 × 800 screen typed into, `codec_sizes`)
+/// in fewer bytes: H.264 at 20, 190 KB for 3 s where the bitrate spent
+/// 277; HEVC at 26, 105 (P6) or 145 KB (P4); AV1 at 28, about 220 (no
+/// smaller than H.264 on screens: it lacks the screen content tools).
+fn quality(codec: Codec, bps: u32) -> nvenc::Rate {
+    let q = match codec {
+        Codec::H264 => 20,
+        Codec::Hevc => 26,
+        Codec::Av1 => 28,
+    };
+    nvenc::Rate::Quality(q, bps.saturating_mul(2))
+}
+
 /// Which encoder a recording uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Choice {
@@ -70,6 +165,9 @@ pub enum Choice {
     Cpu,
     /// NVIDIA's GPU (NVENC), or an error saying why not.
     Nvidia,
+    /// Intel's or AMD's GPU through VA-API: AV1 only (what Fedora's
+    /// drivers encode), or an error saying why not.
+    Vaapi,
 }
 
 impl Choice {
@@ -78,25 +176,54 @@ impl Choice {
             "auto" => Some(Choice::Auto),
             "cpu" => Some(Choice::Cpu),
             "nvidia" | "nvenc" | "gpu" => Some(Choice::Nvidia),
+            "vaapi" | "intel" | "amd" => Some(Choice::Vaapi),
             _ => None,
         }
     }
 }
 
-/// An H.264 encoder: the GPU's or the processor's ([`Choice`]).
+/// An encoder: the GPU's (any [`Codec`]) or the processor's (H.264)
+/// ([`Choice`]).
 pub enum Encoder {
     Cpu(H264),
     Nvidia(nvenc::Nvenc, Vec<u8>),
+    Vaapi(vaapi::Av1),
 }
 
 impl Encoder {
-    /// One for `width` × `height` (even) pictures at up to `fps` a second.
-    pub fn new(width: u32, height: u32, fps: u32, choice: Choice) -> Result<Encoder, String> {
-        let nvidia = || nvenc::Nvenc::new(width, height, fps.clamp(1, 120), bitrate(width, height, fps)).map(|e| Encoder::Nvidia(e, Vec::new()));
+    /// One for `width` × `height` (even) pictures at up to `fps` a second,
+    /// coded as `codec`. Auto takes NVIDIA's where it opens, else, for
+    /// AV1, Intel's or AMD's through VA-API, else the processor, and so
+    /// H.264 ([`Encoder::codec`] says which); the processor asked for
+    /// another codec is an error, as VA-API asked for other than AV1.
+    pub fn new(width: u32, height: u32, fps: u32, choice: Choice, codec: Codec) -> Result<Encoder, String> {
+        let nvidia = || nvenc::Nvenc::with_rate(width, height, fps.clamp(1, 120), quality(codec, bitrate(width, height, fps)), codec).map(|e| Encoder::Nvidia(e, Vec::new()));
+        let cpu = || {
+            if choice == Choice::Cpu && codec != Codec::H264 {
+                return Err(format!("the processor encodes H.264 only, not {}", codec.name()));
+            }
+            H264::new(width, height, fps).map(Encoder::Cpu)
+        };
+        let vaapi = || {
+            if codec != Codec::Av1 {
+                return Err(format!("the GPU's driver encodes AV1 only here, not {}", codec.name()));
+            }
+            vaapi::Av1::new(None, width, height, fps, vaapi::QUALITY).map(Encoder::Vaapi)
+        };
         match choice {
-            Choice::Cpu => H264::new(width, height, fps).map(Encoder::Cpu),
+            Choice::Cpu => cpu(),
             Choice::Nvidia => nvidia(),
-            Choice::Auto => nvidia().or_else(|_| H264::new(width, height, fps).map(Encoder::Cpu)),
+            Choice::Vaapi => vaapi(),
+            Choice::Auto => nvidia().or_else(|_| vaapi()).or_else(|_| cpu()),
+        }
+    }
+
+    /// What it codes as.
+    pub fn codec(&self) -> Codec {
+        match self {
+            Encoder::Cpu(_) => Codec::H264,
+            Encoder::Nvidia(e, _) => e.codec(),
+            Encoder::Vaapi(_) => Codec::Av1,
         }
     }
 
@@ -105,6 +232,9 @@ impl Encoder {
         match self {
             Encoder::Cpu(_) => "the processor (OpenH264)",
             Encoder::Nvidia(..) => "NVIDIA's GPU (NVENC)",
+            Encoder::Vaapi(e) if e.driver().contains("Intel") => "the Intel GPU (VA-API)",
+            Encoder::Vaapi(e) if e.driver().contains("AMD") || e.driver().contains("Radeon") => "the AMD GPU (VA-API)",
+            Encoder::Vaapi(_) => "the GPU (VA-API)",
         }
     }
 
@@ -112,11 +242,12 @@ impl Encoder {
         match self {
             Encoder::Cpu(e) => e.size(),
             Encoder::Nvidia(e, _) => e.size(),
+            Encoder::Vaapi(e) => e.size(),
         }
     }
 
-    /// One picture encoded: its Annex B bytes, and whether it's a key
-    /// frame.
+    /// One picture encoded: its Annex B bytes (AV1: a temporal unit's
+    /// OBUs), and whether it's a key frame.
     pub fn encode(&mut self, data: &[u8], stride: usize, order: Order) -> Result<(Vec<u8>, bool), String> {
         match self {
             Encoder::Cpu(e) => e.encode(data, stride, order),
@@ -132,6 +263,7 @@ impl Encoder {
                     e.encode(swapped, stride)
                 }
             },
+            Encoder::Vaapi(e) => e.encode(data, stride, order == Order::Rgba),
         }
     }
 }
@@ -213,8 +345,14 @@ pub struct Mp4 {
     height: u32,
     /// Ticks a second of the durations given.
     timescale: u32,
+    codec: Codec,
+    /// The parameter sets (HEVC's VPS too), or AV1's sequence header OBU.
+    vps: Option<Vec<u8>>,
     sps: Option<Vec<u8>>,
     pps: Option<Vec<u8>>,
+    /// The sample entry as given (a trimmed copy's, its source's), in
+    /// place of one made from the stream.
+    entry: Option<Vec<u8>>,
     /// Each sample's place in the file, size and duration.
     offsets: Vec<u64>,
     sizes: Vec<u32>,
@@ -223,14 +361,83 @@ pub struct Mp4 {
     at: u64,
     /// Where `mdat`'s 64-bit size goes.
     mdat_size_at: u64,
+    /// A sound track (AAC), if there is one.
+    audio: Option<Audio>,
+    /// Where playback starts in the first picture (ticks), by an edit
+    /// list: a trimmed video's (`trim`).
+    start: u32,
+    /// Chapters (`chapters`): where each starts (milliseconds) and its
+    /// title.
+    chapters: Vec<(u64, String)>,
+}
+
+impl Mp4 {
+    /// The video's sample entry, from the stream's parameter sets (or
+    /// sequence header): `avc1` with `avcC`, `hvc1` with `hvcC`, `av01`
+    /// with `av1C`.
+    fn sample_entry(&self) -> Option<Vec<u8>> {
+        let u16b = |v: u16| v.to_be_bytes().to_vec();
+        let config = match self.codec {
+            Codec::H264 => {
+                let (sps, pps) = (self.sps.as_ref()?, self.pps.as_ref()?);
+                bx(b"avcC", &[vec![1, *sps.get(1)?, *sps.get(2)?, *sps.get(3)?, 0xff, 0xe1], u16b(sps.len() as u16), sps.clone(), vec![1], u16b(pps.len() as u16), pps.clone()].concat())
+            }
+            Codec::Hevc => bx(b"hvcC", &config::hvcc(self.vps.as_ref()?, self.sps.as_ref()?, self.pps.as_ref()?)?),
+            Codec::Av1 => bx(b"av1C", &config::av1c(self.sps.as_ref()?)?),
+        };
+        // (No compressor name: 32 zero bytes.)
+        Some(bx(
+            self.codec.entry(),
+            &[
+                vec![0; 6],
+                u16b(1),
+                vec![0; 16],
+                u16b(self.width as u16),
+                u16b(self.height as u16),
+                0x0048_0000u32.to_be_bytes().to_vec(),
+                0x0048_0000u32.to_be_bytes().to_vec(),
+                vec![0; 4],
+                u16b(1),
+                vec![0; 32],
+                u16b(0x18),
+                u16b(0xffff),
+                config,
+            ]
+            .concat(),
+        ))
+    }
+}
+
+/// An MP4's sound track: AAC access units of `aac::FRAME` samples each.
+struct Audio {
+    /// AudioSpecificConfig.
+    config: Vec<u8>,
+    rate: u32,
+    channels: u32,
+    /// The encoder's priming, cut by an edit list.
+    delay: u32,
+    bitrate: u32,
+    offsets: Vec<u64>,
+    sizes: Vec<u32>,
 }
 
 impl Mp4 {
     /// A new MP4 at `path` of `width` × `height`, its durations in
     /// `timescale` ticks a second.
     pub fn create(path: &Path, width: u32, height: u32, timescale: u32) -> std::io::Result<Mp4> {
+        Mp4::create_for(path, width, height, timescale, Codec::H264)
+    }
+
+    /// [`Mp4::create`] for a video coded as `codec` (what [`Mp4::add`]
+    /// is given is that encoder's).
+    pub fn create_for(path: &Path, width: u32, height: u32, timescale: u32, codec: Codec) -> std::io::Result<Mp4> {
         let mut file = BufWriter::new(File::create(path)?);
-        let ftyp = bx(b"ftyp", &[b"isom".as_slice(), &0x200u32.to_be_bytes(), b"isom", b"iso2", b"avc1", b"mp41"].concat());
+        let brand: &[u8] = match codec {
+            Codec::H264 => b"avc1",
+            Codec::Hevc => b"iso4",
+            Codec::Av1 => b"av01",
+        };
+        let ftyp = bx(b"ftyp", &[b"isom".as_slice(), &0x200u32.to_be_bytes(), b"isom", b"iso2", brand, b"mp41"].concat());
         file.write_all(&ftyp)?;
         // `mdat` with a 64-bit size (size 1, then the large size), filled
         // in at the end.
@@ -239,7 +446,26 @@ impl Mp4 {
         file.write_all(b"mdat")?;
         file.write_all(&0u64.to_be_bytes())?;
         let at = mdat_size_at + 8;
-        Ok(Mp4 { file, width, height, timescale: timescale.max(1), sps: None, pps: None, offsets: Vec::new(), sizes: Vec::new(), durations: Vec::new(), keys: Vec::new(), at, mdat_size_at })
+        Ok(Mp4 {
+            file,
+            width,
+            height,
+            timescale: timescale.max(1),
+            codec,
+            vps: None,
+            sps: None,
+            pps: None,
+            entry: None,
+            offsets: Vec::new(),
+            sizes: Vec::new(),
+            durations: Vec::new(),
+            keys: Vec::new(),
+            at,
+            mdat_size_at,
+            audio: None,
+            start: 0,
+            chapters: Vec::new(),
+        })
     }
 
     /// The video's size.
@@ -256,24 +482,71 @@ impl Mp4 {
         self.sizes.is_empty()
     }
 
-    /// One encoded picture (Annex B) shown for `duration` ticks; its
-    /// parameter sets are kept for the track's description.
-    pub fn add(&mut self, annex_b: &[u8], key: bool, duration: u32) -> std::io::Result<()> {
-        let mut sample = Vec::with_capacity(annex_b.len());
-        for u in nal_units(annex_b) {
-            match u[0] & 0x1f {
-                7 => self.sps = Some(u.to_vec()),
-                8 => self.pps = Some(u.to_vec()),
-                _ => {
-                    sample.extend_from_slice(&(u.len() as u32).to_be_bytes());
-                    sample.extend_from_slice(u);
+    /// A copy of another MP4's video (`trim`): its sample entry (`entry`,
+    /// the whole box) kept as it is, its samples given whole
+    /// ([`Mp4::add_sample`]).
+    pub fn copying(path: &Path, width: u32, height: u32, timescale: u32, entry: Vec<u8>) -> std::io::Result<Mp4> {
+        let codec = entry.get(4..8).and_then(Codec::of_entry).unwrap_or_default();
+        let mut mp4 = Mp4::create_for(path, width, height, timescale, codec)?;
+        mp4.entry = Some(entry);
+        Ok(mp4)
+    }
+
+    /// One encoded picture shown for `duration` ticks, as its encoder gave
+    /// it: H.264 or HEVC in Annex B, AV1 as OBUs. Its parameter sets (or
+    /// sequence header) are kept for the track's description, not in the
+    /// sample; access unit delimiters, temporal delimiters and padding go.
+    pub fn add(&mut self, coded: &[u8], key: bool, duration: u32) -> std::io::Result<()> {
+        let mut sample = Vec::with_capacity(coded.len());
+        let unit = |u: &[u8], sample: &mut Vec<u8>| {
+            sample.extend_from_slice(&(u.len() as u32).to_be_bytes());
+            sample.extend_from_slice(u);
+        };
+        match self.codec {
+            Codec::H264 => {
+                for u in nal_units(coded) {
+                    match u[0] & 0x1f {
+                        7 => keep(&mut self.sps, u)?,
+                        8 => keep(&mut self.pps, u)?,
+                        9 => {}
+                        _ => unit(u, &mut sample),
+                    }
+                }
+            }
+            Codec::Hevc => {
+                for u in nal_units(coded) {
+                    match (u[0] >> 1) & 0x3f {
+                        32 => keep(&mut self.vps, u)?,
+                        33 => keep(&mut self.sps, u)?,
+                        34 => keep(&mut self.pps, u)?,
+                        35 => {}
+                        _ => unit(u, &mut sample),
+                    }
+                }
+            }
+            Codec::Av1 => {
+                let mut b = coded;
+                while let Some((kind, head, size)) = config::obu(b) {
+                    let o = &b[..head + size];
+                    match kind {
+                        1 => keep(&mut self.sps, o)?,
+                        2 | 15 => {}
+                        _ => sample.extend_from_slice(o),
+                    }
+                    b = &b[head + size..];
                 }
             }
         }
+        self.add_sample(&sample, key, duration)
+    }
+
+    /// One sample, as the file holds it (length-prefixed NAL units, or
+    /// OBUs), shown for `duration` ticks.
+    pub fn add_sample(&mut self, sample: &[u8], key: bool, duration: u32) -> std::io::Result<()> {
         if sample.is_empty() {
             return Ok(());
         }
-        self.file.write_all(&sample)?;
+        self.file.write_all(sample)?;
         self.offsets.push(self.at);
         self.sizes.push(sample.len() as u32);
         self.durations.push(duration.max(1));
@@ -282,6 +555,36 @@ impl Mp4 {
             self.keys.push(self.sizes.len() as u32);
         }
         Ok(())
+    }
+
+    /// A sound track too, of the access units of the encoder `track`
+    /// describes (`add_sound`).
+    pub fn with_sound(&mut self, track: &aac::Track, rate: u32, bitrate: u32) {
+        self.audio = Some(Audio { config: track.config.clone(), rate, channels: track.channels, delay: track.delay, bitrate, offsets: Vec::new(), sizes: Vec::new() });
+    }
+
+    /// One AAC access unit (`aac::FRAME` samples) of the sound track.
+    pub fn add_sound(&mut self, au: &[u8]) -> std::io::Result<()> {
+        let Some(a) = self.audio.as_mut() else { return Ok(()) };
+        self.file.write_all(au)?;
+        a.offsets.push(self.at);
+        a.sizes.push(au.len() as u32);
+        self.at += au.len() as u64;
+        Ok(())
+    }
+
+    /// Played from `ticks` into the video (an edit list), what's before
+    /// kept only to decode from (a trimmed recording starts at its key
+    /// frame before).
+    /// Chapters: each mark's start (milliseconds into the video) and
+    /// title, written as Nero's `chpl` (in `moov`'s `udta`), which
+    /// FFmpeg, mpv and VLC read; at most 255, titles cut to 255 bytes.
+    pub fn chapters(&mut self, marks: Vec<(u64, String)>) {
+        self.chapters = marks;
+    }
+
+    pub fn start_at(&mut self, ticks: u32) {
+        self.start = ticks;
     }
 
     /// The last sample shown `duration` ticks longer (a still screen: its
@@ -294,26 +597,34 @@ impl Mp4 {
 
     /// The index written, the file whole and playable.
     pub fn finish(mut self) -> std::io::Result<()> {
-        let (Some(sps), Some(pps)) = (self.sps.clone(), self.pps.clone()) else { return Err(std::io::Error::other("the encoder gave no parameter sets")) };
+        let entry = match self.entry.take() {
+            Some(e) => e,
+            None => self.sample_entry().ok_or_else(|| std::io::Error::other("the encoder gave no parameter sets"))?,
+        };
         let n = self.sizes.len() as u32;
         let duration: u64 = self.durations.iter().map(|&d| u64::from(d)).sum();
         let duration = duration.min(u64::from(u32::MAX)) as u32;
         let u32b = |v: u32| v.to_be_bytes().to_vec();
         let u16b = |v: u16| v.to_be_bytes().to_vec();
         let matrix: Vec<u8> = [0x10000u32, 0, 0, 0, 0x10000, 0, 0, 0, 0x4000_0000].iter().flat_map(|v| v.to_be_bytes()).collect();
-        let mvhd = full(b"mvhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(duration), u32b(0x10000), u16b(0x100), vec![0; 10], matrix.clone(), vec![0; 24], u32b(2)].concat());
-        let tkhd =
-            full(b"tkhd", 3, &[u32b(0), u32b(0), u32b(1), u32b(0), u32b(duration), vec![0; 8], u16b(0), u16b(0), u16b(0), u16b(0), matrix, u32b(self.width << 16), u32b(self.height << 16)].concat());
+        // The sound's length, its priming cut, in the movie's ticks.
+        let sound = self.audio.as_ref().filter(|a| !a.sizes.is_empty()).map(|a| {
+            let samples = (a.sizes.len() as u64 * aac::FRAME as u64).saturating_sub(u64::from(a.delay));
+            (samples * u64::from(self.timescale) / u64::from(a.rate.max(1))).min(u64::from(u32::MAX)) as u32
+        });
+        // (What's before an edit list's start isn't shown.)
+        let shown = duration.saturating_sub(self.start);
+        let movie = shown.max(sound.unwrap_or(0));
+        let next_track = if sound.is_some() { 3 } else { 2 };
+        let mvhd = full(b"mvhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(movie), u32b(0x10000), u16b(0x100), vec![0; 10], matrix.clone(), vec![0; 24], u32b(next_track)].concat());
+        let tkhd = full(
+            b"tkhd",
+            3,
+            &[u32b(0), u32b(0), u32b(1), u32b(0), u32b(shown), vec![0; 8], u16b(0), u16b(0), u16b(0), u16b(0), matrix.clone(), u32b(self.width << 16), u32b(self.height << 16)].concat(),
+        );
         let mdhd = full(b"mdhd", 0, &[u32b(0), u32b(0), u32b(self.timescale), u32b(duration), u16b(0x55c4), u16b(0)].concat());
         let hdlr = full(b"hdlr", 0, &[u32b(0), b"vide".to_vec(), vec![0; 12], b"Olo video\0".to_vec()].concat());
-        let avcc = bx(b"avcC", &[vec![1, sps[1], sps[2], sps[3], 0xff, 0xe1], u16b(sps.len() as u16), sps.clone(), vec![1], u16b(pps.len() as u16), pps.clone()].concat());
-        // (No compressor name: 32 zero bytes.)
-        let avc1 = bx(
-            b"avc1",
-            &[vec![0; 6], u16b(1), vec![0; 16], u16b(self.width as u16), u16b(self.height as u16), u32b(0x0048_0000), u32b(0x0048_0000), u32b(0), u16b(1), vec![0; 32], u16b(0x18), u16b(0xffff), avcc]
-                .concat(),
-        );
-        let stsd = full(b"stsd", 0, &[u32b(1), avc1].concat());
+        let stsd = full(b"stsd", 0, &[u32b(1), entry].concat());
         // Durations, run by run.
         let mut runs: Vec<(u32, u32)> = Vec::new();
         for &d in &self.durations {
@@ -333,8 +644,31 @@ impl Mp4 {
         let dinf = bx(b"dinf", &full(b"dref", 0, &[u32b(1), full(b"url ", 1, &[])].concat()));
         let minf = bx(b"minf", &[vmhd, dinf, stbl].concat());
         let mdia = bx(b"mdia", &[mdhd, hdlr, minf].concat());
-        let trak = bx(b"trak", &[tkhd, mdia].concat());
-        let moov = bx(b"moov", &[mvhd, trak].concat());
+        let edts = if self.start > 0 { bx(b"edts", &full(b"elst", 0, &[u32b(1), u32b(shown), u32b(self.start), u16b(1), u16b(0)].concat())) } else { Vec::new() };
+        let trak = bx(b"trak", &[tkhd, edts, mdia].concat());
+        let sound_trak = match (&self.audio, sound) {
+            (Some(a), Some(length)) => sound_track(a, length, &matrix),
+            _ => Vec::new(),
+        };
+        let udta = if self.chapters.is_empty() {
+            Vec::new()
+        } else {
+            let mut body = vec![0u8; 4];
+            let marks = &self.chapters[..self.chapters.len().min(255)];
+            body.push(marks.len() as u8);
+            for (ms, title) in marks {
+                // (Hundreds of nanoseconds; the title cut at a character.)
+                body.extend_from_slice(&(ms * 10_000).to_be_bytes());
+                let mut end = title.len().min(255);
+                while !title.is_char_boundary(end) {
+                    end -= 1;
+                }
+                body.push(end as u8);
+                body.extend_from_slice(&title.as_bytes()[..end]);
+            }
+            bx(b"udta", &full(b"chpl", 0x0100_0000, &body))
+        };
+        let moov = bx(b"moov", &[mvhd, trak, sound_trak, udta].concat());
         self.file.write_all(&moov)?;
         // `mdat`'s size: its header (16) and every sample.
         let mdat_size = self.at - (self.mdat_size_at - 8);
@@ -343,6 +677,41 @@ impl Mp4 {
         file.write_all(&mdat_size.to_be_bytes())?;
         file.sync_all()
     }
+}
+
+/// The sound track's `trak`: AAC in `mp4a`, its priming cut by an edit
+/// list, `length` long in the movie's ticks.
+fn sound_track(a: &Audio, length: u32, matrix: &[u8]) -> Vec<u8> {
+    let u32b = |v: u32| v.to_be_bytes().to_vec();
+    let u16b = |v: u16| v.to_be_bytes().to_vec();
+    let n = a.sizes.len() as u32;
+    let media = n.saturating_mul(aac::FRAME as u32);
+    let tkhd = full(b"tkhd", 3, &[u32b(0), u32b(0), u32b(2), u32b(0), u32b(length), vec![0; 8], u16b(0), u16b(1), u16b(0x0100), u16b(0), matrix.to_vec(), u32b(0), u32b(0)].concat());
+    // Played from after the encoder's priming.
+    let elst = full(b"elst", 0, &[u32b(1), u32b(length), u32b(a.delay), u16b(1), u16b(0)].concat());
+    let edts = bx(b"edts", &elst);
+    let mdhd = full(b"mdhd", 0, &[u32b(0), u32b(0), u32b(a.rate), u32b(media), u16b(0x55c4), u16b(0)].concat());
+    let hdlr = full(b"hdlr", 0, &[u32b(0), b"soun".to_vec(), vec![0; 12], b"Olo sound\0".to_vec()].concat());
+    // The decoder's configuration: an ES descriptor holding a decoder
+    // config descriptor (MPEG-4 audio, an audio stream) holding the
+    // AudioSpecificConfig, and the sync layer's.
+    let desc = |tag: u8, body: Vec<u8>| [vec![tag, body.len() as u8], body].concat();
+    let dsi = desc(0x05, a.config.clone());
+    let dcd = desc(0x04, [vec![0x40, 0x15, 0, 0x18, 0], u32b(a.bitrate), u32b(a.bitrate), dsi].concat());
+    let es = desc(0x03, [u16b(2), vec![0], dcd, desc(0x06, vec![0x02])].concat());
+    let esds = full(b"esds", 0, &es);
+    let mp4a = bx(b"mp4a", &[vec![0; 6], u16b(1), vec![0; 8], u16b(a.channels as u16), u16b(16), u16b(0), u16b(0), u32b(a.rate << 16), esds].concat());
+    let stsd = full(b"stsd", 0, &[u32b(1), mp4a].concat());
+    let stts = full(b"stts", 0, &[u32b(1), u32b(n), u32b(aac::FRAME as u32)].concat());
+    let stsc = full(b"stsc", 0, &[u32b(1), u32b(1), u32b(1), u32b(1)].concat());
+    let stsz = full(b"stsz", 0, &[u32b(0), u32b(n), a.sizes.iter().flat_map(|s| s.to_be_bytes()).collect()].concat());
+    let co64 = full(b"co64", 0, &[u32b(n), a.offsets.iter().flat_map(|o| o.to_be_bytes()).collect()].concat());
+    let stbl = bx(b"stbl", &[stsd, stts, stsc, stsz, co64].concat());
+    let smhd = full(b"smhd", 0, &[0u8; 4]);
+    let dinf = bx(b"dinf", &full(b"dref", 0, &[u32b(1), full(b"url ", 1, &[])].concat()));
+    let minf = bx(b"minf", &[smhd, dinf, stbl].concat());
+    let mdia = bx(b"mdia", &[mdhd, hdlr, minf].concat());
+    bx(b"trak", &[tkhd, edts, mdia].concat())
 }
 
 fn bx(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
@@ -365,6 +734,96 @@ mod tests {
 
     /// A few pictures encoded and written, held for their durations: the
     /// file's boxes where they should be, its samples and times as given.
+    /// How long opening an encoder takes (NVENC's CUDA context), run by
+    /// hand: `cargo test -p olo-video encoder_opening -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn encoder_opening() {
+        for choice in [Choice::Nvidia, Choice::Cpu] {
+            let t = std::time::Instant::now();
+            let e = Encoder::new(1280, 800, 30, choice, Codec::H264);
+            eprintln!("{choice:?}: {:?} in {:?}", e.as_ref().map(|e| e.name()), t.elapsed());
+        }
+    }
+
+    #[test]
+    fn an_mp4_with_sound() {
+        let Ok(mut aac) = aac::Aac::new(48_000, 2, 160_000) else { return eprintln!("no libfdk-aac here") };
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-video-sound-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("s.mp4");
+        let (w, h) = (64u32, 48u32);
+        let mut enc = H264::new(w, h, 30).unwrap();
+        let mut mp4 = Mp4::create(&path, w, h, 1000).unwrap();
+        mp4.with_sound(&aac.track(), 48_000, 160_000);
+        // Two seconds: a picture a second, a tone throughout.
+        let mut sent = 0usize;
+        for second in 0..2u8 {
+            let px: Vec<u8> = (0..(w * h)).flat_map(|p| [second * 100, (p % 255) as u8, 128, 255]).collect();
+            let (bits, key) = enc.encode(&px, w as usize * 4, Order::Bgra).unwrap();
+            mp4.add(&bits, key, 1000).unwrap();
+            while sent < (second as usize + 1) * 48_000 {
+                let frame: Vec<i16> = (0..aac::FRAME)
+                    .flat_map(|i| {
+                        let v = (((sent + i) as f32 / 48_000.0 * 440.0 * std::f32::consts::TAU).sin() * 8000.0) as i16;
+                        [v, v]
+                    })
+                    .collect();
+                sent += aac::FRAME;
+                for au in aac.encode(&frame).unwrap() {
+                    mp4.add_sound(&au).unwrap();
+                }
+            }
+        }
+        for au in aac.flush().unwrap() {
+            mp4.add_sound(&au).unwrap();
+        }
+        mp4.finish().unwrap();
+        // Read back: a video track and an AAC one, about as long.
+        let f = std::fs::File::open(&path).unwrap();
+        let size = f.metadata().unwrap().len();
+        let r = mp4::Mp4Reader::read_header(std::io::BufReader::new(f), size).unwrap();
+        assert_eq!(r.tracks().len(), 2);
+        let sound = r.tracks().values().find(|t| t.track_type().ok() == Some(mp4::TrackType::Audio)).expect("a sound track");
+        assert_eq!(sound.media_type().unwrap(), mp4::MediaType::AAC);
+        assert_eq!(sound.sample_freq_index().unwrap().freq(), 48_000);
+        assert_eq!(sound.channel_config().unwrap(), mp4::ChannelConfig::Stereo);
+        let secs = sound.duration().as_secs_f64();
+        assert!((1.9..2.2).contains(&secs), "{secs} s of sound");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An encoder opened again with the same settings goes on in the same
+    /// file; one whose parameter sets differ is refused (the file's entry
+    /// describes one), and what came before is still a whole file.
+    #[test]
+    fn changed_parameter_sets_are_refused() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-params-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("p.mp4");
+        let px = |w: u32, h: u32| vec![128u8; (w * h * 4) as usize];
+        let mut mp4 = Mp4::create(&path, 64, 48, 1000).unwrap();
+        let mut a = H264::new(64, 48, 30).unwrap();
+        let (bits, key) = a.encode(&px(64, 48), 64 * 4, Order::Bgra).unwrap();
+        mp4.add(&bits, key, 33).unwrap();
+        // The same settings again: the same sets, going on.
+        let mut again = H264::new(64, 48, 30).unwrap();
+        let (bits, key) = again.encode(&px(64, 48), 64 * 4, Order::Bgra).unwrap();
+        assert!(key);
+        mp4.add(&bits, key, 33).unwrap();
+        // Another size: refused, the file as it was.
+        let mut other = H264::new(96, 64, 30).unwrap();
+        let (bits, key) = other.encode(&px(96, 64), 96 * 4, Order::Bgra).unwrap();
+        assert_eq!(mp4.add(&bits, key, 33).unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(mp4.len(), 2);
+        mp4.finish().unwrap();
+        let f = std::fs::File::open(&path).unwrap();
+        let size = f.metadata().unwrap().len();
+        let r = mp4::Mp4Reader::read_header(std::io::BufReader::new(f), size).unwrap();
+        assert_eq!(r.tracks().values().next().unwrap().sample_count(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn an_mp4_written_as_it_goes() {
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-video-test-{}", std::process::id()));
@@ -464,6 +923,325 @@ mod tests {
         }
     }
 
+    /// NVIDIA's HEVC and AV1, where there's an encoder for them: an MP4
+    /// of each made (its `hvcC` or `av1C` from the stream), its pictures
+    /// decoded back (as a GIF is made), trimmed, and a GIF of it
+    /// (`--ignored`: it needs the GPU).
+    #[test]
+    #[ignore]
+    fn nvenc_makes_hevc_and_av1_mp4s() {
+        if !nvenc::available() {
+            eprintln!("no NVIDIA encoder here: nothing to try");
+            return;
+        }
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-codec-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let (w, h) = (640u32, 360u32);
+        for codec in [Codec::Hevc, Codec::Av1] {
+            let mut e = match Encoder::new(w, h, 30, Choice::Nvidia, codec) {
+                Ok(e) => e,
+                Err(err) => panic!("{}: {err}", codec.name()),
+            };
+            assert_eq!(e.codec(), codec);
+            let path = dir.join(format!("{}.mp4", codec.id()));
+            let mut mp4 = Mp4::create_for(&path, w, h, 1000, codec).unwrap();
+            let mut keys = 0;
+            for i in 0..90u32 {
+                // A bar moving down a grey picture, a third of a second each.
+                let px: Vec<u8> = (0..w * h)
+                    .flat_map(|p| {
+                        let y = p / w;
+                        let v = if (y + 360 - (i * 4) % 360) % 360 < 30 { 230 } else { 60 };
+                        [v, v, v, 255]
+                    })
+                    .collect();
+                let (bits, key) = e.encode(&px, w as usize * 4, Order::Bgra).unwrap();
+                keys += usize::from(key);
+                mp4.add(&bits, key, 33).unwrap();
+            }
+            assert!(keys >= 1);
+            mp4.finish().unwrap();
+            let entry = trim::video_entry(&path).unwrap();
+            assert_eq!(&entry[4..8], codec.entry());
+            // Decoded back, every picture.
+            let v = gif::tests_open(&path).unwrap();
+            let mut seen = 0;
+            v.each_decoded(&mut |rgb| {
+                seen += 1;
+                // The bar's rows bright, the rest dark.
+                let at = |y: usize| rgb[(y * w as usize + 300) * 3];
+                let bar = (0..h as usize).find(|&y| at(y) > 180 && at((y + 360 - 1) % 360) < 120);
+                assert!(at(((seen - 1) * 4 % 360 + 15) % 360) > 180 || seen > 85, "picture {seen}: bar at {bar:?}");
+                Ok(())
+            })
+            .unwrap();
+            assert!(seen >= 88, "{}: {seen} pictures", codec.name());
+            // Trimmed: its entry copied, about a second.
+            let cut = dir.join(format!("{}-cut.mp4", codec.id()));
+            let t = trim::trim(&path, &cut, 0.5, 1.6).unwrap();
+            assert!(t.frames >= 30, "{t:?}");
+            assert_eq!(trim::video_entry(&cut).unwrap(), entry);
+            // And made a GIF.
+            let g = gif::from_mp4(&path, &dir.join(format!("{}.gif", codec.id())), &gif::Options::default(), &std::sync::atomic::AtomicBool::new(false), &|_| {}).unwrap();
+            assert!(g.frames >= 10, "{g:?}");
+            eprintln!("{}: {} bytes, {seen} pictures decoded, trimmed to {} frames, GIF of {}", codec.name(), std::fs::metadata(&path).unwrap().len(), t.frames, g.frames);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// What a 4K frame costs NVENC in each codec (`--ignored`: the GPU).
+    #[test]
+    #[ignore]
+    fn nvenc_cost_by_codec() {
+        if !nvenc::available() {
+            return;
+        }
+        let (w, h) = (3840u32, 2160u32);
+        let mut px: Vec<u8> = (0..w * h)
+            .flat_map(|p| {
+                let (x, y) = (p % w, p / w);
+                let v = if (y / 24) % 2 == 0 && (x / 7) % 3 != 0 { 40 } else { 235 };
+                [v, v, v, 255]
+            })
+            .collect();
+        for codec in [Codec::H264, Codec::Hevc, Codec::Av1] {
+            let mut e = nvenc::Nvenc::with_rate(w, h, 30, nvenc::Rate::Quality(24, 50_000_000), codec).unwrap();
+            let mut times = Vec::new();
+            for i in 0..40u32 {
+                for y in (i * 20) % (h - 40)..(i * 20) % (h - 40) + 40 {
+                    for x in 100..2000 {
+                        px[((y * w + x) * 4) as usize] = (i * 6) as u8;
+                    }
+                }
+                let t = std::time::Instant::now();
+                e.encode(&px, w as usize * 4).unwrap();
+                times.push(t.elapsed());
+            }
+            times.sort();
+            eprintln!("{:5} 4K: median {:?}, slowest {:?} a frame", codec.name(), times[20], times[39]);
+        }
+    }
+
+    /// A real screen (`OLO_BENCH_SCREEN`, a PNG; None if unset) with
+    /// typing drawn onto it, 90 frames of BGRA (or, with
+    /// `OLO_BENCH_SCROLL`, the screen scrolling 6 rows a frame): its
+    /// (even) size and the frames.
+    fn bench_frames() -> Option<(u32, u32, Vec<Vec<u8>>)> {
+        let Some(path) = std::env::var_os("OLO_BENCH_SCREEN") else {
+            eprintln!("OLO_BENCH_SCREEN unset: nothing to try");
+            return None;
+        };
+        let png = std::fs::read(&path).unwrap();
+        let mut dec = png::Decoder::new(std::io::Cursor::new(png));
+        dec.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
+        let mut reader = dec.read_info().unwrap();
+        let mut rgba = vec![0u8; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut rgba).unwrap();
+        let (w, h) = (info.width & !1, info.height & !1);
+        let base: Vec<u8> = (0..h)
+            .flat_map(|y| {
+                (0..w).flat_map({
+                    let rgba = &rgba;
+                    move |x| {
+                        let i = ((y * info.width + x) * 4) as usize;
+                        [rgba[i + 2], rgba[i + 1], rgba[i], 255]
+                    }
+                })
+            })
+            .collect();
+        // Frame i: "typing": a glyph-like block per frame along a line.
+        let frame = |i: u32| {
+            let mut px = base.clone();
+            for k in 0..=i {
+                let (x0, y0) = (400 + (k % 60) * 14, 700 + (k / 60) * 30);
+                for y in y0..(y0 + 22).min(h) {
+                    for x in x0..(x0 + 9).min(w) {
+                        if (x + y + k) % 3 != 0 {
+                            let o = ((y * w + x) * 4) as usize;
+                            px[o..o + 3].copy_from_slice(&[30, 30, 30]);
+                        }
+                    }
+                }
+            }
+            px
+        };
+        let scroll = std::env::var_os("OLO_BENCH_SCROLL").is_some();
+        let frames: Vec<Vec<u8>> = (0..90)
+            .map(|i| {
+                if !scroll {
+                    return frame(i);
+                }
+                let row = w as usize * 4;
+                let by = (i as usize * 6) % h as usize;
+                let mut px = base[by * row..].to_vec();
+                px.extend_from_slice(&base[..by * row]);
+                px
+            })
+            .collect();
+        Some((w, h, frames))
+    }
+
+    /// An MP4's luma PSNR against the `frames` it was made from, over the
+    /// pictures decoded (BT.601 luma, as the others were measured), and
+    /// how many decoded.
+    fn mp4_psnr(file: &std::path::Path, w: u32, h: u32, frames: &[Vec<u8>]) -> (f64, usize) {
+        let luma = |p: &[u8], o: usize| 0.299 * f64::from(p[o + 2]) + 0.587 * f64::from(p[o + 1]) + 0.114 * f64::from(p[o]);
+        let v = gif::tests_open(file).unwrap();
+        let (mut n, mut mse_sum) = (0usize, 0f64);
+        v.each_decoded(&mut |rgb| {
+            let src = &frames[n];
+            let mut mse = 0f64;
+            for p in 0..(w * h) as usize {
+                let y_src = luma(src, p * 4);
+                let y_dec = 0.299 * f64::from(rgb[p * 3]) + 0.587 * f64::from(rgb[p * 3 + 1]) + 0.114 * f64::from(rgb[p * 3 + 2]);
+                mse += (y_src - y_dec).powi(2);
+            }
+            mse_sum += mse / f64::from(w * h);
+            n += 1;
+            Ok(())
+        })
+        .unwrap();
+        (10.0 * (255f64.powi(2) / (mse_sum / n.max(1) as f64)).log10(), n)
+    }
+
+    /// Sizes and picture quality of each codec at each rate, on a real
+    /// screen (`bench_frames`) three seconds at 30 a second: what Olo's
+    /// recordings should be set to (`--ignored`: it needs the GPU).
+    #[test]
+    #[ignore]
+    fn codec_sizes() {
+        if !nvenc::available() {
+            return;
+        }
+        let Some((w, h, frames)) = bench_frames() else { return };
+        let bps = bitrate(w, h, 30);
+        let codecs: Vec<Codec> = std::env::var("OLO_BENCH_CODECS").ok().map(|v| v.split(',').filter_map(Codec::parse).collect()).unwrap_or_else(|| vec![Codec::H264, Codec::Hevc, Codec::Av1]);
+        for codec in codecs {
+            let mut rates = vec![nvenc::Rate::Bitrate(if codec == Codec::H264 { bps } else { bps / 3 * 2 })];
+            let qs: Vec<u8> = match std::env::var("OLO_BENCH_Q") {
+                Ok(v) => v.split(',').filter_map(|q| q.parse().ok()).collect(),
+                Err(_) => vec![20, 26, 30, 34],
+            };
+            rates.extend(qs.into_iter().map(|q| nvenc::Rate::Quality(q, bps * 2)));
+            for rate in rates {
+                let mut e = nvenc::Nvenc::with_rate(w, h, 30, rate, codec).unwrap();
+                // (On disk, not /tmp: that is memory.)
+                let file = std::path::PathBuf::from(format!("/var/tmp/olo-bench-{}.mp4", std::process::id()));
+                let mut mp4 = Mp4::create_for(&file, w, h, 1000, codec).unwrap();
+                for f in &frames {
+                    let (bits, key) = e.encode(f, w as usize * 4).unwrap();
+                    mp4.add(&bits, key, 33).unwrap();
+                }
+                mp4.finish().unwrap();
+                let bytes = std::fs::metadata(&file).unwrap().len();
+                let (psnr, n) = mp4_psnr(&file, w, h, &frames);
+                eprintln!("{:5} {:24} {:9} bytes  PSNR {:5.2} dB  ({n} decoded)", codec.name(), format!("{rate:?}"), bytes, psnr);
+                let _ = std::fs::remove_file(&file);
+            }
+        }
+    }
+
+    /// AV1's sequence header as written for VA-API reads back as its
+    /// av1C says it.
+    #[test]
+    fn the_vaapi_sequence_header_reads_back() {
+        let seq = vaapi::obu(vaapi::OBU_SEQUENCE_HEADER, &vaapi::sequence_header(2560, 1600, 12), 1);
+        let c = config::av1c(&seq).expect("av1C");
+        // Marker and version, profile 0 at level 12, Main tier, 8 bits,
+        // 4:2:0.
+        assert_eq!(c[0], 0x81);
+        assert_eq!(c[1], 12);
+        assert_eq!(c[2] & 0b0110_1100, 0b0000_1100);
+    }
+
+    /// Encodes a few frames on this computer's GPU (where VA-API encodes
+    /// AV1) and decodes them back with rav1d: the pictures come back.
+    #[test]
+    fn vaapi_frames_come_back() {
+        let Some(node) = vaapi::av1_node() else {
+            eprintln!("no GPU encodes AV1 through VA-API here");
+            return;
+        };
+        let (w, h) = (640u32, 360u32);
+        let mut e = vaapi::Av1::new(Some(&node), w, h, 30, vaapi::QUALITY).unwrap();
+        let mut d = olo_images::av1::Decoder::new(1, 1).unwrap();
+        let mut shown = Vec::new();
+        let mut sent = Vec::new();
+        for i in 0..8u32 {
+            let px: Vec<u8> = (0..h).flat_map(|y| (0..w).flat_map(move |x| [(x + i * 4) as u8, y as u8, 128, 255])).collect();
+            let (bits, key) = e.encode(&px, w as usize * 4, false).unwrap();
+            assert_eq!(key, i == 0);
+            d.decode(&bits, &mut shown).unwrap();
+            sent.push(px);
+        }
+        d.flush(&mut shown);
+        assert_eq!(shown.len(), 8, "every frame decoded");
+        assert_eq!((shown[0].width, shown[0].height), (w, h));
+        // Each as it was sent: its luma within a few levels (PSNR).
+        for (f, px) in shown.iter().zip(&sent) {
+            let rgba = f.to_rgba();
+            let mut mse = 0f64;
+            for p in 0..(w * h) as usize {
+                let y = |r: u8, g: u8, b: u8| 0.2126 * f64::from(r) + 0.7152 * f64::from(g) + 0.0722 * f64::from(b);
+                let a = y(px[p * 4 + 2], px[p * 4 + 1], px[p * 4]);
+                let b = y(rgba[p * 4], rgba[p * 4 + 1], rgba[p * 4 + 2]);
+                mse += (a - b).powi(2);
+            }
+            let psnr = 10.0 * (255f64.powi(2) / (mse / f64::from(w * h)).max(1e-9)).log10();
+            assert!(psnr > 38.0, "luma PSNR {psnr:.1} dB");
+        }
+    }
+
+    /// AV1 through VA-API (the Intel or AMD GPU), as `codec_sizes` does
+    /// NVENC's: each quantizer's size, picture quality and time a frame
+    /// (`OLO_BENCH_Q`: the quantizers, 0–255).
+    #[test]
+    #[ignore]
+    fn vaapi_sizes() {
+        let Some(node) = vaapi::av1_node() else {
+            eprintln!("no GPU encodes AV1 through VA-API here");
+            return;
+        };
+        let Some((w, h, frames)) = bench_frames() else { return };
+        let qs: Vec<u8> = match std::env::var("OLO_BENCH_Q") {
+            Ok(v) => v.split(',').filter_map(|q| q.parse().ok()).collect(),
+            Err(_) => vec![40, 60, 72, 90, 110],
+        };
+        // The processor's H.264 on the same frames, to measure against.
+        {
+            let mut e = H264::new(w, h, 30).unwrap();
+            let file = std::path::PathBuf::from(format!("/var/tmp/olo-bench-{}.mp4", std::process::id()));
+            let mut mp4 = Mp4::create(&file, w, h, 1000).unwrap();
+            for f in &frames {
+                let (bits, key) = e.encode(f, w as usize * 4, Order::Bgra).unwrap();
+                mp4.add(&bits, key, 33).unwrap();
+            }
+            mp4.finish().unwrap();
+            let bytes = std::fs::metadata(&file).unwrap().len();
+            let (psnr, n) = mp4_psnr(&file, w, h, &frames);
+            eprintln!("H.264 (processor)    {bytes:9} bytes  PSNR {psnr:5.2} dB  ({n} decoded)");
+            let _ = std::fs::remove_file(&file);
+        }
+        for q in qs {
+            let mut e = vaapi::Av1::new(Some(&node), w, h, 30, q).unwrap();
+            let file = std::path::PathBuf::from(format!("/var/tmp/olo-bench-{}.mp4", std::process::id()));
+            let mut mp4 = Mp4::create_for(&file, w, h, 1000, Codec::Av1).unwrap();
+            let mut times = Vec::new();
+            for f in &frames {
+                let t = std::time::Instant::now();
+                let (bits, key) = e.encode(f, w as usize * 4, false).unwrap();
+                times.push(t.elapsed());
+                mp4.add(&bits, key, 33).unwrap();
+            }
+            mp4.finish().unwrap();
+            times.sort();
+            let bytes = std::fs::metadata(&file).unwrap().len();
+            let (psnr, n) = mp4_psnr(&file, w, h, &frames);
+            eprintln!("AV1 (VA-API) q {q:3} {bytes:9} bytes  PSNR {psnr:5.2} dB  ({n} decoded)  median {:?}, slowest {:?} a frame", times[times.len() / 2], times[times.len() - 1]);
+            let _ = std::fs::remove_file(&file);
+        }
+    }
+
     /// NVIDIA's encoder, where there is one: its H.264 decodes, an MP4 of
     /// it reads back, and what a 4K frame costs against the processor's
     /// (`--ignored`: it needs the GPU).
@@ -475,7 +1253,7 @@ mod tests {
             return;
         }
         for (w, h) in [(640u32, 360u32), (3840, 2160)] {
-            let mut e = Encoder::new(w, h, 30, Choice::Nvidia).unwrap();
+            let mut e = Encoder::new(w, h, 30, Choice::Nvidia, Codec::H264).unwrap();
             assert_eq!(e.name(), "NVIDIA's GPU (NVENC)");
             let mut dec = openh264::decoder::Decoder::new().unwrap();
             let mut px: Vec<u8> = (0..(w * h))

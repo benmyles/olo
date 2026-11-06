@@ -97,6 +97,10 @@ pub enum Source {
     /// same app id and title (after an app_server reload, as windows are
     /// put back with new ids).
     Window { id: u64, app_id: String, title: String },
+    /// Another display's app_server's first screen, by its Wayland
+    /// display (an agent screen's `wayland-9`): shared into a call from
+    /// the person's display.
+    Display(String),
 }
 
 impl Capture {
@@ -110,6 +114,9 @@ impl Capture {
     /// The same on the app_server of Wayland display `display` (an Agent
     /// Screen's `wayland-9`; None: `WAYLAND_DISPLAY`'s).
     pub fn on(display: Option<&str>, source: &Source, cursor: bool) -> Result<Capture, String> {
+        if let Source::Display(other) = source {
+            return Self::on(Some(other), &Source::Output(None), cursor);
+        }
         let conn = connect(display).map_err(|e| format!("can't reach app_server: {e}"))?;
         let (globals, mut queue) = registry_queue_init::<State>(&conn).map_err(|e| e.to_string())?;
         let qh = queue.handle();
@@ -133,6 +140,7 @@ impl Capture {
                 };
                 (sources.create_source(&output, &qh, ()), name)
             }
+            Source::Display(_) => unreachable!("taken above"),
             Source::Window { id, app_id, title } => {
                 let list: ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1 = globals.bind(&qh, 1..=1, ()).map_err(|_| "app_server lists no windows (ext-foreign-toplevel-list)".to_owned())?;
                 let sources: ext_foreign_toplevel_image_capture_source_manager_v1::ExtForeignToplevelImageCaptureSourceManagerV1 =
@@ -173,6 +181,15 @@ impl Capture {
             })
         };
         Ok(Capture { queue, state, shm, dmabuf, gbm, conn, name, session, buffer: None, fresh: true, filled: false, frame: None, into_own: false })
+    }
+
+    /// Frames into shared memory, never dmabufs (asked before the first
+    /// frame): for a picture read on the CPU in a process that has a GPU
+    /// context of its own (the share picker's thumbnails, in olo-portal's
+    /// window), where a dmabuf mapped for reading came back black.
+    pub fn in_memory(mut self) -> Capture {
+        self.gbm = None;
+        self
     }
 
     /// Whether frames come through the GPU (dmabufs).

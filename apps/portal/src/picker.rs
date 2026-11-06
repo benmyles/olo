@@ -48,6 +48,9 @@ pub struct Ask {
     pub parent: String,
     /// What it may share: `SCREENS`, `WINDOWS` or both.
     pub types: u32,
+    /// What it will control besides (the RemoteDesktop portal's devices:
+    /// keyboard, pointer, touch screen; 0 for a screen share alone).
+    pub control: u32,
     /// The answer: the keys of what was chosen (`Item::key`), or None if
     /// cancelled.
     pub reply: async_channel::Sender<Option<Vec<String>>>,
@@ -99,13 +102,19 @@ fn columns(n: usize, picture: (f32, f32)) -> f32 {
     k * (picture.0 + 4.0) + (k - 1.0) * m::SPACING
 }
 
-fn message(app: &str, types: u32) -> String {
+fn message(app: &str, types: u32, control: u32) -> String {
     let who = if app.is_empty() { "An app" } else { app };
     let what = match types & (SCREENS | WINDOWS) {
         WINDOWS => "a window",
         SCREENS => "your screen",
         _ => "your screen or a window",
     };
+    if control != 0 {
+        return format!(
+            "{who} wants to see {what} and control your {}. Everything in the one you choose is shown, and it can type, click and move the pointer as you do, until you stop it.",
+            crate::remote::devices_said(control)
+        );
+    }
     format!("{who} wants to share {what}. Everything in the one you choose is shown until you stop sharing.")
 }
 
@@ -122,7 +131,7 @@ fn windows_height(n: usize) -> f32 {
 
 /// The column the text and thumbnails share, and the window's size
 /// (`text_height` measures the message wrapped to a width).
-fn layout(screens: &[Item], windows: &[Item], app: &str, types: u32, text_height: impl Fn(&str, f32) -> f32) -> (f32, (f32, f32)) {
+fn layout(screens: &[Item], windows: &[Item], app: &str, types: u32, control: u32, text_height: impl Fn(&str, f32) -> f32) -> (f32, (f32, f32)) {
     let pic = picture(screens);
     let mut column: f32 = 0.0;
     let mut thumbs = 0.0;
@@ -143,7 +152,7 @@ fn layout(screens: &[Item], windows: &[Item], app: &str, types: u32, text_height
         column = columns(2, pic);
         thumbs = m::LABEL_ROW;
     }
-    let text = text_height(&message(app, types), column);
+    let text = text_height(&message(app, types, control), column);
     let height = 2.0 * m::WINDOW_INSET + m::LABEL_ROW + m::TIGHT + text + m::SPACING * 2.0 + thumbs + m::SPACING * 2.0 + m::CONTROL_HEIGHT;
     let width = ALERT_TEXT_X + column + m::WINDOW_INSET;
     (column, (width.ceil(), height.ceil()))
@@ -154,6 +163,7 @@ pub struct Picker {
     answer: Answer<Option<Vec<String>>>,
     app: String,
     types: u32,
+    control: u32,
     screens: Vec<Item>,
     windows: Vec<Item>,
     pictures: HashMap<String, Arc<RenderImage>>,
@@ -183,8 +193,8 @@ pub fn open(cx: &mut App, ask: Ask, mut screens: Vec<Item>, mut windows: Vec<Ite
     if ask.types & WINDOWS == 0 {
         windows.clear();
     }
-    let (column, (w, h)) = layout(&screens, &windows, &ask.app, ask.types, |t, width| paragraph_height(cx, t, width));
-    let options = ui::over(WindowOptions::alert("Share Screen", w, h), &ask.parent);
+    let (column, (w, h)) = layout(&screens, &windows, &ask.app, ask.types, ask.control, |t, width| paragraph_height(cx, t, width));
+    let options = ui::over(WindowOptions::alert(if ask.control != 0 { "Share Screen and Control" } else { "Share Screen" }, w, h), &ask.parent);
     ui::open(cx, options, move |window, cx| {
         let (tx, rx) = async_channel::unbounded::<Thumb>();
         let pic = picture(&screens);
@@ -194,6 +204,7 @@ pub fn open(cx: &mut App, ask: Ask, mut screens: Vec<Item>, mut windows: Vec<Ite
             answer: Answer::new(ask.reply, None),
             app: ask.app,
             types: ask.types,
+            control: ask.control,
             selected: screens.first().or(windows.first()).map(|i| i.key.clone()),
             pixels: Arc::new(Mutex::new((dev(pic), dev(WINDOW_PICTURE)))),
             screens,
@@ -248,7 +259,8 @@ impl Picker {
             let mut captures: Vec<(String, bool, Option<Capture>, Instant)> = items
                 .into_iter()
                 .map(|(key, source, screen)| {
-                    let mut c = Capture::new(&source, false).ok();
+                    // (In memory: dmabufs read back here came back black.)
+                    let mut c = Capture::new(&source, false).ok().map(Capture::in_memory);
                     if let Some(cap) = c.as_mut()
                         && cap.request().is_err()
                     {
@@ -411,7 +423,7 @@ impl Render for Picker {
             let me = me.clone();
             move |window, cx| me.update(cx, |p, _| p.finish(false, window))
         });
-        let share = Button::new("Share").default(true).enabled(self.selected.is_some()).on_click({
+        let share = Button::new(if self.control != 0 { "Allow" } else { "Share" }).default(true).enabled(self.selected.is_some()).on_click({
             let me = me.clone();
             move |window, cx| me.update(cx, |p, _| p.finish(true, window))
         });
@@ -423,8 +435,8 @@ impl Render for Picker {
             .on_action(cx.listener(|p, _: &alert::Cancel, window, _| p.finish(false, window)))
             .child(
                 AlertFrame::new(ICON)
-                    .child(alert_title("Share Your Screen"))
-                    .child(div().mt(px(m::TIGHT)).child(paragraph(message(&self.app, self.types))))
+                    .child(alert_title(if self.control != 0 { "Share and Control Your Screen" } else { "Share Your Screen" }))
+                    .child(div().mt(px(m::TIGHT)).child(paragraph(message(&self.app, self.types, self.control))))
                     .child(div().h(px(m::SPACING * 2.0)))
                     .child(body)
                     .child(div().flex_1())
@@ -488,17 +500,17 @@ mod tests {
     #[test]
     fn the_window_fits_what_it_offers() {
         let pic = (192.0, 108.0);
-        let (column, (w, h)) = layout(&[screen(5120, 2880)], &[], "", SCREENS, text);
-        let (column3, (w3, _)) = layout(&[screen(5120, 2880), screen(5120, 2880), screen(5120, 2880)], &[], "Google Chrome", SCREENS, text);
+        let (column, (w, h)) = layout(&[screen(5120, 2880)], &[], "", SCREENS, 0, text);
+        let (column3, (w3, _)) = layout(&[screen(5120, 2880), screen(5120, 2880), screen(5120, 2880)], &[], "Google Chrome", SCREENS, 0, text);
         // Room for two side by side even with one, three at most.
         assert!(column >= 2.0 * pic.0);
         assert!(column3 >= 3.0 * pic.0 && column3 < 4.0 * pic.0);
         assert!(w3 > w && h > 0.0);
         // Windows add their section, two rows of them at most (they scroll).
         let windows: Vec<Item> = (0..12).map(window).collect();
-        let (_, (_, with)) = layout(&[screen(5120, 2880)], &windows[..2], "", SCREENS | WINDOWS, text);
-        let (_, (_, many)) = layout(&[screen(5120, 2880)], &windows, "", SCREENS | WINDOWS, text);
-        let (_, (_, six)) = layout(&[screen(5120, 2880)], &windows[..6], "", SCREENS | WINDOWS, text);
+        let (_, (_, with)) = layout(&[screen(5120, 2880)], &windows[..2], "", SCREENS | WINDOWS, 0, text);
+        let (_, (_, many)) = layout(&[screen(5120, 2880)], &windows, "", SCREENS | WINDOWS, 0, text);
+        let (_, (_, six)) = layout(&[screen(5120, 2880)], &windows[..6], "", SCREENS | WINDOWS, 0, text);
         assert!(with > h && many > with && many == six);
     }
 }

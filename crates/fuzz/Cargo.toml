@@ -1,0 +1,16 @@
+[package]
+name = "olo-fuzz"
+description = "Window-management fuzzers (every arranging command, auto-tiling) against headless sessions, and a sweep running many seeds at once"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-fuzz"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-protocol.workspace = true
+serde_json.workspace = true
+libc = "0.2"

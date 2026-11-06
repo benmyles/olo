@@ -26,6 +26,12 @@ pub struct Share {
     pub screens: Vec<String>,
     /// Since when, seconds since the epoch.
     pub since: u64,
+    /// The windows of it that are windows (app_server's ids).
+    pub windows: Vec<u64>,
+    /// What of the computer it controls ("keyboard", "pointer", "touch
+    /// screen"; the RemoteDesktop portal), or nothing (a share alone).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub control: Vec<String>,
 }
 
 impl SharingState {
@@ -57,14 +63,49 @@ impl SharingState {
         std::fs::rename(&tmp, &path)
     }
 
-    /// "Studio Display with Google Chrome": what a share is, said.
+    /// "Studio Display with Google Chrome": what a share is, said ("Studio
+    /// Display and control with Chrome Remote Desktop", "control of your
+    /// keyboard and pointer with Deskflow").
     pub fn describe(share: &Share) -> String {
-        let what = match share.screens.as_slice() {
-            [] => "your screen".to_owned(),
-            [one] => one.clone(),
-            many => format!("{} screens", many.len()),
+        let screens = match share.screens.as_slice() {
+            [] => None,
+            [one] => Some(one.clone()),
+            many => Some(format!("{} screens", many.len())),
+        };
+        let what = match (screens, share.control.is_empty()) {
+            (Some(s), true) => s,
+            (None, true) => "your screen".to_owned(),
+            (Some(s), false) => format!("{s} and control"),
+            (None, false) => format!("control of your {}", and_list(&share.control)),
         };
         if share.app.is_empty() { what } else { format!("{what} with {}", share.app) }
+    }
+}
+
+impl SharingState {
+    /// What a share is, as a sentence for Deskbar ("Sharing Studio Display
+    /// with Google Chrome", "Deskflow is controlling your keyboard and
+    /// pointer", "Zoom sees Studio Display and controls your pointer").
+    pub fn said(share: &Share) -> String {
+        if share.control.is_empty() {
+            return format!("Sharing {}", Self::describe(share));
+        }
+        let who = if share.app.is_empty() { "An app" } else { share.app.as_str() };
+        let control = and_list(&share.control);
+        match share.screens.as_slice() {
+            [] => format!("{who} is controlling your {control}"),
+            [one] => format!("{who} sees {one} and controls your {control}"),
+            many => format!("{who} sees {} screens and controls your {control}", many.len()),
+        }
+    }
+}
+
+/// "a, b and c".
+pub fn and_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
 }
 
@@ -74,9 +115,17 @@ mod tests {
 
     #[test]
     fn a_share_said() {
-        let s = Share { session: "/s".into(), app: "Google Chrome".into(), screens: vec!["Studio Display".into()], since: 0 };
+        let s = Share { session: "/s".into(), app: "Google Chrome".into(), screens: vec!["Studio Display".into()], since: 0, windows: Vec::new(), control: Vec::new() };
         assert_eq!(SharingState::describe(&s), "Studio Display with Google Chrome");
         let s = Share { app: String::new(), screens: vec!["A".into(), "B".into()], ..s };
         assert_eq!(SharingState::describe(&s), "2 screens");
+        // Control too, or alone.
+        let s = Share { app: "Deskflow".into(), screens: vec!["Studio Display".into()], control: vec!["keyboard".into(), "pointer".into()], ..s };
+        assert_eq!(SharingState::describe(&s), "Studio Display and control with Deskflow");
+        let s = Share { screens: Vec::new(), ..s };
+        assert_eq!(SharingState::describe(&s), "control of your keyboard and pointer with Deskflow");
+        assert_eq!(SharingState::said(&s), "Deskflow is controlling your keyboard and pointer");
+        let s = Share { screens: vec!["Studio Display".into()], ..s };
+        assert_eq!(SharingState::said(&s), "Deskflow sees Studio Display and controls your keyboard and pointer");
     }
 }

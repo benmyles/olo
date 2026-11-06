@@ -224,10 +224,19 @@ impl QuickLook {
         let k = &e.keystroke;
         let command = k.modifiers.control || k.modifiers.platform;
         let arrows = self.preview.read(cx).arrows_free();
+        let media = self.preview.read(cx).has_media_time();
         let plain = !command && !k.modifiers.alt && !k.modifiers.shift;
         match k.key.as_str() {
             "space" | "escape" if plain => self.act(Action::Close, cx),
             "enter" if plain => self.act(Action::Open, cx),
+            // A video or a sound: ← and → move its time by 10 s, ↑ and ↓ go
+            // to the next file.
+            "left" if plain && media => {
+                self.preview.update(cx, |p, cx| p.skip(-olo_preview::ui::PreviewView::SKIP_SECS, cx));
+            }
+            "right" if plain && media => {
+                self.preview.update(cx, |p, cx| p.skip(olo_preview::ui::PreviewView::SKIP_SECS, cx));
+            }
             "left" | "up" if plain && arrows => self.act(Action::Step(-1), cx),
             "right" | "down" if plain && arrows => self.act(Action::Step(1), cx),
             "f" if plain => window.toggle_fullscreen(),

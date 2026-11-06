@@ -120,6 +120,15 @@ def main():
         # The manifest's subjects are written for the classic set; a theme
         # brings its own finish.
         subject = re.sub(r"\bglossy\s+", "", subject)
+        # A theme's own subject for an icon, where the manifest's names
+        # what it draws otherwise (a manila folder, where Mac OS 9 had its
+        # lilac one and Workbench its drawers): subjects.txt, name|subject.
+        overrides = os.path.join(root, "subjects.txt")
+        if os.path.exists(overrides):
+            for line in open(overrides):
+                n, _, s = line.strip().partition("|")
+                if n == a.name and s:
+                    subject = s
     refs = [] if a.no_ref else sorted(glob.glob(os.path.join(root, "reference", "*.png")))
     refs = [r for r in refs if os.path.basename(r)[:-4] != a.name]  # never reference itself
     prompt = style + (reference if refs else "") + "Subject: " + subject

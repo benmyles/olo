@@ -1,0 +1,28 @@
+[package]
+name = "olo-fido"
+description = "FIDO2 security keys (a YubiKey and the like): CTAPHID over hidraw, CTAP2, and the account password sealed by a key's hmac-secret"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+libc = "0.2"
+ciborium = "0.2"
+p256 = { version = "0.14", features = ["ecdh"] }
+aes = "0.9"
+cbc = "0.2"
+hkdf = "0.13"
+hmac = "0.13"
+sha2 = "0.11"
+chacha20poly1305 = "0.11"
+getrandom = "0.3"
+zeroize = "1"
+base64 = "0.22"
+
+[features]
+# A software authenticator (tests, and debug builds' `OLO_FIDO_SOFT`).
+soft = []

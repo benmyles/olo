@@ -59,3 +59,9 @@ pub enum ColorMode {
 
 /// SDR's white in HDR by default, cd/m² (BT.2408's reference white).
 pub const SDR_NITS: f32 = 203.0;
+
+/// SDR's white in HDR, cd/m², at least and at most: what app_server
+/// takes and Preferences' slider offers (a bright panel's white is about
+/// 600, so SDR can be as bright in HDR as without it).
+pub const MIN_SDR_NITS: f32 = 80.0;
+pub const MAX_SDR_NITS: f32 = 600.0;

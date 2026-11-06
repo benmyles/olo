@@ -167,6 +167,22 @@ impl Menu {
         self
     }
 
+    /// Move to Agent Screen ▸ (titled `title`): each agent screen running,
+    /// by the name the person gave it, then New Agent Screen; commands
+    /// `prefix` and the screen's name (`olo_kit_base::moving`'s
+    /// `SCREEN_COMMAND`, `NEW_SCREEN_COMMAND` with no prefix of its own).
+    /// The program keeps running as it goes (`olo-screen take`).
+    pub fn agent_screens(title: &str, screens: &[olo_kit_base::moving::RunningScreen], prefix: &str) -> Menu {
+        let mut m = Menu::new(title);
+        for s in screens {
+            m = m.item(s.label.clone(), format!("{prefix}{}{}", olo_kit_base::moving::SCREEN_COMMAND, s.name));
+        }
+        if !screens.is_empty() {
+            m = m.separator();
+        }
+        m.item("New Agent Screen", format!("{prefix}{}", olo_kit_base::moving::NEW_SCREEN_COMMAND))
+    }
+
     /// Its items in alphabetical order by what they say (natural order,
     /// case aside: "Item 2" before "item 10"), each run between
     /// separators on its own, and its submenus' the same, all the way

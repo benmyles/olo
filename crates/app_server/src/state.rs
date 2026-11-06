@@ -155,6 +155,10 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// A finger scroll's stop held back from a Chromium window, and when
     /// it is due (input_handler.rs, `hold_stop`).
     pub held_stop: Option<(WlSurface, std::time::Instant)>,
+    /// A `repoint` waits for the end of this turn of the loop.
+    pub repoint_queued: bool,
+    /// Programs controlling the computer over libei (`remote.rs`).
+    pub remote: crate::remote::Remote,
     /// When the pacer last sent a move.
     pub last_paced_move: Option<std::time::Instant>,
 
@@ -253,6 +257,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// they've drawn the size it left them.
     pub tile_followers: Vec<crate::shell::tiling::Follower>,
     pub twitcher: crate::twitcher::Overlay,
+    /// Windows being shared (`Request::SharedWindows`): ringed on screen.
+    pub shared_windows: Vec<u64>,
     /// Keyboard hints (Control pressed twice), and their overlay.
     pub hints: crate::hints::Hints,
     pub wallpaper: crate::wallpaper::Loader,
@@ -281,9 +287,17 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// display unplugged and back shows the one it did): every display
     /// has workspaces of its own. One not here shows its first.
     pub showing: HashMap<String, u32>,
+    /// A timer is set for a recording's zoom's hold (`zoom`).
+    pub zoom_timer: bool,
     /// Olo Rescue, while it's on (rescue.rs), and its keys followed.
     pub rescue: Option<crate::rescue::Rescue>,
     pub rescue_chord: crate::rescue::Chord,
+    /// Security keys' keyboards (their USB product and vendor ids), whose
+    /// typing is taken (security_key.rs), and their touches.
+    pub security_key_ids: Vec<(u32, u32)>,
+    pub security_key_taps: crate::security_key::Taps,
+    /// A Magic Keyboard's Globe key, pressed alone (apple_keys.rs).
+    pub globe: crate::apple_keys::Globe,
     /// The display a workspace was last switched on (its connector): the
     /// active one while no window has the focus.
     pub last_display: Option<String>,
@@ -303,6 +317,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub last_window_infos: Vec<olo_protocol::WindowInfo>,
     /// Remembered window places (see `layout`).
     pub layout: Vec<crate::layout::Placement>,
+    /// "Upgrading Olo" over every display while a restart brings the
+    /// windows back (`veil.rs`).
+    pub veil: Option<crate::veil::Veil>,
     /// The stacking (window ids, bottom first) as a client's windows began
     /// to go, its id and when (`layout::remember_placement`).
     pub closing_stack: Option<(Vec<u64>, smithay::reexports::wayland_server::backend::ClientId, std::time::Instant)>,
@@ -1135,6 +1152,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             touch_hides_pointer: false,
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,
+            repoint_queued: false,
+            remote: Default::default(),
             last_paced_move: None,
             compositor_state,
             data_device_state,
@@ -1191,6 +1210,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             tab_drag: None,
             tile_followers: Vec::new(),
             twitcher: Default::default(),
+            shared_windows: Vec::new(),
             hints: Default::default(),
             wallpaper: Default::default(),
             cursor_status: CursorImageStatus::default_named(),
@@ -1208,8 +1228,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             overview: None,
             parked: Default::default(),
             showing: HashMap::new(),
+            zoom_timer: false,
             rescue: None,
             rescue_chord: Default::default(),
+            security_key_ids: Vec::new(),
+            security_key_taps: Default::default(),
+            globe: Default::default(),
             last_display: None,
             told_active: None,
             clipboard_helpers: Vec::new(),
@@ -1226,6 +1250,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             timings: Default::default(),
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),
+            veil: None,
             closing_stack: None,
             launch_grant: None,
             waiting_for_display: Vec::new(),
@@ -1246,7 +1271,35 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         // restart, and its auto-tiling as it was.
         state.showing = crate::layout::showing(&state.layout, state.settings.workspace_count);
         let trees = crate::layout::load_trees();
+        // A session starting: Olo's start-up screen till its desktop is up
+        // (the session says, for its first app_server; not in Rescue).
+        let starting = std::env::var_os("OLO_STARTING").is_some();
+        // SAFETY: start-up, before threads that read the environment.
+        unsafe { std::env::remove_var("OLO_STARTING") };
+        if starting && state.layout.is_empty() && !crate::rescue::active() && std::env::var_os("OLO_NO_VEIL").is_none() {
+            let veil = crate::veil::Veil::starting();
+            let looks = [veil.soonest(), veil.deadline()];
+            state.veil = Some(veil);
+            for after in looks {
+                let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(after), |_, _, state| {
+                    state.backend_data.wake(None);
+                    smithay::reexports::calloop::timer::TimeoutAction::Drop
+                });
+            }
+        }
         if !state.layout.is_empty() {
+            // Veiled till the windows are back (not in Rescue).
+            if !crate::rescue::active() && std::env::var_os("OLO_NO_VEIL").is_none() {
+                let veil = crate::veil::Veil::new(state.layout.len());
+                let looks = [veil.soonest(), veil.deadline()];
+                state.veil = Some(veil);
+                for after in looks {
+                    let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(after), |_, _, state| {
+                        state.backend_data.wake(None);
+                        smithay::reexports::calloop::timer::TimeoutAction::Drop
+                    });
+                }
+            }
             state.auto.restore(trees);
             // Windows coming back wait a while for their displays; then
             // what came back is checked against what was saved.
@@ -1308,6 +1361,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             state.watch_login();
         }
         crate::text::warm_up();
+        state.remote_listen();
         state.restore_handover();
         state
     }
@@ -1385,8 +1439,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         self.space.elements().for_each(|window| {
             if self.space.outputs_for_element(window).contains(output) {
                 // (One come to the front of its group, shown once it has
-                // drawn: as if it were already.)
-                if window.decorated() && window.decoration().fronting.is_some() {
+                // drawn: as if it were already. And one a drag's round
+                // waits for: under a float, it counts as not shown, and
+                // its callbacks came once a second, so the round ran out
+                // of time and its neighbours went on without it, over it.)
+                let in_round = self.round.as_ref().is_some_and(|r| window.wl_surface().is_some_and(|s| r.waits_for(&s)));
+                if window.decorated() && window.decoration().fronting.is_some() || in_round {
                     window.send_frame(output, time, None, |_, _| Some(output.clone()));
                 } else {
                     window.send_frame(output, time, throttle, surface_primary_scanout_output);
@@ -1637,6 +1695,11 @@ pub trait Backend {
     /// or cleared, and every pixel drawn again.
     fn color_changed(&mut self, _output: &Output) -> Result<(), String> {
         Ok(())
+    }
+    /// Only HDR's SDR white moved (Preferences' slider, the brightness
+    /// keys): every pixel drawn again, nothing else changed.
+    fn sdr_white_changed(&mut self, output: &Output) -> Result<(), String> {
+        self.color_changed(output)
     }
     /// A test session's screen on connector `name`, to unplug or plug in
     /// again (`Request::PlugDisplay`); real displays are only unplugged

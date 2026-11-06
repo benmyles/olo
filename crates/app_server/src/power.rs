@@ -52,6 +52,14 @@ pub mod keys {
     /// The notification centre key (a ThinkPad's F9): the notifications'
     /// history.
     pub const NOTIFICATION_CENTER: u32 = 444;
+    /// Mission Control (an Apple keyboard's F3): the overview.
+    pub const SCALE: u32 = 120;
+    /// Spotlight (an Apple keyboard's F4): the command palette.
+    pub const SEARCH: u32 = 217;
+    /// A sleep key (logind's to act on but for Olo's inhibitor, held so
+    /// a Magic Keyboard's Do Not Disturb key, which sends it, doesn't
+    /// suspend the computer): asleep, as logind would.
+    pub const SLEEP: u32 = 142;
 }
 
 enum Job {
@@ -273,6 +281,12 @@ struct Worker {
 }
 
 fn worker(rx: Receiver<Job>, feedback: calloop::channel::Sender<crate::osd::Indicator>, found: calloop::channel::Sender<Vec<(String, f32)>>) {
+    // The sleep key is Olo's (power.rs `keys::SLEEP`): a Magic Keyboard's
+    // Do Not Disturb key sends it, and logind would suspend on it. Held
+    // for the session (let go if app_server goes).
+    let _sleep_key = olo_system::power::inhibit("handle-suspend-key", "Olo", "Olo handles the sleep key (a Magic Keyboard's Do Not Disturb sends it)", true)
+        .map_err(|e| warn!("can't take the sleep key from logind: {e}"))
+        .ok();
     let mut w = Worker { inhibitor: None, feedback, found, displays: Default::default(), warned: Default::default() };
     while let Ok(mut job) = rx.recv() {
         // Only the newest brightness matters (a held key repeats).
@@ -633,6 +647,7 @@ impl<B: Backend> AnvilState<B> {
             self.keep_brightness(&o, level);
         }
         self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        self.remote_displays_changed();
         Ok(())
     }
 
@@ -708,6 +723,7 @@ impl<B: Backend> AnvilState<B> {
         }
         if changed {
             self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+            self.remote_displays_changed();
         }
     }
 
@@ -751,6 +767,15 @@ impl<B: Backend> AnvilState<B> {
             keys::RFKILL => |s| s.volume_key(Job::ToggleAirplane),
             keys::SWITCH_VIDEO_MODE => |s| s.spawn_program("olo-preferences", &["display"]),
             keys::NOTIFICATION_CENTER => |s| s.spawn_program("olo-notifications", &["--history"]),
+            keys::SCALE => |s| s.toggle_overview(),
+            keys::SEARCH => |s| s.spawn_program("olo-palette", &["--toggle"]),
+            keys::SLEEP => |s| {
+                if s.power.jobs.is_some() {
+                    s.power.send(Job::Suspend);
+                } else {
+                    info!("sleep key (simulated: not the session)");
+                }
+            },
             keys::KBD_UP => |s| s.step_keyboard(STEP),
             keys::KBD_DOWN => |s| s.step_keyboard(-STEP),
             keys::KBD_TOGGLE => |s| {
@@ -772,13 +797,44 @@ impl<B: Backend> AnvilState<B> {
         true
     }
 
+    /// Do Not Disturb on or off (a Magic Keyboard's key), as Deskbar's
+    /// menu does it: in the notifications' settings, which
+    /// olo-notifications follows; written off the loop.
+    pub fn toggle_do_not_disturb(&mut self) {
+        use olo_protocol::notifications::NotificationSettings;
+        let mut n = NotificationSettings::load();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        // (By hand, as Deskbar's menu: a schedule's quiet hours stay.)
+        let on = !(n.dnd && n.dnd_until.is_none_or(|t| now < t));
+        n.dnd = on;
+        n.dnd_until = None;
+        std::thread::spawn(move || {
+            if let Err(e) = n.save() {
+                warn!("can't keep Do Not Disturb: {e}");
+            }
+        });
+        self.show_indicator(crate::osd::Indicator::DoNotDisturb { on });
+    }
+
     /// The brightness keys: the display under the pointer if we can set
-    /// its brightness, else the built-in one.
+    /// its brightness, else the built-in one. A display in HDR has its
+    /// SDR white moved instead (`step_sdr_white`).
     fn step_brightness(&mut self, delta: f32) {
         // Snap to the step grid so up then down returns exactly.
         let step = |level: f32| (((level + delta) / STEP).round() * STEP).clamp(0.0, 1.0);
         let pointer = self.pointer.current_location();
-        let under = self.space.output_under(pointer).next().map(|o| o.name());
+        let under_output = self.space.output_under(pointer).next().cloned();
+        let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
+        let hdr = |o: &smithay::output::Output| matches!(crate::color::drawing(o), crate::color::Drawing::Hdr { .. });
+        if let Some(o) = under_output.as_ref().filter(|o| hdr(o)) {
+            return self.step_sdr_white(&o.clone(), delta);
+        }
+        let under = under_output.map(|o| o.name());
+        if under.as_deref().is_none_or(|n| self.power.display_brightness(n).is_none())
+            && let Some(o) = internal.filter(|o| hdr(o))
+        {
+            return self.step_sdr_white(&o, delta);
+        }
         if let Some(name) = under
             && let Some(level) = self.power.display_brightness(&name)
         {
@@ -790,6 +846,31 @@ impl<B: Backend> AnvilState<B> {
             self.set_brightness(level);
             self.show_indicator(crate::osd::Indicator::Brightness(level));
         }
+    }
+
+    /// In HDR a display shows light as it's sent, and the built-in
+    /// panel's backlight does nothing (the ThinkPad's OLED ignored it):
+    /// the brightness keys move SDR's white instead, everything that isn't
+    /// HDR, as Preferences' "Everything else's brightness" does, by even
+    /// steps of light (a log scale from `MIN_SDR_NITS` to `MAX_SDR_NITS`),
+    /// shown on the brightness indicator and kept for the display.
+    fn step_sdr_white(&mut self, output: &smithay::output::Output, delta: f32) {
+        use crate::color::{MAX_SDR_NITS, MIN_SDR_NITS};
+        let (lo, hi) = (MIN_SDR_NITS.ln(), MAX_SDR_NITS.ln());
+        let now = crate::color::applied(output).sdr_nits.clamp(MIN_SDR_NITS, MAX_SDR_NITS);
+        let level = (now.ln() - lo) / (hi - lo);
+        let level = (((level + delta) / STEP).round() * STEP).clamp(0.0, 1.0);
+        let nits = (lo + (hi - lo) * level).exp().round();
+        let key = crate::desktop::display_key(output);
+        self.settings.display.config_mut(&key, &output.name()).sdr_nits = Some(nits);
+        if let Err(e) = self.apply_color(output) {
+            warn!("SDR's white on {}: {e}", output.name());
+        }
+        // Saved on the next tick (keys repeat).
+        self.power.unsaved = true;
+        self.show_indicator(crate::osd::Indicator::Brightness(level));
+        self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        self.remote_displays_changed();
     }
 
     fn step_keyboard(&mut self, delta: f32) {

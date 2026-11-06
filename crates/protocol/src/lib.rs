@@ -98,6 +98,11 @@ pub enum Request {
     SendToBack {
         id: WindowId,
     },
+    /// The windows being shared now (olo-portal's window shares): each
+    /// ringed on screen while it is, so the person knows (none: none).
+    SharedWindows {
+        ids: Vec<WindowId>,
+    },
     /// Put a window in the group of window `with` (or a new group with
     /// it, if it is in none), whatever their apps, its tab at `index`
     /// among the group's (else last), as ⌘-dragging its tab onto that
@@ -277,6 +282,47 @@ pub enum Request {
     /// another length needs none. It ends at the time, when the screen
     /// locks (sleeping locks first) and when app_server restarts. Not
     /// persisted.
+    /// Clicks and keys shown on screen (app_server's `showing`: a ring
+    /// where a button is pressed, a chord on a key cap), for a recording
+    /// or a demo; and the pointer as captures draw it (screen recordings,
+    /// screen sharing): `pointer_size` times its size (1, or 0 from an
+    /// older client: as it is), `smooth_pointer` gliding after the real
+    /// one (a hand's jitter and an agent's jumps smoothed). All off by
+    /// default, not kept.
+    SetShowing {
+        clicks: bool,
+        keys: bool,
+        #[serde(default)]
+        pointer_size: f64,
+        #[serde(default)]
+        smooth_pointer: bool,
+        /// Captures of a display zoom in this much around each click,
+        /// following the pointer, and out three seconds after the last
+        /// click or key (app_server's `zoom`); 0 or 1: not.
+        #[serde(default)]
+        zoom: f64,
+    },
+    /// A caption in captures (recordings, screen sharing; never on the
+    /// screen): `text` low in the middle, for `seconds` (None: till the
+    /// next); None or empty: the one up goes.
+    Caption {
+        text: Option<String>,
+        #[serde(default)]
+        seconds: Option<f64>,
+    },
+    /// A display's captures (recordings, screen sharing) zoomed to `rect`
+    /// (points of the display: x, y, w, h), gliding there and held; None:
+    /// back out. The display the pointer is on unless named.
+    ZoomTo {
+        rect: Option<[f64; 4]>,
+        #[serde(default)]
+        display: Option<String>,
+    },
+    /// A recording's countdown: `n` shown large in the middle of the
+    /// screen under the pointer, till the next (0: taken down).
+    Countdown {
+        n: u32,
+    },
     SetAutoApprove {
         minutes: Option<u32>,
         #[serde(default)]
@@ -394,6 +440,21 @@ pub enum Request {
     Synthetic {
         events: Vec<SyntheticEvent>,
     },
+    /// A program may control the computer (olo-portal only: its
+    /// RemoteDesktop portal, once the person has said yes): the next
+    /// libei connection olo-portal makes to app_server's EIS socket
+    /// ([`eis_socket`]) is `session`'s, with only the devices given
+    /// ([`remote::KEYBOARD`] | [`remote::POINTER`] | [`remote::TOUCHSCREEN`]).
+    /// A grant not taken within 10 s lapses.
+    RemoteControl {
+        session: String,
+        devices: u32,
+    },
+    /// `session` ended (the program closed it, or the person stopped it):
+    /// its libei connections close, and its grant lapses.
+    RemoteControlEnd {
+        session: String,
+    },
     /// Put `text` into the focused field as an input method would (the
     /// emoji picker; any text, not only what a keyboard types). It waits,
     /// a second at most, while the asking program has the keyboard; a
@@ -469,13 +530,21 @@ pub enum SyntheticEvent {
         dy: i32,
     },
     /// What's on a touchpad, as a pad's report would say (a MacBook pad's
-    /// axes): sent on as [`Event::TouchContacts`] (headless sessions,
-    /// testing the palm trainer).
-    Contacts { contacts: Vec<touchpad::TouchContact> },
+    /// axes, or `pad`'s), with its button down or not: sent on as
+    /// [`Event::TouchContacts`] (headless sessions, testing the palm
+    /// trainer).
+    Contacts {
+        contacts: Vec<touchpad::TouchContact>,
+        #[serde(default)]
+        pad: Option<touchpad::PadAxes>,
+        #[serde(default)]
+        button: bool,
+    },
     /// A finger on a touch screen, at global logical coordinates: down,
     /// moved or lifted (`slot` tells fingers apart). As a real touch is:
     /// touch for an app that takes it, else the pointer with the left
-    /// button held.
+    /// button held. With `window`, `x`, `y` are in that window's content
+    /// (as a screen share of the window counts them).
     Touch {
         #[serde(default)]
         slot: u32,
@@ -484,7 +553,33 @@ pub enum SyntheticEvent {
         x: f64,
         #[serde(default)]
         y: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        window: Option<WindowId>,
     },
+    /// Move the pointer by logical pixels (as a mouse moves it, kept on
+    /// the screens).
+    MoveBy { dx: f64, dy: f64 },
+    /// Move the pointer to a point in a window's content, logical (as a
+    /// screen share of the window counts them); nothing if it isn't shown.
+    MoveOn { window: WindowId, x: f64, y: f64 },
+    /// Press or let go of the key that types `keysym` (an XKB keysym) on
+    /// the keyboard's layout, with Shift (or AltGr) as that takes; one
+    /// the layout has no key for is typed as it's pressed.
+    Keysym { keysym: u32, pressed: bool },
+}
+
+/// Remote control ([`Request::RemoteControl`]): the devices, as the
+/// RemoteDesktop portal counts them.
+pub mod remote {
+    pub const KEYBOARD: u32 = 1;
+    pub const POINTER: u32 = 2;
+    pub const TOUCHSCREEN: u32 = 4;
+}
+
+/// app_server's socket for libei connections (remote control, through
+/// olo-portal only) on display `display`, in `runtime` (XDG_RUNTIME_DIR).
+pub fn eis_socket(runtime: &std::path::Path, display: &str) -> std::path::PathBuf {
+    runtime.join(format!("olo-{display}-eis"))
 }
 
 /// What a finger on a touch screen did ([`SyntheticEvent::Touch`]).
@@ -847,6 +942,10 @@ pub enum Event {
         /// typing); u64::MAX if none was.
         #[serde(default = "no_key")]
         since_key_us: u64,
+        /// The pad's button is down (a ThinkPad's click: its pressure is
+        /// the click's force, not a press of its own).
+        #[serde(default)]
+        button: bool,
     },
 }
 
@@ -976,6 +1075,12 @@ pub struct WindowInfo {
     /// ([`Request::SetFloating`]), over what app_server would judge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub float: Option<bool>,
+    /// It floats whatever is asked: a dialog that names its window, an
+    /// app's alert (over all its windows), picture in picture. It belongs
+    /// over those, so it's never a tile ([`Request::SetFloating`] leaves
+    /// it as it is).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub floats_always: bool,
     /// The display it is on (its connector), or was on while hidden or
     /// on another workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1318,6 +1423,8 @@ pub struct Settings {
     pub tracker: TrackerSettings,
     /// Screen recordings (Preferences ▸ GPUs ▸ Screen Recordings).
     pub screen_recording: ScreenRecordingSettings,
+    /// Olo's start-up sound as a session starts (Preferences ▸ Sound).
+    pub startup_sound: bool,
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
@@ -1398,6 +1505,23 @@ pub const AI_EFFORTS: &[(&str, &str)] = &[("low", "Low"), ("medium", "Medium"), 
 #[serde(default)]
 pub struct SecuritySettings {
     pub passwords: PasswordsSecurity,
+    pub keys: SecurityKeySettings,
+}
+
+/// Security keys (a YubiKey): set up in Preferences ▸ Security, a touch
+/// of one standing for the account password (`olo_fido`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct SecurityKeySettings {
+    /// A key's touches type its one-time code only when three come in a
+    /// row: one alone, with nothing waiting for the key, types nothing.
+    pub three_touches_type: bool,
+}
+
+impl Default for SecurityKeySettings {
+    fn default() -> Self {
+        SecurityKeySettings { three_touches_type: true }
+    }
 }
 
 /// How Passwords keeps its secrets.
@@ -1416,11 +1540,15 @@ pub struct PasswordsSecurity {
     /// Olo's `op` (1Password's command-line tool, answered by
     /// Passwords) is installed and answers.
     pub op_cli: bool,
+    /// Passwords is the session's SSH agent (`SSH_AUTH_SOCK`): the SSH
+    /// keys in it sign for ssh, git and the rest, each program's first
+    /// use allowed by the person. On by default.
+    pub ssh_agent: bool,
 }
 
 impl Default for PasswordsSecurity {
     fn default() -> Self {
-        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true }
+        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true, ssh_agent: true }
     }
 }
 
@@ -1433,17 +1561,63 @@ pub struct TrackerSettings {
 }
 
 /// What screen recordings are encoded on (olo-screenshot's recorder).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ScreenRecordingSettings {
     /// "auto" (the most powerful there is: an NVIDIA GPU's encoder
-    /// where it opens, else the processor), "nvidia" or "cpu".
+    /// where it opens, else, for AV1, an Intel or AMD GPU's through
+    /// VA-API, else the processor), "nvidia", "vaapi" (AV1 only) or
+    /// "cpu".
     pub encoder: String,
+    /// What recordings are coded as: "h264" (plays everywhere), "hevc"
+    /// or "av1" (smaller, on NVIDIA's encoder; the processor makes
+    /// H.264 whatever this says).
+    pub codec: String,
+    /// The sound recorded with the screen: "computer" (what it plays),
+    /// "microphone", "both" or "none".
+    pub sound: String,
+    /// Recordings saved as GIFs (no sound) rather than MP4s.
+    pub gif: bool,
+    /// Clicks shown while recording (a ring where a button is pressed).
+    pub show_clicks: bool,
+    /// Shortcuts shown while recording (a chord on a key cap).
+    pub show_keys: bool,
+    /// Seconds counted down on screen before a recording a person starts
+    /// (⌘⇧6, Screenshot's Record…) begins; 0: none.
+    pub countdown: u32,
+    /// A window's recording shown on the wallpaper, blurred, its corners
+    /// rounded and a shadow under it (Screenshot's `backdrop.rs`).
+    pub background: bool,
+    /// The pointer in recordings this many times its size (1: as it is;
+    /// drawn at that size, not enlarged).
+    pub pointer_size: f64,
+    /// The pointer in recordings glides after the real one (smoothed).
+    pub smooth_pointer: bool,
+    /// A screen's recording zooms in around each click, following the
+    /// pointer, and out when nothing has been done for three seconds.
+    pub zoom_follow: bool,
+    /// The camera shown in a bubble while recording the screen or a
+    /// region: "" (none), "auto" (the first colour camera) or a camera's
+    /// id ("video0").
+    pub camera: String,
 }
 
 impl Default for ScreenRecordingSettings {
     fn default() -> Self {
-        ScreenRecordingSettings { encoder: "auto".into() }
+        ScreenRecordingSettings {
+            encoder: "auto".into(),
+            codec: "h264".into(),
+            sound: "computer".into(),
+            gif: false,
+            show_clicks: false,
+            show_keys: false,
+            countdown: 3,
+            background: false,
+            pointer_size: 1.0,
+            smooth_pointer: false,
+            zoom_follow: false,
+            camera: String::new(),
+        }
     }
 }
 
@@ -1905,6 +2079,13 @@ pub struct KeyboardSettings {
     /// key beside the space bar is ⌘ again (Ben's ThinkPad), while an
     /// Apple keyboard on the same computer is left as it is.
     pub swap_alt_super: Vec<String>,
+    /// Apple keyboards (by name, as `swap_alt_super`) whose top row types
+    /// F1–F12, its printed features (brightness, volume, …) with Fn held,
+    /// as macOS's "Use F1, F2, etc. keys as standard function keys".
+    pub fkeys_first: Vec<String>,
+    /// An Apple keyboard's Globe (Fn) key pressed and let go alone shows
+    /// the emoji picker, as on a Mac.
+    pub globe_emoji: bool,
     /// Num Lock is on when Olo starts (and is set so when this
     /// changes); the Num Lock key still toggles it.
     pub num_lock: bool,
@@ -2010,6 +2191,7 @@ impl Default for Settings {
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
             screen_recording: ScreenRecordingSettings::default(),
+            startup_sound: true,
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),
@@ -2060,6 +2242,8 @@ impl Default for KeyboardSettings {
             profile: KeyboardProfile::default(),
             profiles: Vec::new(),
             swap_alt_super: Vec::new(),
+            fkeys_first: Vec::new(),
+            globe_emoji: true,
             num_lock: true,
             command_key: None,
             caps_lock_control: None,

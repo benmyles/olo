@@ -1,4 +1,4 @@
-//! The tray's view of the machine: clock, battery, Wi-Fi, volume and
+//! The tray's view of the machine: clock, battery, Wi-Fi, Ethernet, volume and
 //! agent screens, followed on background threads (as the services say
 //! they change: nothing polled while nothing changes), and the small
 //! vector glyphs that show them.
@@ -36,6 +36,13 @@ pub struct Wifi {
     pub signal: u32,
 }
 
+/// A wired link connected.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Wired {
+    /// Mb/s, when known.
+    pub speed: Option<u32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Volume {
     pub level: f32,
@@ -46,6 +53,9 @@ pub struct Volume {
 pub struct Status {
     pub battery: Option<Battery>,
     pub wifi: Option<Wifi>,
+    pub wired: Option<Wired>,
+    /// What carries the default route, of the links.
+    pub primary: Option<olo_system::network::Kind>,
     pub volume: Option<Volume>,
     /// Every output and input, for the speaker's menu.
     pub sound: Option<audio::Devices>,
@@ -57,8 +67,9 @@ pub struct Status {
     /// Unread notifications and Do Not Disturb (None: no notification
     /// service).
     pub notifications: Option<NotificationState>,
-    /// Agent screens running (other than the one this Deskbar is on).
-    pub agent_screens: usize,
+    /// Agent screens running (other than the one this Deskbar is on):
+    /// the tray's monitor, and the menus' Move to Agent Screen.
+    pub agent_screens: Vec<olo_ui::moving::RunningScreen>,
     /// Screens apps are sharing (olo-portal's).
     pub sharing: Vec<olo_protocol::sharing::Share>,
     /// A recording of this display going (olo-screenshot's recorder).
@@ -114,25 +125,8 @@ fn screen_file(p: &std::path::Path) -> bool {
     name.ends_with(".json") && !name.ends_with("-settings.json")
 }
 
-fn agent_screens() -> usize {
-    let own = olo_xdg::display_name();
-    let Ok(read) = std::fs::read_dir(screens_dir()) else { return 0 };
-    read.flatten()
-        .filter(|e| {
-            let name = e.file_name().to_string_lossy().into_owned();
-            name.ends_with(".json") && !name.ends_with("-settings.json")
-        })
-        .filter_map(|e| std::fs::read(e.path()).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()))
-        .filter(|v| v["wayland_display"].as_str() != Some(own.as_str()))
-        .filter(|v| {
-            let cmdline = v["pid"].as_i64().and_then(|pid| std::fs::read(format!("/proc/{pid}/cmdline")).ok()).unwrap_or_default();
-            let args: Vec<&[u8]> = cmdline.split(|b| *b == 0).collect();
-            // (`tabula-…` for a screen started before the rename.)
-            let session = args.first().is_some_and(|a| a.ends_with(b"olo-session") || a.ends_with(b"tabula-session"));
-            let socket = v["olo_socket"].as_str().or(v["tabula_socket"].as_str());
-            session && args.iter().any(|a| *a == b"--headless") && socket.is_some_and(|s| std::path::Path::new(s).exists())
-        })
-        .count()
+fn agent_screens() -> Vec<olo_ui::moving::RunningScreen> {
+    olo_ui::moving::screens()
 }
 
 enum AudioRequest {
@@ -197,6 +191,18 @@ pub fn set_volume(level: f32) {
 
 type Shared<F> = Mutex<(Status, Option<Status>, F)>;
 
+/// The links as NetworkManager last said, with their addresses and rates,
+/// for their menus: kept out of [`Status`], since a Wi-Fi rate changes
+/// every few seconds and the tray doesn't draw it.
+fn links_cell() -> &'static Mutex<olo_system::network::Links> {
+    static LINKS: OnceLock<Mutex<olo_system::network::Links>> = OnceLock::new();
+    LINKS.get_or_init(Default::default)
+}
+
+pub fn links() -> olo_system::network::Links {
+    links_cell().lock().unwrap().clone()
+}
+
 /// Apply `update` to the current status and send it if it changed.
 fn publish<F: Fn(Status)>(shared: &Shared<F>, update: impl FnOnce(&mut Status)) {
     let mut g = shared.lock().unwrap();
@@ -238,10 +244,17 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     // Preferences ▸ Power).
     let on_modes = shared.clone();
     olo_system::power_profile::watch(move |m| publish(&on_modes, |s| s.power_modes = m));
-    let on_wifi = shared.clone();
-    if let Err(e) = olo_system::network::watch_wifi(move |w| {
-        let wifi = w.map(|w| Wifi { ssid: w.ssid, signal: w.strength });
-        publish(&on_wifi, |s| s.wifi = wifi);
+    let on_links = shared.clone();
+    if let Err(e) = olo_system::network::watch_links(move |l| {
+        let wifi = l.wifi.as_ref().map(|w| Wifi { ssid: w.ssid.clone(), signal: w.strength });
+        let wired = l.wired.as_ref().map(|d| Wired { speed: d.speed });
+        let primary = l.primary;
+        *links_cell().lock().unwrap() = l;
+        publish(&on_links, |s| {
+            s.wifi = wifi;
+            s.wired = wired;
+            s.primary = primary;
+        });
     }) {
         tracing::debug!("NetworkManager: {e}");
     }
@@ -323,7 +336,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
                 // before reading: `read` takes it again to publish.
                 let again = {
                     let g = counted.lock().unwrap();
-                    g.0.agent_screens > 0 || !g.0.sharing.is_empty() || g.0.recording.is_some()
+                    !g.0.agent_screens.is_empty() || !g.0.sharing.is_empty() || g.0.recording.is_some()
                 };
                 if again {
                     read(&[]);
@@ -549,6 +562,44 @@ pub fn draw_wifi(window: &mut Window, r: Bounds<Pixels>, p: &Palette, signal: Op
     for i in 1..=3 {
         let color = if i <= bars { ink(p) } else { dim(p) };
         arc(window, origin, 3.5 * i as f32, 1.5, 1.75 * pi, 0.5 * pi, color);
+    }
+}
+
+/// An Ethernet port, as on the machine's side: its opening in a hairline
+/// with the latch's notch at the bottom, and its contacts along the top,
+/// all on device pixels.
+pub fn draw_ethernet(window: &mut Window, r: Bounds<Pixels>, p: &Palette) {
+    let (l, t) = left_top(r);
+    let s = window.scale_factor();
+    let hair = f32::from(style::hairline(window));
+    let body = style::snap(window, rect(l + 1.0, t + 2.0, 14.0, 10.0));
+    let (bl, bt, br, bb) = (f32::from(body.left()), f32::from(body.top()), f32::from(body.right()), f32::from(body.bottom()));
+    // In device pixels: what's centred leaves as many on each side, so a
+    // width the body's odd or even as it is.
+    let width = ((br - bl) * s).round();
+    let even = |w: f32| if (width - w) % 2.0 == 0.0 { w } else { w + 1.0 };
+    let (dhair, pitch) = ((hair * s).round(), {
+        let p = (2.5 * s).round();
+        if (width - (3.0 * p + (hair * s).round())) % 2.0 == 0.0 { p } else { p + 1.0 }
+    });
+    // The notch.
+    let notch = even((6.0 * s).round());
+    let nl = bl + (width - notch) / 2.0 / s;
+    let (nr, nb) = (nl + notch / s, whole(window, bb + 2.5));
+    style::hline(window, px(bl), px(br), px(bt), ink(p));
+    style::vline(window, px(bl), px(bt), px(bb), ink(p));
+    style::vline_left_of(window, px(br), px(bt), px(bb), ink(p));
+    style::hline_above(window, px(bl), px(nl + hair), px(bb), ink(p));
+    style::hline_above(window, px(nr - hair), px(br), px(bb), ink(p));
+    style::vline(window, px(nl), px(bb - hair), px(nb), ink(p));
+    style::vline_left_of(window, px(nr), px(bb - hair), px(nb), ink(p));
+    style::hline_above(window, px(nl), px(nr), px(nb), ink(p));
+    // Four contacts, as far apart as each other, under the top.
+    let span = 3.0 * pitch + dhair;
+    let first = bl + (width - span) / 2.0 / s;
+    let (top, bottom) = (bt + whole(window, 2.0), bt + whole(window, 5.0));
+    for i in 0..4 {
+        style::vline(window, px(first + i as f32 * pitch / s), px(top), px(bottom), ink(p));
     }
 }
 

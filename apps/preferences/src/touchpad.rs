@@ -229,16 +229,51 @@ fn touchpad(ui: &mut Ui, t: &TouchpadSettings, asked: bool, pad: Option<&InputDe
     );
 }
 
+/// The kind of pad `pad` is, for its palm model (`olo_palm::Kind`).
+fn palm_kind(pad: Option<&InputDeviceInfo>) -> olo_palm::Kind {
+    if pad.is_some_and(|p| p.kind == olo_protocol::touchpad::DeviceKind::Thinkpad) { olo_palm::Kind::ThinkPad } else { olo_palm::Kind::MacBook }
+}
+
 fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
     let f = t.filter.clone();
+    let kind = palm_kind(pad);
+    // A ThinkPad's pad: no hover, no size, its click its own: palms only.
+    let pressure_pad = kind.sized();
     ui.columns(
         |ui| {
-            ui.bbox("Palms and Hovering Fingers", |ui| {
-                ui.check("Ignore hovering fingers and palms", f.enabled, |s, v| tuned(s, |t| t.filter.enabled = v));
-                if pad.is_some_and(|p| !p.pressure) {
+            ui.bbox(if pressure_pad { "Palms and Hovering Fingers" } else { "Palms" }, |ui| {
+                if pressure_pad {
+                    ui.check("Ignore hovering fingers and palms", f.enabled, |s, v| tuned(s, |t| t.filter.enabled = v));
+                } else {
+                    ui.check("Keep palms from moving the pointer", f.enabled, |s, v| tuned(s, |t| t.filter.enabled = v));
+                    ui.note("The touchpad says which touches are palms, but lets a resting palm go back to being a finger; Olo keeps it a palm until it lifts.");
+                }
+                if pressure_pad && pad.is_some_and(|p| !p.pressure) {
                     ui.note("This touchpad doesn't report pressure, so it is left to libinput.");
                 }
                 ui.enabled_if(f.enabled, |ui| {
+                    if !pressure_pad {
+                        let trained = f.palm_model.as_ref().is_some_and(|m| olo_palm::Kind::of_model(m) == kind);
+                        ui.check("Tell palms apart with a palm model too", f.use_palm_model, |s, v| tuned(s, |t| t.filter.use_palm_model = v));
+                        ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model, kind));
+                        let (prefs, palm_size, press) = (ui.prefs(), f.palm_size, f.click_press);
+                        ui.row(|ui| {
+                            ui.button(if trained { "Train Again…" } else { "Train for Your Palm…" }, move |_, cx| {
+                                if let Some(p) = prefs.upgrade() {
+                                    crate::palm_trainer::open(p, palm_size, press, cx);
+                                }
+                            });
+                            ui.enabled_if(trained, |ui| {
+                                ui.button(
+                                    "Forget My Model",
+                                    ui.edit_click(|s| {
+                                        s.touchpad.filter.palm_model = None;
+                                    }),
+                                )
+                            });
+                        });
+                        return;
+                    }
                     let on = f.touch_on as f32;
                     ui.slider(
                         "touch-on",
@@ -253,9 +288,9 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                     // is a palm regardless.
                     // Olo's own model until the person trains theirs (on by
                     // default: it's made from real hands).
-                    let trained = f.palm_model.is_some();
+                    let trained = f.palm_model.as_ref().is_some_and(|m| olo_palm::Kind::of_model(m) == kind);
                     ui.check("Tell palms apart with a palm model", f.use_palm_model, |s, v| tuned(s, |t| t.filter.use_palm_model = v));
-                    ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model));
+                    ui.note(model_status(f.palm_model.as_ref(), f.use_palm_model, kind));
                     let (prefs, palm_size, press) = (ui.prefs(), f.palm_size, f.click_press);
                     ui.row(|ui| {
                         // The trainer: full screen, driven from the keyboard.
@@ -288,29 +323,36 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
         },
         |ui| {
             ui.bbox("Click", |ui| {
-                let mut names: Vec<SharedString> = CLICK_PRESSURES.iter().map(|(n, _, _)| SharedString::from(*n)).collect();
-                let i = match CLICK_PRESSURES.iter().position(|(_, p, r)| *p == f.click_press && *r == f.click_release) {
-                    Some(i) => i,
-                    None => {
-                        names.push(format!("Custom ({}/{})", f.click_press, f.click_release).into());
-                        names.len() - 1
+                // (A ThinkPad's click is its own button: nothing to set.)
+                if !pressure_pad {
+                    ui.note("Its click is its own: a resting palm can't press.");
+                    return;
+                }
+                {
+                    let mut names: Vec<SharedString> = CLICK_PRESSURES.iter().map(|(n, _, _)| SharedString::from(*n)).collect();
+                    let i = match CLICK_PRESSURES.iter().position(|(_, p, r)| *p == f.click_press && *r == f.click_release) {
+                        Some(i) => i,
+                        None => {
+                            names.push(format!("Custom ({}/{})", f.click_press, f.click_release).into());
+                            names.len() - 1
+                        }
+                    };
+                    ui.enabled_if(f.enabled && f.palm_proof_click, |ui| {
+                        ui.menu(
+                            "click-pressure",
+                            names,
+                            i,
+                            |m| m.label("Click pressure:").divider(110.0),
+                            |s, i| {
+                                if let Some((_, press, release)) = CLICK_PRESSURES.get(i) {
+                                    tuned(s, |t| (t.filter.click_press, t.filter.click_release) = (*press, *release));
+                                }
+                            },
+                        );
+                    });
+                    if let Some((press, release)) = pad.and_then(|p| p.driver_click) {
+                        ui.note(format!("The pad clicks at {press}/{release} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone."));
                     }
-                };
-                ui.enabled_if(f.enabled && f.palm_proof_click, |ui| {
-                    ui.menu(
-                        "click-pressure",
-                        names,
-                        i,
-                        |m| m.label("Click pressure:").divider(110.0),
-                        |s, i| {
-                            if let Some((_, press, release)) = CLICK_PRESSURES.get(i) {
-                                tuned(s, |t| (t.filter.click_press, t.filter.click_release) = (*press, *release));
-                            }
-                        },
-                    );
-                });
-                if let Some((press, release)) = pad.and_then(|p| p.driver_click) {
-                    ui.note(format!("The pad clicks at {press}/{release} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone."));
                 }
             });
             ui.bbox("While Typing", |ui| {
@@ -518,15 +560,19 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
     });
 }
 
-/// Which palm model the filter uses, and how the person's did when it
-/// was trained.
-fn model_status(trained: Option<&olo_protocol::touchpad::PalmModel>, on: bool) -> String {
+/// Which palm model the filter uses on a `kind` of pad (each kind its
+/// own), and how the person's did when it was trained.
+fn model_status(trained: Option<&olo_protocol::touchpad::PalmModel>, on: bool, kind: olo_palm::Kind) -> String {
+    // (Trained on another kind of pad: not this one's.)
+    let trained = trained.filter(|m| olo_palm::Kind::of_model(m) == kind);
     match trained {
-        _ if !on => "Off: palms are told apart by their size alone.".into(),
+        _ if !on && kind.sized() => "Off: palms are told apart by their size alone.".into(),
+        _ if !on => "Off: palms are what the touchpad says they are.".into(),
         None => {
-            let own = olo_palm::default_model();
+            let own = kind.base_model();
             format!(
-                "In use: Olo's own, made from {} touches of real hands; on touches kept back it caught {:.0}% of palms and took {:.0}% of fingers for palms. Train for Your Palm fits it to yours.",
+                "In use: Olo's own for a {}, made from {} touches of real hands on one; it caught {:.0}% of palms and took {:.0}% of fingers for palms. Train for Your Palm fits it to yours.",
+                kind.name(),
                 own.contacts,
                 own.palms_caught * 100.0,
                 own.fingers_lost * 100.0

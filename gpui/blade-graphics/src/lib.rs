@@ -1176,6 +1176,10 @@ pub enum ColorSpace {
     /// the window), where the surface offers it; else sRGB
     /// (`Surface::color_space` says which).
     DisplayP3,
+    /// Olo: HDR10, BT.2020's primaries and PQ's curve (Vulkan's
+    /// `HDR10_ST2084_EXT`), ten bits a channel, where the surface offers
+    /// it; else sRGB.
+    Hdr10,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

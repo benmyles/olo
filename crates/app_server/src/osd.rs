@@ -53,6 +53,10 @@ pub enum Indicator {
     },
     /// A windowing mode chosen (⌃⌥⌘T, ⌃⌥⌘O).
     Mode(olo_protocol::WindowingMode),
+    /// Do Not Disturb on or off (a Magic Keyboard's key).
+    DoNotDisturb {
+        on: bool,
+    },
 }
 
 /// How long the panel stays up after the last change.
@@ -97,6 +101,8 @@ impl Indicator {
             Indicator::Caffeinated { on: true, .. } => "Caffeinated",
             Indicator::Caffeinated { on: false, .. } => "Sleep allowed",
             Indicator::Mode(m) => m.title(),
+            Indicator::DoNotDisturb { on: true } => "Do Not Disturb on",
+            Indicator::DoNotDisturb { on: false } => "Do Not Disturb off",
         }
     }
 
@@ -104,7 +110,7 @@ impl Indicator {
         match self {
             Indicator::Brightness(l) | Indicator::KeyboardBacklight(l) => Some(*l),
             Indicator::Volume { level, muted } => Some(if *muted { 0.0 } else { *level }),
-            Indicator::Caffeinated { .. } | Indicator::Mode(_) | Indicator::Microphone { .. } | Indicator::Airplane { .. } => None,
+            Indicator::Caffeinated { .. } | Indicator::Mode(_) | Indicator::Microphone { .. } | Indicator::Airplane { .. } | Indicator::DoNotDisturb { .. } => None,
         }
     }
 }
@@ -347,6 +353,30 @@ fn draw_icon(pm: &mut Pixmap, ind: &Indicator, (x, y, size): (f32, f32, f32), rg
                 }
             }
         }
+        Indicator::DoNotDisturb { on } => {
+            // A crescent moon (a disc, a smaller one of the panel's colour
+            // over its upper right); crossed out when it's off, the other
+            // way from the others' (theirs runs along its inner edge).
+            let bg = theme::palette().panel_background;
+            let mut gap = paint.clone();
+            gap.set_color_rgba8(bg[0], bg[1], bg[2], bg[3]);
+            let (cx, cy) = at(15.0, 17.0);
+            let (mx, my) = at(20.5, 11.5);
+            if let (Some(disc), Some(bite)) = (PathBuilder::from_circle(cx, cy, 12.0 * k), PathBuilder::from_circle(mx, my, 10.0 * k)) {
+                pm.fill_path(&disc, &paint, FillRule::Winding, id, None);
+                pm.fill_path(&bite, &gap, FillRule::Winding, id, None);
+            }
+            if !*on {
+                let mut pb = PathBuilder::new();
+                let ((p, q), (r, s)) = (at(5.0, 28.0), at(27.0, 4.0));
+                pb.move_to(p, q);
+                pb.line_to(r, s);
+                if let Some(slash) = pb.finish() {
+                    pm.stroke_path(&slash, &gap, &stroke(5.0), id, None);
+                    pm.stroke_path(&slash, &paint, &stroke(2.2), id, None);
+                }
+            }
+        }
         Indicator::Mode(mode) => {
             use olo_protocol::WindowingMode as M;
             // Auto-Tiling: a screen in tiles, as dwindle splits it (a
@@ -495,6 +525,8 @@ mod tests {
             Indicator::Mode(olo_protocol::WindowingMode::Standard),
             Indicator::Mode(olo_protocol::WindowingMode::AutoTiling),
             Indicator::Mode(olo_protocol::WindowingMode::Focus),
+            Indicator::DoNotDisturb { on: true },
+            Indicator::DoNotDisturb { on: false },
         ];
         // A row for each look at each scale, 1× to 2×.
         let mut rows = Vec::new();

@@ -46,6 +46,12 @@ const EVENTS: [&str; 2] = ["SessionStart", "UserPromptSubmit"];
 /// screens' skill, apps/screen/SKILL.md, which says the rest).
 pub const SCREENS: &str = include_str!("../../screen/agent-context.md");
 
+/// What agents are told about temporary files at the start, where /tmp is
+/// held in memory (Ben, 2026-11-05: "inject instructions to those coding
+/// harnesses that if they need to write/use files to a temp location they
+/// should use /var/tmp and not /tmp and explain why").
+pub const SCRATCH: &str = "Temporary files: on this computer /tmp is held in RAM (a tmpfs), so whatever is written there takes the person's memory until it's removed. Put scratch files, build directories (a CARGO_TARGET_DIR), downloads, screenshots and copies of builds in a directory of your own under /var/tmp, which is on disk, and remove it when you're done. Don't write to /tmp.";
+
 /// A tab, as the hook needs it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TabInfo {
@@ -79,8 +85,10 @@ impl Default for Snapshot {
     }
 }
 
+/// (A coding agent's MCP server may have no `XDG_RUNTIME_DIR`: Codex
+/// starts its servers with a bare environment.)
 fn runtime_dir() -> PathBuf {
-    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|| home().join(".cache"))
+    olo_xdg::runtime_dir()
 }
 
 /// This Terminal's (one for each Olo session, by its display: Agent
@@ -210,16 +218,28 @@ fn parent(pid: i32) -> Option<i32> {
 }
 
 /// The tab the agent is in: the one whose shell is an ancestor of this
-/// process (`ancestors`), else one in the session's folder (`cwd`), one
-/// running an agent first.
-pub fn tab_of<'a>(s: &'a Snapshot, ancestors: &[i32], cwd: Option<&Path>) -> Option<&'a TabInfo> {
+/// process (`ancestors`), else one in the session's folder (`cwd`): one
+/// running this agent (`agent`, "Codex", as the tab says it) first, then
+/// one running any agent, then any; then likewise one in a folder above
+/// or below it.
+pub fn tab_of<'a>(s: &'a Snapshot, ancestors: &[i32], cwd: Option<&Path>, agent: Option<&str>) -> Option<&'a TabInfo> {
     if let Some(t) = s.tabs.iter().find(|t| t.shell.is_some_and(|p| ancestors.contains(&p))) {
         return Some(t);
     }
     let cwd = cwd?;
     let here = |t: &&TabInfo| t.cwd.as_deref() == Some(cwd);
     let near = |t: &&TabInfo| t.cwd.as_deref().is_some_and(|c| cwd.starts_with(c) || c.starts_with(cwd));
-    s.tabs.iter().filter(here).find(|t| t.agent.is_some()).or_else(|| s.tabs.iter().find(here)).or_else(|| s.tabs.iter().filter(near).find(|t| t.agent.is_some())).or_else(|| s.tabs.iter().find(near))
+    let pick = |place: &dyn Fn(&&TabInfo) -> bool| {
+        let mut at = s.tabs.iter().filter(|t| place(t));
+        at.clone().find(|t| agent.is_some() && t.agent.as_deref() == agent).or_else(|| at.clone().find(|t| t.agent.is_some())).or_else(|| at.next())
+    };
+    pick(&here).or_else(|| pick(&near))
+}
+
+/// The coding agent this process runs under (its nearest ancestor that is
+/// one), as a tab names it: for one run outside its tab (Codex's daemon).
+pub fn own_agent(ancestors: &[i32]) -> Option<&'static str> {
+    ancestors.iter().find_map(|&p| crate::agent::which(p)).map(crate::agent::Agent::name)
 }
 
 /// Where a tab is: its repository's worktree (its path, the repository's
@@ -279,13 +299,14 @@ pub fn run() -> std::process::ExitCode {
     let event = v["hook_event_name"].as_str().unwrap_or("SessionStart");
     let session = v["session_id"].as_str().unwrap_or("");
     let ancestors = ancestors();
+    let agent = own_agent(&ancestors);
     let read = read_all;
     // A tab just opened may not be in it yet (it's kept every two
     // seconds): a moment's grace, at the start only, where the tab is
     // wanted (Agent Screens' words aren't the tab's).
     let mut snapshot = read();
     let deadline = std::time::Instant::now() + Duration::from_millis(2500);
-    while event == "SessionStart" && snapshot.as_ref().is_some_and(|s| (s.groups || s.titles) && tab_of(s, &ancestors, cwd.as_deref()).is_none()) && std::time::Instant::now() < deadline {
+    while event == "SessionStart" && snapshot.as_ref().is_some_and(|s| (s.groups || s.titles) && tab_of(s, &ancestors, cwd.as_deref(), agent).is_none()) && std::time::Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(250));
         snapshot = read();
     }
@@ -295,7 +316,12 @@ pub fn run() -> std::process::ExitCode {
     if s.screens && event == "SessionStart" && std::env::var_os("OLO_SESSION").is_some() {
         said.push(SCREENS.trim().to_owned());
     }
-    let Some(tab) = tab_of(&s, &ancestors, cwd.as_deref()) else {
+    // Scratch on disk: at the start, with the group context, where /tmp is
+    // in memory.
+    if s.groups && event == "SessionStart" && olo_system::env::in_memory(Path::new("/tmp")) {
+        said.push(SCRATCH.to_owned());
+    }
+    let Some(tab) = tab_of(&s, &ancestors, cwd.as_deref(), agent) else {
         if !said.is_empty() {
             println!("{}", said.join("\n\n"));
         }
@@ -342,6 +368,7 @@ mod tests {
         assert!(SCREENS.contains("olo-screen run NAME olo-chrome URL"));
         assert!(SCREENS.contains("Never start `google-chrome`"));
         assert!(SCREENS.contains("olo-screen start"));
+        assert!(SCRATCH.contains("/var/tmp") && SCRATCH.contains("held in RAM") && SCRATCH.contains("Don't write to /tmp"));
         let s: Snapshot = serde_json::from_str(r#"{"tabs":[],"screens":true}"#).unwrap();
         assert!(s.screens && s.groups && !s.titles);
         // From a Terminal before the setting: off.
@@ -362,18 +389,34 @@ mod tests {
             ..Default::default()
         };
         // Under shell 11's tab: its group, each place once, its own marked.
-        let t = tab_of(&s, &[999, 11, 1], None).unwrap();
+        let t = tab_of(&s, &[999, 11, 1], None, None).unwrap();
         let text = block(&s, t, &place).unwrap();
         assert!(text.contains("tab group named \"payments\""), "{text}");
         assert_eq!(text.lines().filter(|l| l.starts_with("- ")).count(), 2, "{text}");
         assert!(text.contains("- /src/web (repository web) ← this session's") && text.contains("- /src/api (repository api)\n"), "{text}");
         // Codex in its daemon: by folder, the tab running an agent first.
-        let t = tab_of(&s, &[], Some(Path::new("/src/api"))).unwrap();
+        let t = tab_of(&s, &[], Some(Path::new("/src/api")), None).unwrap();
         assert_eq!(t.shell, Some(10));
         // In no group, or a group in one place: nothing.
-        assert_eq!(block(&s, tab_of(&s, &[13], None).unwrap(), &place), None);
-        assert_eq!(block(&s, tab_of(&s, &[14], None).unwrap(), &place), None);
-        assert!(tab_of(&s, &[], Some(Path::new("/elsewhere"))).is_none());
+        assert_eq!(block(&s, tab_of(&s, &[13], None, None).unwrap(), &place), None);
+        assert_eq!(block(&s, tab_of(&s, &[14], None, None).unwrap(), &place), None);
+        assert!(tab_of(&s, &[], Some(Path::new("/elsewhere")), None).is_none());
+    }
+
+    #[test]
+    fn an_agent_outside_its_tab_finds_its_own_agents_tab() {
+        // Claude Code and Codex in tabs in one folder: Codex's server (in
+        // its daemon, by folder) takes Codex's, whichever is first.
+        let s = Snapshot {
+            tabs: vec![tab(20, None, "/src/olo", None), tab(21, None, "/src/olo", Some("Claude Code")), tab(22, None, "/src/olo", Some("Codex")), tab(23, None, "/src", Some("Codex"))],
+            ..Default::default()
+        };
+        let at = |agent| tab_of(&s, &[], Some(Path::new("/src/olo")), agent).and_then(|t| t.shell);
+        assert_eq!(at(Some("Codex")), Some(22));
+        assert_eq!(at(Some("Claude Code")), Some(21));
+        assert_eq!(at(None), Some(21));
+        // Under a folder of the tab's: the nearby Codex tab.
+        assert_eq!(tab_of(&s, &[], Some(Path::new("/src/olo/crates")), Some("Codex")).and_then(|t| t.shell), Some(22));
     }
 
     #[test]

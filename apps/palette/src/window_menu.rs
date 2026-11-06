@@ -62,6 +62,9 @@ pub struct Facts {
     /// tiles there.
     pub auto: bool,
     pub floating: bool,
+    /// It floats whatever is asked (a dialog, an alert): Float Over the
+    /// Tiles shows it, dimmed.
+    pub floats_always: bool,
     /// Shortcut keys changed from the defaults, to show the ones in use.
     pub keys: KeyboardProfile,
     /// The file or folder it shows, if its program says
@@ -70,6 +73,10 @@ pub struct Facts {
     /// Its program (its process and the window's surface, to choose from
     /// that window's menus), and the app's name.
     pub app: Owner,
+    /// The agent screens it can be moved to (name, label), when its
+    /// program can move (`WindowInfo::kept`) and this is the person's
+    /// display; None, no Move to Agent Screen.
+    pub screens: Option<Vec<olo_ui::moving::RunningScreen>>,
 }
 
 /// Whose window it is, and the app's own Close and Quit if it's on the
@@ -116,14 +123,15 @@ pub fn learn(ask: Ask, proxy: Proxy) {
             (Some(pid), Some(surface)) if w.app_id != "olo.tracker" => olo_ui::commands::path(pid as u32, surface),
             _ => None,
         };
-        let (rolled, grouped, floating) = (w.rolled, w.group.is_some(), w.floating);
+        let (rolled, grouped, floating, floats_always) = (w.rolled, w.group.is_some(), w.floating, w.floats_always);
         let pid = w.pid.map(|p| p as u32);
         let own = pid.zip(w.surface).and_then(|(pid, surface)| olo_ui::commands::menus_in(pid, surface)).map(|m| m.entries).unwrap_or_default();
         let find = |command: &str| own.iter().find(|e| e.command == command && e.path.len() == 1).map(|e| (e.label.clone(), e.keys.clone(), e.enabled));
         let entry = if olo_xdg::apps::our_app(&w.app_id).is_some() { None } else { olo_xdg::desktop_entry::find(&w.app_id) };
         let (name, _) = olo_xdg::apps::app_name(&w.app_id, entry.as_ref());
         let app = Owner { pid, surface: w.surface, app_id: w.app_id.clone(), name, close: find("close"), quit: find("quit") };
-        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, keys, path, app });
+        let screens = (w.kept && olo_ui::moving::menus_offer()).then(olo_ui::moving::screens);
+        proxy.send(Facts { ask, title: w.title, workspace: w.workspace, workspaces, display, displays, others, rolled, grouped, auto, floating, floats_always, keys, path, app, screens });
     });
 }
 
@@ -216,12 +224,15 @@ pub fn build(f: &Facts) -> Menu {
     m = shortcut(m, "center", "Center");
     if f.auto {
         // Auto-tiled: out of the tiles (or back in).
-        m = shortcut(m, "float-window", "Float Over the Tiles").checked(f.floating);
+        m = shortcut(m, "float-window", "Float Over the Tiles").checked(f.floating).enabled(!f.floats_always);
     }
     m = m.separator().submenu(tile).submenu(spaces);
     if f.displays > 1 {
         m = shortcut(m, "next-display", "To the Next Display");
         m = shortcut(m, "previous-display", "To the Previous Display");
+    }
+    if let Some(screens) = &f.screens {
+        m = m.submenu(Menu::agent_screens("Move to Agent Screen", screens, ""));
     }
     m = m.separator();
     if f.path.is_some() {
@@ -252,6 +263,10 @@ pub fn build(f: &Facts) -> Menu {
 
 /// Do `command` to `window` (of `app`), off the UI thread.
 pub fn perform(window: u64, app: &Owner, command: &str) {
+    if let Some(screen) = olo_ui::moving::screen_command(command) {
+        olo_ui::moving::take_to_screen(screen, vec![window]);
+        return;
+    }
     // The app's own Close and Quit, in that window.
     if let ("app-close" | "app-quit", Some(pid), Some(surface)) = (command, app.pid, app.surface) {
         let command = if command == "app-close" { "close" } else { "quit" };
@@ -402,11 +417,23 @@ mod tests {
             grouped: true,
             auto: false,
             floating: false,
+            floats_always: false,
             keys: changed,
             path: None,
             display: Some(1),
             others: vec![("HDMI-A-1".into(), 0)],
             app: Owner { app_id: "org.gnome.gedit".into(), name: "Gedit".into(), ..Default::default() },
+            screens: Some(vec![olo_ui::moving::RunningScreen {
+                name: "agent".into(),
+                label: "Research".into(),
+                wayland_display: "wayland-3".into(),
+                olo_socket: "/run/olo-wayland-3.sock".into(),
+                pid: 7,
+                sound: false,
+                bus: None,
+                a11y: None,
+                size: (1440, 900),
+            }]),
         };
         fn commands(m: &Menu, out: &mut Vec<String>) {
             for item in &m.items {
@@ -422,9 +449,16 @@ mod tests {
         for c in &all {
             let known = c.strip_prefix("shortcut:").is_some_and(|id| shortcuts::SHORTCUTS.iter().any(|s| s.id == id))
                 || c.starts_with("workspace:")
+                || olo_ui::moving::screen_command(c).is_some()
                 || ["send-to-back", "close", "quit-all", "ungroup", tracker::COMMAND].contains(&c.as_str());
             assert!(known, "{c}");
         }
+        // Each agent screen running, and a new one; none where the
+        // program can't move or this is a screen.
+        assert!(all.contains(&"agent-screen:agent".to_owned()) && all.contains(&"agent-screen-new".to_owned()));
+        let mut stuck = Vec::new();
+        commands(&build(&Facts { screens: None, ..facts.clone() }), &mut stuck);
+        assert!(!stuck.iter().any(|c| c.starts_with("agent-screen")));
         // Remove from Group only for a window in one.
         assert!(all.contains(&"ungroup".to_owned()));
         let mut alone = Vec::new();
@@ -440,6 +474,15 @@ mod tests {
         let mut auto = Vec::new();
         commands(&build(&Facts { auto: true, ..facts.clone() }), &mut auto);
         assert!(auto.contains(&"shortcut:float-window".to_owned()));
+        // A dialog or an alert floats whatever is asked: shown, dimmed.
+        let float_item = |f: &Facts| {
+            build(f).items.iter().find_map(|i| match i {
+                menu::MenuItem::Action(a) if a.command == "shortcut:float-window" => Some((a.checked, a.enabled)),
+                _ => None,
+            })
+        };
+        assert_eq!(float_item(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }), Some((true, false)));
+        assert_eq!(float_item(&Facts { auto: true, floating: false, ..facts.clone() }), Some((false, true)));
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.
         let menu = build(&facts);

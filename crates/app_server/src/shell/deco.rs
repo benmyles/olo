@@ -71,6 +71,10 @@ pub struct Decoration {
     /// Behind another window of its group: only the tab shows, as when
     /// rolled up (`groups::mark_behind`).
     pub behind: bool,
+    /// It has been its group's front window (a window new to a group
+    /// waits to have drawn at the group's size before it is, as one
+    /// brought from behind does: `groups::mark_behind`).
+    pub fronted: bool,
     /// Its tab's width when the window is in a group (each window's tab
     /// gets its place along the shared top, `groups`); else as wide as its
     /// title wants.
@@ -310,6 +314,7 @@ impl Default for Decoration {
             last_press: None,
             rolled: false,
             behind: false,
+            fronted: false,
             tab_width: None,
             group: None,
             docked: false,

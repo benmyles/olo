@@ -7,7 +7,9 @@
 //! window with polkit's message and a password field. The PAM conversation
 //! runs in polkit's own helper (`olo_system::polkit::Helper`), so with
 //! Touch ID set up in PAM the window first says to touch the sensor, then
-//! asks for the password if that doesn't work.
+//! asks for the password if that doesn't work. A touch of a security key
+//! set up (`olo_fido`) answers for the person's own identity: the password
+//! it keeps goes to the helper when PAM asks.
 //!
 //! ```text
 //! olo-polkit-agent                   the session's agent (started by olo-session)
@@ -66,6 +68,10 @@ enum Msg {
     Prompter(Result<Arc<Prompter>, String>),
     /// The self-test's question is answered.
     Checked,
+    /// A security key set up waits for a touch, for this window.
+    KeyWaiting(WindowId),
+    /// The key's password for this window, or why not.
+    Key(WindowId, Result<zeroize::Zeroizing<String>, String>),
 }
 
 /// The agent: its windows (one for each request and keyring prompt).
@@ -96,9 +102,68 @@ struct Auth {
     conv: Conversation,
     field: Entity<TextField>,
     focus: FocusHandle,
+    /// A touch of a security key waited for (the person's own identity
+    /// only: the password it keeps is theirs), and its answer till PAM
+    /// asks.
+    key: Option<olo_fido::Touch>,
+    key_password: Option<zeroize::Zeroizing<String>>,
 }
 
 impl Auth {
+    /// Wait for a touch of a key set up, while the identity chosen is the
+    /// person's own.
+    fn wait_for_key(&mut self, cx: &mut Context<Self>) {
+        self.key = None;
+        let me = olo_system::auth::current_user();
+        let (Some(me), Some(window)) = (me, self.window) else { return };
+        if self.users.get(self.user).map(|u| u.as_ref()) != Some(me.as_str()) {
+            return;
+        }
+        let id = window.window_id();
+        let (p, proxy) = (olo_ui::proxy(cx), olo_ui::proxy(cx));
+        self.key = Some(olo_fido::touch(me, move || p.send(Msg::KeyWaiting(id)), move |r| proxy.send(Msg::Key(id, r.map_err(|e| e.to_string())))));
+    }
+
+    fn key_waiting(&mut self, cx: &mut Context<Self>) {
+        if self.conv.info.is_empty() && !self.conv.checking {
+            self.conv.info = olo_fido::TOUCH_OR_TYPE.into();
+            cx.notify();
+        }
+    }
+
+    fn key_said(&mut self, r: Result<zeroize::Zeroizing<String>, String>, cx: &mut Context<Self>) {
+        self.key = None;
+        if self.conv.info == olo_fido::TOUCH_OR_TYPE {
+            self.conv.info.clear();
+        }
+        match r {
+            Ok(password) => {
+                self.key_password = Some(password);
+                self.answer_with_key(cx);
+            }
+            Err(why) => self.conv.info = format!("{why} Type your password."),
+        }
+        cx.notify();
+    }
+
+    /// The key's password to the helper, if PAM is asking for a password
+    /// and the key gave one (once).
+    fn answer_with_key(&mut self, cx: &mut Context<Self>) {
+        let hidden = self.conv.prompt.as_ref().is_some_and(|(_, echo)| !echo);
+        if !self.conv.ready() || !hidden {
+            return;
+        }
+        let Some(password) = self.key_password.take() else { return };
+        let r = self.helper.as_mut().map(|h| h.respond(&password));
+        self.field.update(cx, |f, cx| f.clear_secret(cx));
+        self.conv.sent();
+        if !matches!(r, Some(Ok(()))) {
+            self.conv.checking = false;
+            self.conv.error = "The authentication helper stopped.".into();
+        }
+        self.sync_field(cx);
+    }
+
     /// (Re)starts the helper for the chosen user.
     fn start_helper(&mut self, cx: &mut Context<Self>) {
         self.helper = None;
@@ -141,6 +206,8 @@ impl Auth {
             HelperEvent::Prompt { text, echo } => {
                 self.conv.ask(text, echo);
                 self.sync_field(cx);
+                // (The key answered before PAM asked.)
+                self.answer_with_key(cx);
             }
             HelperEvent::Info(t) => self.conv.info = t,
             HelperEvent::Error(t) => self.conv.error = t,
@@ -185,6 +252,8 @@ impl Auth {
 
     /// Closes the window; an unanswered request is cancelled (dropped).
     fn close(&mut self, cx: &mut Context<Self>) {
+        self.key = None;
+        self.key_password = None;
         self.field.update(cx, |f, cx| f.clear_secret(cx));
         if let Some(window) = self.window.take() {
             forget(cx, window.window_id());
@@ -222,7 +291,9 @@ impl Render for Auth {
                 view.update(cx, |a, cx| {
                     a.user = i;
                     a.conv.error.clear();
+                    a.key_password = None;
                     a.start_helper(cx);
+                    a.wait_for_key(cx);
                 })
             }));
         }
@@ -279,6 +350,8 @@ fn begin(cx: &mut App, request: Request) {
             conv,
             field,
             focus: cx.focus_handle(),
+            key: None,
+            key_password: None,
         }
     });
     let Some(handle) = open(cx, "Authenticate", h, auth.clone()) else { return };
@@ -287,6 +360,7 @@ fn begin(cx: &mut App, request: Request) {
     auth.update(cx, |a, cx| {
         a.window = Some(handle.into());
         a.start_helper(cx);
+        a.wait_for_key(cx);
     });
 }
 
@@ -314,6 +388,8 @@ pub trait Cancel {
 
 impl Cancel for Auth {
     fn cancel(&mut self, cx: &mut Context<Self>) -> bool {
+        self.key = None;
+        self.key_password = None;
         self.field.update(cx, |f, cx| f.clear_secret(cx));
         if let Some(w) = self.window.take() {
             forget(cx, w.window_id());
@@ -352,6 +428,16 @@ fn message(message: Box<dyn std::any::Any + Send>, cx: &mut App) {
         Msg::Keyring(e) => keyring::event(cx, e),
         Msg::Prompter(Ok(p)) => cx.default_global::<Agents>().prompter = Some(p),
         Msg::Prompter(Err(e)) => eprintln!("olo-polkit-agent: couldn't serve the keyring's prompts: {e}"),
+        Msg::KeyWaiting(id) => {
+            if let Some(v) = cx.default_global::<Agents>().auths.get(&id).cloned() {
+                v.update(cx, |a, cx| a.key_waiting(cx));
+            }
+        }
+        Msg::Key(id, r) => {
+            if let Some(v) = cx.default_global::<Agents>().auths.get(&id).cloned() {
+                v.update(cx, |a, cx| a.key_said(r, cx));
+            }
+        }
         // (Answered without asking, or after its window closed.)
         Msg::Checked => {
             if cx.default_global::<Agents>().auths.is_empty() {

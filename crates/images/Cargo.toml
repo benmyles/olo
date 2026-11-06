@@ -16,6 +16,9 @@ avif-parse = "2"
 heifer = "0.2"
 # Embedded colour profiles into sRGB (pure Rust; the image crate's own).
 moxcms = "0.8"
+# HDR and wide-gamut video's light, primaries and curves (`hdr`).
+olo-color.workspace = true
+# Gain maps' HDR pictures in half floats (`gain`).
+half = "2"
 
 [dev-dependencies]
-olo-color.workspace = true

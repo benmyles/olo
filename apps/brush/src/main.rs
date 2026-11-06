@@ -60,8 +60,23 @@ struct Olo {
 }
 
 impl Olo {
+    /// The shell's session for olo-complete: in Olo's Terminal its tab's
+    /// shell id (`OLO_SHELL_ID`: olo-termd keeps its recent text under it,
+    /// `protocol::tail_path`), else this process.
     fn session() -> u64 {
-        u64::from(std::process::id())
+        IDS.get().and_then(|i| i.0).unwrap_or_else(|| u64::from(std::process::id()))
+    }
+
+    /// A shell standing in for one of an earlier session (a tab restored
+    /// after a restart) says so once, before its first suggestion or
+    /// command: its commands so far are the old one's.
+    fn continues() {
+        static TOLD: std::sync::Once = std::sync::Once::new();
+        TOLD.call_once(|| {
+            if let Some(from) = IDS.get().and_then(|i| i.1) {
+                protocol::tell(&Request::Continues { session: Olo::session(), from });
+            }
+        });
     }
 }
 
@@ -78,6 +93,7 @@ impl Hooks for Olo {
         }
         let taken = s.taken.take();
         drop(s);
+        Olo::continues();
         let session = Olo::session();
         let cwd = Some(info.working_dir.to_string_lossy().into_owned());
         // How the last command ended (known now, at the next prompt).
@@ -122,6 +138,7 @@ impl ModelHinter {
             return None;
         }
         let cwd = Some((self.info)().working_dir.to_string_lossy().into_owned());
+        Olo::continues();
         match protocol::ask(&Request::Suggest { line: line.to_owned(), cwd, session: Olo::session() }, WAIT) {
             Some(Reply::Suggestion { rest, .. }) => Some(rest),
             Some(_) => None,
@@ -182,8 +199,14 @@ impl Hinter for ModelHinter {
     }
 }
 
+/// The shell's id and the one it stands in for (`Olo::session`), read as
+/// it starts: brush takes the environment into its variables and the
+/// process's own is gone after (a session by process id, every time).
+static IDS: std::sync::OnceLock<(Option<u64>, Option<u64>)> = std::sync::OnceLock::new();
+
 fn main() {
     olo_crash::install();
+    let _ = IDS.set((protocol::shell_id(protocol::SHELL_ID_ENV), protocol::shell_id(protocol::SHELL_RESTORED_ENV)));
     // (Kept in the binary, for Preferences to find.)
     std::hint::black_box(protocol::HINTER_MARK);
     brush_interactive::hooks::set_hooks(Box::new(Olo { shared: Arc::default() }));

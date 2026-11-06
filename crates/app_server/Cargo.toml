@@ -16,6 +16,8 @@ olo-crash.workspace = true
 olo-sync.workspace = true
 olo-system.workspace = true
 olo-color.workspace = true
+# HDR wallpapers' half floats.
+half = "2"
 zeroize = "1"
 olo-hvif.workspace = true
 libc = "0.2"
@@ -45,7 +47,8 @@ fast_image_resize = "5"
 
 [dependencies.smithay]
 workspace = true
-features = ["desktop", "wayland_frontend"]
+# backend_libei: remote control (remote.rs).
+features = ["desktop", "wayland_frontend", "backend_libei"]
 
 [features]
 default = ["egl", "winit", "udev"]
@@ -65,7 +68,6 @@ udev = [
   "smithay/renderer_multi",
 ]
 winit = ["smithay/backend_winit", "smithay/backend_drm"]
-libei = ["smithay/backend_libei", "udev"]
 renderer_sync = []
 debug = []
 profile-with-tracy-mem = []

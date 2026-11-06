@@ -221,10 +221,15 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 if &root == surface {
                     // Drawn since it came to the front of its group: it
                     // shows (`Decoration::fronting`).
-                    if window.decorated() && window.decoration().fronting.take().is_some() {
+                    if window.decorated() && groups::drew_while_fronting(&mut window.decoration()) {
                         self.backend_data.wake(None);
                     }
                     self.place_on_content(surface);
+                    // Come on screen: if under the pointer, it has it
+                    // (its cursor) without waiting for the pointer to move.
+                    if came(surface) {
+                        self.repoint_soon();
+                    }
                     let buffer_offset = with_states(surface, |states| states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take());
 
                     if let Some(buffer_offset) = buffer_offset {
@@ -290,6 +295,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         if !came {
             return;
         }
+        // (Under the pointer, it has it: Quick Look over Tracker takes the
+        // scroll that comes next without the pointer moving.)
+        self.repoint_soon();
         let Some(layer) = self.space.outputs().find_map(|o| layer_map_for_output(o).layer_for_surface(surface, WindowSurfaceType::TOPLEVEL).cloned()) else { return };
         // In Rescue, only Rescue's own; and Rescue's that takes the
         // keyboard (the one with its terminal) as it comes, whatever had it.
@@ -498,6 +506,19 @@ fn keep_on_screen(space: &mut Space<WindowElement>, surface: &WlSurface, window:
 /// Whether a layer surface had a buffer at its last commit
 /// (`focus_shown_layer`).
 struct LayerShown(std::cell::Cell<bool>);
+
+/// Whether a window's surface had a buffer at its last commit (`came`).
+struct WindowShown(std::cell::Cell<bool>);
+
+/// Whether `surface` (a window's) shows now and didn't at its last
+/// commit: it has just come on screen (or back, after hiding).
+fn came(surface: &WlSurface) -> bool {
+    with_states(surface, |states| {
+        let shown = states.data_map.get::<RendererSurfaceStateUserData>().is_some_and(|d| d.lock().unwrap().buffer().is_some());
+        let was = states.data_map.get_or_insert(|| WindowShown(std::cell::Cell::new(false))).0.replace(shown);
+        shown && !was
+    })
+}
 
 fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, popups: &mut PopupManager, rounds: bool) {
     with_surface_tree_upward(

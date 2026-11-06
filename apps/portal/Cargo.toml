@@ -32,3 +32,7 @@ blocking = "1"
 serde.workspace = true
 serde_json.workspace = true
 fast_image_resize = "5"
+
+[dev-dependencies]
+# examples/remote_test: a libei sender, as a remote-control program is.
+reis = "0.7"

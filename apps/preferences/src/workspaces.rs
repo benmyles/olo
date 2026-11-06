@@ -155,6 +155,14 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
             }
         });
         ui.add(picker);
+        // A pack picture with an HDR version (its lights shine above the
+        // rest's white on a display in HDR).
+        if let Some(w) = s.wallpaper.as_deref().filter(|w| w.starts_with(wallpapers::PACK))
+            && wallpapers::resolve(w, (3840, 2160), dark).is_some_and(|p| wallpapers::has_hdr(&p))
+        {
+            ui.space(m::TIGHT);
+            ui.note("In HDR on a display whose HDR is on: its lights shine brighter than the rest.");
+        }
         ui.space(m::SPACING);
         // Your own picture, by name.
         let field = ui.field(

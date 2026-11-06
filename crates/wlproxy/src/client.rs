@@ -53,6 +53,11 @@ struct Surface {
     sub: Option<u32>,
     xdg: Option<u32>,
     layer: Option<u32>,
+    /// The program has committed it (`commit_tree` commits only those).
+    committed: bool,
+    /// It has been committed, had a role or been a cursor or drag icon
+    /// (`release_held`).
+    shown: bool,
 }
 
 type Rects = Vec<(bool, [i32; 4])>;
@@ -191,6 +196,12 @@ pub struct Client {
     old_server: i32,
     pub down_since: Option<Instant>,
     pub last_try: Option<Instant>,
+    /// Moved to another app_server (an agent screen's, or from one to the
+    /// person's): its socket for proxied programs. None: the proxy's own.
+    pub away: Option<std::path::PathBuf>,
+    /// Since when that app_server's socket has had no one listening (its
+    /// session gone), while waiting for it.
+    pub away_gone: Option<Instant>,
     /// app_server sent a protocol error: the connection ends for good.
     errored: bool,
     objs: HashMap<u32, Obj>,
@@ -217,6 +228,15 @@ pub struct Client {
     /// Device → the surface it entered (pointer, keyboard, text input,
     /// drag and drop).
     focus: HashMap<u32, u32>,
+    /// The program's touches, not made again on a new app_server until
+    /// its seat says it has touch (`replay_objects`): (wl_touch, wl_seat).
+    waiting_touch: Vec<(u32, u32)>,
+    /// What the program was last told of a surface's scale, by object and
+    /// event (`told_again`).
+    told: HashMap<(u32, u16), u32>,
+    /// A fractional scale's latest preferred_scale, kept until its surface
+    /// is shown (`held_for`): fractional scale → (its surface, the event).
+    held: HashMap<u32, (u32, Msg)>,
     started: Instant,
 }
 
@@ -238,6 +258,8 @@ impl Client {
             old_server: 0,
             down_since: Some(Instant::now()),
             last_try: None,
+            away: None,
+            away_gone: None,
             errored: false,
             objs,
             seq: 1,
@@ -253,6 +275,9 @@ impl Client {
             acked: HashSet::new(),
             sent_configures: HashSet::new(),
             focus: HashMap::new(),
+            waiting_touch: Vec::new(),
+            told: HashMap::new(),
+            held: HashMap::new(),
             started: Instant::now(),
         }
     }
@@ -271,6 +296,32 @@ impl Client {
 
     pub fn waiting(&self) -> usize {
         self.queue.len()
+    }
+
+    /// Take the program to another app_server (`to`: its socket for
+    /// proxied programs; None, the proxy's own): this one is let go as if
+    /// it had restarted (the program is told what a restart ends), and
+    /// everything is replayed on that one, as after a restart. Refused
+    /// while a replay is under way.
+    pub fn move_to(&mut self, to: Option<std::path::PathBuf>) -> Res {
+        if !matches!(self.phase, Phase::Live | Phase::Down) {
+            return Err("it is being replayed; try again in a moment".into());
+        }
+        if self.errored {
+            return Err("its connection is ending".into());
+        }
+        if self.away == to {
+            return Ok(());
+        }
+        self.away = to;
+        self.away_gone = None;
+        if self.phase == Phase::Live {
+            self.lost();
+        }
+        // (At once, not after the usual pause.)
+        self.last_try = None;
+        self.down_since = Some(Instant::now());
+        Ok(())
     }
 
     // ---- from the program -------------------------------------------------
@@ -298,6 +349,7 @@ impl Client {
                 self.max_id = self.max_id.max(new);
                 self.seq += 1;
                 self.objs.insert(new, Obj::new(child, version, self.seq));
+                self.told.retain(|&(id, _), _| id != new);
             }
             self.queue.push_back(msg);
             if self.queue.len() > 200_000 {
@@ -368,6 +420,10 @@ impl Client {
                 o.create = msg.dup().ok();
                 o.parent = parent;
             }
+        }
+        // The scale held for a surface this shows is the program's now.
+        if let Some(surface) = Self::shows(iface.name, desc.name, &msg) {
+            self.release_held(surface);
         }
         // (Sent as app_server knows it first: once destroyed, the program's
         // id for one of app_server's objects no longer maps to app_server's.
@@ -466,6 +522,7 @@ impl Client {
                             busy = s.pending.buffer.filter(|&b| b != 0);
                             let p = std::mem::take(&mut s.pending);
                             s.current.apply(p);
+                            s.committed = true;
                         }
                         _ => {}
                     }
@@ -576,6 +633,7 @@ impl Client {
     /// The program destroyed `id` (passed on).
     fn destroyed(&mut self, id: u32) {
         self.unlink(id);
+        self.held.remove(&id);
         if id >= SERVER_START {
             if let Some(up) = self.s_up.remove(&id) {
                 self.s_down.remove(&up);
@@ -636,6 +694,7 @@ impl Client {
     /// for it.
     fn forget(&mut self, id: u32, by_client: bool) {
         self.unlink(id);
+        self.held.remove(&id);
         self.objs.remove(&id);
         if id < SERVER_START && by_client {
             self.send_down(Msg::new(1, event(ifs::display(), "delete_id"), vec![Arg::Uint(id)]));
@@ -887,9 +946,106 @@ impl Client {
                     *done = true;
                 }
             }
+            ("wl_seat", "capabilities") => self.seat_capabilities(msg.id, msg.uint(0)),
+            ("wp_fractional_scale_v1", "preferred_scale") if self.surface_gone(msg.id) => return false,
+            ("wp_fractional_scale_v1", "preferred_scale") if let Some(surface) = self.idle_surface_of(msg.id) => {
+                if let Ok(m) = msg.dup() {
+                    self.held.insert(msg.id, (surface, m));
+                }
+                return false;
+            }
+            ("wp_fractional_scale_v1", "preferred_scale") | ("wl_surface", "preferred_buffer_scale" | "preferred_buffer_transform") => return !self.told_again(msg),
             _ => {}
         }
         true
+    }
+
+    /// The surface an object was made for (a fractional scale's) is gone
+    /// for the program: destroyed, its destroy waiting to be passed on, or
+    /// its id another's since. GTK destroys a removed tablet's cursor
+    /// surface and frees what it had for it but keeps the surface's
+    /// wp_fractional_scale_v1; app_server tells a fractional scale its
+    /// scale as it's made, so the one made again at a restart was told
+    /// after GTK had freed it, and Chrome crashed (2026-11-05).
+    fn surface_gone(&self, id: u32) -> bool {
+        let Some(o) = self.objs.get(&id) else { return true };
+        let Some(surface) = o.create.as_ref().map(|c| c.uint(1)) else { return false };
+        let gone = match self.objs.get(&surface) {
+            Some(s) => s.destroyed || s.zombie || s.seq > o.seq,
+            None => true,
+        };
+        gone || self.queue.iter().any(|m| m.id == surface && self.objs.get(&surface).is_some_and(|s| s.iface.requests.get(m.op as usize).is_some_and(|d| d.is_destructor)))
+    }
+
+    /// The surface of fractional scale `id` while it's shown nowhere: no
+    /// role (not a window, layer, subsurface), never committed, never a
+    /// cursor or drag icon. Its scale waits until it is (`release_held`):
+    /// GTK makes a cursor surface and its fractional scale for each tablet
+    /// as it's announced and keeps the fractional scale when the tablet
+    /// goes, freeing what its events land on; at a restart Chrome's GTK
+    /// (25 s in a call to the accessibility bus) sent the fractional
+    /// scale's making after it had been told the tablet went, read the new
+    /// app_server's answer after freeing the tablet, and crashed.
+    fn idle_surface_of(&self, id: u32) -> Option<u32> {
+        let surface = self.objs.get(&id)?.create.as_ref()?.uint(1);
+        match self.objs.get(&surface).map(|o| &o.x) {
+            Some(Extra::Surface(s)) if !s.committed && s.xdg.is_none() && s.layer.is_none() && s.sub.is_none() && !s.shown => Some(surface),
+            _ => None,
+        }
+    }
+
+    /// `surface` is shown now (committed, given a role, a cursor or a drag
+    /// icon): the scale held for it is the program's.
+    fn release_held(&mut self, surface: u32) {
+        if let Some(Extra::Surface(s)) = self.objs.get_mut(&surface).map(|o| &mut o.x) {
+            s.shown = true;
+        }
+        let ids: Vec<u32> = self.held.iter().filter(|(_, (s, _))| *s == surface).map(|(id, _)| *id).collect();
+        for id in ids {
+            let Some((_, msg)) = self.held.remove(&id) else { continue };
+            if self.surface_gone(id) || self.told_again(&msg) {
+                continue;
+            }
+            self.send_down(msg);
+        }
+    }
+
+    /// The surface a request shows (commits, gives a role, makes a cursor
+    /// or drag icon), if any.
+    fn shows(iface: &str, name: &str, msg: &Msg) -> Option<u32> {
+        let at = match (iface, name) {
+            ("wl_surface", "commit") => return Some(msg.id),
+            ("wl_pointer" | "zwp_tablet_tool_v2", "set_cursor") => 1,
+            ("wl_data_device", "start_drag") => 2,
+            ("xdg_wm_base", "get_xdg_surface") | ("zwlr_layer_shell_v1", "get_layer_surface") | ("wl_subcompositor", "get_subsurface") => 1,
+            _ => return None,
+        };
+        Some(msg.uint(at)).filter(|&s| s != 0)
+    }
+
+    /// A surface's scale as the program was last told it (a replayed
+    /// object's first event, the scale unchanged across the restart): not
+    /// said again. GTK leaks a removed tablet's cursor surface's
+    /// wp_fractional_scale_v1, its data freed with the tablet; told at the
+    /// loss that the tablet was removed, Chrome's GTK read that and the
+    /// replayed object's preferred_scale together and crashed on the second
+    /// (2026-11-04 and -05). A compositor never repeats it unasked.
+    fn told_again(&mut self, msg: &Msg) -> bool {
+        let value = msg.uint(0);
+        let again = self.told.insert((msg.id, msg.op), value) == Some(value);
+        if debug() {
+            let surface = self.objs.get(&msg.id).and_then(|o| o.create.as_ref()).map(|c| c.uint(1));
+            eprintln!(
+                "olo-wlproxy: pid {}: {}@{}.{} {value} (surface {surface:?}, phase {:?}): {}",
+                self.pid,
+                self.objs.get(&msg.id).map_or("?", |o| o.iface.name),
+                msg.id,
+                msg.op,
+                self.phase,
+                if again { "said before, dropped" } else { "passed on" }
+            );
+        }
+        again
     }
 
     /// The program's id for a new object of app_server's: the same, unless
@@ -1105,9 +1261,44 @@ impl Client {
             }
         }
 
+        // A surface the program destroyed while app_server was away (the
+        // request waiting, `queue`) isn't made again, nor what was made
+        // from it: told its tablet was removed at the loss (`lost`), GTK
+        // destroys the tablet's cursor surface and frees what it had for
+        // it, but never destroys the surface's wp_fractional_scale_v1; made
+        // again, its first preferred_scale ran GTK on freed memory (Chrome
+        // and xdg-desktop-portal-gnome crashed at an upgrade, 2026-11-04).
+        // The destroy, when it's passed on, finds a zombie and is answered
+        // here (`request`).
+        let dying: Vec<u32> = self
+            .queue
+            .iter()
+            .filter(|m| self.objs.get(&m.id).is_some_and(|o| o.iface.name == "wl_surface" && o.iface.requests.get(m.op as usize).is_some_and(|d| d.is_destructor)))
+            .map(|m| m.id)
+            .collect();
+        for id in dying {
+            if let Some(o) = self.objs.get_mut(&id) {
+                o.zombie = true;
+            }
+        }
         let mut order: Vec<(u64, u32)> = self.objs.iter().filter(|(id, o)| **id > 1 && **id < SERVER_START && o.live() && o.iface.name != "wl_registry").map(|(id, o)| (o.seq, *id)).collect();
         order.sort_unstable();
+        self.waiting_touch.clear();
         for &(_, id) in &order {
+            // A touch waits for its seat to say it has touch: a new
+            // app_server's seat gets its touch screen only as libinput
+            // finds it (seconds after it starts, 2026-11-05), and asked for
+            // a touch before, it ends the program's connection ("missing
+            // touch capability": Chrome and Slack gone after an upgrade).
+            // Made again as soon as the seat has it (`event`); a program
+            // told it hasn't lets its touch go.
+            if let Some(seat) = self.touch_seat(id) {
+                if let Some(o) = self.objs.get_mut(&id) {
+                    o.zombie = true;
+                }
+                self.waiting_touch.push((id, seat));
+                continue;
+            }
             self.replay_create(id);
         }
         for &(_, id) in &order {
@@ -1148,6 +1339,39 @@ impl Client {
         }
         self.phase = Phase::Configure;
         self.barrier_now(Phase::Configure);
+    }
+
+    /// A wl_touch's seat, if it's still the one the touch was made from
+    /// (a touch from a seat since destroyed is made from a temporary one,
+    /// as other objects are).
+    fn touch_seat(&self, id: u32) -> Option<u32> {
+        let o = self.objs.get(&id)?;
+        let parent = o.parent.as_ref()?;
+        let seat = self.objs.get(&parent.id)?;
+        (o.iface.name == "wl_touch" && parent.iface.name == "wl_seat" && seat.live() && seat.seq == parent.seq).then_some(parent.id)
+    }
+
+    /// The new app_server's `seat` says what it has: the touches waiting
+    /// for it are made again if it has touch.
+    fn seat_capabilities(&mut self, seat: u32, caps: u32) {
+        const TOUCH: u32 = 4;
+        if caps & TOUCH == 0 {
+            return;
+        }
+        let (now, still): (Vec<(u32, u32)>, Vec<(u32, u32)>) = std::mem::take(&mut self.waiting_touch).into_iter().partition(|&(_, s)| s == seat);
+        self.waiting_touch = still;
+        for (id, _) in now {
+            let Some(o) = self.objs.get_mut(&id) else { continue };
+            if o.destroyed || !o.zombie {
+                continue;
+            }
+            let Some(create) = o.create.as_ref().and_then(|m| m.dup().ok()) else { continue };
+            o.zombie = false;
+            if debug() {
+                eprintln!("olo-wlproxy: pid {}: wl_touch@{id} made again (its seat has touch now)", self.pid);
+            }
+            self.send_up(create);
+        }
     }
 
     /// The live role (toplevel or popup) of an xdg_surface.
@@ -1348,6 +1572,14 @@ impl Client {
         let o = &self.objs[&id];
         let (iface, version) = (o.iface, o.version);
         let Extra::Surface(s) = &o.x else { return };
+        // One the program never committed isn't committed for it: a commit
+        // has app_server tell the surface its scale, which the program then
+        // hears of for the first time (GTK's cursor surfaces for a tablet,
+        // made and never shown: told it as GTK freed them with the tablet,
+        // Chrome crashed; see `told_again`).
+        if !s.committed {
+            return;
+        }
         let c = s.current.clone();
         // An xdg_surface with no role yet can't have a buffer.
         let roleless = s.xdg.is_some_and(|x| !self.is_zombie(x) && self.role(x).is_none());

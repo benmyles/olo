@@ -524,6 +524,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         info!(window = window.id(), app_id = window.app_id(), slot = p.slot, key = ?p.key, tab_order = p.tab_order, x = at.x, y = at.y, display = ?p.screen_key.as_ref().or(p.screen.as_ref().map(|s| &s.0)), "put back where it was");
         self.restored.push((window.clone(), p.clone()));
         meta.put_back.set(true);
+        self.auto_note_returning(&window);
         meta.slot.set(p.slot);
         meta.was.set(p.id);
         if p.floating.is_some() {
@@ -807,6 +808,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         // and the tiles there stop beside it), not only when something
         // else about the displays happens to change.
         self.ipc.broadcast(olo_protocol::Event::OutputsChanged { outputs: self.output_infos() });
+        self.remote_displays_changed();
     }
 
     /// Once the windows that came back after a restart have settled: each

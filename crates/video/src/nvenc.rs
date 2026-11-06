@@ -25,11 +25,12 @@ use std::{
 
 use nvenc_sys as nv;
 
-/// A library opened at run time, closed when dropped.
-struct Lib(*mut c_void);
+/// A library opened at run time, closed when dropped (NVIDIA's here,
+/// libfdk-aac's in `aac`).
+pub(crate) struct Lib(*mut c_void);
 
 impl Lib {
-    fn open(name: &str) -> Result<Lib, String> {
+    pub(crate) fn open(name: &str) -> Result<Lib, String> {
         let c = CString::new(name).map_err(|e| e.to_string())?;
         // SAFETY: dlopen with a NUL-ended name.
         let h = unsafe { libc::dlopen(c.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
@@ -46,7 +47,7 @@ impl Lib {
     ///
     /// # Safety
     /// `T` must be the function's real type.
-    unsafe fn get<T: Copy>(&self, name: &str) -> Result<T, String> {
+    pub(crate) unsafe fn get<T: Copy>(&self, name: &str) -> Result<T, String> {
         let c = CString::new(name).map_err(|e| e.to_string())?;
         // SAFETY: dlsym on our handle.
         let p = unsafe { libc::dlsym(self.0, c.as_ptr()) };
@@ -76,8 +77,19 @@ pub fn available() -> bool {
     Lib::open("libnvidia-encode.so.1").is_ok() && Lib::open("libcuda.so.1").is_ok()
 }
 
-/// An NVENC H.264 encoder for pictures of one size.
+/// How many bits pictures get.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Rate {
+    /// About this many bits a second (at most twice it).
+    Bitrate(u32),
+    /// As many as keep this quality (NVENC's constant-quality VBR: its
+    /// `targetQuality`, lower better), at most `cap` bits a second.
+    Quality(u8, u32),
+}
+
+/// An NVENC encoder (H.264, HEVC or AV1) for pictures of one size.
 pub struct Nvenc {
+    codec: crate::Codec,
     api: Box<nv::NV_ENCODE_API_FUNCTION_LIST>,
     encoder: *mut c_void,
     cuda: *mut c_void,
@@ -108,7 +120,12 @@ impl Nvenc {
     /// An encoder for `width` × `height` (even) pictures at up to `fps` a
     /// second, at about `bps` bits a second (screen content: a little
     /// of it changes, and stays sharp).
-    pub fn new(width: u32, height: u32, fps: u32, bps: u32) -> Result<Nvenc, String> {
+    pub fn new(width: u32, height: u32, fps: u32, bps: u32, codec: crate::Codec) -> Result<Nvenc, String> {
+        Nvenc::with_rate(width, height, fps, Rate::Bitrate(bps), codec)
+    }
+
+    /// [`Nvenc::new`] at a rate of `rate`'s kind.
+    pub fn with_rate(width: u32, height: u32, fps: u32, rate: Rate, codec: crate::Codec) -> Result<Nvenc, String> {
         let nvenc = Lib::open("libnvidia-encode.so.1")?;
         let cuda = Lib::open("libcuda.so.1")?;
         // SAFETY: the functions' types are CUDA's driver API and NVENC's.
@@ -132,14 +149,24 @@ impl Nvenc {
             // From here on a failure cleans up through Drop.
             let mut api: Box<nv::NV_ENCODE_API_FUNCTION_LIST> = Box::new(std::mem::zeroed());
             api.version = nv::NV_ENCODE_API_FUNCTION_LIST_VER;
-            let mut me = Nvenc { api, encoder: null_mut(), cuda: ctx, cu_destroy, input: null_mut(), output: null_mut(), width, height, frame: 0, _libs: (nvenc, cuda) };
+            let mut me = Nvenc { codec, api, encoder: null_mut(), cuda: ctx, cu_destroy, input: null_mut(), output: null_mut(), width, height, frame: 0, _libs: (nvenc, cuda) };
             ok(create(&mut *me.api), "NvEncodeAPICreateInstance")?;
-            me.open(fps, bps)?;
+            me.open(fps, rate)?;
             Ok(me)
         }
     }
 
-    unsafe fn open(&mut self, fps: u32, bps: u32) -> Result<(), String> {
+    unsafe fn open(&mut self, fps: u32, rate: Rate) -> Result<(), String> {
+        // HEVC on the slower P6 up to 2560 × 1600: 30% smaller for the
+        // same picture than P4 (screen content), which it stays on above
+        // (P6 took 29 ms a 4K frame, P4 14). H.264 and AV1 gained nothing
+        // from slower presets. (Measured, `codec_sizes`, 2026-11-05.)
+        let preset_guid = if self.codec == crate::Codec::Hevc && u64::from(self.width) * u64::from(self.height) <= 2560 * 1600 { nv::NV_ENC_PRESET_P6_GUID } else { nv::NV_ENC_PRESET_P4_GUID };
+        let guid = match self.codec {
+            crate::Codec::H264 => nv::NV_ENC_CODEC_H264_GUID,
+            crate::Codec::Hevc => nv::NV_ENC_CODEC_HEVC_GUID,
+            crate::Codec::Av1 => nv::NV_ENC_CODEC_AV1_GUID,
+        };
         // SAFETY: each structure zeroed (valid where zero is), versioned,
         // and handed to the driver with our session.
         unsafe {
@@ -156,30 +183,57 @@ impl Nvenc {
             addr_of_mut!((*p).version).write(nv::NV_ENC_PRESET_CONFIG_VER);
             addr_of_mut!((*p).presetCfg.version).write(nv::NV_ENC_CONFIG_VER);
             ok(
-                call(self.api.nvEncGetEncodePresetConfigEx, "GetEncodePresetConfigEx")?(
-                    self.encoder,
-                    nv::NV_ENC_CODEC_H264_GUID,
-                    nv::NV_ENC_PRESET_P4_GUID,
-                    nv::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY,
-                    p,
-                ),
-                "the preset's settings",
+                call(self.api.nvEncGetEncodePresetConfigEx, "GetEncodePresetConfigEx")?(self.encoder, guid, preset_guid, nv::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY, p),
+                match self.codec {
+                    crate::Codec::H264 => "the preset's settings",
+                    crate::Codec::Hevc => "the preset's settings (HEVC: can this GPU encode it?)",
+                    crate::Codec::Av1 => "the preset's settings (AV1: can this GPU encode it? NVIDIA's from Ada on)",
+                },
             )?;
             let preset = preset.assume_init_mut();
             let cfg = &mut preset.presetCfg;
             // A key frame every two seconds, no B-frames, the parameter
-            // sets with each key frame.
+            // sets (AV1: the sequence header) with each key frame.
             cfg.gopLength = fps * 2;
             cfg.frameIntervalP = 1;
-            cfg.encodeCodecConfig.h264Config.idrPeriod = fps * 2;
-            cfg.encodeCodecConfig.h264Config.set_repeatSPSPPS(1);
+            match self.codec {
+                crate::Codec::H264 => {
+                    cfg.encodeCodecConfig.h264Config.idrPeriod = fps * 2;
+                    cfg.encodeCodecConfig.h264Config.set_repeatSPSPPS(1);
+                }
+                crate::Codec::Hevc => {
+                    cfg.encodeCodecConfig.hevcConfig.idrPeriod = fps * 2;
+                    cfg.encodeCodecConfig.hevcConfig.set_repeatSPSPPS(1);
+                }
+                crate::Codec::Av1 => {
+                    let av1 = &mut cfg.encodeCodecConfig.av1Config;
+                    av1.idrPeriod = fps * 2;
+                    av1.set_repeatSeqHdr(1);
+                    // OBUs with their sizes (MP4's form), 8-bit 4:2:0.
+                    av1.set_outputAnnexBFormat(0);
+                    av1.set_chromaFormatIDC(1);
+                }
+            }
+            // A picture out for each picture in: no lookahead holding
+            // pictures back (the slowest presets turn it on).
+            cfg.rcParams.set_enableLookahead(0);
+            cfg.rcParams.lookaheadDepth = 0;
             cfg.rcParams.rateControlMode = nv::NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_VBR;
-            cfg.rcParams.averageBitRate = bps;
-            cfg.rcParams.maxBitRate = bps.saturating_mul(2);
+            match rate {
+                Rate::Bitrate(bps) => {
+                    cfg.rcParams.averageBitRate = bps;
+                    cfg.rcParams.maxBitRate = bps.saturating_mul(2);
+                }
+                Rate::Quality(q, cap) => {
+                    cfg.rcParams.averageBitRate = 0;
+                    cfg.rcParams.maxBitRate = cap;
+                    cfg.rcParams.targetQuality = q;
+                }
+            }
             let mut init: nv::NV_ENC_INITIALIZE_PARAMS = std::mem::zeroed();
             init.version = nv::NV_ENC_INITIALIZE_PARAMS_VER;
-            init.encodeGUID = nv::NV_ENC_CODEC_H264_GUID;
-            init.presetGUID = nv::NV_ENC_PRESET_P4_GUID;
+            init.encodeGUID = guid;
+            init.presetGUID = preset_guid;
             init.tuningInfo = nv::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY;
             init.encodeWidth = self.width;
             init.encodeHeight = self.height;
@@ -207,8 +261,8 @@ impl Nvenc {
         Ok(())
     }
 
-    /// One picture (BGRA, `stride` bytes a row) encoded: its Annex B bytes,
-    /// and whether it's a key frame.
+    /// One picture (BGRA, `stride` bytes a row) encoded: its bytes (H.264
+    /// and HEVC in Annex B, AV1 as OBUs), and whether it's a key frame.
     pub fn encode(&mut self, data: &[u8], stride: usize) -> Result<(Vec<u8>, bool), String> {
         let (w, h) = (self.width as usize, self.height as usize);
         let row = w * 4;
@@ -259,6 +313,10 @@ impl Nvenc {
 
     pub fn size(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+
+    pub fn codec(&self) -> crate::Codec {
+        self.codec
     }
 }
 

@@ -36,16 +36,27 @@ impl FileManager {
     }
 }
 
-/// Serve it on the session bus until the connection drops.
-pub fn serve(reveal: impl Fn(Vec<PathBuf>) + Send + Sync + 'static) -> zbus::Result<zbus::blocking::Connection> {
+/// Serve it on the session bus until the connection drops: at once if
+/// the name is free or its owner lets it be taken, else as soon as its
+/// owner lets it go; and `true` if it's ours now.
+///
+/// Waiting in line, not giving up: an owner that doesn't allow the name
+/// taken from it (Nautilus, started by D-Bus activation as the system's
+/// FileManager1 service while no Tracker had the name, or the last
+/// Tracker's connection not yet gone as Tracker restarts after an
+/// upgrade) once kept Tracker out for the rest of the session, and every
+/// program's "show in folder" went nowhere (Ben's Chrome, 2026-11-04: the
+/// journal said "name already taken" at each upgrade). Allowing it taken
+/// from us: the next Tracker takes it over at once.
+pub fn serve(reveal: impl Fn(Vec<PathBuf>) + Send + Sync + 'static) -> zbus::Result<(zbus::blocking::Connection, bool)> {
     let conn = zbus::blocking::connection::Builder::session()?.serve_at(PATH, FileManager { reveal: Box::new(reveal) })?.build()?;
-    // Ours in an Olo session, whoever had it (Nautilus, started by
-    // activation).
-    let flags = zbus::fdo::RequestNameFlags::ReplaceExisting | zbus::fdo::RequestNameFlags::DoNotQueue;
-    match conn.request_name_with_flags(NAME, flags)? {
-        zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => Ok(conn),
-        _ => Err(zbus::Error::NameTaken),
-    }
+    let flags = zbus::fdo::RequestNameFlags::ReplaceExisting | zbus::fdo::RequestNameFlags::AllowReplacement;
+    let ours = match conn.request_name_with_flags(NAME, flags)? {
+        zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => true,
+        // (In line: the bus gives it to us when its owner goes.)
+        _ => false,
+    };
+    Ok((conn, ours))
 }
 
 #[cfg(test)]

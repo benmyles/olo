@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Headless Olo sessions for development and automated UI checks.
 
-  tsession start NAME [WxH[,WxH…]] [--light|--dark] [--scale N] [--session [--shell]] [--home DIR]
+  tsession start NAME [WxH[,WxH…]] [--light|--dark] [--scale N] [--session [--shell]] [--home DIR] [--owner PID]
                                                start a headless app_server (--session:
                                                under olo-session, so `reload` works;
                                                --shell also starts Deskbar and the desktop;
@@ -9,7 +9,10 @@
                                                so tests that save files stay out of yours
                                                (without it, what apps keep between runs
                                                and their caches are in the session's dir);
-                                               --scale: the screens' scale, 2 by default)
+                                               --scale: the screens' scale, 2 by default;
+                                               --owner: the session ends with process PID,
+                                               its folder removed, however PID ends: a
+                                               tool's sessions don't outlive it, killed)
   tsession reload NAME                         restart app_server in place (session only)
   tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
                                                VAR=VAL set after sudo (e.g. HOME=/tmp/fixture)
@@ -36,17 +39,23 @@
   tsession ipc NAME JSON                       raw IPC request
   tsession env NAME                            print env to source
   tsession stop NAME | list
+  tsession tidy                                what ended sessions left in the runtime dir
+                                               (sockets and files of displays no session
+                                               holds); `stop` does it for its own
 
 Sessions live in /tmp/olo-dev/NAME. Output is 2× scale by default.
 Screenshots are in device pixels; coordinates, crops included, are
 logical (device pixels / the screen's scale, so / 2 at 2×).
-Shells in a session keep their history in its bash_history, not yours,
-and `stop` ends its olo-termd and the shells in it.
+Shells in a session keep their history in its bash_history, not yours.
+`stop` ends everything of the session (its olo-termd and the shells in
+it, programs `run` started, anything carrying its environment), waits
+until it has, killing what hasn't after 3 s, and clears what the
+session left in the runtime dir.
 Runs as the repo owner when invoked as root. Programs come from
 target/debug; TSESSION_PROFILE=release runs target/release's (measuring
 speed: tools/dev/bench).
 """
-import glob, json, os, pwd, re, signal, socket, subprocess, sys, time
+import fcntl, glob, json, os, pwd, re, select, shutil, signal, socket, subprocess, sys, time
 
 # Nothing a test session starts is the person's own session: a shell in
 # theirs carries OLO_REAL_SESSION, which would let a test Activity
@@ -77,6 +86,22 @@ BUSD = os.environ.get("TSESSION_BUSD") or next(
 def private_bus(d):
     """Start the session's own session bus; its address."""
     global BUSD
+    # Olo's own (crates/bus: busd's broker on async-io, which answers a
+    # call to a name nobody has at once; busd let GTK programs wait 25 s
+    # for each), when built; else busd.
+    olo_bus = next((p for p in (os.path.join(TARGET, PROFILE, "olo-bus"), os.path.join(TARGET, "release", "olo-bus")) if os.path.exists(p)), None)
+    if olo_bus and not os.environ.get("TSESSION_BUSD"):
+        path = os.path.join(d, "bus")
+        if os.path.exists(path):
+            os.remove(path)
+        log = open(os.path.join(d, "busd.log"), "w")
+        p = subprocess.Popen(as_owner([olo_bus, f"unix:path={path}"]), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        open(os.path.join(d, f"busd.{p.pid}.pid"), "w").write(str(p.pid))
+        for _ in range(50):
+            if os.path.exists(path):
+                return f"unix:path={path}"
+            time.sleep(0.1)
+        sys.exit(f"tsession: olo-bus didn't start; see {d}/busd.log")
     if not BUSD:
         # A new machine: build it (tools/dev/busd-lenient, as the repo's
         # owner, into ~/.cache/olo-dev), once.
@@ -214,7 +239,8 @@ def start(name, args):
     if os.environ.get("OLO_UPGRADE_FROM"):
         exe = ["env", "OLO_UPGRADE_FROM=" + os.environ["OLO_UPGRADE_FROM"]] + exe
     p = subprocess.Popen(as_owner(exe), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-    for _ in range(100):
+    # (Many sessions starting at once take a while: up to 30 s.)
+    for _ in range(300):
         time.sleep(0.1)
         text = re.sub(r"\x1b\[[0-9;]*m", "", open(os.path.join(d, "app_server.log")).read())
         if session:
@@ -240,10 +266,19 @@ def start(name, args):
                 e["OLO_SESSION_PID"] = open(pidfile).read().strip()
             e["sockets"] = [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])]
             json.dump(e, open(os.path.join(d, "env.json"), "w"))
+            owner = next((args[i + 1] for i, a in enumerate(args[:-1]) if a == "--owner"), None)
+            if owner:
+                subprocess.Popen([sys.executable, os.path.abspath(__file__), "_watch", name, owner], stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             print(f"{name}: {e['WAYLAND_DISPLAY']} ({size}, {theme}, {scale:g}×)")
             return
         if p.poll() is not None:
             break
+    # (Nothing of it left running: its bus, a session still starting.)
+    groups = {p.pid} | pid_files(d)
+    end(lambda: alive(groups, None))
+    for f in glob.glob(os.path.join(d, "*.pid")):
+        os.remove(f)
     sys.exit(f"app_server failed to start; see {d}/app_server.log")
 
 def display_pids(display, exe=None):
@@ -261,56 +296,166 @@ def display_pids(display, exe=None):
             pids.append(int(os.path.basename(proc)))
     return pids
 
-def session_pids(e):
-    """Whatever still runs in session `e`, by its own config dir (each
-    test session's is its own, so the person's session never matches):
-    a client started and forgotten, or one that left its group."""
-    pids = []
-    for proc in glob.glob("/proc/[0-9]*"):
+def pid_files(d):
+    """The process groups of a session's pid files (its bus, programs
+    `run` started)."""
+    groups = set()
+    for f in glob.glob(os.path.join(d, "*.pid")):
         try:
-            env = dict(v.split("=", 1) for v in open(os.path.join(proc, "environ")).read().split("\0") if "=" in v)
-        except OSError:
-            continue
-        if env.get("WAYLAND_DISPLAY") == e["WAYLAND_DISPLAY"] and env.get("XDG_CONFIG_HOME") == e.get("XDG_CONFIG_HOME", "-"):
-            pids.append(int(os.path.basename(proc)))
-    return [p for p in pids if p not in (os.getpid(), os.getppid())]
+            groups.add(int(open(f).read()))
+        except (OSError, ValueError):
+            pass
+    return groups
 
-def termd_pids(display):
-    """olo-termd for `display` (one per display, started by Terminal in a
-    session of its own, so killing the session's group misses it)."""
-    return display_pids(display, "olo-termd")
+def alive(groups, e):
+    """What still runs of a session: processes in `groups`, and any
+    carrying session `e`'s environment (its display and its own config
+    dir: a program started and forgotten, olo-termd and its shells, which
+    left the groups; the person's session never matches). Never zombies:
+    they've gone, only their parent's wait is left."""
+    me = (os.getpid(), os.getppid())
+    disp = cfg = None
+    if e:
+        disp = f"\0WAYLAND_DISPLAY={e['WAYLAND_DISPLAY']}\0".encode()
+        cfg = f"\0XDG_CONFIG_HOME={e.get('XDG_CONFIG_HOME', '-')}\0".encode()
+    out = []
+    for proc in os.listdir("/proc"):
+        if not proc.isdigit() or int(proc) in me:
+            continue
+        try:
+            stat = open(f"/proc/{proc}/stat", "rb").read()
+            fields = stat[stat.rindex(b")") + 2:].split()
+        except (OSError, ValueError):
+            continue
+        if fields[0] in (b"Z", b"X"):
+            continue
+        if int(fields[2]) in groups:
+            out.append(int(proc))
+        elif e:
+            try:
+                env = b"\0" + open(f"/proc/{proc}/environ", "rb").read()
+            except OSError:
+                continue
+            if disp in env and cfg in env:
+                out.append(int(proc))
+    return out
+
+def end(left, within=3.0):
+    """Until `left()` is empty: told to go (SIGTERM), killed past
+    `within` seconds. Then the state any of them left for its next self
+    (a kit app that saw app_server go writes olo-restore-PID.json and
+    re-executes; killed before it claimed it, the file stays)."""
+    t0 = time.monotonic()
+    seen = set()
+    while pids := left():
+        seen.update(pids)
+        late = time.monotonic() - t0
+        if late > within + 2:
+            print(f"tsession: still running after SIGKILL: {pids}", file=sys.stderr)
+            break
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGKILL if late > within else signal.SIGTERM)
+            except OSError:
+                pass
+        time.sleep(0.05)
+    for pid in seen:
+        if not os.path.exists(f"/proc/{pid}"):
+            try:
+                os.remove(os.path.join(RUNTIME, f"olo-restore-{pid}.json"))
+            except OSError:
+                pass
+
+def forget_display(display, person=None):
+    """What the sessions on `display` left in the runtime dir (app_server's
+    socket and lock, the apps' sockets, olo-termd's, layouts kept for a
+    reload), once nothing holds it. Holding its lock, as app_server takes
+    it, while the files go (the lock last): a session starting meanwhile
+    takes the next name, and a live one is never touched."""
+    if not re.fullmatch(r"wayland-\d+", display) or display == person:
+        return False
+    lock = os.path.join(RUNTIME, f"{display}.lock")
+    try:
+        fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o640)
+    except OSError:
+        return False
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False
+        if display_pids(display):
+            return False
+        try:
+            spid = int(open(os.path.join(RUNTIME, f"olo-session-{display}.pid")).read())
+            os.kill(spid, 0)
+            return False
+        except (OSError, ValueError):
+            pass
+        pat = re.compile(r"(?:^|[-.])" + re.escape(display) + r"(?:$|[-.])")
+        names = [n for n in os.listdir(RUNTIME) if pat.search(n) and n not in (display, f"{display}.lock")]
+        for n in names + [display, f"{display}.lock"]:
+            path = os.path.join(RUNTIME, n)
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        return True
+    finally:
+        os.close(fd)
+
+def tidy():
+    """forget_display for every display no session holds."""
+    person = os.environ.get("WAYLAND_DISPLAY")
+    shown = sorted({m.group(0) for n in os.listdir(RUNTIME) for m in [re.search(r"wayland-\d+", n)] if m}, key=lambda d: int(d.split("-")[1]))
+    gone = [d for d in shown if forget_display(d, person)]
+    print(f"tidied {len(gone)} ended displays: {' '.join(gone)}" if gone else "nothing to tidy")
 
 def stop(name):
     d = sdir(name)
     try:
         e = json.load(open(os.path.join(d, "env.json")))
-        ours = same_session(e)
-        if not ours:
-            print(f"{name}: its sockets are gone or another session's; forgetting it without touching them")
-        else:
-            # Its shells (and whatever runs in them) go with it.
-            for pid in termd_pids(e["WAYLAND_DISPLAY"]):
-                os.kill(pid, signal.SIGTERM)
-        os.killpg(e["pid"], signal.SIGTERM)
-        # And whatever of it is left (a Terminal started and forgotten
-        # would start its olo-termd again, with the shells it kept).
-        for pid in session_pids(e):
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-    except (FileNotFoundError, ProcessLookupError, PermissionError, KeyError):
-        pass
+    except (OSError, ValueError):
+        e = None
+    if e and not same_session(e):
+        print(f"{name}: its sockets are gone or another session's; ending only what carries its own config dir")
+    # Its group, its bus and what `run` started, and whatever has its
+    # environment (a Terminal started and forgotten would start its
+    # olo-termd again, with the shells it kept): until none is left.
+    groups = pid_files(d) | ({e["pid"]} if e and "pid" in e else set())
+    end(lambda: alive(groups, e))
     for f in glob.glob(os.path.join(d, "*.pid")):
-        try:
-            os.killpg(int(open(f).read()), signal.SIGTERM)
-        except Exception:
-            pass
         os.remove(f)
     try:
         os.remove(os.path.join(d, "env.json"))
     except FileNotFoundError:
         pass
+    if e:
+        forget_display(e["WAYLAND_DISPLAY"])
+
+def watch(name, owner):
+    """`start --owner`: waits for the session or `owner` to end; if the
+    owner goes first, stops the session and removes its folder."""
+    try:
+        e = json.load(open(os.path.join(sdir(name), "env.json")))
+        session = os.pidfd_open(e["pid"])
+    except (OSError, ValueError, KeyError):
+        return
+    try:
+        theirs = os.pidfd_open(owner)
+    except OSError:
+        theirs = None
+    if theirs is not None:
+        p = select.poll()
+        p.register(theirs, select.POLLIN)
+        p.register(session, select.POLLIN)
+        if theirs not in {fd for fd, _ in p.poll()}:
+            return
+    stop(name)
+    shutil.rmtree(sdir(name), ignore_errors=True)
 
 def run(name, cmd):
     e = load_env(name)
@@ -441,6 +586,12 @@ def main():
         print(__doc__)
         return
     cmd = sys.argv[1]
+    if cmd == "tidy":
+        tidy()
+        return
+    if cmd == "_watch":
+        watch(sys.argv[2], int(sys.argv[3]))
+        return
     if cmd == "list":
         for d in sorted(glob.glob(os.path.join(BASE, "*", "env.json")) + glob.glob(os.path.join(OLD_BASE, "*", "env.json"))):
             print(os.path.basename(os.path.dirname(d)), json.load(open(d))["WAYLAND_DISPLAY"])

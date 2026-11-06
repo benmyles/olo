@@ -8,6 +8,7 @@ mod clip;
 mod export;
 mod find;
 mod history;
+mod moving;
 mod picture;
 mod record;
 mod replay;
@@ -41,9 +42,18 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen unarchive NAME          back among the stopped ones
        olo-screen delete NAME             a screen and everything it kept, to the Trash
        olo-screen record-video NAME [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
-                          [--no-pointer] [--encoder auto|cpu|nvidia] [--to PATH]
+                               [--show-clicks] [--show-keys] [--sound computer|microphone|both|none] [--as-gif]
+                          [--no-pointer] [--pointer-size K] [--smooth-pointer] [--zoom-follow] [--background]
+                          [--camera ID] [--encoder auto|cpu|nvidia] [--codec h264|hevc|av1] [--to PATH]
                                              a video of the screen (or one window, or part), into
                                              ~/Videos unless told; prints its path (JSON) at once
+       olo-screen mark-video NAME TITLE   this moment of the video marked (a chapter)
+       olo-screen caption-video NAME TEXT [--seconds N] | --clear
+                                          a caption in the video (never on the screen), low in
+                                          the middle, for N seconds or till the next
+       olo-screen zoom-video NAME X,Y,W,H|out
+                                          the video zoomed to that part of the screen (points),
+                                          gliding there and held; out: back to the whole
        olo-screen pause-video NAME        nothing recorded till resume-video (the pause cut out)
        olo-screen resume-video NAME
        olo-screen stop-video NAME         the video finished; prints where it went
@@ -61,6 +71,14 @@ usage: olo-screen                         open Agent Screens (watch, take contro
        olo-screen env NAME                its environment, for a shell (eval \"$(…)\")
        olo-screen run NAME PROGRAM [ARGS…]
                                              start a program on it; prints its pid
+       olo-screen take NAME|--new --window ID…
+                                             the person's windows (ids on their display) onto the
+                                             screen (--new: a new one), their programs running on
+                                             as they go; only when the person asks
+       olo-screen give NAME [--window ID…] [--workspace N] [--display OUTPUT]
+                                             the screen's windows (default: all) to the person's
+                                             display, onto its workspace N (from 1; default: the
+                                             one showing) of OUTPUT (default: the active display)
        olo-screen look NAME [OUT.png] [--window ID] [--crop X,Y,W,H] [--no-pointer]
                                              a picture of the screen (or one window, or part);
                                              without OUT, a new file by the logs; prints its path
@@ -115,6 +133,11 @@ FIND is --name NAME (exact, else part of it; a value counts too), --role ROLE,
 several match) and --window ID. Actions print JSON: what they matched, and
 after: the focused window and element.
 
+A moved program keeps running: an Olo app re-executes there with its
+state (one window of several by a copy of the app, where it can), any
+other program's connection is replayed there with all its windows. The
+person's programs on a screen go back to their display when it stops.
+
 Coordinates are the screen's logical pixels, from its top left; Cmd is ⌘
 (apps see it as Ctrl). Programs run on a screen with WAYLAND_DISPLAY and
 OLO_SOCKET set to it; a screen's own Deskbar and desktop are there too.";
@@ -122,6 +145,19 @@ OLO_SOCKET set to it; a screen's own Deskbar and desktop are there too.";
 fn fail(message: impl std::fmt::Display) -> i32 {
     eprintln!("olo-screen: {message}");
     1
+}
+
+/// Every `--window ID` given.
+fn window_ids(args: &[String]) -> Result<Vec<u64>, String> {
+    args.windows(2).filter(|p| p[0] == "--window").map(|p| p[1].parse::<u64>().map_err(|_| format!("{} isn't a window's id", p[1]))).collect()
+}
+
+/// Why nothing moved.
+fn stayed_why(o: &moving::Outcome) -> String {
+    match o.stayed.first() {
+        Some(s) => format!("nothing moved: {} {}", if s.app_id.is_empty() { "the window" } else { s.app_id.as_str() }, s.why),
+        None => "nothing moved".into(),
+    }
 }
 
 fn number(s: Option<&String>, what: &str) -> Result<f64, String> {
@@ -165,7 +201,7 @@ fn cli(args: &[String]) -> Option<Result<(), String>> {
         let answer = ANSWER.with(|a| a.borrow_mut().take());
         // The screen: as named, or the one `start` chose.
         let named = rest.first().filter(|a| !a.starts_with("--")).cloned();
-        let name = if command == "start" { answer.as_ref().and_then(|v| v["name"].as_str().map(str::to_owned)).or(named.clone()) } else { named.clone() };
+        let name = if matches!(command.as_str(), "start" | "take") { answer.as_ref().and_then(|v| v["name"].as_str().map(str::to_owned)).or(named.clone()) } else { named.clone() };
         if let Some(name) = name {
             let args = if named.is_some() { rest[1..].to_vec() } else { rest.to_vec() };
             let action = history::Action { at, ms: history::now_ms().saturating_sub(at), kind: command, args, result: answer, error: result.as_ref().err().cloned() };
@@ -193,7 +229,7 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
     let name = || rest.first().cloned().ok_or_else(|| format!("{command} needs a screen's name"));
     // While the person has the screen, an agent's actions wait for them
     // (reading it still answers): two hands on one pointer made a mess.
-    if command != "start"
+    if !matches!(command, "start" | "take" | "give")
         && (history::ACTIONS.contains(&command) || command == "maximize")
         && let Some(n) = rest.first()
         && screens::controlled(n)
@@ -256,6 +292,30 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 println!("export {k}={}", shell_quote(&v));
             }
         }),
+        "take" => (|| {
+            let ids = window_ids(rest)?;
+            if ids.is_empty() {
+                return Err("take needs the windows to move (--window ID, as the person's display lists them)".into());
+            }
+            let person = moving::Place::person()?;
+            let s = if has(rest, "--new") {
+                let opts = screens::Options::default();
+                screens::start(&screens::free_name(), &opts)?
+            } else {
+                screen()?
+            };
+            let outcome = moving::move_windows(&person, &ids, &moving::Place::screen(&s))?;
+            let v = json!({ "name": s.name, "went": outcome.went, "stayed": outcome.stayed });
+            print_json(&v);
+            if outcome.went.is_empty() { Err(stayed_why(&outcome)) } else { Ok(()) }
+        })(),
+        "give" => screen().and_then(|s| {
+            let workspace = option(rest, "--workspace").map(|n| n.parse::<u32>().ok().filter(|n| *n >= 1).ok_or("--workspace is a number from 1")).transpose()?;
+            let outcome = moving::give(&s, Some(window_ids(rest)?), workspace.map(|n| n - 1), option(rest, "--display").cloned())?;
+            let v = json!({ "went": outcome.went, "stayed": outcome.stayed });
+            print_json(&v);
+            if outcome.went.is_empty() { Err(stayed_why(&outcome)) } else { Ok(()) }
+        }),
         "run" => screen().and_then(|s| {
             let pid = s.run(&rest[1..])?;
             println!("{pid}");
@@ -272,31 +332,70 @@ fn run_command(args: &[String]) -> Option<Result<(), String>> {
                 None => video_path(&s.name),
             };
             let mut argv: Vec<String> = vec!["olo-screenshot".into(), "--record".into(), "--to".into(), to.display().to_string()];
-            for flag in ["--seconds", "--fps", "--window", "--encoder", "--region"] {
+            for flag in ["--seconds", "--fps", "--window", "--encoder", "--codec", "--region", "--pointer-size", "--camera"] {
                 if let Some(v) = option(rest, flag) {
                     argv.extend([flag.to_owned(), v.to_owned()]);
                 }
             }
-            if has(rest, "--no-pointer") {
-                argv.push("--no-pointer".into());
+            for flag in ["--no-pointer", "--show-clicks", "--show-keys", "--as-gif", "--background", "--smooth-pointer", "--zoom-follow"] {
+                if has(rest, flag) {
+                    argv.push(flag.into());
+                }
+            }
+            if let Some(v) = option(rest, "--sound") {
+                argv.extend(["--sound".to_owned(), v.to_owned()]);
             }
             let pid = s.run(&argv)?;
-            let v = json!({ "pid": pid, "path": to });
+            // Said once it's recording (its encoder open: NVENC takes a
+            // couple of seconds), so what's done next is in it.
+            let display = std::path::Path::new(&s.wayland_display).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            loop {
+                let g = olo_protocol::recording::going_on(&display).filter(|g| g.pid == pid);
+                if g.as_ref().is_some_and(|g| g.recording) {
+                    break;
+                }
+                if g.is_none() && !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                    return Err("the recording didn't start (olo-screenshot's log on the screen says why)".into());
+                }
+                if std::time::Instant::now() > until {
+                    return Err("the recording hasn't started after 15 seconds".into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            let v = json!({ "pid": pid, "path": to, "recording": true });
             println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
             answered(v);
             Ok(())
         }),
         // (The recorder's --stop, --pause and --resume, on the screen's
         // display.)
-        "stop-video" | "pause-video" | "resume-video" => screen().and_then(|s| {
+        "stop-video" | "pause-video" | "resume-video" | "zoom-video" | "caption-video" | "mark-video" => screen().and_then(|s| {
             let program = olo_xdg::find_program("olo-screenshot").ok_or("olo-screenshot isn't installed")?;
             let mut cmd = std::process::Command::new(program);
             let flag = match command {
                 "pause-video" => "--pause",
                 "resume-video" => "--resume",
+                "zoom-video" => "--zoom-to",
+                "caption-video" => "--caption",
+                "mark-video" => "--mark",
                 _ => "--stop",
             };
             cmd.arg(flag).env_remove("DISPLAY");
+            if command == "zoom-video" {
+                cmd.arg(positionals(rest).get(1).ok_or("zoom-video NAME X,Y,W,H|out")?);
+            }
+            if command == "mark-video" {
+                cmd.arg(positionals(rest).get(1).cloned().unwrap_or_default());
+            }
+            if command == "caption-video" {
+                // (--clear: the caption taken down.)
+                let text = if has(rest, "--clear") { String::new() } else { positionals(rest).get(1).cloned().ok_or("caption-video NAME TEXT [--seconds N] | --clear")? };
+                cmd.arg(text);
+                if let Some(v) = option(rest, "--seconds") {
+                    cmd.args(["--seconds", v]);
+                }
+            }
             for (k, v) in s.env() {
                 cmd.env(k, v);
             }

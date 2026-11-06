@@ -7,58 +7,32 @@ of Finished; a new one goes where its priority puts it.
 
 ## Open (highest priority first)
 
-- **Viewer crashed when brought back from Deskbar after a video**
-  (Ben, 2026-11-04): "i was watching a video in viewer, then left it
-  open while i did some other stuff, then when i tried to click it in
-  the deskbar to come back it crashed". A video played in Viewer, the
-  window left open (in the background, perhaps hidden or minimized, the
-  video ended or paused) while other things were done, then its Deskbar
-  entry clicked: Viewer crashed instead of coming forward. Find the
-  crash (its panic or core in the journal, Logs), reproduce it headless
-  (a video played, the window left behind other windows and minimized,
-  time passing, then activated as Deskbar does), fix it at the cause,
-  and keep a test that does that. *Looked at* (2026-11-04, minutes
-  after): Viewer (window 22, opened 15:29) was gone, and it left
-  nothing: no panic in the journal, no core (`coredumpctl`), no kernel
-  line (segfault, OOM). So either it exited on purpose (on Deskbar's
-  launch, say, handed to the running copy) or it died in a way nothing
-  records: the next item is what would have told us. Why nothing: an
-  app started by Tracker, Deskbar or another app (`olo_xdg::open::
-  spawn_app`) has its stderr sent to /dev/null, so a panic's message
-  is lost, and a panic exits 101 without a core. Not reproduced
-  headless: a 1:51 H.264 video played, minimized, left past its end,
-  then its Deskbar entry clicked: it came back at its end, no panic,
-  memory steady (162 MB) while hidden. Try next with what the crash
-  report says, else: behind other windows rather than minimized, on
-  another workspace, across a lock or the display sleeping.
-
-- **Themes after NeXTSTEP, Mac OS 9 and AmigaOS** (Ben, 2026-11-04):
-  "add extra themes for olo- NeXTSTEP, MacOS 9, AmigaOS. they must all
-  come with light and dark variants, and have a complete, max quality
-  icon set generated in the style of each of those OSes using sunburst
-  image generator on highest quality settings. the custom icon set must
-  cover everything for every olo app and place where there's an icon
-  used". Three more themes beside the seven in `olo_theme::looks::THEMES`
-  (each a `data/themes/<name>/` with its icons, wordmark and wallpaper,
-  and its own colour set made from `Seeds`, light and dark, plus BeOS's
-  and Catppuccin's as every theme has): NeXTSTEP's (greys, black
-  window bars, its bevelled 3D and the dimpled grey of its dock and
-  icons, black-and-white 2-bit look carried to colour), Mac OS 9's
-  (Platinum: light grey bevels, pinstriped title bars, purple-blue
-  selection, its soft-shadowed icons), AmigaOS's (Workbench 3.x: blue,
-  orange, white and black, its chunky bevels and pixel-crisp icons;
-  dark the Workbench 1.3 blue). Each the look and the feel only, drawn
-  as Olo's own (no Apple, NeXT or Commodore logos, names or artwork:
-  the Classic theme's rule). Every icon a full set has (135 now in each
-  of `data/icons` and every theme's, every size from 16 to 256 px, each
-  app's, file kinds', places', tray's and controls'): generated with
-  `gpt-image-2.5-sunburst` at quality `high` and full size as
-  docs/ICONS.md says, with each theme's own reference icons made first
-  and every icon after against them, so the set looks drawn by one
-  hand; checked at 16 px and at every scale (`icons::paint`, one pixel
-  to a device pixel), on light, dark and night; Preferences ▸ Themes
-  showing each. Needs an `OPENAI_API_KEY` (not set in the sessions so
-  far: the A2520 keyboard's icon waits on it too).
+- **Terminal: "please continue" for a coding agent that stopped** (Ben,
+  2026-11-06): "when in olo terminal in a tab that has claude code or
+  codex running, make an extra option available when right clicking the
+  tab to enable a feature where olo will say "please continue" in the
+  claude/codex session if they stop for more than 60s with no activity
+  at all (any change should count as activity we just want to do this
+  when they are not doing anything or processing anything or thinking
+  about anything). limit it to sending up to one "please continue" per
+  hour. when this mode is enabled it should add some kind of visual
+  indicator in the tab too". So: the tab's context menu, on a tab whose
+  shell runs Claude Code or Codex (Terminal knows: `agent_context`'s
+  `own_agent`, the tab title hook), offers a check item (say "Keep It
+  Going"); on, Terminal watches the tab for 120 s (Ben, after: "change
+  it from 60s to 120s without activity") with nothing at all
+  happening (no output, no screen change, no spinner or timer ticking,
+  no input typed: any change restarts the count) and then types
+  "please continue" and Return into it, at most once an hour per tab
+  (Ben, a moment later: "in codex ignore `Pursuing goal (17h 52m)` when
+  assessing whether anything has changed b/c that will just keep counting
+  forever every minute regardless": a clock that counts on its own, as
+  Codex's goal line's elapsed time, isn't activity);
+  the tab shows that it's on (a small mark beside its title, in the
+  palette's colours, at every scale and in light, dark and night). For
+  agents too: the setting readable and settable over Terminal's
+  commands socket, and the tab's state in its tree. Kept with the tab
+  across an upgrade (`restored_state`); off for a new tab.
 
 - **A YubiKey listed as a keyboard** (Ben, 2026-11-04, with a
   screenshot of Preferences ▸ Keyboard ▸ Keyboards: "yubikey is
@@ -103,6 +77,54 @@ of Finished; a new one goes where its priority puts it.
   `hmac-secret` is the way in. Next: `CTAPHID_INIT` and
   `authenticatorGetInfo` (its extensions, PIN set or not), then the
   sealed-password design above.
+  *Stray taps ignored* (Ben, 2026-11-04): "i have a habit of
+  accidentally tapping my yubikey and it adds the code where i don't
+  want it. when you add the native olo yubikey support, also make it so
+  that stray taps are ignored -- the code should only be captured and
+  used if we're actually in a context where we are waiting for a
+  permission grant from the yubikey for sudo or passwords. also add an
+  option for inserting the code anyway by using 3 taps so that someone
+  could use it e.g. if they are just filling in a web form olo knows
+  nothing about and want the code there. that option can be enabled by
+  default too." A touch types a Yubico OTP (44 characters and Enter)
+  through the key's OTP interface, a USB keyboard of its own: Olo takes
+  that keyboard's keys itself (by the device, as the YubiKey is already
+  told from keyboards: `olo_protocol::keyboards::security_key`) and
+  passes nothing of it to the focused window. While a sudo, Passwords,
+  polkit or lock-screen request is waiting for the key, a touch (FIDO2's
+  user presence, or the OTP if that's how it's set up) answers it; at
+  any other time a touch does nothing. Three touches in a row (within a
+  couple of seconds each) type the next OTP into the focused window as
+  the key would have: Preferences ▸ Security ▸ YubiKey, "Three touches
+  type a code" (on by default). Each code an OTP that was swallowed was
+  one the key used up; that's fine (Yubico's counter only moves on). A
+  key's touches are told apart from a real keyboard's typing by the
+  device, never by timing or the text.
+  *Done* (2026-11-05, HACKING's "Security keys"): `olo-fido` speaks
+  CTAPHID and CTAP2 to the key itself (no root, no PAM change); setting
+  up in Preferences ▸ Security ▸ Security Keys (the password checked
+  through PAM, two touches, a spare the same way, Remove); a touch
+  answering Terminal's sudo window, Passwords' unlock, the polkit agent
+  (the person's own identity) and the lock screen, each window saying
+  so; stray touches typing nothing (app_server takes the key's keyboard
+  by the device) and three in a row typing the code ("Three touches type
+  a code", on). All of it tried headless with a software key
+  (`OLO_FIDO_SOFT`), the PAM stand-in, a stand-in sudo and polkit
+  helper; Ben's key asked what it is without a touch (firmware 5.8.0,
+  hmac-secret, no PIN set, a key agreement in protocol 2). *Left*: Ben's
+  setup with his key (its two touches), then sudo, Passwords, polkit and
+  the lock screen touched for real, and a stray touch and three in a row
+  in a text field; a key with a PIN that wants it (not asked for yet).
+  Olo Doctor says when a key's FIDO node isn't the person's to open, and
+  offers the rule (2026-11-05).
+  *Setting up, with Ben's key* (2026-11-05): his first try "just kept
+  flashing". With every CTAPHID message printed (olo-fido's `touch`
+  example), his YubiKey 5 took both touches and gave its secret ("i was
+  touching the wrong thing"). The box now says what to touch and when (its
+  gold contact, once its light blinks), what to do as each touch is
+  waited for, and asks again when the key stops waiting (three times).
+  Left: Ben's setup in Preferences with the new box, then a touch for
+  sudo, Passwords, polkit and the lock screen.
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the
@@ -134,6 +156,20 @@ of Finished; a new one goes where its priority puts it.
   its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
   which control lights the emitter, and what the HID interface reports
   (the shutter, perhaps).
+  *Built* 2026-11-05 (HACKING's "Face unlock"): `olo-face` (V4L2, the
+  emitter's UVC control found by trying, YuNet and SFace in process,
+  infrared-only looks with a relief check), `olo-faced` (root, the system
+  bus, the faces root's only, no password kept), `pam_olo_face.so` (sudo
+  and polkit), Passwords and the lock screen asking it, and Preferences ▸
+  Security ▸ Face Unlock (Install…, Set Up…, Forget…, Remove). Tried end
+  to end without root or a camera (a private bus, portraits for frames, a
+  stand-in PAM stack). *Left*, needing Ben at the machine: Install… (his
+  administrator password), then Set Up… in front of the camera (the
+  emitter found then: the read-only look found its units 10, 13 and 14,
+  unit 14's control 6 the likeliest); sudo, polkit (under SELinux), the
+  lock screen and Passwords tried with his face; the relief and match
+  thresholds tuned on his real looks; what the camera's HID interface
+  says (the shutter).
 
 - **A USB 2 device in a Thunderbolt 5 port isn't seen** (found
   2026-11-04 with Ben's YubiKey): in the USB-C port on the Barlow Ridge
@@ -174,6 +210,23 @@ of Finished; a new one goes where its priority puts it.
   click each, activate each, open a third), and keep a test; then a
   wm-fuzz check that the window just activated is the top one of its
   layer.
+  *Fixed* (2026-11-04, HACKING's auto-tiling floats): seen headless with
+  two Terminal windows floated by hand over a tiled one: activating the
+  tile put it over both floats, and nothing put them back till a layout
+  pass, which then raised only the float left under the tile, over the
+  one just brought forward. Now the floats stay over the tiles (and
+  Focus's window) on every raise, in their own order, all raised
+  together when any is under. And a window joining a floating group
+  floats with it (found by the new `auto-fuzz --floats`: it was a tile
+  at the group's frame, over its neighbour). Two floats of different
+  apps clicked and activated in turn, and a tile, behave; `--floats`
+  seeds 1–4 pass 80 to 120 steps; 5 (step 51) and 6 (step 73) find an
+  older mid-drag fault with groups (on HEAD's app_server too: a group's
+  window behind showing as a tile over the one dragged), now in the
+  auto-fuzz entry. An activation costs app_server the same (1.75–1.90
+  ms of CPU each, 200 in a row, before and after). *Left*: Ben's go
+  with the windows he had (which "on top priority" ones?), and Standard
+  mode, where nothing keeps floats over others.
 
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
@@ -237,6 +290,100 @@ of Finished; a new one goes where its priority puts it.
   in a sweep stopped early: seed 2 at step 67 ("reloading: settled,
   then moved") and seed 3 at step 103 (bringing a tab to the front of
   its group, then the tiles moved); then the sweep again to 16.
+  *Seed 2's step 67, read* (its app_server log): the reload brought back
+  29 windows, and some twenty of Terminal's came back as new windows,
+  their saved places not matched at their first commit (only the first
+  of each group is, by its key), so each split a tile ("a new window
+  into its tile"), then folded into its group as it was put back, the
+  tree churning for 0.7 s and the tiles still moving after the fuzzer
+  saw them settle. *Fixed* (2026-11-04, late): those twenty were the
+  Terminals racing each other (each adopted every other's shells as
+  they all re-executed: olo-termd now lists a shell as its Terminal's
+  while that process lives, `Shell::left_by`); and a tab put back is no
+  tile of its own while its group forms (`awaiting`, `kept_for`), nor
+  put back into another kept place once a hand has grouped it. Five
+  Terminals and a Tracker now come back from four reloads in a row
+  straight into their tiles. Seeds 1–16 with `--reloads` pass, all
+  sixteen at once in 155 s (`tools/dev/fuzz-sweep`); seed 1 failed once
+  under that load ("group 1's tab places are [(2, 0), (5, 0), …]": two
+  windows at one tab place) and passed alone: a race to look at. Also with `--floats` (older, on HEAD too):
+  seeds 5 (step 51) and 6 (step 73), a group's window behind showing
+  as a tile over the window being dragged.
+  *The fuzzers are Rust now* (2026-11-04, late; HACKING's fuzzers:
+  `olo-fuzz auto`, floats always in, its own seeds: the Python ones
+  above don't replay). A sweep of 26 seeds (`olo-fuzz sweep --confirm
+  -- auto`, 120 steps; 132 s, the failures confirmed together in 107 s)
+  finds ten faults, each at the same step every run. Mid-drag, tiles
+  out of step or over each other: seeds 8 (step 112, two tiles 495 px
+  past their neighbour for 400 ms), 10 (102), 12 (75, 1.4 s of it), 14
+  (95), 19 (70), 21 (38), 23 (67) and 25 (88). A floating window under a
+  tile after tiling one: 13 (112) and 18 (66). Fix them next, at the
+  cause, then sweep again until a wave is clean (with `--reloads` too).
+  *13 and 18 fixed* (2026-11-05): the window tiled was a Tracker alert
+  (a seam drag had landed in a Tracker window and dragged a folder onto
+  another: the alert said the move failed), and an alert stays over its
+  app's windows as their child, so as a tile it went back over the
+  floats each time they were put over it. Dialogs and alerts now float
+  whatever is asked (`floats_always`). Seed 18 then crashed Tracker at
+  step 81 (a band selection in its columns asked GPUI for an animation
+  frame from a mouse move, outside drawing: a panic), fixed in Tracker
+  and in GPUI. And the fuzzers now run in a sandbox (that drag could
+  have moved the person's files). *Left*, from a wave of 50 in the
+  sandbox (150 s, the failures confirmed together in 122 s), all
+  mid-drag, tiles out of step or over each other: seeds 8 (step 112),
+  10 (102), 12 (75), 14 (95), 19 (70), 21 (38), 23 (67), 25 (88), 28
+  (101, 2.8 s of it), 44 (118), 47 (101, 236 px), 48 (94) and 50 (92).
+  Nine more failed only under the load of 50 at once.
+  *All thirteen fixed* (2026-11-05): a window a drag's round waited for
+  could be under a float, so counted as not shown, and Smithay sent its
+  frame callbacks once a second; GPUI's resize waits for one, so the
+  round ran out of time (50 ms) and its neighbours went on over it for
+  up to a second. Windows in a round now get theirs every frame. And
+  GPUI acknowledged a resize's configure held for the next frame after
+  a newer one (the drag's end): a protocol error, and app_server ended
+  the Terminal ("wrong configure serial"); the held one is dropped once
+  a newer one is acknowledged. A wave of 38 then: no faults (the 8
+  failures the load's, or sessions past the 32 display names a runtime
+  directory had: now 256). *Left*, with `--reloads` (a wave of 22): seed
+  14 at step 22 (a Tracker settled, then moved, after a drag) and 16 at
+  step 54 (one look out of step mid-drag). *14 fixed* (2026-11-05): 11 s
+  after a restart app_server checks the windows that came back against
+  what was saved, and puts back those moved since, unless moved on
+  purpose; a tile floated by an agent (`set_floating` over IPC) wasn't
+  counted as on purpose, so it was put back in its old tile's place.
+  Floating or tiling a window now is. 16 passes by itself (the load's).
+  *Seed 16 again* (2026-11-05, a wave of 24 with `--reloads`, 12 at
+  once: 20 pass, three more pass alone): its step 54 is a StyledEdit
+  window opening into a group mid-drag and drawn in front at a size
+  the drag had moved on from (a group asks its windows for its size only
+  between drags, and `mark_behind`'s wait for a window to draw applied
+  only to one coming from behind). Now a window new to a group is asked
+  for the group's size mid-drag too, one size on the way at a time, and
+  waits to have drawn before it's the front, as one from behind does
+  (`Decoration::fronted`): alone it passes 3 runs in 4. *Left*: under a
+  wave's load it still shows for a look (the 100 ms wait,
+  `groups::FRONTING`, runs out first), and alone it sometimes fails at
+  step 68 ("ungrouping 3: settled, then moved": the two tiles left grow
+  from 211 to 1064 px tall after settling) or step 83 (tiles overlapping
+  for 4 looks mid-drag): races around a reload, next to look at.
+  *Step 68 fixed* (2026-11-05): not a race. A place still kept from the
+  restart before (for a window not back since) was saved again under
+  its old slot number, which the new save had given to another window,
+  so slot 4 was kept twice; one window came back into one, and the
+  other held a fifth of the column for nobody until it timed out 20 s
+  after the restart, the tiles beside it then growing (`SavedNode::of`:
+  such a place is saved as room for its neighbours; unit-tested). Four
+  runs of seed 16 with `--reloads` since: 68 passes in all; two passed
+  outright, two failed at step 54 for one look of 193 (a StyledEdit
+  opened before the restart showing only then, mid-drag, joining tile
+  1's group and drawn at 290 px while its neighbour was where the drag
+  began: the newcomer case above, still racing). *Tried* (2026-11-05):
+  letting a newcomer that hasn't drawn its asked size wait 600 ms rather
+  than `FRONTING`'s 100 before it's its group's front; it broke focus (a
+  window opening into a group wasn't the front when the keyboard was
+  given, so none had it: seed 16 failed at step 4 every run), so it was
+  taken back. The fix wants the keyboard to follow such a window once
+  it's fronted, or the newcomer's wait to apply only mid-drag.
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery
@@ -383,7 +530,43 @@ of Finished; a new one goes where its priority puts it.
     own colours (`wp_color_management_v1`, tried with a test client),
     pictures converted from their profiles (`olo_images`), Viewer
     drawing in Display P3 while it shows a wide photo (GPUI's
-    `Window::set_gamut`, tried headless), night light in HDR.
+    `Window::set_gamut`, tried headless), night light in HDR, and HDR
+    video (HDR10, HLG) shown for SDR screens, and wide video (HDR's
+    too) drawn in Display P3 rather than clipped to sRGB, and HDR video
+    shown as HDR on a display whose HDR is on (Viewer's window in HDR10,
+    its pictures PQ's in half floats; checked on a pretend HDR screen by
+    `tools/dev/hdr-check`, with a real file too: Chromium's HDR10 test
+    clip, its HDR said only in its stream) (2026-11-05). Screenshots
+    and recordings of an HDR screen are right SDR pictures (SDR's white
+    and HDR highlights white, 100 cd/m² as SDR shows it, not PQ's codes
+    read as sRGB's: `tools/dev/hdr-check` checks a screenshot and a
+    window's recording, 2026-11-05). Checked on the machine (2026-11-05,
+    read only): wide colour is on for the OLED (its DisplayID primaries,
+    Accurate) and the Studio Display (P3, Accurate), the Dell plain;
+    `xe.enable_dpcd_backlight=3` is in the boot entries (written
+    2026-11-04 12:32), /etc/kernel/cmdline and GRUB's defaults, but the
+    kernel running started before (2026-11-04 00:35) and the driver's
+    parameter can't change till it starts again (read only in sysfs),
+    so app_server says the panel's HDR waits on a restart. After Ben's
+    restart (2026-11-05), HDR on the panel works: it went blank at
+    first, and Ben looked through each step with an HDR test card
+    (`hdr_card`, the kit's example) while the panel's registers were
+    tried by hand (`tools/dev/panel-hdr-check`). Found: with the
+    argument the kernel drives this eDP 1.5 panel by VESA's luminance
+    control, not Intel's HDR interface (that's for eDP 1.4b and older);
+    the panel decodes PQ itself from the signal and its metadata,
+    ignores the backlight in HDR and 0x344 written while on; it takes
+    the signal's RGB as its own primaries (BT.2020's numbers looked
+    washed out: now sent in the panel's own, colorimetry Default). The
+    blanks came from dragging "Everything else's brightness" (each step
+    a modeset: now only the frame re-encoded, 60 steps' IPC p50 1.39 →
+    0.45 ms headless) and from Preferences' 15-second revert, which Ben
+    didn't see (now an alert, Revert or Keep, counting down). SDR in HDR
+    was dim at BT.2408's 203 cd/m²: a built-in panel's SDR white now
+    follows its brightness unless set (80–600 cd/m²), and the
+    brightness keys move it in HDR. Ben: "hdr looked good", SDR "about
+    the same brightness now". Left: a real HDR grading (phone footage,
+    Ben's) looked at.
   - Displays plugged in (2026-11-04): the Studio Display (Thunderbolt 5)
     was two displays, 5120 × 2880 and a copy of its right half: a tiled
     monitor, now shown whole through the connector offering the whole
@@ -416,7 +599,10 @@ of Finished; a new one goes where its priority puts it.
     Display side by side, Performance in two tabs; the lint on a
     1280 × 800 screen, following windows that resize themselves;
     `ui-lint --screen`; the rule in CLAUDE.md and HACKING. Left: the
-    live lint's findings on every app at 1280 × 800 (being run).
+    live lint's findings on every app at 1280 × 800: none (2026-11-05:
+    `--screen 2560x1600` at 2×, 1920x1200 at 1.5× and 1280x800 at 1×
+    all clean; the lint now opens apps at the first scale asked for
+    when 2× isn't one, as 1280x800 opened at 2× was 640 × 400 points).
   - Power modes: Preferences ▸ Power (and a button there from
     Performance), Deskbar's battery menu; through tuned-ppd's power
     profiles API, following Fn+L/M/H.
@@ -492,7 +678,7 @@ of Finished; a new one goes where its priority puts it.
     the session the sensor (Olo Doctor installs it). Left: try it in
     front of the machine (Ben: install the rule from Doctor, turn it
     on); dim when looking away.
-  - Left, not started: the IR camera (face sign-in).
+  - The IR camera (face sign-in): built, see "Face unlock" above.
 
 - **Palms read as fingertips on the ThinkPad's touchpad** (Ben,
   2026-11-04): "on the thinkpad touchpad when i try to do the palm
@@ -514,6 +700,24 @@ of Finished; a new one goes where its priority puts it.
   a contact by what's known (a pressure-sized ring, not a dot) and
   saying when a pad can't tell palms by size; and the built-in model
   for pads like this one.
+  *Built* (2026-11-05, docs/TOUCHPAD.md "The ThinkPad's touchpad"):
+  two recordings of Ben's hands showed it all: no size, the pressure
+  the click's force (a flat palm weighs 0: why palms were dots), the
+  firmware right on every palm and never on a finger, but a resting
+  palm called a finger again on up to 98% of its reports (libinput
+  follows it), and the kernel ending a palm and bringing it back under
+  a new id. Ben: "each touchpad type should have its own specific
+  custom model type and weights". Each kind of pad now has its own
+  model (`olo_palm::Kind`: features, size, base model, timing, training
+  and judging); the ThinkPad's is made from Ben's captures (100% of
+  palms, 0% of fingers, by the firmware's word, held). The filter runs
+  there (profile "ThinkPad", Preferences' recommended one for this pad):
+  a palm stays a palm until it lifts, as its tool type to libinput
+  (replayed: 315 flips held, no finger told a palm). The trainer draws a
+  palm as large as one and a fingertip as one, judges a click by the
+  pad's button, and trains this pad's kind. Left: Ben's try after the
+  upgrade (choose the ThinkPad profile in Preferences ▸ Touchpad if it
+  isn't already; type with palms down; the trainer).
 
 - **The palm trainer, full screen and driven from the keyboard** (Ben,
   2026-11-02, with a screenshot of its last step, "Try it", at 2× in
@@ -803,34 +1007,6 @@ of Finished; a new one goes where its priority puts it.
   modeset as now. It needs trying on the real displays (an upgrade
   the person agrees to try), so it isn't shipped blind.
 
-- **Agent Screens: Chrome opened from a screen's Deskbar lands on the
-  person's display** (Ben, 2026-10-31): "i was just using the "Take
-  Control" feature in an agent screen, and i used the deskpad to try open
-  a new chrome, but it actually opened it on my user screen instead of in
-  the agent screen". Anything launched on an agent screen (its Deskbar,
-  its Tracker, an agent's `olo-screen run`) must open there. Likely cause
-  (to confirm): Chrome's single-instance handoff, where the new process
-  finds the person's running Chrome by its profile and asks it for a
-  window, which that Chrome opens on its own Wayland connection; so a
-  screen's Chrome needs its own instance (its own profile dir, or a
-  Chrome running on that screen), and every launcher there passes the
-  screen's `WAYLAND_DISPLAY`/`OLO_SOCKET`. Check the other single-instance
-  apps (ours via D-Bus activation, Slack, GTK's GApplication) the same way.
-  *Status* (2026-11-02): Chrome done (bb4dbc4b, 2026-10-31: a profile
-  of the screen's own, `CHROME_CONFIG_HOME`); Olo's apps are fine (their
-  single-instance socket is the display's, `instance::socket_path`).
-  *Left*, all through the session bus a screen shares with the person
-  (on purpose: their keyring, notifications; a headless session never
-  takes its services over): a GTK app's GApplication finds the person's
-  copy by its bus name; an Electron app (Slack, VS Code) hands off to
-  the person's through the lock in their config; and a portal dialog
-  asked from a screen (Chrome's upload, Open With) shows on the
-  person's display (olo-portal is the person's). The fix: a bus of the
-  screen's own with its own portal (as test sessions have), reaching
-  the person's keyring only through Passwords' grants ("Passwords for
-  Agent Screens"); it changes what agents on existing screens reach, so
-  it goes with that item.
-
 - **Terminal: light mode hard to read** (*better* 2026-11-02: text kept
   at 4.5:1 from its cell, `colors::legible`, so a dark terminal's pale
   colours and the default text on bands programs draw read in light
@@ -921,15 +1097,15 @@ of Finished; a new one goes where its priority puts it.
     there. (Apple: support.apple.com/guide/security/secf60513daa)
   - *Done* (2026-11-04): Preferences ▸ Keyboard ▸ Keyboards knows it
     (`olo_protocol::keyboards`): a box with its picture, maker and model,
-    keypad and connection, and why its Touch ID isn't used. *Left*: its
-    own picture (the general keyboard icon for now: `genicon.py` needs an
-    image API key, in `OPENAI_API_KEY` or ~/.env, and there is none on
-    this machine; the subject: a slim full-size wireless keyboard with a
-    numeric keypad, a thin silver aluminium base and white blank keys, a
-    small round black key with a silver ring at the top right); and its
-    settings: the function row as F-keys or as media keys (hid_apple's
-    `fnmode`, or done in app_server's keymap so it needs no root), and
-    the Fn/Globe key.
+    keypad and connection, and why its Touch ID isn't used. Its own
+    picture (2026-11-05: `keyboard-aluminium`, in Classic and every
+    theme). Its settings (2026-11-05): the top row as F-keys first or
+    its printed features first (app_server, per keyboard, no root), the
+    Globe key alone for emoji; its Mission Control and Spotlight keys
+    the overview and the palette; and its Do Not Disturb key, which the
+    kernel sends as KEY_SLEEP and logind took to suspend the computer,
+    Do Not Disturb (app_server holds `handle-suspend-key`). *Left*:
+    Ben's go with the keys themselves (nothing here can press them).
 
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable
@@ -958,89 +1134,6 @@ of Finished; a new one goes where its priority puts it.
   portal dialogs, the screen saver and the supervisor have none);
   a window's content scrolling when the window is shorter than it
   (`WindowOptions::content_height`, in `Frame`: Preferences' panels).
-
-- **Move windows to and from Agent Screens** (Ben, 2026-10-31):
-  "everywhere we have menu options to move something to a
-  display-workspace there should also be a section in that menu to move
-  it to an agent-screen (new or existing) and when in the agent screens
-  app next to take control there should be an option to move all windows
-  in the agent screen to a user display-workspace". So: the window tab's
-  menu, Deskbar's app menu, the workspace heading's menu, Tracker's and
-  Terminal's tab menus (wherever Move to Workspace is) gain an Agent
-  Screens section (each running screen, and New Agent Screen); Agent
-  Screens gets, beside Take Control, a way to move every window on the
-  screen onto one of the person's display-workspaces. The program keeps
-  running as it moves (its connection handed between the two
-  app_servers, or the app reopened there with its saved state).
-
-- **Notifications, robust and everywhere** (Ben): after Haiku's
-  notification_server and `BNotification`, better where we can. ~~Done~~:
-  grouped by app, the four kinds (information, important, error,
-  progress), body markup with links, `value` progress, replace-by-tag,
-  inline reply (`NotificationReplied`), `transient`, `category`, sound
-  hints read, `ActivationToken` before an action, a click bringing the
-  app's window forward; sounds played natively (the freedesktop theme
-  for important notes and errors); a history kept across a restart
-  (History window, Deskbar's bell with the unread count); Do Not Disturb
-  by hand, for a while or on a daily schedule; per-app banner, sound and
-  history choices (Preferences ▸ Notifications); agent-readable
-  (`com.olodesktop.Notifications1`, `olo-notifications --list --json`,
-  `--invoke`, `--dismiss`, `--clear`, `--dnd`); GLib's
-  `org.gtk.Notifications` (GApplication apps, their actions run on the
-  app) and Flatpak apps through the GTK portal; a kit API for Olo's
-  own apps (`olo_kit::notify`: Tracker's long
-  copies); Do Not Disturb while sharing the screen (2026-10-30: from
-  olo-portal's sharing state, errors held too, banners already up taken
-  down; "While sharing the screen" in Preferences, on by default).
-
-- **Google Chrome works great in Olo** (Ben; Olo's web browser):
-  many sites really need Chrome. When stock Google Chrome is downloaded and run, Olo
-  recognises it: Olo window chrome (server-side decorations, or
-  whatever it takes: flags, policies, runtime patches), light/dark
-  following the desktop, and Olo Passwords filling and saving logins
-  in it seamlessly (e.g. a native-messaging host plus an extension
-  installed by policy, speaking the keychain protocol), including the
-  verification code (TOTP) from a field's context menu beside the
-  username and password. Drag and drop, the clipboard, notifications,
-  file pickers, downloads into Tracker, default browser, Deskbar entry:
-  all of it as well as Olo can make it. Ugly hacks are fine as long
-  as it is reliable.
-  ~~**Downloads and the default browser**~~ (done 2026-10-30: Chrome's
-  downloads in Deskbar, Olo's notifications and Tracker; Olo's Chrome
-  offered as the default browser; see "Other programs feel like Olo's
-  own").
-  ~~**Olo's look**~~ (done: the portals now start in a real session,
-  so it follows light/dark; each profile starts with Olo's title bar
-  and frame instead of Chrome's own buttons and with the GTK theme's
-  colours; HACKING, "Other toolkits' programs").
-  ~~**Passwords in Chrome**~~ (done: the Olo Passwords extension,
-  packed and signed per user, listed in Chrome's `extensions` folder,
-  with `olo-chrome` as its native messaging host; a field's context
-  menu offers each login's username, password, one-time code or the
-  whole login, the toolbar button lists the page's logins, and a login
-  sent with a form is offered for saving or updating; HACKING, "Google
-  Chrome").
-  ~~**Notifications**~~ (done: Chrome sends sites' and extensions'
-  notifications to Olo's notifications app over
-  `org.freedesktop.Notifications`; tested headless: shown with Chrome's
-  name and icon, a click reaching the page's `onclick`, Chrome's Settings
-  button opening its notification settings. Test buses need
-  `tools/dev/busd-lenient`; HACKING, "Notifications").
-  ~~**Installed on first use**~~ (done: `apps/chrome`, `olo-chrome`;
-  tested headless end to end, the real 139 MB download into a fixture
-  home, then Chrome running on Wayland in Olo; kept up to date: once
-  a day a start fetches a newer version in the background for the next
-  start, tested from a stand-in old version. Left: Chromium where Google
-  has no build) (Ben): Google Chrome is always listed in
-  Deskbar's apps; the first launch downloads it (Google ships arm64
-  Linux packages now: dl.google.com/linux/chrome/rpm/stable/aarch64,
-  checked against the repo's sha256), unpacks it in process (rpm cpio
-  payload, natively) into `~/.local/share/olo/chrome/<version>` with
-  a `current` link, with live progress, and keeps it updated from the
-  same repo. Chromium if Google's isn't there for the machine. Ben's
-  machine has 156.0.8078.47 there now (installed by hand the same way,
-  with `~/.local/share/applications/google-chrome.desktop`); it runs on
-  Wayland under Olo.
 
 - **Screen sharing: an Olo portal backend** (Ben, 2026-10-29; the
   design researched by another agent, session 05de188d, kept here).
@@ -1130,6 +1223,22 @@ of Finished; a new one goes where its priority puts it.
       process; Zoom in Chrome just works;
     - sharing a Chrome tab never reaches us, and Chrome can only share a
       tab's audio, not the whole system's: audio is out of scope.
+  - **Done since** (2026-11-05, HACKING "Kept out, and shown as
+    shared"): Passwords, the polkit prompt, Terminal's sudo prompt,
+    Deskbar's approve prompt (`WindowOptions::private`) and the lock
+    screen blacked out of shares and recordings; a shared window ringed
+    on screen while it is. Agent screens run their own portal (HACKING
+    "A screen's own bus"), and the person's picker offers each agent
+    screen as a source (HACKING "Agent screens as sources").
+    RemoteDesktop done (2026-11-05, HACKING "Remote control"): the
+    portal's Notify calls and ConnectToEIS, asked every time, app_server
+    taking libei connections only from olo-portal after a grant, Deskbar
+    showing it with Stop Remote Control; tested headless with
+    `remote_test` (no real Chrome Remote Desktop or Deskflow tried yet).
+    **Left**: the cursor sent as metadata (the third cursor mode; hidden
+    and drawn in are done). Zoom's launcher quirk done (`olo_xdg::quirks`: Zoom's app
+    started by Olo is told it's on GNOME, so it offers Wayland sharing;
+    untried, Zoom isn't installed here).
   - **The Olo touches**: the picker, a kit dialog with Screens and
     Windows, live thumbnails and app icons, opened over the window that
     asked (agents read and drive it through the widget tree for free);
@@ -1204,7 +1313,9 @@ of Finished; a new one goes where its priority puts it.
     xdg-desktop-portal (1.22 here) answers it with FileManager1's
     `ShowItems`, which Tracker serves, and only without one opens
     `inode/directory`'s default, which olo-session makes Tracker too.
-  - **Opening things** (started 2026-10-30: the AppChooser portal is
+  - ~~**Opening things**~~ (done: checked 2026-11-05, GIO opens a folder
+    in Tracker and a link in Chrome from `olo-mimeapps.list`, xdg-open
+    going through GIO on Olo's `XDG_CURRENT_DESKTOP`) (started 2026-10-30: the AppChooser portal is
     Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
     writes desktop entries and `olo-mimeapps.list` defaults so GIO,
     xdg-open and OpenURI open files in Olo's apps as Olo does, links
@@ -1300,7 +1411,17 @@ of Finished; a new one goes where its priority puts it.
   to BeOS's boot screen, drawn with sunburst-made graphics
   (docs/ICONS.md), with a really nice startup sound. Related: an
   "Upgrading Olo" veil on every display while app_server restarts
-  and the displays settle, in the same style.
+  and the displays settle, in the same style. *Done* (2026-11-05,
+  HACKING "The session and in-place reload"): the upgrade's veil, the
+  wordmark and the icon set's art lit stage by stage; the same as the
+  start-up screen as a session starts ("Starting Olo", till the desktop
+  and Deskbar show); the start-up sound, made in process (a D♭ major
+  ninth swell), once a session, with a switch in Preferences ▸ Sound.
+  *Left*, both needing a try on the machine (they change what it boots
+  into, and can't be seen without a reboot): the login screen in GDM's
+  place (a daemon owning the seat, PAM and logind's session, a greeter on
+  the kit) and the boot in Plymouth's (a theme of the same picture, or
+  Olo drawing from the initramfs).
 
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything
@@ -1314,25 +1435,6 @@ of Finished; a new one goes where its priority puts it.
   of the time a glyph took). Icons in the GPUI kit: the
   pre-scaled icon for the device size, on whole device pixels, never
   resampled; checked by the layout review at every scale.
-
-- **The voice model's weights in f16 or int8, if voices stay as clear**
-  (from the SIMD work, 2026-11-04): a live frame is 553–588 µs against
-  388 back to back because its 8 MB of f32 weights fall out of the
-  caches between frames; half or a quarter of that would stay. Try
-  tract's f16 weights (F16C on x86, NEON's fp16) and int8, and keep one
-  only if the voice trials (crates/voice tests, the AirPods chain) say
-  quality holds. Measure on the ThinkPad and the MacBook.
-  *Tried* (2026-11-04, x86 with AVX2): tract 0.23.9's
-  `FloatPrecisionTranslator` (f32 → f16, the whole model) on the
-  encoder and both decoders breaks DeepFilterNet: a clean voice comes
-  out at −1.5 dB SDR (f32: 34.1), noise isn't taken out (7.5 → −2.0 dB
-  SDR; f32: 17.7), and its 22 µs a frame is the network doing nothing.
-  It turns the activations to f16 too (the GRUs' sums lose too much),
-  where only the weights should be. What's left to try: weights alone
-  in f16 (tract-linalg has f16-in-f32-out matrix kernels on x86,
-  `f16f32` with F16C, and on NEON), which means packing the constant
-  matrices as f16 in tract's own optimizer rather than translating the
-  model; then int8 the same way, judged by the same trials.
 
 - **Other programs' file handling through Olo, fixed** (Ben,
   2026-11-04): "the gtk/qt integration doesn't seem to be working
@@ -1358,6 +1460,30 @@ of Finished; a new one goes where its priority puts it.
   `busctl --user monitor org.freedesktop.FileManager1` (and
   `org.freedesktop.portal.Desktop`) running while its download's folder
   is clicked (a test session's Chrome stops at its terms on first run).
+  *Found and fixed* (2026-11-05): Chrome 157 calls ShowItems itself
+  (it asks whether `org.freedesktop.portal.Desktop` and FileManager1 are
+  on the bus first; with the portal there too, as in Ben's session, it
+  still calls ShowItems), and Tracker serves it: a folder's window with
+  the file selected, brought back from minimized or opened on this
+  workspace, focused (checked on a test session's bus with Chrome, the
+  portal frontend and Olo's backend). But Ben's journal said, at each
+  Olo upgrade on Nov 4, "tracker: not serving org.freedesktop.FileManager1:
+  name already taken on the bus": Tracker asked for the name with
+  ReplaceExisting and DoNotQueue, so when anyone held it (the last
+  Tracker's connection not yet gone as it restarts, or Nautilus, which
+  the system's activation file `org.freedesktop.FileManager1.service`
+  starts whenever no Tracker has the name, and which doesn't allow it
+  taken) Tracker gave up for the session and every "show in folder"
+  went nowhere. It now waits in line for the name and allows it taken
+  (the next Tracker takes over at once): checked with a stand-in owner
+  that doesn't allow it taken (Tracker logs that it waits, takes the
+  name the moment the other lets go, and Chrome's Show in folder opens
+  Downloads). *Left*: Ben's try after the upgrade. Whether to keep
+  D-Bus from starting Nautilus at all (Ben, 2026-11-05: yes, and "doctor
+  should offer to install the change that makes it always use tracker"):
+  *done*, Olo Doctor's "Always Use Tracker" (HACKING's Tracker), its
+  file and Tracker's `--file-manager` tried on a private dbus-daemon and
+  a headless session's bus.
 
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied
@@ -1373,6 +1499,22 @@ of Finished; a new one goes where its priority puts it.
   Viewer, the palette's commands (jump to a channel or person, search),
   its windows and messages readable and drivable by agents (the kit's
   tree, Agent Screens), and passwords and passkeys from Olo Passwords.
+  *Built* (2026-11-05, HACKING's "Slack"): `olo-slack` (apps/slack) runs
+  Slack's web app in Olo's Chrome on a profile of its own, its window
+  `olo.slack` (`olo_xdg::apps::WEB_APPS`); one window, `slack://` links
+  and Slack's pages handed to it; no first-run dialog (its ticked "make
+  Chrome the default browser"). The Olo extension and host (1.8.0;
+  `slack.rs`, `slack-page.js`, `slack.js`): Slack's notifications as
+  Olo's (a click goes to the conversation), its unread count on
+  Deskbar, links out in the person's browser, Open in Viewer for
+  pictures, its channels, people, Jump To… and Search… in the palette
+  (`commands::serve`), agents' trees and Passwords as in Chrome. Tested
+  against a stand-in page and Slack's real sign-in page; idle costs
+  nothing. Left, needing Ben's Slack signed in: a look at each against
+  Slack's real client (its title's count, its sidebar's markup for the
+  palette, whether it notifies through `Notification`), and its status
+  following Olo's (away when the screen locks, Do Not Disturb, a
+  meeting), which needs Slack's client to build against.
 
 - **Screen recording, for people and agents** (Ben, 2026-11-04):
   "create an olo native screen recording app similar to CleanShot X
@@ -1416,12 +1558,38 @@ of Finished; a new one goes where its priority puts it.
   `video-frame` (what a video shows at a time, to check it; the Viewer's
   seek into a still stretch fixed on the way: it showed the next change).
   The recorder no longer wakes on a timer (a still or paused recording:
-  only NVIDIA's driver threads wake). *Left*: sound, CleanShot X's
-  polish (pointer drawn larger and smoothed, clicks and keys shown, zoom
-  following the action, a background and frame, a webcam bubble), a
-  countdown (Screenshot's Delay), the trimming editor, GIF, and the GPU
+  only NVIDIA's driver threads wake). *Sound* (2026-11-05): the
+  computer's and the microphone's, either or both (Record…'s ticks,
+  `--sound`), AAC beside the video. *GIF* (2026-11-05): Record… ▸
+  Save as GIF, `--as-gif`, `--gif VIDEO`. *Clicks and shortcuts shown*
+  (2026-11-05): Record… ▸ Show Clicks, Show Shortcuts (app_server
+  draws them; typing never shows); and GPU recordings no longer lose
+  their first 2.5 s (the encoder opened before the clock starts). *A
+  countdown* (2026-11-05): 3 s on screen before a person's recording.
+  *Trimming* (2026-11-05): the Viewer's Edit ▸ Trim…, `--trim`, copied
+  without encoding again. *A window on a background* (2026-11-05):
+  Record… ▸ Window on a Background, `--background`: the blurred
+  wallpaper, rounded corners, a shadow. *The pointer larger and
+  smoothed* (2026-11-05): Record… ▸ Larger Pointer, Smooth Pointer,
+  `--pointer-size`, `--smooth-pointer`; a window's recording has the
+  pointer. *Zoom* (2026-11-05): Record… ▸ Zoom on Clicks,
+  `--zoom-follow`; `--zoom-to` and `olo-screen zoom-video` for agents.
+  *Marks and captions* (2026-11-05): `--mark`/`mark-video` (chapters,
+  shown in the Viewer's timeline and Go menu), `--caption`/
+  `caption-video` (in captures only).
+  *The camera bubble* (2026-11-05): Record… ▸ Show Camera, `--camera`,
+  `olo-camera` (V4L2 in process), checked with the stand-in camera.
+  *Left*: the camera bubble on a real camera (Ben's first try: Show
+  Camera, then a recording of the screen; the laptop's camera and the
+  Studio Display's were never opened here); in a window's recording
+  done (2026-11-05: on a background, the recorder draws the camera on
+  the background's corner itself, `inset.rs`; checked with the stand-in
+  camera), and
+  the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
-  4K: 111 ms a frame).
+  4K: 111 ms a frame). *HEVC and AV1* (2026-11-05): `--codec`,
+  Preferences ▸ GPUs ▸ Format; every codec now at a measured constant
+  quality (H.264's recordings a third smaller for the same picture).
   - **Encoding on the best GPU, chosen in its settings** (Ben,
     2026-11-04): "the screen recording app should also take advantage
     of a discrete graphics card for encoding when available (and make it
@@ -1439,12 +1607,61 @@ of Finished; a new one goes where its priority puts it.
     `--encoder auto|cpu|nvidia`, auto taking NVENC where it opens: 4K in
     13.4 ms a frame against the processor's 111; the setting in
     Preferences ▸ GPUs ▸ Screen Recordings (the most powerful by
-    default, named; the NVIDIA GPU; the processor). *Left*: each encoder
-    with what it can encode (sizes, H.264/HEVC/AV1), Intel's and AMD's
-    (VA-API or Vulkan Video),
-    HEVC and AV1 (NVENC has both on this RTX 50 part), the frames as
-    dmabufs (CUDA's external memory) rather than copied, and falling back
-    mid-recording.
+    default, named; the NVIDIA GPU; the processor). *Then*
+    (2026-11-05): HEVC and AV1 on NVENC, each codec at a measured
+    constant quality; an encoder failing mid-recording opened again,
+    else the recording kept to there (not yet falling back to another
+    encoder: the file's sample entry describes one stream).
+    *Found* (2026-11-05), for Intel's and AMD's: Fedora's own VA-API
+    drivers (iHD from Fedora, Mesa's) leave out the patented codecs: on
+    this ThinkPad's Intel GPU (xe, renderD128) iHD encodes only JPEG,
+    VP9 (profiles 0–3) and AV1 profile 0, no H.264 or HEVC (those need
+    RPM Fusion's `intel-media-driver` / `mesa-va-drivers-freeworld`). An
+    H.264 encoder through VA-API was written (libva opened at run time,
+    bindgen declarations from libva 2.24's headers, NV12 on a few
+    threads, CQP, the driver writing the headers) and set aside: it
+    couldn't be run here. What would run here is AV1 through VA-API,
+    which needs its sequence and frame headers written by us (packed
+    headers with the offsets the driver patches, as FFmpeg's
+    vaapi_encode_av1 does). *Done* (2026-11-05, HACKING "AV1 on Intel's
+    and AMD's GPUs"): AV1 through VA-API on the Intel GPU (`olo_vaapi`,
+    its headers written by us, constant quality 40: 47.6 dB on a
+    2560 × 1600 screen in about 8.5 ms a frame), `--encoder vaapi`, auto
+    falling back to it for AV1, and Preferences ▸ GPUs offering it where
+    the driver says it encodes AV1 (asked on the panel's thread, about
+    15 ms: no cache needed). *Left*: the frames as dmabufs (CUDA's
+    external memory; VA-API's DRM PRIME import with its video processor
+    making NV12) rather than copied; auto preferring the Intel GPU on
+    battery.
+
+- **StyledEdit: Markdown edited as it looks (and as source), code with
+  highlighting** (Ben, 2026-11-05, lower priority): "when opening a
+  markdown file StyledEdit should natively support the Markdown and be
+  more like Typora WYSIWYG editing, but also have an option to switch
+  back and forth between WYSIWYG mode and source mode and in source mode
+  it should be like a code editor with syntax highlighting and fixed
+  width font. also make it support code/source mode for all major
+  programming/scripting languages with syntax highlighting and fixed
+  width font." Now: Markdown comes in through Import… (`convert.rs`,
+  `from_markdown`) and goes out as Markdown, as a styled document, and
+  the editor has no highlighting. To do: a `.md` opened is a Markdown
+  document, edited as Typora does (headings, emphasis, lists, quotes,
+  links, pictures, tables, code blocks and inline code shown as they
+  look; the marks of the line being edited shown as typed) and saved as
+  Markdown again, keeping what the person wrote (their list markers,
+  emphasis characters, line breaks, front matter, HTML); a View toggle
+  (and a key, ⌘/ say) between that and Source, which shows the Markdown
+  itself in a code editor: the fixed-width font, syntax highlighting,
+  line numbers, the place kept across the switch. Source mode for every
+  major language as well (Rust, C, C++, Go, Python, JavaScript and
+  TypeScript, shell, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML,
+  CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, …), a file opened
+  by its type going straight to it: highlighting from a Rust grammar
+  library (tree-sitter's grammars, in process), colours from the
+  palette in light, dark and night, incremental as it's typed (a file
+  of 100,000 lines opens and scrolls at once: measured). In the kit
+  (the code editor is one any app could use: Terminal's, Viewer's text),
+  documented in HACKING.
 
 ## Maybe one day
 
@@ -1506,6 +1723,648 @@ Open; making fast things faster waits here.
   finds it. After the reliability work.
 
 ## Finished (most recently finished first)
+
+- ~~**The voice model's weights in f16 or int8, if voices stay as clear**~~
+  (done 2026-11-05, HACKING's "Voice processing": the weights alone in
+  f16, packed by tract's own optimizer for its f16-weights,
+  f32-activations kernels (each matmul's constant weights swapped for an
+  f16 copy); on x86 with F16C a frame back to back 391 → 296 µs, paced as
+  live 773 → 536 µs, every voice trial's SDR the same to a tenth of a
+  dB. int8 not needed for the caches' sake now. *Left*: the MacBook's
+  numbers (NEON's fp16 kernels; it falls back to f32 where they don't
+  optimize))
+  (from the SIMD work, 2026-11-04): a live frame is 553–588 µs against
+  388 back to back because its 8 MB of f32 weights fall out of the
+  caches between frames; half or a quarter of that would stay. Try
+  tract's f16 weights (F16C on x86, NEON's fp16) and int8, and keep one
+  only if the voice trials (crates/voice tests, the AirPods chain) say
+  quality holds. Measure on the ThinkPad and the MacBook.
+  *Tried* (2026-11-04, x86 with AVX2): tract 0.23.9's
+  `FloatPrecisionTranslator` (f32 → f16, the whole model) on the
+  encoder and both decoders breaks DeepFilterNet: a clean voice comes
+  out at −1.5 dB SDR (f32: 34.1), noise isn't taken out (7.5 → −2.0 dB
+  SDR; f32: 17.7), and its 22 µs a frame is the network doing nothing.
+  It turns the activations to f16 too (the GRUs' sums lose too much),
+  where only the weights should be. What's left to try: weights alone
+  in f16 (tract-linalg has f16-in-f32-out matrix kernels on x86,
+  `f16f32` with F16C, and on NEON), which means packing the constant
+  matrices as f16 in tract's own optimizer rather than translating the
+  model; then int8 the same way, judged by the same trials.
+
+- ~~**Notifications, robust and everywhere**~~ (finished 2026-11-05:
+  every part below done, nothing more asked; on agent screens each
+  screen's own centre since its own bus) (Ben): after Haiku's
+  notification_server and `BNotification`, better where we can. ~~Done~~:
+  grouped by app, the four kinds (information, important, error,
+  progress), body markup with links, `value` progress, replace-by-tag,
+  inline reply (`NotificationReplied`), `transient`, `category`, sound
+  hints read, `ActivationToken` before an action, a click bringing the
+  app's window forward; sounds played natively (the freedesktop theme
+  for important notes and errors); a history kept across a restart
+  (History window, Deskbar's bell with the unread count); Do Not Disturb
+  by hand, for a while or on a daily schedule; per-app banner, sound and
+  history choices (Preferences ▸ Notifications); agent-readable
+  (`com.olodesktop.Notifications1`, `olo-notifications --list --json`,
+  `--invoke`, `--dismiss`, `--clear`, `--dnd`); GLib's
+  `org.gtk.Notifications` (GApplication apps, their actions run on the
+  app) and Flatpak apps through the GTK portal; a kit API for Olo's
+  own apps (`olo_kit::notify`: Tracker's long
+  copies); Do Not Disturb while sharing the screen (2026-10-30: from
+  olo-portal's sharing state, errors held too, banners already up taken
+  down; "While sharing the screen" in Preferences, on by default).
+
+- ~~**Google Chrome works great in Olo**~~ (finished 2026-11-05: every
+  part done; drag and drop, the clipboard and file pickers with "Other
+  programs feel like Olo's own". Not done: Chromium where Google has no
+  build, which no machine Olo runs on needs, x86_64 and arm64 both
+  having Google's) (Ben; Olo's web browser):
+  many sites really need Chrome. When stock Google Chrome is downloaded and run, Olo
+  recognises it: Olo window chrome (server-side decorations, or
+  whatever it takes: flags, policies, runtime patches), light/dark
+  following the desktop, and Olo Passwords filling and saving logins
+  in it seamlessly (e.g. a native-messaging host plus an extension
+  installed by policy, speaking the keychain protocol), including the
+  verification code (TOTP) from a field's context menu beside the
+  username and password. Drag and drop, the clipboard, notifications,
+  file pickers, downloads into Tracker, default browser, Deskbar entry:
+  all of it as well as Olo can make it. Ugly hacks are fine as long
+  as it is reliable.
+  ~~**Downloads and the default browser**~~ (done 2026-10-30: Chrome's
+  downloads in Deskbar, Olo's notifications and Tracker; Olo's Chrome
+  offered as the default browser; see "Other programs feel like Olo's
+  own").
+  ~~**Olo's look**~~ (done: the portals now start in a real session,
+  so it follows light/dark; each profile starts with Olo's title bar
+  and frame instead of Chrome's own buttons and with the GTK theme's
+  colours; HACKING, "Other toolkits' programs").
+  ~~**Passwords in Chrome**~~ (done: the Olo Passwords extension,
+  packed and signed per user, listed in Chrome's `extensions` folder,
+  with `olo-chrome` as its native messaging host; a field's context
+  menu offers each login's username, password, one-time code or the
+  whole login, the toolbar button lists the page's logins, and a login
+  sent with a form is offered for saving or updating; HACKING, "Google
+  Chrome").
+  ~~**Notifications**~~ (done: Chrome sends sites' and extensions'
+  notifications to Olo's notifications app over
+  `org.freedesktop.Notifications`; tested headless: shown with Chrome's
+  name and icon, a click reaching the page's `onclick`, Chrome's Settings
+  button opening its notification settings. Test buses need
+  `tools/dev/busd-lenient`; HACKING, "Notifications").
+  ~~**Installed on first use**~~ (done: `apps/chrome`, `olo-chrome`;
+  tested headless end to end, the real 139 MB download into a fixture
+  home, then Chrome running on Wayland in Olo; kept up to date: once
+  a day a start fetches a newer version in the background for the next
+  start, tested from a stand-in old version. Left: Chromium where Google
+  has no build) (Ben): Google Chrome is always listed in
+  Deskbar's apps; the first launch downloads it (Google ships arm64
+  Linux packages now: dl.google.com/linux/chrome/rpm/stable/aarch64,
+  checked against the repo's sha256), unpacks it in process (rpm cpio
+  payload, natively) into `~/.local/share/olo/chrome/<version>` with
+  a `current` link, with live progress, and keeps it updated from the
+  same repo. Chromium if Google's isn't there for the machine. Ben's
+  machine has 156.0.8078.47 there now (installed by hand the same way,
+  with `~/.local/share/applications/google-chrome.desktop`); it runs on
+  Wayland under Olo.
+
+- ~~**Agent Screens: Chrome opened from a screen's Deskbar lands on the
+  person's display**~~ (done 2026-11-05, HACKING's "A screen's own
+  bus": each screen on a D-Bus bus of its own, `olo-bus` (busd's broker
+  on async-io, answering calls to absent names at once), with its own
+  notification centre and portal (xdg-desktop-portal in front of Olo's
+  and GTK's backends) and the person's accessibility bus; GTK apps and
+  portal dialogs stay on the screen; Electron apps get the screen's own
+  config folder; no keyring there, the person's secrets only through
+  Passwords' grants) (Ben, 2026-10-31): "i was just using the "Take
+  Control" feature in an agent screen, and i used the deskpad to try open
+  a new chrome, but it actually opened it on my user screen instead of in
+  the agent screen". Anything launched on an agent screen (its Deskbar,
+  its Tracker, an agent's `olo-screen run`) must open there. Likely cause
+  (to confirm): Chrome's single-instance handoff, where the new process
+  finds the person's running Chrome by its profile and asks it for a
+  window, which that Chrome opens on its own Wayland connection; so a
+  screen's Chrome needs its own instance (its own profile dir, or a
+  Chrome running on that screen), and every launcher there passes the
+  screen's `WAYLAND_DISPLAY`/`OLO_SOCKET`. Check the other single-instance
+  apps (ours via D-Bus activation, Slack, GTK's GApplication) the same way.
+  *Status* (2026-11-02): Chrome done (bb4dbc4b, 2026-10-31: a profile
+  of the screen's own, `CHROME_CONFIG_HOME`); Olo's apps are fine (their
+  single-instance socket is the display's, `instance::socket_path`).
+  *Left*, all through the session bus a screen shares with the person
+  (on purpose: their keyring, notifications; a headless session never
+  takes its services over): a GTK app's GApplication finds the person's
+  copy by its bus name; an Electron app (Slack, VS Code) hands off to
+  the person's through the lock in their config; and a portal dialog
+  asked from a screen (Chrome's upload, Open With) shows on the
+  person's display (olo-portal is the person's). The fix: a bus of the
+  screen's own with its own portal (as test sessions have), reaching
+  the person's keyring only through Passwords' grants ("Passwords for
+  Agent Screens"); it changes what agents on existing screens reach, so
+  it goes with that item.
+
+- ~~**Move windows to and from Agent Screens**~~ (done 2026-11-05,
+  HACKING's "Moving windows to and from screens": `olo-screen take` and
+  `give`; an Olo app re-executed there with its state, one window of
+  several (Tracker's, Terminal's windows and tabs) by a copy of the app,
+  any other program's connection replayed there by olo-wlproxy; the
+  window menu's, Deskbar's app and heading menus' and Terminal's tab
+  menu's Move to Agent Screen ▸, and Agent Screens' Move Windows To…
+  beside Take Control; the person's programs back when a screen stops
+  or dies, a screen's given ones outliving it. Tracker has no tab menu
+  of its own: its windows' tabs are the window menu's) (Ben, 2026-10-31):
+  "everywhere we have menu options to move something to a
+  display-workspace there should also be a section in that menu to move
+  it to an agent-screen (new or existing) and when in the agent screens
+  app next to take control there should be an option to move all windows
+  in the agent screen to a user display-workspace". So: the window tab's
+  menu, Deskbar's app menu, the workspace heading's menu, Tracker's and
+  Terminal's tab menus (wherever Move to Workspace is) gain an Agent
+  Screens section (each running screen, and New Agent Screen); Agent
+  Screens gets, beside Take Control, a way to move every window on the
+  screen onto one of the person's display-workspaces. The program keeps
+  running as it moves (its connection handed between the two
+  app_servers, or the app reopened there with its saved state).
+
+- ~~**Viewer: select and copy text in PDFs and other documents**~~ (done
+  2026-11-05, HACKING's Viewer and `crates/preview`: a PDF's text read
+  natively, selected, copied and found; texts' and formatted documents'
+  too, with the kit's find bar. A picture's OCR, and EPUBs (a book
+  Viewer doesn't show yet), not done: neither has text Viewer can show) (Ben,
+  2026-11-05, for later): "Viewer needs to support selecting and copying
+  text in PDFs and any other relevant document type". In a PDF (and
+  other documents Viewer shows with text in them: EPUB, a Markdown or
+  plain-text file, Office documents if shown, a picture's OCR later
+  perhaps), text is selected by dragging over it (by word with a
+  double-click, by line with a triple), Select All, and copied with ⌘C
+  and the right-click menu, as a selection anywhere in Olo is (the
+  selection's colour from the palette, drawn over the page at every
+  scale); the text read natively from the document (the PDF's text
+  layer, its glyphs' positions and Unicode mapping, in Rust), in reading
+  order, line breaks and hyphenation as a person would want them pasted.
+  Find (⌘F) finds in it too and shows each match. Agents read a page's
+  text from the widget tree and select it as a person does.
+
+- ~~**Ethernet beside Wi-Fi: Deskbar, and Preferences ▸ Network in full**~~
+  (done 2026-11-05: HACKING's Deskbar tray and Preferences ▸ Network)
+  (Ben, 2026-11-05, for later): "in addition to the wifi icon that is
+  shown in the deskbar tray, when ethernet is connected it should also
+  show an ethernet icon. on both of them right-clicking the icon should
+  also show some stats/metrics and have a link to open the relevant
+  preferences. also, if both are connected at once the one that is the
+  default route/link should be shown as "stronger" or in some way active
+  vs the other one. and in preferences -> network it should also have
+  full support for managing ethernet links as well as wifi and have the
+  ability to choose/change the priority/preference of each link like you
+  can in macos so e.g. by default you'd want ethernet highest priority,
+  then wifi but if the user wanted to change they could. also have other
+  common network settings in here like the ability to set custom dns
+  servers, a tab to manage custom host entries, a tab to enable/disable
+  and configure shaping, and whatever else might be useful to have." To
+  do: an Ethernet icon in Deskbar's tray while a wired link is up (icons
+  per ICONS.md); the one carrying the default route drawn as the active
+  one (the other dimmer, or marked); right-click on either: its stats
+  (address, gateway, DNS, speed or signal and rate, bytes in and out,
+  live) and "Network Preferences…". Preferences ▸ Network: wired links
+  managed as Wi-Fi is (DHCP or manual addresses, IPv6, MTU, 802.1X), the
+  services' order as macOS's Set Service Order (Ethernet, then Wi-Fi by
+  default, dragged to change: route metrics through NetworkManager's
+  D-Bus API, natively), DNS servers and search domains of the person's
+  own (per link and for all), a Hosts tab (entries of their own, kept in
+  /etc/hosts through polkit), a Shaping tab (bandwidth and latency
+  limits per link, on and off: the kernel's traffic control over netlink,
+  in Rust), and what else a network panel wants (proxies, VPNs listed
+  and switched, a hotspot). Agents read and change all of it through
+  IPC as the person does.
+  *Deskbar done* 2026-11-05: an Ethernet port beside Wi-Fi while a wired
+  link is connected, the link not carrying the default route faint, and
+  a right-click menu on each (joined to, in use or standing by, signal
+  and rate or speed, addresses, router, DNS, interface, hardware
+  address, bytes in and out, Network Preferences…), following
+  NetworkManager's signals (`network::watch_links`; a strength or rate
+  change taken from the signal, under a wakeup a second idle). `nm-fake`
+  is a whole stand-in now (links, routes, profiles, Reapply, `--tell`).
+  *Preferences done* 2026-11-05: Network has Wi-Fi, Ethernet (connect,
+  DHCP or its own address, router and DNS, applied without
+  disconnecting), Service Order (as a Mac's; each kind's route metric in
+  NetworkManager's conf.d, so later networks fall in line), DNS (servers
+  and search domains for every link, public resolvers to start from),
+  Hosts (/etc/hosts, entries on and off, comments kept), Shaping (as a
+  Mac's Network Link Conditioner: netem over rtnetlink, each way, with
+  presets) and Details; root through `olo-net-admin`, asked for once
+  while the panel is open. Tested against `nm-fake` end to end (the
+  route moving, Deskbar's icons following) and shaping as root in a
+  namespace of its own.
+  *The rest done* 2026-11-05: a VPN tab (WireGuard and NetworkManager's
+  plugins' VPNs listed, connected and disconnected, removed; a WireGuard
+  `.conf` imported natively, its DNS kept from leaking), a hotspot under
+  Wi-Fi (WPA2, the connection shared), and IPv6 and the MTU on a wired
+  link. Proxies were left out: NetworkManager's proxy setting reaches
+  only programs that ask libproxy for it, and Olo's own programs and
+  browsers take theirs elsewhere; a proxy for the whole desktop is a
+  thing of its own if wanted.
+
+- ~~**Passwords is the SSH agent, on by default**~~ (done 2026-11-05,
+  HACKING's Passwords: the agent protocol on a socket of its own in
+  `SSH_AUTH_SOCK`, olo-session starting Passwords without a window for
+  it; listing once unlocked, signing once the terminal session is
+  allowed, as `op`; OpenSSH and PKCS#8 keys. ssh-add -L and ssh-keygen -Y
+  sign tried through it. Ben's `~/.ssh/config` sends ssh to 1Password's
+  app's agent: Security says so and switches it when he asks, from his
+  next login; not done without asking. Left: a security key or face as
+  the approval, with those items) (Ben, 2026-11-05): "build
+  and enable by default ssh agent support in olo passwords so that the
+  ssh keys in it are available for use automatically". Passwords keeps
+  1Password items and fields of the SSH Key kind (`ItemFieldType::SshKey`,
+  `onepassword::types`) and shows them; nothing serves them to ssh. To do:
+  an agent speaking the SSH agent protocol (draft-miller-ssh-agent: list
+  identities, sign, with RSA SHA-2, Ed25519 and ECDSA keys; in Rust, the
+  `ssh-agent-lib`/`ssh-key` crates or our own, in process, no `ssh-agent`)
+  on a socket in the runtime dir, `SSH_AUTH_SOCK` set for the whole
+  session (olo-session's environment, systemd's user manager's, so
+  Terminal's shells, git and editors use it), on by default with a
+  setting in Passwords (and in Preferences) to turn it off. Each use
+  asks as 1Password's agent does: which program (its process and
+  command line) wants which key, approved by the person (Touch ID's
+  equivalent here: the password, a security key or face, per the
+  YubiKey and face items above), remembered for that program for a
+  while; keys locked with Passwords lock. `ssh -T git@github.com` and a
+  `git push` from Terminal work with a key from Passwords, tested
+  headless with a fixture vault and an `sshd` of the test's own on a
+  local port (or a Rust SSH server in-process).
+
+- ~~**Arrow keys skip 10 s in a video, in Viewer and Quick Look**~~ (done
+  2026-11-05, HACKING's Viewer: ← and → seek a video or a sound by 10 s,
+  ↑ and ↓ the next file; tried headless with a test clip: 4 → 14 → 24 →
+  14 s, the same file) (Ben,
+  2026-11-05, for later): "when watching a video in viewer or quick look,
+  the left and right arrows should skip back and forward 10s in the video
+  (right now they go to the next file in the tracker)". Viewer's keys
+  (`apps/viewer/src/main.rs`, ~1189 and ~1224) and Quick Look's step to
+  the folder's next or previous file on ←/→; with a video showing they
+  seek it by 10 s instead (clamped at its start and end; held, they keep
+  seeking), ↑/↓ (or ⌘←/⌘→, say) still going to the next file, shown in
+  the window's menu and its keys' help, and told to agents (the player's
+  position in its widget tree). Tried headless with a video: ← and →
+  move its time by 10 s, the file stays.
+
+- ~~**Passwords: Copy Reference**~~ (done 2026-11-05, HACKING's op: in
+  the item's right-click menu and Edit menu (its password, else its first
+  secret) and each field's right-click menu (Copy, Copy Reference); the
+  reference `op item get` gives, tested resolving back) (Ben, 2026-11-05): "add a copy reference
+  menu item to items in passwords so that i can right click and get a
+  reference that will work in the op cli shim to that secret". The `op`
+  shim already resolves `op://vault/item/[section/]field` (`cli.rs`,
+  the same references `op item get --format json` gives each field). An
+  item's right-click menu (the list's and the window's Item menu) gets
+  Copy Reference (the item's password, or its first secret field: what
+  `op read` wants most), and each field's own menu in the item view Copy
+  Reference for that field; the reference is the one `cli.rs` makes (one
+  function for both), checked by resolving it back (`resolve`) in a
+  test, and shown to agents as the menu items are.
+
+- ~~**Faster Rust builds: the low-hanging fruit**~~ (done 2026-11-05,
+  HACKING's Layout: there isn't any. Measured on the same edits:
+  incremental release 103/46/3.4 s and one codegen unit 159/190/6.1 s
+  against today's 92/47/2.8 s (kit, app_server, a leaf app); LTO was
+  never fat; the linker is rust-lld already; kache caches. A kit change
+  is ~1,000 CPU-seconds over 35 apps. Build the one app worked on
+  (`-p`), the workspace at the end) (Ben, 2026-11-05): "see
+  if there's any low hanging fruit to speed up the rust compilation.
+  maybe lto = "fat" → "thin" and incremental = true if they're not
+  already set?" As it is: `[profile.release]` sets only `debug =
+  "line-tables-only"` (no `lto`, so Cargo's default, thin-local; no
+  `incremental`, off for release; 16 codegen units), dev builds dependencies
+  at opt-level 3, and there's no linker setting (the system's `ld`). A
+  release build of the workspace after a small change takes 1–3 min here
+  (2m 55s after a change to olo-session and Terminal, 7–55 s for one
+  crate). Measure each candidate on the same change (a kit file, an
+  app_server file, a leaf app), clean and incremental, and keep what
+  helps without making the result slower (runtime measured, as Olo's
+  rule asks): `incremental = true` for release; a faster linker (mold
+  or wild; linking app_server and the GPUI apps is a large part of an
+  incremental build); `split-debuginfo = "unpacked"`; codegen-units;
+  the dependency tree (duplicate versions, heavy proc-macros, features
+  nobody uses); `cargo build --timings` to see where the time goes.
+  Numbers in HACKING.
+
+- ~~**Viewer crashed when brought back from Deskbar after a video**~~
+  (done 2026-11-05 as far as can be without it happening again: the
+  crash reproduced headless was GPUI's atlas, fixed with a GPU test that
+  fails without it; a panic in an app started from Deskbar now leaves a
+  crash report naming it, so if Ben sees it again it says where)
+  (Ben, 2026-11-04): "i was watching a video in viewer, then left it
+  open while i did some other stuff, then when i tried to click it in
+  the deskbar to come back it crashed". A video played in Viewer, the
+  window left open (in the background, perhaps hidden or minimized, the
+  video ended or paused) while other things were done, then its Deskbar
+  entry clicked: Viewer crashed instead of coming forward. Find the
+  crash (its panic or core in the journal, Logs), reproduce it headless
+  (a video played, the window left behind other windows and minimized,
+  time passing, then activated as Deskbar does), fix it at the cause,
+  and keep a test that does that. *Looked at* (2026-11-04, minutes
+  after): Viewer (window 22, opened 15:29) was gone, and it left
+  nothing: no panic in the journal, no core (`coredumpctl`), no kernel
+  line (segfault, OOM). So either it exited on purpose (on Deskbar's
+  launch, say, handed to the running copy) or it died in a way nothing
+  records: the next item is what would have told us. Why nothing: an
+  app started by Tracker, Deskbar or another app (`olo_xdg::open::
+  spawn_app`) has its stderr sent to /dev/null, so a panic's message
+  is lost, and a panic exits 101 without a core. Not reproduced
+  headless: a 1:51 H.264 video played, minimized, left past its end,
+  then its Deskbar entry clicked: it came back at its end, no panic,
+  memory steady (162 MB) while hidden. Try next with what the crash
+  report says, else: behind other windows rather than minimized, on
+  another workspace, across a lock or the display sleeping.
+  *Likely found* (2026-11-05): the Viewer crashed headless with two
+  videos open (a panic in GPUI's atlas: `flush_initializations` indexing
+  an empty slot). A video makes a texture's picture a frame and lets the
+  last go; the app's windows share one atlas (a menu, as Deskbar's is
+  clicked, is a window too), so a texture made and freed before the
+  next frame left its initialization and upload queued, and the frame
+  panicked on the empty slot (or wrote a stale picture into the texture
+  that took it). Fixed in GPUI (`BladeAtlas::remove`), with a test on
+  the GPU that fails without it. Crash reports now name such a panic
+  (crates/crash), so if Ben's happens again it says where.
+
+- ~~**Terminal tells coding agents to keep scratch in /var/tmp**~~ (done
+  2026-11-05, HACKING's agent context: `SCRATCH`, said at the start with
+  the group context where /tmp is a tmpfs; checked by running the hook as
+  Codex would and reading what it says) (Ben,
+  2026-11-05, after the items above): "the olo terminal claude/codex
+  integration should also inject instructions to those coding harnesses
+  that if they need to write/use files to a temp location they should
+  use /var/tmp and not /tmp and explain why". Terminal's hook that
+  gives Claude Code and Codex the group context and the tab-title
+  instructions (`agent_context.rs`, `agent_title::INSTRUCTIONS`) also
+  says, when /tmp is a tmpfs: temporary files (scratch, build
+  directories, downloads, screenshots, copies of builds) go in a
+  directory of the agent's own under /var/tmp, removed when done, never
+  in /tmp, because /tmp is held in RAM and whatever goes there takes
+  the person's memory (as CLAUDE.md's rule for Olo's own agents says).
+  Said once at the start, short; checked by reading what each agent is
+  given (Claude Code's hook output, Codex's) in a test, and off with the
+  group context's setting.
+
+- ~~**Olo Doctor: programs' temporary files on disk, not in /tmp**~~
+  (done 2026-11-05, HACKING's Olo Doctor: "Temporary files take memory"
+  while /tmp is a tmpfs and the session's TMPDIR is unset or in memory;
+  "Keep Temporary Files on Disk" writes an environment.d file of Olo's
+  and sets TMPDIR, TMP and TEMP in the running user manager; olo-session
+  takes them as it starts. Tested: the check's four cases, the file read;
+  the finding reviewed headless at 2×, 1.5×, 1×. Sockets in $TMPDIR work
+  on disk; /var/tmp is aged by systemd-tmpfiles after 30 days)
+  (Ben, 2026-11-05, after the items above): "have olo doctor check what
+  the env vars are for telling processes what temp dir path to use and
+  if they're not present or not set to /var/tmp then have it provide
+  that as a fix. /tmp is often in memory and not a good place for apps
+  to use as temp". Doctor reads the session's environment (and
+  systemd's user manager's, `systemctl --user show-environment`'s
+  D-Bus equivalent) for `TMPDIR`, and `TMP`/`TEMP` that some programs
+  read instead; when /tmp is a tmpfs (RAM: Fedora's default) and they
+  are unset or point there, it offers the fix: set them to /var/tmp for
+  everything the person runs from now on (an `environment.d` file of
+  Olo's in ~/.config, which systemd's user manager and olo-session
+  read, so apps started from Deskbar, Terminal's shells and user
+  services all get it; programs already running keep theirs until they
+  restart, which it says). Natively, no shelling out; undoable (the
+  file taken away). Look first at what breaks: a program that puts its
+  sockets in $TMPDIR (they work on disk too), and what systemd-tmpfiles
+  ages out of /var/tmp (30 days there, not at boot) against what /tmp
+  dropped at each restart; `XDG_RUNTIME_DIR` stays in RAM as it should.
+  A test with a session whose TMPDIR is unset, then set by the fix.
+
+- ~~**Terminal's suggestions see the session's recent commands and
+  output, after a restore too**~~ (done 2026-11-05, HACKING's brush
+  suggestions: a shell's session is its Terminal shell id, a restored
+  tab's carrying on the old one's last ten commands; olo-termd keeps each
+  shell's last 80 lines as text and olo-complete puts the latest command
+  they name that fits first: Ben's restored tab, `cl`, his `claude …
+  --resume` (a test), and headless, a printed command as brush's hint.
+  2 µs a suggestion as before. Left as the model's job, not done: features
+  of the output in the model itself (it would need retraining). The
+  installed brush comes up to date through Olo Suggestions) (Ben, 2026-11-05, after the items
+  above): "the olo terminal autocomplete model should be able to also
+  receive like the last n commands (maybe 10 idk whatever makes sense)
+  in the session the user wrote (and if it's a restored session after
+  e.g. a restart it should still see it from the captured scrollback)
+  and also the recent output so that it can take all that into account
+  when determining the completion prediction too". What it has now
+  (`crates/complete`): the daemon keeps each shell's last 8 commands in
+  memory (`index::Session`, keyed by brush's process id), and the
+  model sees them only as "after the last command", "two after", "uses
+  in this shell" and "in the last ten"; nothing of the output. A shell
+  restored after a restart or an upgrade (Terminal's scrollback brought
+  back, `replay.rs`) is a new process, so it starts with none. To do:
+  Suggest carries (or the daemon keeps per tab, not per process) the
+  session's last commands (about 10, measured: what helps most without
+  slowing a suggestion past its budget) and a digest of the recent
+  output (the last command's status and lines: an error naming a file,
+  a path, a branch, a test that failed, `git status`'s files), and a
+  restored tab's are taken from its saved scrollback (Terminal knows
+  each command's line and output from its prompt marks); the model gets
+  features from them (a candidate naming a word in the recent output,
+  repeating a command that just failed after an edit, the next step of
+  a sequence run before), trained from the history as it was typed
+  (the output kept for training only as those features, never stored
+  raw). Measure accepted-suggestion rate before and after (Activity
+  Monitor ▸ AI's numbers), and latency per suggestion (it's per key).
+  Ben's example (2026-11-05, a tab restored after a restart): the
+  scrollback ends with `claude --dangerously-skip-permissions` printing
+  "Resume this session with: claude --dangerously-skip-permissions
+  --resume 00000000-…", then `claude --allow-dangerously-skip-permissions
+  --dangerously-skip-permissions --resume 00000000-…` run, then
+  "Restored from Nov 5, 2026, 9:15 AM", `cd ~/src/notes`,
+  and `cl` typed: it suggested `claude --help|grep allow`; "here i would
+  expect the model's prediction to be that claude command to resume
+  with the session id etc". So the candidates can't come only from the
+  history index (`Index::candidates`): a command the output names (a
+  line that is a command, "Resume … with:", "run `…`", `git push
+  --set-upstream origin …`), and the last command of the restored
+  session (rerun as it was), are candidates too, scored with the rest.
+  Keep this as a test: that scrollback restored, `cl` typed, the resume
+  command suggested.
+
+- ~~**HDR versions of the wallpapers, shown in HDR**~~ (done 2026-11-05,
+  HACKING's Backgrounds: a gain map beside each of the pack's 56
+  pictures, made from it in Rust (`olo_images::gain`, `wallpaper-hdr`:
+  what stands out shines up to two stops, plain bright surfaces stay put),
+  7.5 MB in all; app_server multiplies it in on a display in HDR into
+  half floats of linear light, drawn with that colour source; Backgrounds
+  says so. `hdr-check`: the BeBox's lights at code 185 on the signal (SDR's
+  white is 148), its median 141; 94 ms and 48 MB at 3200 × 2000 against
+  SDR's 73 ms and 24 MB, off the loop. Rather than 16-bit HDR copies (GBs
+  in Git LFS) or JPEG XL HDR (no encoder in Rust), the Ultra HDR way) (Ben, 2026-11-05,
+  after HDR and the tab-title bug): "generate and add hdr versions of
+  all the olo wallpapers that are used when in hdr mode". Every
+  picture in the pack (`data/wallpapers/pack.txt`; each `4k/`,
+  `ultrawide/` and `-dark`) gets an HDR version beside it, its
+  highlights (light sources, glints, the sky's brightest) brighter than
+  SDR's white and its colours past sRGB where the scene has them, kept
+  as a deep format app_server reads natively (16-bit PNG in PQ with
+  BT.2020, or JPEG XL HDR, which jxl-oxide decodes). Made from the
+  SDR originals by a tool of our own in Rust (`tools/` or a `bin`, no
+  outside programs), so it's repeatable as the pack grows: the
+  picture's own SDR look kept (SDR white at the display's SDR white),
+  only what's brightest lifted into the headroom, smoothly; checked by
+  eye on the built-in OLED in HDR. `wallpapers::resolve` picks the HDR
+  file for a display in HDR (the effective theme and screen shape as
+  now), app_server's `wallpaper.rs` decodes it into the HDR blending
+  buffer's scale (cd/m² relative to SDR white, not clipped to 1) and
+  draws it there, and switches with HDR on and off live; a display in
+  SDR (or a picture with no HDR version) is unchanged. Backgrounds says
+  which pictures have HDR. Measure: decode and upload time and memory
+  of a 4K deep picture against the SDR one (the worker, the strips).
+
+- ~~**Other programs survive Olo's upgrades**~~ (done 2026-11-05,
+  HACKING's olo-wlproxy notes: two causes, both at the proxy's replay
+  onto the new app_server. Every program that had asked for touches had
+  its connection ended: the new seat had no touch screen yet (libinput
+  finds it seconds later) and Smithay answered the replayed `get_touch`
+  with "missing touch capability" (Chrome, Slack, the GNOME portal on
+  both days); now a touch waits for the seat's touch, and Smithay gives
+  inert objects rather than ending a connection. And GTK crashed on a
+  tablet cursor's leaked fractional scale, its data freed when told the
+  tablet went (Chrome and xdg-desktop-portal-gnome, 2026-11-04); now a
+  surface the program let go, or never showed, isn't told its scale.
+  `tools/dev/outside-check`: GTK 4, Slack, Chrome and Qt 6 through five
+  app_server restarts at 1.5× with a late touch screen and a pen tablet,
+  each with its window; before, all four died at the first. Also, as
+  Ben asked: each upgrade ends programs of ours left from sessions that
+  have gone, `sweep_leftovers`) (Ben, 2026-11-05, after the
+  HDR wallpapers): "every time i upgrade my non-olo apps, e.g. slack and
+  chrome, crash or are no longer shown in olo. please fix so that they
+  relliably survive upgrades." Olo's own apps reconnect as app_server
+  reloads in place (`olo_ui::on_upgrade`); other Wayland programs
+  (Chrome, Slack (Electron), GTK, Qt) either crash or keep running with
+  their windows gone. Known so far: at the 2026-11-04 upgrade Chrome and
+  xdg-desktop-portal-gnome crashed in GTK 4's
+  `pointer_surface_fractional_scale_preferred_scale_cb` (a
+  fractional-scale event for a pointer surface GTK had let go of). Find
+  what each of them sees across a reload (the socket, the globals, the
+  events in their order, WAYLAND_DEBUG on a test session's copy of each),
+  for each failure (the crash, the windows not shown), and fix it at the
+  cause on our side, so the person's other programs and their windows
+  are exactly where they were after every upgrade: keep the clients'
+  connections through the reload if that's what it takes (hand the
+  listening socket and the client fds to the new app_server, with their
+  state), or whatever makes it reliable. A test that upgrades a test
+  session with Chrome, an Electron app, a GTK 4 and a Qt program open
+  (windows, popups, a fractional scale), many times over, and checks
+  each is alive with its windows shown.
+
+- ~~**Agents can't set their Terminal tab's title**~~ (done
+  2026-11-05, HACKING's "Coding agents' tab titles": three causes.
+  Terminal took no handed-over launches since its GPUI port (no
+  `instance::listen`), so every title failed "Terminal isn't
+  answering"; Codex starts MCP servers with a bare environment (no
+  XDG_RUNTIME_DIR), so its server found no snapshot and said the session
+  wasn't in a tab (now `olo_xdg::runtime_dir()`, /run/user/UID); and
+  olo-session stopped Claude Code's server 90 s after an upgrade as an
+  old version, which Claude Code never restarts (now it re-executes in
+  place between messages, and the stale check leaves alone what another
+  program started). By folder, the tab running the same agent first.
+  `tools/dev/agent-title-check` drives it as each agent runs it: all
+  as they should be. Servers running from before are left as they
+  are: Claude Code's work once Terminal is the new version (they have
+  the runtime dir); Codex's need Codex started again; one already
+  stopped comes back with its agent's next start) (Ben, 2026-11-05,
+  next after HDR): "it seems like in codex (and maybe claude code too)
+  setting the olo terminal title isn't working (the session most
+  definitely was/is running in olo terminal)". Codex in the tab at
+  ~/worktrees/olo/browser (group "olo") called
+  `olo-terminal.set_tab_title({"title": "Browser CSS syntax", "cwd":
+  "/home/ben/worktrees/olo/browser"})` and was told "This session isn't
+  in an Olo Terminal tab (or Terminal's setting for it is off)": so
+  `agent_title::find_tab` found no tab, even given the folder (Codex
+  runs the server in its daemon, so it goes by the folder; the group
+  context the hook gives that session lists the tab at that folder, so
+  the snapshot has it). Claude Code fails another way: in the tab at
+  ~/src/olo, after the conversation was compacted, the olo-terminal
+  server was "disconnected" and the tool gone for the rest of the
+  session (was the server's binary replaced by an upgrade under it, or
+  did it exit?). Find each cause (the snapshot the server reads and
+  where from: its environment in Codex's daemon, XDG_RUNTIME_DIR,
+  display; how `tab_of` matches a folder; what ends the server under
+  Claude Code), fix them, and keep tests that drive the server as each
+  agent runs it (Codex: from a daemon outside the tab, by folder;
+  Claude Code: under the tab's shell, across an upgrade of Terminal).
+
+- ~~**Activity Monitor: several processes chosen, one action on all**~~
+  (done 2026-11-05, HACKING's Activity Monitor: chosen the usual way,
+  the row menu, buttons and Process menu acting on all, one Force Quit
+  alert naming them; tried headless on three `sleep`s: chosen with a
+  click and a ⇧-click, "Force Quit 3 Processes…", "Force 3 processes to
+  quit (sleep ×3)?", all three gone)
+  (Ben, 2026-11-04, for later): "in activity monitor i should be able
+  to multi-select processes and take action on them all at once via
+  right clicking". Processes ▸ the table chooses several rows the usual
+  way (Shift-click a range, Ctrl-click one more, Ctrl+A all those the
+  filter shows, Shift+arrows), and the row menu (`processes.rs`
+  `row_menu`, now for one pid), right-clicked on any chosen row, acts on
+  every chosen one: Quit, Force Quit… (one alert naming how many and
+  which: "Force quit 12 processes (chrome ×11, olo-fuzz)?"), Send
+  Signal, Priority (checked where all agree, a dash where they differ),
+  Copy Process IDs / Command Lines (one a line). Inspect opens the
+  first; Show Program in Tracker the distinct programs. The buttons
+  below (Inspect, Quit, Force Quit…) and the Process menu act on the
+  chosen set too; a row that leaves the list (quit, filtered out) leaves
+  the set, so an action never reaches a process that isn't shown
+  chosen. Rows with a tree open (Tree) choose their children with them
+  when the parent is chosen collapsed. Agents get the same: the
+  table's chosen rows readable, and the actions taking several pids.
+
+- ~~**Themes after NeXTSTEP, Mac OS 9 and AmigaOS**~~ (done 2026-11-05:
+  Cube, Platinum and Workbench in `olo_theme::looks::THEMES`, each a
+  full set (135 icons at every size, drawn by gpt-image-2.5-sunburst at
+  high against the theme's own five references, reviewed on contact
+  sheets on light, dark and night, crisp at 1.5×), a wordmark
+  (`tools/genwordmark.py`, new), wallpapers light and dark, and its own
+  colours light and dark (Cube's greys and black tab, Platinum's
+  lavender tab and lilac-blue, Workbench's grey and blue by day and
+  1.3's deep blue and orange by night), with BeOS's and Catppuccin's;
+  Preferences ▸ Themes lays the colour sets beside the ten rows, so it
+  still fits 1280 × 800; the pack's old "Workbench" pattern is "Ring
+  Pattern" now. Reviewed at 1×, 1.25×, 1.5×, 1.75× and 2×, light and
+  dark: clean) (Ben, 2026-11-04):
+  "add extra themes for olo- NeXTSTEP, MacOS 9, AmigaOS. they must all
+  come with light and dark variants, and have a complete, max quality
+  icon set generated in the style of each of those OSes using sunburst
+  image generator on highest quality settings. the custom icon set must
+  cover everything for every olo app and place where there's an icon
+  used". Three more themes beside the seven in `olo_theme::looks::THEMES`
+  (each a `data/themes/<name>/` with its icons, wordmark and wallpaper,
+  and its own colour set made from `Seeds`, light and dark, plus BeOS's
+  and Catppuccin's as every theme has): NeXTSTEP's (greys, black
+  window bars, its bevelled 3D and the dimpled grey of its dock and
+  icons, black-and-white 2-bit look carried to colour), Mac OS 9's
+  (Platinum: light grey bevels, pinstriped title bars, purple-blue
+  selection, its soft-shadowed icons), AmigaOS's (Workbench 3.x: blue,
+  orange, white and black, its chunky bevels and pixel-crisp icons;
+  dark the Workbench 1.3 blue). Each the look and the feel only, drawn
+  as Olo's own (no Apple, NeXT or Commodore logos, names or artwork:
+  the Classic theme's rule). Every icon a full set has (135 now in each
+  of `data/icons` and every theme's, every size from 16 to 256 px, each
+  app's, file kinds', places', tray's and controls'): generated with
+  `gpt-image-2.5-sunburst` at quality `high` and full size as
+  docs/ICONS.md says, with each theme's own reference icons made first
+  and every icon after against them, so the set looks drawn by one
+  hand; checked at 16 px and at every scale (`icons::paint`, one pixel
+  to a device pixel), on light, dark and night; Preferences ▸ Themes
+  showing each. Needs an `OPENAI_API_KEY` (not set in the sessions so
+  far: the A2520 keyboard's icon waits on it too).
+
+- ~~**wm fuzzer: its last faults**~~ (done 2026-11-05: seed 38, Zoom
+  Horizontally twice on a Tracker sized since its zoom came back at
+  the old width: unzooming both ways goes back to the frame it had
+  zoomed one way, as it was then; seed 45, Tile Bottom-Left on a
+  Terminal whose hand-made group's mate was just shown again: the
+  group formed round the mate, in front, pulling the Terminal out of
+  its tile: now the window arranged leads its group as it forms
+  (`Groups::leads`, hand-made groups only). Waves: wm 48 of 48, mode
+  33 of 33, auto --reloads 33 of 33 (three failed under the wave's
+  load and passed alone, as before). Per raise unchanged: 1.27–1.30 ms
+  of app_server's CPU, before 1.30.) (Seeds 6, 8, 19 and 25 fixed
+  before: a zoomed window kept its size when its app resized itself;
+  the check's straddling window.)
 
 - ~~**The command palette's suggestions from a tiny model, as the
   Terminal's**~~ (done 2026-11-04, HACKING's "Ranking": olo_complete's
@@ -2716,7 +3575,12 @@ Open; making fast things faster waits here.
   (the container's matrix and range, else BT.709 from 720 lines up):
   160–240 pictures/s at 1080p through the player (VP9 124–132, AV1
   111–125). `hevc_plays` checks all of it; phone footage (10-bit HDR)
-  still to try: no HDR tone mapping yet, as for AV1.
+  still to try: no HDR tone mapping yet, as for AV1. *HDR tone mapping
+  done* (2026-11-05, HACKING's "HDR and wide-gamut video"): HDR10 and
+  HLG (and BT.2020 or P3 SDR) from AV1, HEVC and VP9, the colour from the
+  stream or its container, shown for an sRGB screen (tested on
+  synthetic HDR10 pictures and sample entries; real phone footage still
+  to try).
 
 - ~~**Logs: a drag in its second list is uneven at 1.5× now and then**~~
   (found by `tools/dev/bench`, 2026-11-03): "frames moved 0.73–1.27× as

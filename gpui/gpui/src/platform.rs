@@ -549,6 +549,7 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// Olo: whether a layer surface takes the keyboard (as its
     /// `LayerShellOptions::keyboard`), changed after it opened.
     fn set_layer_keyboard(&self, _keyboard: LayerKeyboard) {}
+    fn set_layer_margin(&self, _margin: (i32, i32, i32, i32)) {}
     /// Olo: where the window takes what's dragged over it now (None:
     /// nowhere), as its last frame found.
     fn set_drop_accept(&self, _accept: Option<DropAccept>) {}
@@ -661,6 +662,11 @@ pub(crate) trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// Olo: draw in `space` from the next frame, telling the compositor;
     /// whether it does (a compositor without colour management: sRGB).
     fn set_gamut(&mut self, _space: crate::Gamut) -> bool {
+        false
+    }
+    /// Olo: whether it's on a display whose HDR is on
+    /// (`crate::set_display_hdr`).
+    fn on_hdr_display(&self) -> bool {
         false
     }
     fn map_window(&mut self) -> anyhow::Result<()> {
@@ -1104,6 +1110,7 @@ impl AtlasKey {
                 }
             }
             AtlasKey::Svg(_) | AtlasKey::Outline(_) => AtlasTextureKind::Monochrome,
+            AtlasKey::Image(params) if params.deep => AtlasTextureKind::Deep,
             AtlasKey::Image(_) => AtlasTextureKind::Polychrome,
         }
     }
@@ -1202,6 +1209,8 @@ pub(crate) enum AtlasTextureKind {
     Polychrome = 1,
     /// Olo: glyphs with a coverage for each colour stripe (RGBA).
     Subpixel = 2,
+    /// Olo: deep pictures, half floats a channel (`RenderImage::deep`).
+    Deep = 3,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

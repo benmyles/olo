@@ -335,12 +335,13 @@ fn answer(query: Query, cx: &mut App) {
                 _ => crate::widgets::strip::window_over(cx, None, point),
             }
         }
+        Query::Move(to, reply) => crate::upgrade::move_to(cx, to, reply),
         Query::Focus(_) => {}
     }
 }
 
 /// The app's window with Wayland surface `id`.
-fn by_surface(cx: &mut App, id: u32) -> Option<AnyWindowHandle> {
+pub(crate) fn by_surface(cx: &mut App, id: u32) -> Option<AnyWindowHandle> {
     cx.windows().into_iter().find(|w| w.update(cx, |_, window, _| window.surface_id() == Some(id)).unwrap_or(false))
 }
 

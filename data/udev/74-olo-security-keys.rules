@@ -1,0 +1,10 @@
+# Olo: a FIDO security key's own interface (a YubiKey's: its hidraw node,
+# HID usage page 0xF1D0) given to the person at the seat, so a touch of it
+# can approve sudo, Passwords and the lock screen (olo-fido, Preferences ▸
+# Security) with no root. systemd does this itself where its fido_id
+# program and 70-uaccess.rules have it; this is for systems whose rules
+# don't. Installed by Olo Doctor.
+ACTION=="remove", GOTO="olo_security_keys_end"
+SUBSYSTEM=="hidraw", IMPORT{program}="fido_id"
+SUBSYSTEM=="hidraw", ENV{ID_SECURITY_TOKEN}=="1", TAG+="uaccess"
+LABEL="olo_security_keys_end"

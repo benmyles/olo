@@ -735,7 +735,12 @@ impl Deskbar {
                 to = to.item(self.workspace_name(Some(&d.name), i), format!("ws-move:{ws}:{i}:{}", d.name)).enabled(any && !here);
             }
         }
-        m.submenu(to).separator().item("Workspaces Preferences…", "pref:workspaces")
+        m = m.submenu(to);
+        // Or onto an agent screen, programs running on.
+        if olo_ui::moving::menus_offer() && self.windows_on(display).any(|w| w.workspace == ws && w.kept) {
+            m = m.submenu(Menu::agent_screens("Move All Windows to Agent Screen", &self.status.agent_screens, &format!("ws-screen:{ws}:")));
+        }
+        m.separator().item("Workspaces Preferences…", "pref:workspaces")
     }
 
     /// A command from `display`'s workspace heading's menu
@@ -749,6 +754,15 @@ impl Deskbar {
             "ws-show" if !ids.is_empty() => request(Request::ActivateAll { ids }),
             "ws-hide" => ids.into_iter().for_each(|id| request(Request::Minimize { id })),
             "ws-close" => ids.into_iter().for_each(|id| request(Request::Close { id })),
+            "ws-screen" => {
+                let rest = parts.next().unwrap_or_default();
+                let ids: Vec<u64> = self.windows_on(display).filter(|w| w.workspace == ws && w.kept).map(|w| w.id).collect();
+                if let Some(screen) = olo_ui::moving::screen_command(rest)
+                    && !ids.is_empty()
+                {
+                    olo_ui::moving::take_to_screen(screen, ids);
+                }
+            }
             "ws-move" => {
                 let (Some(to_index), Some(to), Some(output)) = (parts.next().and_then(|n| n.parse().ok()), parts.next(), display) else { return true };
                 request(Request::MoveWorkspace { output: output.to_owned(), index: ws, to: to.to_owned(), to_index: Some(to_index) });
@@ -792,6 +806,10 @@ impl Deskbar {
             m = m
                 .item(if several { "All to the Next Display" } else { "To the Next Display" }, "shortcut:next-display")
                 .item(if several { "All to the Previous Display" } else { "To the Previous Display" }, "shortcut:previous-display");
+        }
+        // Or onto an agent screen, the program running on.
+        if olo_ui::moving::menus_offer() && team.windows.iter().any(|w| w.kept) {
+            m = m.submenu(Menu::agent_screens(if several { "Move All to Agent Screen" } else { "Move to Agent Screen" }, &self.status.agent_screens, ""));
         }
         m.separator().item("Group Windows", "group-windows").checked(!self.tiling.ungrouped_apps.contains(&app)).enabled(!app.is_empty())
     }
@@ -1159,6 +1177,12 @@ impl Deskbar {
             }
             return;
         }
+        if let Some(screen) = olo_ui::moving::screen_command(cmd) {
+            if !ids.is_empty() {
+                olo_ui::moving::take_to_screen(screen, ids);
+            }
+            return;
+        }
         if let Some((index, output)) = cmd.strip_prefix("move:").and_then(|r| r.split_once(':')) {
             let Ok(index) = index.parse::<u32>() else { return };
             requests(ids.into_iter().map(|id| Request::MoveToWorkspace { id, index, output: Some(output.to_owned()) }).collect());
@@ -1335,7 +1359,9 @@ fn sharing_menu(shares: &[olo_protocol::sharing::Share]) -> Menu {
         if i > 0 {
             m = m.separator();
         }
-        m = m.item(format!("Sharing {}", olo_protocol::SharingState::describe(s)), "").enabled(false).item("Stop Sharing", format!("share:{}", s.session));
+        // (A program controlling the computer: the RemoteDesktop portal.)
+        let stop = if s.control.is_empty() { "Stop Sharing" } else { "Stop Remote Control" };
+        m = m.item(olo_protocol::SharingState::said(s), "").enabled(false).item(stop, format!("share:{}", s.session));
     }
     if shares.len() > 1 {
         m = m.separator().item("Stop All", "share:all");
@@ -1463,6 +1489,84 @@ fn supervisor_menu(sup: &status::Supervisor) -> Menu {
         }
     }
     m.separator().item("Show in Activity Monitor", "run:olo-activity --section supervisor").item("Performance Settings…", "pref:performance")
+}
+
+/// A link's tray icon: a click opens Network's preferences on the link's
+/// tab, a right click the link's menu, read as it opens.
+fn link_hit(h: olo_ui::gpui::Stateful<olo_ui::gpui::Div>, r: Bounds<Pixels>, kind: olo_system::network::Kind, model: &Entity<Deskbar>, view: &Entity<BarView>) -> AnyElement {
+    let (m, v) = (model.clone(), view.clone());
+    h.on_any_button(move |e, window, cx| match button(e) {
+        MouseButton::Left => m.update(cx, |d, cx| d.run_command(if kind == olo_system::network::Kind::Wifi { "pref:network --tab Wi-Fi" } else { "pref:network --tab Ethernet" }, cx)),
+        MouseButton::Right => {
+            let mm = m.clone();
+            let key = if kind == olo_system::network::Kind::Wifi { "tray:wifi" } else { "tray:ethernet" };
+            open_menu(window, cx, &v, key, r, link_menu(kind, &status::links()), move |cmd, cx| mm.update(cx, |d, cx| d.run_command(cmd, cx)));
+        }
+        _ => {}
+    })
+    .into_any_element()
+}
+
+/// A link's menu: what it's joined to, whether it carries the traffic
+/// (the default route) or stands by, its addresses, router, DNS servers,
+/// rate and what has gone through it (the interface's counters, read as
+/// it opens), as a Mac's Option-click on Wi-Fi shows; and Network's
+/// preferences.
+fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) -> Menu {
+    use olo_system::network::{self as net, Kind};
+    let row = |m: Menu, text: String| m.item(text, "").enabled(false);
+    let (name, other, dev) = match kind {
+        Kind::Wifi => ("Wi-Fi", "Ethernet", l.wifi_device.as_ref()),
+        _ => ("Ethernet", "Wi-Fi", l.wired.as_ref()),
+    };
+    let mut m = Menu::new(name);
+    let joined = match kind {
+        Kind::Wifi => l.wifi.as_ref().and_then(|w| w.ssid.clone()),
+        _ => dev.and_then(|d| d.connection.clone()),
+    };
+    m = row(
+        m,
+        match &joined {
+            Some(j) => format!("{name}: {j}"),
+            None => format!("{name}: Not Connected"),
+        },
+    );
+    if let Some(d) = dev.filter(|d| d.connected()) {
+        match l.primary {
+            Some(p) if p == kind => m = row(m, "In Use for Internet Traffic".into()),
+            Some(_) => m = row(m, format!("Standing By: {other} Is in Use")),
+            None => {}
+        }
+        m = m.separator();
+        if kind == Kind::Wifi
+            && let Some(w) = &l.wifi
+        {
+            m = row(m, format!("Signal: {}%", w.strength));
+        }
+        if let Some(s) = d.speed {
+            m = row(m, format!("{}: {}", if kind == Kind::Wifi { "Rate" } else { "Speed" }, net::speed_text(s)));
+        }
+        let bare: Vec<&str> = d.addresses.iter().map(|a| a.split('/').next().unwrap_or(a)).collect();
+        if !bare.is_empty() {
+            m = row(m, format!("IP Address: {}", bare.join(", ")));
+        }
+        if let Some(g) = &d.gateway {
+            m = row(m, format!("Router: {g}"));
+        }
+        if !d.dns.is_empty() {
+            m = row(m, format!("DNS: {}", d.dns.join(", ")));
+        }
+        m = row(m, format!("Interface: {}", d.interface));
+        if !d.hw_address.is_empty() {
+            m = row(m, format!("Hardware Address: {}", d.hw_address));
+        }
+        if let Some((received, sent)) = net::traffic(&d.interface) {
+            use olo_ui::files::format_size;
+            m = row(m, format!("Received: {}, Sent: {}", format_size(received), format_size(sent)));
+        }
+    }
+    // (On the link's own tab.)
+    m.separator().item("Network Preferences…", if kind == Kind::Wifi { "pref:network --tab Wi-Fi" } else { "pref:network --tab Ethernet" })
 }
 
 /// The bell's menu.
@@ -1804,11 +1908,12 @@ impl Deskbar {
                 !st.upgrade.is_empty() || st.upgrade_waiting,
                 !st.sharing.is_empty(),
                 st.airpods.is_some(),
-                st.agent_screens > 0,
+                !st.agent_screens.is_empty(),
                 st.supervisor.is_some(),
                 // (Olo Doctor's bag, while it has found something.)
                 !st.doctor.issues.is_empty(),
                 st.battery.is_some(),
+                st.wired.is_some(),
                 st.wifi.is_some(),
                 st.volume.is_some(),
                 st.notifications.is_some(),
@@ -2040,7 +2145,8 @@ impl Deskbar {
         // A screen being shared: what, with whom, and Stop.
         if !st.sharing.is_empty() {
             let tip_text = match st.sharing.as_slice() {
-                [one] => format!("Sharing {}. Click to stop.", olo_protocol::SharingState::describe(one)),
+                [one] => format!("{}. Click to stop.", olo_protocol::SharingState::said(one)),
+                many if many.iter().any(|s| !s.control.is_empty()) => format!("{} shares, control among them. Click to stop them.", many.len()),
                 many => format!("{} screen shares. Click to stop them.", many.len()),
             };
             let (r, h) = tray_item(&mut d, "sharing", tip_text, Box::new(|window, cx, r| status::draw_sharing(window, r, &theme::palette(cx))));
@@ -2076,8 +2182,8 @@ impl Deskbar {
             );
         }
         // Agents at work on screens of their own: click to watch them.
-        if st.agent_screens > 0 {
-            let n = st.agent_screens;
+        if !st.agent_screens.is_empty() {
+            let n = st.agent_screens.len();
             let tip_text = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
             let (_, h) = tray_item(&mut d, "agent-screens", tip_text, Box::new(move |window, cx, r| status::draw_screens(window, cx, r, &theme::palette(cx), n)));
             let m = model.clone();
@@ -2156,22 +2262,29 @@ impl Deskbar {
                 .into_any_element(),
             );
         }
+        // The links: Ethernet while a cable's connected, Wi-Fi while
+        // there's an adapter. With both, the one not carrying the traffic
+        // (the default route) is drawn faint. Click for Network's
+        // preferences; right-click for the link's addresses and rates.
+        use olo_system::network::Kind;
+        let standing_by = |kind: Kind| st.wired.is_some() && st.wifi.as_ref().is_some_and(|w| w.ssid.is_some()) && st.primary.is_some_and(|p| p != kind);
+        let faint = |on: bool| if on { Some(0.45) } else { None };
+        if let Some(w) = st.wired.clone() {
+            let by = standing_by(Kind::Ethernet);
+            let speed = w.speed.map(|s| format!(", {}", olo_system::network::speed_text(s))).unwrap_or_default();
+            let tip_text = format!("Ethernet{speed}{}. Right-click for details.", if by { ", standing by: Wi-Fi is in use" } else { "" });
+            let (r, h) = tray_item(&mut d, "ethernet", tip_text, Box::new(move |window, cx, r| window.with_element_opacity(faint(by), |window| status::draw_ethernet(window, r, &theme::palette(cx)))));
+            d.hits.push(link_hit(h, r, Kind::Ethernet, &model, view));
+        }
         if let Some(w) = st.wifi.clone() {
+            let by = standing_by(Kind::Wifi);
             let tip_text = match &w.ssid {
-                Some(s) => format!("{s} ({}%)", w.signal),
+                Some(s) => format!("{s} ({}%){}. Right-click for details.", w.signal, if by { ", standing by: Ethernet is in use" } else { "" }),
                 None => "Not connected".into(),
             };
             let signal = w.ssid.as_ref().map(|_| w.signal);
-            let (_, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |window, cx, r| status::draw_wifi(window, r, &theme::palette(cx), signal)));
-            let m = model.clone();
-            d.hits.push(
-                h.on_any_button(move |e, _, cx| {
-                    if button(e) == MouseButton::Left {
-                        m.update(cx, |d, cx| d.run_command("pref:network", cx));
-                    }
-                })
-                .into_any_element(),
-            );
+            let (r, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |window, cx, r| window.with_element_opacity(faint(by), |window| status::draw_wifi(window, r, &theme::palette(cx), signal))));
+            d.hits.push(link_hit(h, r, Kind::Wifi, &model, view));
         }
         if let Some(vol) = st.volume {
             let tip_text = if vol.muted {

@@ -36,7 +36,7 @@ After=graphical-session-pre.target
 
 /// GTK's backend for what it has (its Settings read the GSettings
 /// app_server writes: colour scheme, accent, fonts); the keyring for
-/// secrets, as on GNOME; ours for screen sharing, screenshots, keeping
+/// secrets, as on GNOME; ours for screen sharing and remote control, screenshots, keeping
 /// awake, Open and Save panels, Open With, and the permission dialogs
 /// other portals ask through.
 const PORTALS: &str = "\
@@ -45,6 +45,7 @@ const PORTALS: &str = "\
 default=gtk
 org.freedesktop.impl.portal.Secret=gnome-keyring
 org.freedesktop.impl.portal.ScreenCast=olo
+org.freedesktop.impl.portal.RemoteDesktop=olo
 org.freedesktop.impl.portal.Inhibit=olo
 org.freedesktop.impl.portal.Screenshot=olo
 org.freedesktop.impl.portal.Access=olo
@@ -64,7 +65,7 @@ const OLO_PORTAL: &str = "\
 # Written by olo-session: Olo's portal backend (olo-portal).
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.olo
-Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;org.freedesktop.impl.portal.Account;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.AppChooser;org.freedesktop.impl.portal.Background;org.freedesktop.impl.portal.Email;org.freedesktop.impl.portal.Wallpaper;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.Print;
+Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.RemoteDesktop;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;org.freedesktop.impl.portal.Account;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.AppChooser;org.freedesktop.impl.portal.Background;org.freedesktop.impl.portal.Email;org.freedesktop.impl.portal.Wallpaper;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.Print;
 ";
 
 fn config_home() -> Option<PathBuf> {

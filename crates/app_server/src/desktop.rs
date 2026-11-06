@@ -343,8 +343,9 @@ fn update_entry(entry: &mut OutputConfig, config: &OutputConfig) {
     if let Some(on) = config.vrr {
         entry.vrr = on.then_some(true);
     }
-    // Its colours: Accurate and SDR's 203 cd/m² aren't kept (the
-    // defaults); HDR only while on.
+    // Its colours: Accurate isn't kept (the default); HDR only while on;
+    // SDR's white whatever it's set to (unset, a built-in panel's
+    // follows its brightness, so even 203 cd/m² is a choice).
     if let Some(m) = config.color_mode {
         entry.color_mode = (m != olo_protocol::color::ColorMode::Accurate).then_some(m);
     }
@@ -353,7 +354,7 @@ fn update_entry(entry: &mut OutputConfig, config: &OutputConfig) {
     }
     if let Some(n) = config.sdr_nits {
         let n = n.clamp(crate::color::MIN_SDR_NITS, crate::color::MAX_SDR_NITS);
-        entry.sdr_nits = ((n - olo_protocol::color::SDR_NITS).abs() > 0.5).then_some(n);
+        entry.sdr_nits = Some(n);
     }
 }
 
@@ -573,6 +574,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     },
                     floating: self.floats(&w),
                     float: Self::float_override(&w),
+                    floats_always: Self::floats_always(&w),
                     output: self.display_of(&w).map(|o| o.name()),
                     tab: place.map(|(_, t)| t),
                     behind: self.behind_in_group(&w),
@@ -759,6 +761,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         *window.meta().left_among.borrow_mut() = self.display_frames();
         self.space.unmap_elem(window);
         self.parked.0.borrow_mut().push(window.clone());
+        self.repoint_soon();
     }
 
     pub fn display_frames(&self) -> Vec<(String, Rectangle<i32, Logical>)> {
@@ -782,6 +785,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let home = self.display_of(window);
         self.space.map_element(window.clone(), loc, false);
+        self.repoint_soon();
         self.welcome_back(window, changed);
         // Back on the display it was parked on, whatever its frame says: a
         // frame left out of reach of it meanwhile (an Undo putting it back
@@ -1602,7 +1606,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 info.vrr = info.vrr.map(|_| c.vrr == Some(true));
                 info.color_mode = info.color_mode.map(|_| c.color_mode.unwrap_or_default());
                 info.hdr = info.hdr.map(|_| c.hdr == Some(true));
-                info.sdr_nits = c.sdr_nits.unwrap_or(olo_protocol::color::SDR_NITS);
+                // (Unset: the one in use, a panel's from its brightness.)
+                if let Some(n) = c.sdr_nits {
+                    info.sdr_nits = n;
+                }
             }
             if d.main.is_some() {
                 for info in &mut infos {
@@ -1655,6 +1662,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             || self.hints.active()
             || crate::spotlight::active()
             || self.space.outputs().any(crate::osd::showing)
+            || crate::showing::active()
+            // (The recording's pointer and zoom glide only in captures:
+            // drawn on only while one waits for a frame.)
+            || ((crate::showing::gliding() || crate::zoom::moving() || crate::showing::caption_fading()) && self.captures.pending())
             || self.space.elements().any(|w| (0.0..1.0).contains(&w.meta().glow_strength()) && w.meta().glow.get().is_some())
     }
 
@@ -1876,10 +1887,29 @@ impl<B: Backend + 'static> AnvilState<B> {
     pub fn apply_color(&mut self, output: &Output) -> Result<(), String> {
         let key = display_key(output);
         let config = self.settings.display.config(&key, &output.name()).unwrap_or_default();
-        let applied = crate::color::Applied { mode: config.color_mode.unwrap_or_default(), hdr: config.hdr.unwrap_or(false), sdr_nits: config.sdr_nits.unwrap_or(olo_protocol::color::SDR_NITS) };
+        // SDR's white, unless set: a built-in panel's as bright as its SDR
+        // was (its full-screen light at the brightness it's at, as macOS
+        // keeps it), else BT.2408's 203 cd/m². At 203 the ThinkPad's OLED,
+        // at full brightness in SDR (656 cd/m²), looked far dimmer in HDR.
+        let sdr_default = match (crate::power::is_internal(&output.name()), self.power.brightness, crate::color::of(output).and_then(|c| c.display.full_nits)) {
+            (true, Some(level), Some(full)) => (full as f32 * level).clamp(crate::color::MIN_SDR_NITS, crate::color::MAX_SDR_NITS),
+            _ => olo_protocol::color::SDR_NITS,
+        };
+        let applied = crate::color::Applied { mode: config.color_mode.unwrap_or_default(), hdr: config.hdr.unwrap_or(false), sdr_nits: config.sdr_nits.unwrap_or(sdr_default) };
+        let before = crate::color::drawing(output);
         if crate::color::apply(output, applied) {
-            tracing::info!(output = output.name(), drawing = ?crate::color::drawing(output), "colours");
-            self.backend_data.color_changed(output)?;
+            let now = crate::color::drawing(output);
+            // (HDR before and after, its signal the same: only SDR's white
+            // moved, as a slider is dragged.)
+            let white_only =
+                matches!((&before, &now), (crate::color::Drawing::Hdr { signal: a, .. }, crate::color::Drawing::Hdr { signal: b, .. }) if a.primaries == b.primaries && a.transfer == b.transfer);
+            if white_only {
+                tracing::debug!(output = output.name(), drawing = ?now, "SDR's white");
+                self.backend_data.sdr_white_changed(output)?;
+            } else {
+                tracing::info!(output = output.name(), drawing = ?now, "colours");
+                self.backend_data.color_changed(output)?;
+            }
             // Programs told (wp_color_management_v1): HDR video, say,
             // drawn for the display as it is now.
             crate::color_management::output_changed(output);

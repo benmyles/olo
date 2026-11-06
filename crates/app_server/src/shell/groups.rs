@@ -136,6 +136,10 @@ pub struct Groups {
     /// meanwhile, so the size it opened at isn't the group's (it is in
     /// front, and would lead).
     settling: Vec<(WindowElement, Instant)>,
+    /// An arranging command was done to it (`front_of_group`): it leads
+    /// its group the next time the groups are made, the others following
+    /// it, though one of them comes back from hidden meanwhile.
+    leads: Option<WindowElement>,
 }
 
 impl Groups {
@@ -255,15 +259,12 @@ pub fn mark_behind(space: &Space<WindowElement>) -> Vec<WindowElement> {
                 // (Only with another of its group to show meanwhile: the
                 // one in front closed, it shows at once.)
                 let others = || space.elements().any(|o| o != w && o.decorated() && o.decoration().group == Some(g));
-                if d.behind && d.fronting.is_none() && waiting_to_draw(w) && others() {
-                    d.fronting = Some(Instant::now());
+                let (started, front) = top_turn(&mut d, || waiting_to_draw(w), others, Instant::now());
+                if started {
                     fronting.push(w.clone());
                 }
-                if d.fronting.is_some_and(|t| t.elapsed() >= FRONTING) {
-                    d.fronting = None;
-                }
                 // (Its group's front is the one under it meanwhile.)
-                if d.fronting.is_none() {
+                if front {
                     fronts.push(g);
                 }
                 false
@@ -281,6 +282,47 @@ pub fn mark_behind(space: &Space<WindowElement>) -> Vec<WindowElement> {
 /// How long a window come to the front of its group waits to have drawn
 /// before it shows anyway (`Decoration::fronting`).
 pub const FRONTING: Duration = Duration::from_millis(100);
+
+/// The turn in `mark_behind` of a window at the top of its group, at
+/// `now`: whether it starts waiting to draw (coming from behind, or never
+/// yet its group's front, with something new to draw and another of its
+/// group to show meanwhile), and whether it is its group's front now (not
+/// waiting). Once it has been the front it waits no more: a window whose
+/// wait ended as it drew (`drew_while_fronting`) asked for its next frame
+/// as it did, and taken for one coming to the front again it was held
+/// back after every frame, the window under it showing: a busy Terminal
+/// (an agent streaming) brought to the front after an upgrade (when no
+/// window has been the front yet) didn't show for seconds (Ben,
+/// 2026-11-05).
+fn top_turn(d: &mut super::deco::Decoration, waiting: impl FnOnce() -> bool, others: impl FnOnce() -> bool, now: Instant) -> (bool, bool) {
+    let mut started = false;
+    // (Coming from behind, or new to the group: one that opened into it
+    // mid-drag drew the size it was asked as the drag moved on, auto-fuzz
+    // seed 16.)
+    if (d.behind || !d.fronted) && d.fronting.is_none() && waiting() && others() {
+        d.fronting = Some(now);
+        started = true;
+    }
+    if d.fronting.is_some_and(|t| now.duration_since(t) >= FRONTING) {
+        d.fronting = None;
+    }
+    let front = d.fronting.is_none();
+    if front {
+        d.fronted = true;
+    }
+    (started, front)
+}
+
+/// The window waiting to draw before it shows (`Decoration::fronting`)
+/// has drawn: it shows, and has been its group's front from now on.
+/// Whether it was waiting.
+pub fn drew_while_fronting(d: &mut super::deco::Decoration) -> bool {
+    let was = d.fronting.take().is_some();
+    if was {
+        d.fronted = true;
+    }
+    was
+}
 
 /// Its client asked for a frame callback and hasn't had it: it has
 /// something new to draw.
@@ -374,7 +416,25 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     pub fn front_of_group(&mut self, w: &WindowElement) {
         if self.behind_in_group(w) {
             self.space.raise_element(w, false);
+            return;
         }
+        // A group made by hand that its mate, just shown again, is about
+        // to form again (not in the groups till they're next made): `w`
+        // in front of it, and leading the group as it forms. (The group
+        // followed the mate back from hidden, in front, pulling `w` out of
+        // the tile it was just put in.) Only then: an app's own grouping
+        // forms and changes all the time, auto-tiled most of all.
+        if !self.groups.mates(w).is_empty() || !matches!(self.group_key(w), Some(GroupKey::Id(_))) {
+            return;
+        }
+        let mates = self.mates_to_be(w);
+        if mates.is_empty() {
+            return;
+        }
+        if self.space.elements().rev().find(|o| *o == w || mates.contains(o)).is_some_and(|f| f != w) {
+            self.space.raise_element(w, false);
+        }
+        self.groups.leads = Some(w.clone());
     }
 
     /// Whether `app_id`'s windows are grouped (the default).
@@ -532,7 +592,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // the one that was there first.
             let tiled: Vec<WindowElement> = g.iter().filter(|w| self.tree_of(w).is_some()).cloned().collect();
             let pool = if tiled.is_empty() { g } else { &tiled };
-            let leader = pool.iter().rev().filter(leads).find(|w| was_member(w)).or_else(|| pool.iter().rev().filter(leads).find(|w| was_seen(w))).unwrap_or(&pool[pool.len() - 1]).clone();
+            // (Arranged by a command, where nothing auto-tiles: the tile
+            // says where an auto-tiled group is.)
+            let arranged = before.leads.as_ref().filter(|l| tiled.is_empty() && pool.contains(l));
+            let leader =
+                arranged.or_else(|| pool.iter().rev().filter(leads).find(|w| was_member(w))).or_else(|| pool.iter().rev().filter(leads).find(|w| was_seen(w))).unwrap_or(&pool[pool.len() - 1]).clone();
+            // Floated by hand, a group floats as one: a window that joins
+            // it (one the app opens, grouped by its app) floats too, else
+            // it was a tile at the floating group's frame, over the tiles
+            // beside. (Tiled by hand is what a tile is anyway: not handed
+            // on.)
+            if Self::float_override(&leader) == Some(true) {
+                for w in g.iter().filter(|w| Self::float_override(w).is_none()) {
+                    Self::restore_float_override(w, Some(true));
+                }
+            }
             let Some(mut frame) = self.space.element_geometry(&leader) else { continue };
             // Where it is going, not the size it is leaving: a window that
             // has just joined (opened, come back, arrived) leads from the
@@ -570,12 +644,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     w.meta().joined.set(Some(crate::desktop::Joined { own, own_arrangement, group: frame, worn }));
                     super::tiling::note_joined(w, frame);
                 }
-                self.join_group(w, frame, resizing);
-                self.share_arrangement(&leader, w);
                 // New to the group by itself: it settles (see `Groups`),
                 // asked again if its app drew another size anyway (its
                 // own resize crossing the group's).
                 let new = !was_member(w) && !before.joining.contains(w);
+                // One new to the group is asked for its size even while an
+                // edge is dragged (one size on the way at a time): else, in
+                // front of the group, it was drawn at its own size till the
+                // drag ended, and waited for nothing (`mark_behind`'s
+                // fronting waits only for a size asked; auto-fuzz seed 16:
+                // a StyledEdit window opening into a group mid-drag).
+                let ask_now = resizing && (new || was_settling(w).is_some()) && size_on_the_way(w).is_none() && !drawn_at(&self.space, w, frame);
+                self.join_group(w, frame, resizing && !ask_now);
+                self.share_arrangement(&leader, w);
                 if let Some(since) = was_settling(w).or_else(|| new.then(Instant::now))
                     && !drawn_at(&self.space, w, frame)
                 {
@@ -669,7 +750,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // made it in (else it may still: it is being placed).
         let joining = before.joining.into_iter().filter(|w| w.alive() && !list.iter().any(|(_, g)| g.contains(w))).collect();
         let seen_on = seen.iter().map(|w| (w.clone(), self.group_display(w))).collect();
-        self.groups = Groups { seen, seen_on, list, away, known: all, numbers, joining, settling };
+        self.groups = Groups { seen, seen_on, list, away, known: all, numbers, joining, settling, leads: None };
         // One come to the front with something new to draw is told to
         // draw it now, not when its frame callback is next due (a
         // second), and the screen looks again once it may show anyway.
@@ -773,6 +854,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// its tab there does. It takes the group's frame and is put in front.
     /// False if either can't be grouped, or they are one window.
     pub fn put_in_group(&mut self, w: &WindowElement, target: &WindowElement, index: Option<usize>) -> bool {
+        self.auto_settled(w);
+        self.auto_settled(target);
         if w == target || !self.groupable(w) || !self.groupable(target) || self.space.element_location(target).is_none() {
             return false;
         }
@@ -817,6 +900,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Take `w` out of its group by hand: on its own from now on, its tab
     /// its own again. False if it is in none.
     pub fn take_out_of_group(&mut self, w: &WindowElement) -> bool {
+        self.auto_settled(w);
         if !self.groups.has(w) {
             return false;
         }
@@ -830,6 +914,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Take `w` out of its group, stepped out like a cascade so the group
     /// shows behind it, in front (agents, the tab's menu).
     pub fn ungroup_window(&mut self, w: &WindowElement) -> bool {
+        self.auto_settled(w);
         let Some(frame) = self.space.element_geometry(w) else { return false };
         if !self.take_out_of_group(w) {
             return false;
@@ -904,6 +989,42 @@ mod tests {
         let tabs = [100];
         assert_eq!(tab_place(&tabs, 100, 400, 100.0, Some(1)).0, 1);
         assert_eq!(tab_place(&tabs, 100, 400, 100.0, Some(0)).0, 0);
+    }
+
+    /// A window brought to the front of its group waits once to draw,
+    /// then shows, however busy it is: drawing, it asks for its next frame
+    /// at once, and that is no reason to hold it back again (after an
+    /// upgrade, when no window has been the front, a busy Terminal didn't
+    /// show for seconds).
+    #[test]
+    fn a_window_brought_forward_waits_once() {
+        let t0 = Instant::now();
+        let ms = |n| t0 + Duration::from_millis(n);
+        // Never the front yet (after an upgrade), with something to draw.
+        let mut d = crate::shell::deco::Decoration::default();
+        assert_eq!(top_turn(&mut d, || true, || true, ms(0)), (true, false), "it waits to draw");
+        assert_eq!(top_turn(&mut d, || true, || true, ms(16)), (false, false), "still waiting");
+        // It draws (and asks for its next frame as it does).
+        assert!(drew_while_fronting(&mut d));
+        for k in 1..20 {
+            assert_eq!(top_turn(&mut d, || true, || true, ms(16 + 16 * k)), (false, true), "shown, frame {k}");
+        }
+        // Brought from behind again: one wait again.
+        d.behind = true;
+        assert_eq!(top_turn(&mut d, || true, || true, ms(1000)), (true, false));
+        d.behind = false;
+        assert!(drew_while_fronting(&mut d));
+        assert_eq!(top_turn(&mut d, || true, || true, ms(1016)), (false, true));
+        // One that never draws shows once the wait runs out.
+        let mut quiet = crate::shell::deco::Decoration::default();
+        assert_eq!(top_turn(&mut quiet, || true, || true, ms(0)), (true, false));
+        assert_eq!(top_turn(&mut quiet, || true, || true, ms(99)), (false, false));
+        assert_eq!(top_turn(&mut quiet, || true, || true, ms(100)), (false, true));
+        // Alone in its group, or nothing to draw: no wait.
+        let mut alone = crate::shell::deco::Decoration::default();
+        assert_eq!(top_turn(&mut alone, || true, || false, ms(0)), (false, true));
+        let mut idle = crate::shell::deco::Decoration::default();
+        assert_eq!(top_turn(&mut idle, || false, || true, ms(0)), (false, true));
     }
 
     #[test]

@@ -404,6 +404,13 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 None => not_found(),
             },
+            Request::SharedWindows { ids } => {
+                if self.shared_windows != ids {
+                    self.shared_windows = ids;
+                    self.backend_data.wake(None);
+                }
+                Reply::Ok
+            }
             Request::SendToBack { id } => match self.window_by_id(id) {
                 Some(w) => {
                     self.send_to_back(&w);
@@ -603,6 +610,49 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.lock_screen();
                 Reply::Ok
             }
+            Request::SetShowing { clicks, keys, pointer_size, smooth_pointer, zoom } => {
+                crate::showing::set(clicks, keys);
+                crate::showing::set_pointer(pointer_size, smooth_pointer);
+                crate::zoom::set_follow(Some(zoom));
+                // (Captures draw the pointer anew.)
+                self.backend_data.wake(None);
+                Reply::Ok
+            }
+            Request::ZoomTo { rect, display } => {
+                let at = self.pointer.current_location();
+                let output = match display {
+                    Some(name) => self.space.outputs().find(|o| o.name() == name).cloned(),
+                    None => self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned(),
+                };
+                match output.and_then(|o| self.space.output_geometry(&o).map(|g| (o, g))) {
+                    Some((o, g)) => {
+                        crate::zoom::to(&o.name(), rect, g.size.to_f64());
+                        self.backend_data.wake(None);
+                        Reply::Ok
+                    }
+                    None => Reply::Error { message: "no such display".into() },
+                }
+            }
+            Request::Caption { text, seconds } => {
+                // The displays look again as it fades and when it ends.
+                if let Some(after) = crate::showing::caption(text, seconds) {
+                    use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+                    let _ = self.handle.insert_source(Timer::from_duration(after), |_, _, state| {
+                        state.backend_data.wake(None);
+                        TimeoutAction::Drop
+                    });
+                }
+                self.backend_data.wake(None);
+                Reply::Ok
+            }
+            Request::Countdown { n } => {
+                let at = self.pointer.current_location();
+                if let Some(o) = self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned() {
+                    crate::showing::countdown(&o, n);
+                }
+                self.backend_data.wake(None);
+                Reply::Ok
+            }
             Request::Rescue { on } => {
                 if on {
                     self.enter_rescue();
@@ -625,6 +675,22 @@ impl<B: Backend + 'static> AnvilState<B> {
                 None => return None,
             },
             Request::AutoApproveSecret => self.auto_approve_secret(&conn),
+            Request::RemoteControl { session, devices } => match conn.peer_pid().filter(|_| conn.peer_is_ours("olo-portal")) {
+                Some(pid) => {
+                    self.remote_grant(pid, session, devices);
+                    Reply::Ok
+                }
+                None => {
+                    warn!(by = %conn.peer(), "asked to let a program control the computer: refused");
+                    Reply::Error { message: "Only Olo's portal can let a program control the computer.".into() }
+                }
+            },
+            Request::RemoteControlEnd { session } => {
+                if conn.peer_is_ours("olo-portal") {
+                    self.remote_end(&session);
+                }
+                Reply::Ok
+            }
             Request::SetBrightness { level } => {
                 self.set_brightness(level);
                 Reply::Ok
@@ -716,7 +782,8 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::Frames => {
                 let mut touch = self.backend_data.touch_health();
                 crate::touch_health::scheduling(&mut touch);
-                if let (true, Some(m)) = (touch.model, crate::touch_filter::model_in_use(&self.settings.touchpad.filter)) {
+                let kind = crate::touch_filter::kind_among(&self.backend_data.input_devices());
+                if let (true, Some(m)) = (touch.model, crate::touch_filter::model_in_use(&self.settings.touchpad.filter, kind)) {
                     (touch.trained, touch.contacts, touch.palms_caught, touch.fingers_lost) = (m.trained, m.contacts, m.palms_caught, m.fingers_lost);
                 }
                 Reply::Frames {

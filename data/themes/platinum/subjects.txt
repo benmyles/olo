@@ -1,0 +1,3 @@
+folder|a plain closed file folder with a tab
+folder-open|an open file folder with a few white papers peeking out
+tracker|a file manager: a file folder standing open with a large magnifying glass leaning against it

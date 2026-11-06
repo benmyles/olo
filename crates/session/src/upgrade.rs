@@ -207,6 +207,78 @@ impl Watcher {
     }
 }
 
+/// Programs of ours left from a session that has gone (Ben, 2026-11-05:
+/// "make the upgrade process identify any zombies that have been leftover
+/// from past upgrades and kill them"): the user's processes running one
+/// of our programs whose display (`WAYLAND_DISPLAY`, its socket in
+/// `runtime`) no longer exists, a session's or a test session's that
+/// ended without them. Not one younger than 30 s (a session starting),
+/// nor one with no display in its environment (a coding agent's MCP
+/// server, a service), nor `skip`. Each with its start time (so it's
+/// killed later only if it's still the same process) and why.
+pub fn leftovers(runtime: &Path, skip: &[i32]) -> Vec<(i32, u64, String)> {
+    leftovers_aged(runtime, skip, 30.0)
+}
+
+/// [`leftovers`] at least `min_age` seconds old.
+fn leftovers_aged(runtime: &Path, skip: &[i32], min_age: f64) -> Vec<(i32, u64, String)> {
+    let uid = unsafe { libc::getuid() };
+    let mut out = Vec::new();
+    let Ok(dir) = std::fs::read_dir("/proc") else { return out };
+    let uptime = std::fs::read_to_string("/proc/uptime").ok().and_then(|u| u.split_whitespace().next()?.parse::<f64>().ok()).unwrap_or(0.0);
+    // SAFETY: sysconf can't fail for this.
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
+    for e in dir.flatten() {
+        let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<i32>().ok()) else { continue };
+        if skip.contains(&pid) || std::fs::metadata(e.path()).map(|m| std::os::unix::fs::MetadataExt::uid(&m)).ok() != Some(uid) {
+            continue;
+        }
+        let Ok(exe) = std::fs::read_link(e.path().join("exe")) else { continue };
+        let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default().trim_end_matches(" (deleted)").to_owned();
+        if !(name.starts_with("olo-") || name.starts_with("tabula-")) {
+            continue;
+        }
+        let Some(started) = start_time(pid) else { continue };
+        if uptime - started as f64 / hz < min_age {
+            continue;
+        }
+        let Ok(env) = std::fs::read(e.path().join("environ")) else { continue };
+        let Some(display) = env.split(|&b| b == 0).find_map(|v| v.strip_prefix(b"WAYLAND_DISPLAY=")).map(|d| String::from_utf8_lossy(d).into_owned()).filter(|d| !d.is_empty()) else { continue };
+        let socket = if display.starts_with('/') { PathBuf::from(&display) } else { runtime.join(&display) };
+        if socket.exists() {
+            continue;
+        }
+        out.push((pid, started, format!("{name} (pid {pid}): its display {display} has gone")));
+    }
+    out.sort();
+    out
+}
+
+/// When process `pid` started (clock ticks after boot), to know it again.
+pub fn start_time(pid: i32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()
+}
+
+/// The program that started `pid`, if it isn't one of ours (nor the
+/// session's service manager, nor init, which adopt what's started
+/// detached): a coding agent running an MCP server of ours, a browser
+/// its messaging host, a shell a command. Stopping such a process breaks
+/// what that program had open with it, and it won't start it again (an
+/// agent's tool was gone for the rest of its session): left alone.
+pub fn started_by_another(pid: i32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let ppid: i32 = stat.rsplit_once(')')?.1.split_whitespace().nth(1)?.parse().ok()?;
+    if ppid <= 1 {
+        return None;
+    }
+    let comm = std::fs::read_to_string(format!("/proc/{ppid}/comm")).ok()?.trim().to_owned();
+    let exe = std::fs::read_link(format!("/proc/{ppid}/exe")).ok()?;
+    let name = exe.file_name()?.to_str()?.trim_end_matches(" (deleted)");
+    let ours = name.starts_with("olo-") || name.starts_with("tabula-") || name == "app_server";
+    (!ours && comm != "systemd").then_some(comm)
+}
+
 /// Was the program at `exe` (as /proc shows it) one of ours in `dir`
 /// whose file has since been replaced?
 fn replaced(exe: &Path, dir: &Path) -> bool {
@@ -441,6 +513,52 @@ fn install(src: &Path, dir: &Path, name: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_program_whose_display_has_gone_is_left_over() {
+        // One of ours (by name) three times: its display gone, there, none.
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-leftovers-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ours = dir.join("olo-test-sleep");
+        std::fs::copy("/usr/bin/sleep", &ours).unwrap();
+        std::fs::write(dir.join("wayland-here"), b"").unwrap();
+        let run = |display: Option<&str>| {
+            let mut c = std::process::Command::new(&ours);
+            c.arg("5").env_remove("WAYLAND_DISPLAY");
+            if let Some(d) = display {
+                c.env("WAYLAND_DISPLAY", d);
+            }
+            c.spawn().unwrap()
+        };
+        let mut gone = run(Some("wayland-gone"));
+        let mut here = run(Some("wayland-here"));
+        let mut none = run(None);
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let found: Vec<i32> = leftovers_aged(&dir, &[], 0.0).into_iter().map(|l| l.0).collect();
+        // Too young for the real thing (a session starting).
+        let young: Vec<i32> = leftovers(&dir, &[]).into_iter().map(|l| l.0).collect();
+        for c in [&mut gone, &mut here, &mut none] {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(found.contains(&(gone.id() as i32)), "{found:?}");
+        assert!(!found.contains(&(here.id() as i32)) && !found.contains(&(none.id() as i32)), "{found:?}");
+        assert!(!young.contains(&(gone.id() as i32)));
+    }
+
+    #[test]
+    fn a_program_another_started_is_known_so() {
+        // This test (not one of ours) starting a program: it says who.
+        let mut child = std::process::Command::new("sleep").arg("5").spawn().unwrap();
+        let by = started_by_another(child.id() as i32);
+        let _ = child.kill();
+        let _ = child.wait();
+        let own = std::fs::read_to_string("/proc/self/comm").unwrap().trim().to_owned();
+        assert_eq!(by.as_deref(), Some(own.as_str()));
+        // Gone: nothing to say.
+        assert_eq!(started_by_another(i32::MAX), None);
+    }
 
     fn program(dir: &Path, name: &str, age: u64) {
         let p = dir.join(name);

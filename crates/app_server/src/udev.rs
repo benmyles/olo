@@ -282,9 +282,15 @@ fn watch_pad(state: &mut AnvilState<UdevData>, pad: crate::contacts::Pad) {
                     return Ok(PostAction::Remove);
                 }
                 if state.ipc.wanted(olo_protocol::EventKind::TouchContacts)
-                    && let Some(contacts) = watch.changed(fd)
+                    && let Some((contacts, button)) = watch.changed(fd)
                 {
-                    state.ipc.broadcast(olo_protocol::Event::TouchContacts { pad: watch.axes.clone(), time_us: crate::contacts::now_us(), contacts, since_key_us: crate::contacts::since_key_us() });
+                    state.ipc.broadcast(olo_protocol::Event::TouchContacts {
+                        pad: watch.axes.clone(),
+                        time_us: crate::contacts::now_us(),
+                        contacts,
+                        since_key_us: crate::contacts::since_key_us(),
+                        button,
+                    });
                 }
                 Ok(PostAction::Continue)
             });
@@ -650,6 +656,25 @@ impl Backend for UdevData {
         set
     }
 
+    fn sdr_white_changed(&mut self, output: &Output) -> Result<(), String> {
+        // The signal, the connector and night light's ramp are as they
+        // were: the blending buffer composed whole again (HDR content's
+        // light in it is counted in SDR's white) and so every pixel
+        // encoded again. Nothing made anew: dragging the slider did all of
+        // `color_changed` some 30 times a second (the 51 MB blending buffer
+        // and the display's buffers made again each time) and the
+        // ThinkPad's OLED went dark (Ben, 2026-11-05).
+        let Some(id) = output.user_data().get::<UdevOutputId>().cloned() else { return Ok(()) };
+        let Some(surface) = self.backends.get_mut(&id.device_id).and_then(|b| b.surfaces.get_mut(&id.crtc)) else { return Ok(()) };
+        match surface.hdr.as_mut() {
+            Some(hdr) => hdr.compose_whole(),
+            None => return self.color_changed(output),
+        }
+        let (node, crtc) = (id.device_id, id.crtc);
+        self.loop_handle.insert_idle(move |state| state.render(node, Some(crtc), state.clock.now()));
+        Ok(())
+    }
+
     fn set_vrr(&mut self, output: &Output, on: bool) -> Result<(), String> {
         let id = output.user_data().get::<UdevOutputId>().ok_or("not a DRM output")?;
         let surface = self.backends.get(&id.device_id).and_then(|d| d.surfaces.get(&id.crtc)).ok_or("its CRTC is gone")?;
@@ -734,7 +759,9 @@ fn set_connector_color(backend: &mut BackendData, crtc: crtc::Handle) -> Result<
         return if hdr { Err("this display's connector takes no HDR metadata".into()) } else { Ok(()) };
     };
     let value = |name: &str| spaces.iter().find(|(n, _)| n == name).map(|(_, v)| *v);
-    let space = if hdr { value("BT2020_RGB").ok_or("this display's connector has no BT.2020")? } else { value("Default").unwrap_or(0) };
+    // (A panel sent its own colours says so with Default: `signal_primaries`.)
+    let bt2020 = crate::color::of(&output).is_some_and(|c| crate::color::signal_is_bt2020(&c.display));
+    let space = if hdr && bt2020 { value("BT2020_RGB").ok_or("this display's connector has no BT.2020")? } else { value("Default").unwrap_or(0) };
     if !hdr && meta_now == 0 && space_now == space {
         return Ok(());
     }
@@ -1352,9 +1379,6 @@ pub fn run_udev() {
             }
         })
         .unwrap();
-
-    #[cfg(feature = "libei")]
-    crate::libei::listen_eis(&event_loop.handle());
 
     /*
      * And run our loop
@@ -2518,11 +2542,26 @@ impl AnvilState<UdevData> {
             });
         }
         let overlays: Vec<CustomRenderElements<_>> = if locked {
+            // (Never the veil over the lock screen, nor after it.)
+            self.veil = None;
             crate::lock::elements(&self.lock, &mut renderer, &output)
         } else {
             let scale = output.current_scale().fractional_scale();
             let mut overlays: Vec<CustomRenderElements<_>> = self.hints.elements(&mut renderer, output_geo, scale).into_iter().map(CustomRenderElements::Overlay).collect();
             overlays.extend(twitcher.into_iter().flat_map(|shown| self.twitcher.elements(&mut renderer, &shown, &output.name(), output_size, scale)).map(CustomRenderElements::Overlay));
+            overlays.extend(crate::private::shared_rings(&output, &self.space, &self.shared_windows).into_iter().map(CustomRenderElements::Warm));
+            // "Upgrading Olo", in front of all, while a restart's windows
+            // come back.
+            let (displays, back) = (self.space.outputs().filter(|o| o.current_mode().is_some()).count(), self.space.elements().count());
+            let shell = crate::veil::shell_up(&self.space);
+            let (veiled, again) = crate::veil::frame(&mut self.veil, false, displays, back, shell, &mut renderer, &output);
+            overlays.splice(0..0, veiled);
+            if again {
+                let _ = self.handle.insert_source(smithay::reexports::calloop::timer::Timer::immediate(), |_, _, state| {
+                    state.backend_data.wake(None);
+                    smithay::reexports::calloop::timer::TimeoutAction::Drop
+                });
+            }
             overlays
         };
 

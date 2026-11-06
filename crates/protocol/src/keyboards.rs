@@ -22,6 +22,10 @@ pub struct Model {
     pub touch_id: Option<TouchId>,
     /// How it connects.
     pub connection: &'static str,
+    /// Its top row is media keys first and F-keys with Fn, and it has a
+    /// Globe (Fn) key: Apple's Magic Keyboards (app_server's
+    /// apple_keys.rs: `KeyboardSettings::fkeys_first`, `globe_emoji`).
+    pub fn_row: bool,
 }
 
 /// What a keyboard's Touch ID sensor is to Olo.
@@ -39,10 +43,11 @@ pub const KNOWN: &[Model] = &[Model {
     model: "A2520",
     matches: "Magic Keyboard with Touch ID and Numeric Keypad",
     ids: (0x05ac, 0x029f),
-    icon: "keyboard",
+    icon: "keyboard-aluminium",
     keypad: true,
     touch_id: Some(TouchId::SealedToAMac),
     connection: "USB-C, or Bluetooth when paired",
+    fn_row: true,
 }];
 
 /// The model a keyboard named `name` is, if Olo knows it.

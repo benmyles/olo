@@ -1511,6 +1511,13 @@ impl WaylandWindowStatePtr {
             let Some(xdg_surface) = state.xdg_surface.clone() else {
                 return;
             };
+            // (Olo: a resize's configure held for the next frame came
+            // before this one, which says all it did. Acknowledged after
+            // this, it would go back a serial: a protocol error, and the
+            // compositor ends the client. A Terminal lost its window so as
+            // a fast drag of its edge ended, the configure saying it had
+            // ended acknowledged before the one held.)
+            state.throttled_configure = None;
             xdg_surface.ack_configure(serial);
             set_geometry(&state);
 
@@ -2037,9 +2044,24 @@ impl PlatformWindow for WaylandWindow {
         )
     }
 
-    fn resize(&mut self, size: Size<Pixels>) {
+    fn resize(&mut self, mut size: Size<Pixels>) {
         let state = self.borrow();
         let state_ptr = self.0.clone();
+        // Olo: the sides the compositor holds keep its size (a window
+        // maximized, zoomed, full screen or in a tile: xdg's states say
+        // which): an app resizing itself keeps those. A zoomed Terminal
+        // made its text bigger and showed a frame taller than its display.
+        let held_w = state.maximized || state.fullscreen || state.tiling.left || state.tiling.right;
+        let held_h = state.maximized || state.fullscreen || state.tiling.top || state.tiling.bottom;
+        if held_w {
+            size.width = state.bounds.size.width;
+        }
+        if held_h {
+            size.height = state.bounds.size.height;
+        }
+        if held_w && held_h {
+            return;
+        }
         // (Its geometry is told as its size changes: `set_geometry`.)
         // Olo: a window of fixed size its app resized (one that fits
         // what it shows) is fixed at its new size.
@@ -2183,12 +2205,18 @@ impl PlatformWindow for WaylandWindow {
         state.app_id = Some(app_id.to_owned());
     }
 
+    fn on_hdr_display(&self) -> bool {
+        self.borrow().outputs.values().any(|o| {
+            o.name
+                .as_deref()
+                .is_some_and(crate::text_system::display_hdr)
+        })
+    }
+
     fn set_gamut(&mut self, space: crate::Gamut) -> bool {
         // (The swapchain's colour space: Mesa's WSI tells the compositor,
         // through its own wp_color_management_v1 object for the surface.)
-        self.borrow_mut()
-            .renderer
-            .set_display_p3(space == crate::Gamut::DisplayP3)
+        self.borrow_mut().renderer.set_gamut(space)
     }
 
     fn activation_token(&self, done: Box<dyn FnOnce(Option<String>)>) {
@@ -2233,6 +2261,14 @@ impl PlatformWindow for WaylandWindow {
         let state = self.borrow();
         if let Some(layer) = &state.layer_surface {
             layer.set_keyboard_interactivity(layer_keyboard(layer, keyboard));
+            state.surface.commit();
+        }
+    }
+
+    fn set_layer_margin(&self, (top, right, bottom, left): (i32, i32, i32, i32)) {
+        let state = self.borrow();
+        if let Some(layer) = &state.layer_surface {
+            layer.set_margin(top, right, bottom, left);
             state.surface.commit();
         }
     }

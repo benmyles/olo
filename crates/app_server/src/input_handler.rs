@@ -109,6 +109,41 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
         let key = evt.key_code().raw().saturating_sub(8);
+        // A security key's typing goes to nobody, but three touches in a
+        // row (security_key.rs).
+        if !self.security_key_ids.is_empty() && evt.device().usb_id().is_some_and(|id| self.security_key_ids.contains(&id)) {
+            let pressed = evt.state() == KeyState::Pressed;
+            let typing = self.settings.security.keys.three_touches_type;
+            if let Some(keys) = self.security_key_taps.feed(key, pressed, std::time::Instant::now(), typing) {
+                let time = Event::time(&evt);
+                for (k, p) in keys {
+                    let _ = self.physical_key(k, p, time);
+                }
+            }
+            return KeyAction::None;
+        }
+        // A Magic Keyboard: its top row (F-keys first, if chosen for it),
+        // its Do Not Disturb key, its Globe key alone (apple_keys.rs).
+        let key = if evt.device().usb_id().is_some_and(crate::apple_keys::is_magic_keyboard) {
+            let pressed = evt.state() == KeyState::Pressed;
+            if self.globe.feed(key, pressed, std::time::Instant::now()) && self.settings.keyboard.globe_emoji {
+                self.spawn_program("olo-emoji-picker", &["--toggle"]);
+            }
+            if key == crate::apple_keys::KEY_FN {
+                return KeyAction::None;
+            }
+            let fkeys = &self.settings.keyboard.fkeys_first;
+            let key = if !fkeys.is_empty() && fkeys.contains(&evt.device().name()) { crate::apple_keys::fkeys_first(key) } else { key };
+            if key == crate::apple_keys::KEY_SLEEP {
+                if pressed {
+                    self.toggle_do_not_disturb();
+                }
+                return KeyAction::None;
+            }
+            key
+        } else {
+            key
+        };
         // A keyboard whose Alt and Super change places (its own setting:
         // a PC keyboard's, not an Apple one's on the same computer).
         let swap = &self.settings.keyboard.swap_alt_super;
@@ -117,11 +152,72 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         self.physical_key(key, pressed, Event::time(&evt))
     }
 
+    /// A ring where the pointer is, when clicks are shown (`showing`).
+    fn show_click(&mut self) {
+        self.zoom_click();
+        if !crate::showing::clicks() {
+            return;
+        }
+        let at = self.pointer.current_location();
+        if let Some(o) = self.space.output_under(at).next()
+            && let Some(g) = self.space.output_geometry(o)
+        {
+            crate::showing::click(o, at - g.loc.to_f64());
+        }
+        self.backend_data.wake(None);
+    }
+
+    /// A press, for a recording's zoom that follows clicks (`zoom`): in
+    /// around it, and the displays woken once the hold is up (a timer at
+    /// a time, put off while clicks and keys hold it).
+    fn zoom_click(&mut self) {
+        let at = self.pointer.current_location();
+        let Some((o, g)) = self.space.output_under(at).next().and_then(|o| self.space.output_geometry(o).map(|g| (o.clone(), g))) else { return };
+        if !crate::zoom::click(&o.name(), at - g.loc.to_f64(), g.size.to_f64()) {
+            return;
+        }
+        self.backend_data.wake(None);
+        if !self.zoom_timer {
+            self.zoom_timer = true;
+            use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+            let _ = self.handle.insert_source(Timer::from_duration(crate::zoom::HOLD), |_, _, state| match crate::zoom::hold_left() {
+                Some(left) => TimeoutAction::ToDuration(left + std::time::Duration::from_millis(10)),
+                None => {
+                    state.zoom_timer = false;
+                    state.backend_data.wake(None);
+                    TimeoutAction::Drop
+                }
+            });
+        }
+    }
+
+    /// Physical `key` pressed while keys are shown (`showing`): its chord
+    /// put up as the keyboard profile writes it, if it's one (⌃, ⌥ or ⌘
+    /// held) or a key shown alone; typing never.
+    fn show_chord(&mut self, key: u32) {
+        let chord = self.keymap.chord_now(key);
+        let modified = chord.ctrl || chord.alt || chord.cmd;
+        let modifier = matches!(key, 29 | 97 | 42 | 54 | 56 | 100 | 125 | 126 | 58);
+        if modifier || !olo_protocol::Chord::known_key(key) || !(modified || crate::showing::shown_alone(key)) {
+            return;
+        }
+        let label = chord.label(self.settings.keyboard.profile.platform);
+        let at = self.pointer.current_location();
+        if let Some(o) = self.space.output_under(at).next().or_else(|| self.space.outputs().next()).cloned() {
+            crate::showing::chord(&o, label);
+        }
+        self.backend_data.wake(None);
+    }
+
     /// A key from a device (or a test): map it (⌘, Caps Lock, …), act on
     /// app_server's own chords and send the rest to the focused client.
     fn physical_key(&mut self, key: u32, pressed: bool, time: InputTime) -> KeyAction {
         if pressed {
             crate::contacts::note_key();
+            if crate::showing::keys() {
+                self.show_chord(key);
+            }
+            crate::zoom::key();
         }
         // Escape while something is dragged: the drag ends, nothing
         // dropped (and the Escape reaches nobody).
@@ -572,6 +668,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
 
         if wl_pointer::ButtonState::Pressed == state {
+            self.repoint();
+            self.show_click();
             // Clicking puts keyboard hints away.
             if self.hints.active() {
                 self.hints.close();
@@ -813,6 +911,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if self.overview.as_ref().is_some_and(|o| !o.leaving()) {
             return;
         }
+        self.repoint();
         let horizontal_amount = evt.amount(input::Axis::Horizontal).unwrap_or_else(|| evt.amount_v120(input::Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.);
         let vertical_amount = evt.amount(input::Axis::Vertical).unwrap_or_else(|| evt.amount_v120(input::Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.);
         let horizontal_amount_discrete = evt.amount_v120(input::Axis::Horizontal);
@@ -1197,6 +1296,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     fn on_device_added<B: InputBackend>(&mut self, device: B::Device) {
+        // A security key's keyboard (its one-time codes): known by the
+        // device, its typing taken from now on.
+        if device.has_capability(DeviceCapability::Keyboard)
+            && let Some(id) = device.usb_id()
+            && olo_protocol::keyboards::security_key(&device.name(), id.1)
+            && !self.security_key_ids.contains(&id)
+        {
+            info!(name = device.name(), "a security key's keyboard: its touches type nothing on their own");
+            self.security_key_ids.push(id);
+        }
         let dh = &self.display_handle;
         if device.has_capability(DeviceCapability::TabletTool) {
             self.seat.tablet_seat().add_wp_tablet(dh, &TabletDescriptor::from(&device));
@@ -1338,6 +1447,55 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         });
     }
 
+    /// The pointer enters what is under it now, if that isn't what it is
+    /// in (or it is, but has moved): a window that opened, closed, moved
+    /// or came forward under a still pointer (Space in Tracker opening
+    /// Viewer under it) takes the scroll or the click that comes next,
+    /// not only once the pointer has moved. Not while a grab has the
+    /// pointer (a button held, a window dragged, a menu open): the grab
+    /// says where it goes.
+    pub fn repoint(&mut self) {
+        let t = std::time::Instant::now();
+        let pointer = self.pointer.clone();
+        if pointer.is_grabbed() {
+            return;
+        }
+        let location = pointer.current_location();
+        let under = self.surface_under(location);
+        if under != pointer.current_focus_at() {
+            pointer.motion(self, under, &MotionEvent { location, serial: SCOUNTER.next_serial(), time: InputTime::now() });
+            pointer.frame(self);
+        }
+        self.timings.phase("repoint", t);
+    }
+
+    /// [`repoint`](Self::repoint) once this turn of the loop is done
+    /// (what changed under the pointer has settled): so the window under
+    /// it has it (its cursor, its hover) without waiting for the pointer
+    /// to move. Once, however often asked in a turn.
+    pub fn repoint_soon(&mut self) {
+        if std::mem::replace(&mut self.repoint_queued, true) {
+            return;
+        }
+        self.handle.insert_idle(|state| {
+            state.repoint_queued = false;
+            state.repoint();
+        });
+    }
+
+    /// Where the pointer moving from `from` to `to` ends: `to`, or, off
+    /// every display, the nearest point of the display it was on (as
+    /// libinput's motion is kept on the screens).
+    pub fn kept_on_screens(&self, from: Point<f64, Logical>, to: Point<f64, Logical>) -> Point<f64, Logical> {
+        let on = |p: Point<f64, Logical>| self.space.outputs().filter_map(|o| self.space.output_geometry(o)).find(|g| g.to_f64().contains(p));
+        if on(to).is_some() {
+            return to;
+        }
+        let Some(g) = on(from).or_else(|| self.space.outputs().next().and_then(|o| self.space.output_geometry(o))) else { return from };
+        let g = g.to_f64();
+        Point::from((to.x.clamp(g.loc.x, g.loc.x + g.size.w - 1.0), to.y.clamp(g.loc.y, g.loc.y + g.size.h - 1.0)))
+    }
+
     /// Move the pointer to `pos` (its display went away).
     pub fn warp_pointer(&mut self, pos: Point<f64, Logical>) {
         let under = self.surface_under(pos);
@@ -1379,11 +1537,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         use olo_protocol::SyntheticEvent as S;
         // As real input wakes the displays (`process_input_event`).
         let before = self.pointer.current_location();
-        let pointing = matches!(event, S::Move { .. } | S::Scroll { .. } | S::Touch { .. });
+        let pointing = matches!(event, S::Move { .. } | S::MoveBy { .. } | S::MoveOn { .. } | S::Scroll { .. } | S::Touch { .. });
         // (Counted as real input is, for Activity Monitor ▸ Inputs.)
         let counted = match &event {
             S::Button { pressed: true, .. } | S::Touch { phase: olo_protocol::TouchPhase::Down, .. } => Some(crate::input_counts::Input::Click),
-            S::Key { pressed: true, .. } => Some(crate::input_counts::Input::Key),
+            S::Key { pressed: true, .. } | S::Keysym { pressed: true, .. } => Some(crate::input_counts::Input::Key),
             S::Scroll { .. } | S::Wheel { .. } => Some(crate::input_counts::Input::Scroll),
             _ => None,
         };
@@ -1405,6 +1563,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let time = InputTime::now();
         let pointer = self.pointer.clone();
         match event {
+            S::MoveBy { dx, dy } => {
+                let from = pointer.current_location();
+                let to = self.kept_on_screens(from, from + Point::from((dx, dy)));
+                self.synthetic_input_inner(S::Move { x: to.x, y: to.y });
+            }
+            S::MoveOn { window, x, y } => {
+                if let Some(at) = crate::render::content_origin(&self.space, window) {
+                    self.synthetic_input_inner(S::Move { x: at.x as f64 + x, y: at.y as f64 + y });
+                }
+            }
+            S::Keysym { keysym, pressed } => {
+                let _ = (serial, time, pointer);
+                self.keysym_input(keysym, pressed);
+            }
             S::Move { x, y } => {
                 let pos: Point<f64, Logical> = (x, y).into();
                 let under = self.surface_under(pos);
@@ -1418,6 +1590,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     return;
                 }
                 if pressed {
+                    self.repoint();
+                    // (An agent's clicks shown too: its demo's.)
+                    self.show_click();
                     self.update_keyboard_focus(pointer.current_location(), serial);
                 }
                 let state = if pressed { smithay::backend::input::ButtonState::Pressed } else { smithay::backend::input::ButtonState::Released };
@@ -1433,6 +1608,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             S::Wheel { dx, dy } => {
                 // As libinput reports a wheel: 15° and 120 a notch.
+                self.repoint();
                 self.stop_glide();
                 let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
                 if dx != 0 {
@@ -1444,11 +1620,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 pointer.axis(self, frame);
                 pointer.frame(self);
             }
-            S::Touch { slot, phase, x, y } => {
-                // As a finger on a touch screen (agents, tests).
+            S::Touch { slot, phase, x, y, window } => {
+                // As a finger on a touch screen (agents, tests, remote
+                // control).
                 let _ = pointer;
                 let slot = input::TouchSlot::from(Some(slot));
-                let at: Point<f64, Logical> = (x, y).into();
+                let origin = match window {
+                    Some(w) => match crate::render::content_origin(&self.space, w) {
+                        Some(o) => o.to_f64(),
+                        None => return,
+                    },
+                    None => Point::default(),
+                };
+                let at: Point<f64, Logical> = origin + Point::from((x, y));
                 match phase {
                     olo_protocol::TouchPhase::Down => {
                         self.touch_down(slot, at, time);
@@ -1470,13 +1654,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     }
                 }
             }
-            S::Contacts { contacts } => {
-                // As a MacBook pad's report would say (testing the palm
-                // trainer headless).
+            S::Contacts { contacts, pad, button } => {
+                // As a pad's report would say (a MacBook's unless it says:
+                // testing the palm trainer headless).
                 let _ = (pointer, time);
                 if self.ipc.wanted(olo_protocol::EventKind::TouchContacts) {
-                    let pad = olo_protocol::touchpad::PadAxes::macbook();
-                    self.ipc.broadcast(olo_protocol::Event::TouchContacts { pad, time_us: crate::contacts::now_us(), contacts, since_key_us: crate::contacts::since_key_us() });
+                    let pad = pad.unwrap_or_else(olo_protocol::touchpad::PadAxes::macbook);
+                    self.ipc.broadcast(olo_protocol::Event::TouchContacts { pad, time_us: crate::contacts::now_us(), contacts, since_key_us: crate::contacts::since_key_us(), button });
                 }
             }
             S::Scroll { dx, dy, at_us } => {
@@ -1486,6 +1670,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 if dx == 0.0 && dy == 0.0 {
                     self.pacer.lifted(now);
                 } else {
+                    self.repoint();
                     let out = self.pacer.fingers(now, dx, dy);
                     self.send_paced(out);
                 }

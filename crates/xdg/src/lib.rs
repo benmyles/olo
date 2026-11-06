@@ -10,9 +10,11 @@ use std::{
 
 pub mod apps;
 pub mod desktop_entry;
+pub mod electron;
 pub mod legacy;
 pub mod mime;
 pub mod open;
+pub mod quirks;
 pub mod scope;
 pub mod settings;
 pub mod themes;
@@ -264,6 +266,37 @@ pub fn upgrade_env(cmd: &mut std::process::Command) {
     }
 }
 
+/// The user's runtime directory (`XDG_RUNTIME_DIR`, where the session's
+/// sockets and per-display files are). A program started with a bare
+/// environment (a coding agent's MCP server: Codex passes only HOME, PATH
+/// and a few more) finds the standard one, /run/user/UID, when it's
+/// there and the user's; else the temporary directory.
+pub fn runtime_dir() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
+        return dir.into();
+    }
+    // SAFETY: getuid can't fail.
+    let uid = unsafe { libc::getuid() };
+    let standard = std::path::PathBuf::from(format!("/run/user/{uid}"));
+    match std::fs::metadata(&standard) {
+        Ok(m) if m.is_dir() && std::os::unix::fs::MetadataExt::uid(&m) == uid => standard,
+        _ => std::env::temp_dir(),
+    }
+}
+
+/// What a session service exits with when it isn't wanted (turned off in
+/// its settings): olo-session doesn't start it again (until an upgrade
+/// asks its services to start once more).
+pub const SERVICE_NOT_WANTED: i32 = 75;
+
+/// Passwords' SSH agent's socket for this session (`SSH_AUTH_SOCK`): in
+/// the runtime folder, one a display (an Agent Screen's Passwords has its
+/// own).
+pub fn ssh_agent_socket() -> std::path::PathBuf {
+    let display: String = display_name().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+    runtime_dir().join(format!("olo-ssh-agent-{}.sock", if display.is_empty() { "wayland-0".into() } else { display }))
+}
+
 /// This session's Wayland display by its name (`wayland-1`; empty if
 /// none), for files and sockets kept per display: `WAYLAND_DISPLAY` may
 /// name the socket by its full path instead.
@@ -296,6 +329,10 @@ fn spawn_detached_pid(cmd: &str) -> std::io::Result<u32> {
     use std::os::unix::process::CommandExt;
     let mut c = std::process::Command::new("/bin/sh");
     c.arg("-c").arg(cmd);
+    if let Some(program) = cmd.split_whitespace().next() {
+        electron::on_screen(&mut c, program.as_ref());
+        quirks::apply(&mut c, program.as_ref());
+    }
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.to_owned())) {
         let path = std::env::var_os("PATH").unwrap_or_default();
         if let Ok(path) = std::env::join_paths(std::iter::once(dir).chain(std::env::split_paths(&path))) {

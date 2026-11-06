@@ -53,11 +53,13 @@ pub struct WindowOptions {
     /// What app_server knows the window by when Terminal comes back (the
     /// kit's `restore_key`).
     pub restore_key: Option<String>,
+    /// Kept out of screen shares (the kit's `private`: the sudo prompt).
+    pub private: bool,
 }
 
 impl WindowOptions {
     pub fn new(title: impl Into<String>, w: u32, h: u32) -> WindowOptions {
-        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, restore_key: None }
+        WindowOptions { title: title.into(), size: (w, h), min_size: None, max_size: None, under_pointer: false, alert: None, restore_key: None, private: false }
     }
 
     /// An alert saying `message`: as tall as it needs, fixed, over the
@@ -73,6 +75,11 @@ impl WindowOptions {
 
     pub fn max_size(mut self, w: u32, h: u32) -> Self {
         self.max_size = Some((w, h));
+        self
+    }
+
+    pub fn private(mut self) -> Self {
+        self.private = true;
         self
     }
 }
@@ -145,6 +152,7 @@ impl WinOps for Context<'_, Terminal> {
         }
         options.under_pointer = o.under_pointer;
         options.restore_key = o.restore_key.clone();
+        options.private = o.private;
         let me = self.weak_entity();
         let made: Rc<std::cell::RefCell<Option<Entity<Shell>>>> = Rc::default();
         let keep = made.clone();
@@ -722,7 +730,10 @@ impl Terminal {
         if focused {
             t.tab_mut().attention = false;
         }
-        t.tab().session.woke();
+        // (Every pane drawn has taken its wake-up, the tiles too.)
+        for &(i, _, _) in &layout.panes {
+            t.tabs[i].session.woke();
+        }
         {
             let session = &t.tab().session;
             let mut current = session.shared.scheme.lock().unwrap();
@@ -1393,7 +1404,15 @@ impl Terminal {
                     .enabled(t.tabs[i].group.is_some())
                     .item("Move to New Window", format!("tab-detach:{shell}"))
                     .enabled(t.tabs.len() > 1)
-                    .submenu(self.move_to_window_menu(id, shell, true))
+                    .submenu(self.move_to_window_menu(id, shell, true));
+                // Or to an agent screen, its shell running on (the person's
+                // own Terminal: one started on a screen keeps its shells).
+                let menu = if olo_kit_base::moving::menus_offer() {
+                    menu.submenu(Menu::agent_screens("Move to Agent Screen", &olo_kit_base::moving::screens(), &format!("tab-screen:{shell}:")))
+                } else {
+                    menu
+                };
+                let menu = menu
                     .separator()
                     .item("Close Other Tabs", format!("tab-close-others:{shell}"))
                     .item("Close Tab", format!("tab-close:{shell}"))

@@ -1,0 +1,13 @@
+[package]
+name = "olo-pam-face"
+description = "Face unlock in PAM: sudo and polkit ask olo-faced for a look before the password"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "pam_olo_face"
+crate-type = ["cdylib"]
+
+[dependencies]
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }

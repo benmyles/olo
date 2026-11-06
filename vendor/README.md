@@ -36,6 +36,10 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   libnvidia-encode and Olo builds and starts without NVIDIA's driver.
   olo-video's `nvenc` opens the library at run time and calls it through
   its function table.
+- **va-sys/** (MIT): libva 2.24's declarations (va.h, va_drm.h,
+  va_drmcommon.h, va_enc_av1.h) for what olo-video's VA-API AV1 encoder
+  uses, from bindgen, types only (how: its README): nothing links libva;
+  olo-video's `vaapi` opens libva.so.2 and libva-drm.so.2 at run time.
 - **bebook/**: the Be Book as Markdown, for reference (see its README).
 
 # Vendored libraries
@@ -72,3 +76,10 @@ Owned here outright (path dependencies), not tracking a release.
     only ever raises the level, leaving loud talkers to the analog input
     volume, which Olo doesn't touch.
   - Manifests trimmed (no examples, benches, dev-dependencies).
+- **rust_h265 0.4.1** (MIT OR Apache-2.0): its SPS parser skips the
+  VUI's colour description, and many HEVC files say they're HDR10 (PQ in
+  BT.2020) only there: Chromium's `bear-1280x720-hevc-10bit-hdr10.mp4`
+  has no `colr` box. The patch (`src/sps.rs`: `StreamColour`, kept as the
+  VUI is read; `src/lib.rs`: `stream_colour`, for an SPS NAL unit) keeps
+  it, for Olo's HDR video (`olo_images::hevc`). Its tests, benches and
+  examples are left out. Drop it if upstream reads the VUI.

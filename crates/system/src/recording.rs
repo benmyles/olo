@@ -122,6 +122,52 @@ impl Drop for Recording {
     }
 }
 
+/// The default output's monitor: what the computer is playing.
+pub const COMPUTER: &str = "@DEFAULT_MONITOR@";
+
+/// A source recorded as it comes (a screen recording's sound): float
+/// samples at [`RATE`], `channels` interleaved, each piece handed to the
+/// callback on the client's thread. Stopped when dropped.
+pub struct Capture {
+    stream: Option<RecordStream>,
+    _client: Client,
+}
+
+impl Capture {
+    /// Record `source` (a source's name, [`COMPUTER`], or None for the
+    /// default microphone).
+    pub fn start(source: Option<&str>, channels: u8, name: &str, mut got: impl FnMut(&[f32]) + Send + 'static) -> Result<Capture, String> {
+        let client = connect()?;
+        let sink = move |data: &[u8]| {
+            let samples: Vec<f32> = data.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
+            got(&samples);
+        };
+        let params = RecordStreamParams {
+            sample_spec: SampleSpec { format: SampleFormat::Float32Le, channels, sample_rate: RATE },
+            channel_map: if channels == 2 { ChannelMap::stereo() } else { ChannelMap::mono() },
+            source_name: Some(match source {
+                Some(s) => CString::new(s).map_err(|e| e.to_string())?,
+                None => protocol::DEFAULT_SOURCE.to_owned(),
+            }),
+            // A fragment every 40 ms: few wakeups, little lag.
+            buffer_attr: BufferAttr { fragment_size: bytes(40) * u32::from(channels), ..Default::default() },
+            flags: StreamFlags { adjust_latency: true, ..Default::default() },
+            props: props(name),
+            ..Default::default()
+        };
+        let stream = futures_lite::future::block_on(client.create_record_stream(params, sink)).map_err(|e| format!("can't record: {e}"))?;
+        Ok(Capture { stream: Some(stream), _client: client })
+    }
+}
+
+impl Drop for Capture {
+    fn drop(&mut self) {
+        if let Some(s) = self.stream.take() {
+            let _ = futures_lite::future::block_on(s.delete());
+        }
+    }
+}
+
 /// What a [`Player`] and its stream share.
 struct Playing {
     takes: Vec<Arc<[f32]>>,

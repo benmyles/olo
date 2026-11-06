@@ -35,7 +35,24 @@ pub struct Download {
     pub error: Option<String>,
 }
 
+/// Whose downloads they are: Chrome's, or Slack's (olo-slack's Chrome),
+/// whose Deskbar count is its unread messages, so its downloads show only
+/// how far along they are there.
+#[derive(Debug, Clone, Copy)]
+pub struct Whose {
+    /// The name its notifications go by.
+    pub name: &'static str,
+    /// Its desktop entry (Deskbar's row).
+    pub entry: &'static str,
+    /// Whether Deskbar's count is the downloads'.
+    pub counted: bool,
+}
+
+pub const CHROME: Whose = Whose { name: "Google Chrome", entry: "google-chrome", counted: true };
+pub const SLACK: Whose = Whose { name: "Slack", entry: "olo-slack", counted: false };
+
 pub struct Downloads {
+    whose: Whose,
     notes: Notifier,
     /// What each notification is about, for its actions.
     shown: std::sync::Arc<olo_sync::Mutex<HashMap<NoteId, PathBuf>>>,
@@ -48,10 +65,10 @@ pub struct Downloads {
 }
 
 impl Downloads {
-    pub fn new() -> Downloads {
+    pub fn new(whose: Whose) -> Downloads {
         let shown: std::sync::Arc<olo_sync::Mutex<HashMap<NoteId, PathBuf>>> = Default::default();
         let about = shown.clone();
-        let notes = Notifier::with_events("Google Chrome", "google-chrome", move |e| {
+        let notes = Notifier::with_events(whose.name, whose.entry, move |e| {
             let NoteEvent::Action { id, key, .. } = e else { return };
             let Some(file) = about.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned() else { return };
             let done = match key.as_str() {
@@ -62,7 +79,7 @@ impl Downloads {
                 eprintln!("olo-chrome: {e}");
             }
         });
-        Downloads { notes, shown, bus: zbus::blocking::Connection::session().ok(), marked: Vec::new(), told: None }
+        Downloads { whose, notes, shown, bus: zbus::blocking::Connection::session().ok(), marked: Vec::new(), told: None }
     }
 
     /// The ones under way now.
@@ -111,11 +128,13 @@ impl Downloads {
     fn tell_deskbar(&self, (count, progress): (usize, Option<f64>)) {
         let Some(bus) = &self.bus else { return };
         let mut props: HashMap<&str, Value> = HashMap::new();
-        props.insert("count", Value::from(count as i64));
-        props.insert("count-visible", Value::from(count > 0));
+        if self.whose.counted {
+            props.insert("count", Value::from(count as i64));
+            props.insert("count-visible", Value::from(count > 0));
+        }
         props.insert("progress", Value::from(progress.unwrap_or(0.0)));
         props.insert("progress-visible", Value::from(progress.is_some()));
-        let app = format!("application://{}", olo_xdg::open::CHROME_ENTRY);
+        let app = format!("application://{}.desktop", self.whose.entry);
         if let Err(e) = bus.emit_signal(None::<&str>, "/com/olodesktop/chrome/downloads", "com.canonical.Unity.LauncherEntry", "Update", &(app, props)) {
             eprintln!("olo-chrome: can't tell Deskbar about downloads: {e}");
         }

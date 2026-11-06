@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Other programs across Olo's upgrades: each one alive, its windows shown.
+
+  outside-check [--times N] [--scale S] [--only gtk,electron,chrome,qt]
+
+Starts a headless session of its own under olo-session ("outside", so
+app_server restarts behind olo-wlproxy as an upgrade restarts it), its
+HOME a folder of its own under /var/tmp, with a touch screen that comes
+2.5 s after each app_server starts (as libinput finds the ThinkPad's,
+`OLO_HEADLESS_TOUCH`) and a pen tablet (`OLO_HEADLESS_TABLET`), at a
+fractional scale (1.5 unless --scale). In it:
+
+  gtk        GNOME Text Editor (GTK 4)
+  electron   Slack (Electron), when installed (its first window waits
+             for its sign-in page: it needs the network)
+  chrome     Chrome through olo-chrome, its profile in the session's
+             folder (never yours), when Olo's Chrome is installed
+  qt         a Qt 6 window, when a Python with PySide6 is given in
+             OLO_QT_PYTHON (no Qt program comes with the system)
+
+Then restarts app_server N times (`tsession reload`, 3 unless --times),
+and after each checks every program is still running and its windows
+are listed again. Run it outside any sandbox of the shell's (a coding
+agent's): Chromium's own sandbox can't start inside one, and Chrome and
+Slack never get as far as a window. What failed before (2026-11-05): app_server ended each
+program's connection over a touch asked for before its seat had touch
+("missing touch capability": Chrome and Slack gone), and GTK crashed on
+a tablet's cursor surface made again after it was destroyed.
+"""
+import argparse, json, os, shutil, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+N = "outside"
+SCRATCH = f"/var/tmp/olo-outside-check-{os.getpid()}"
+HOME = os.path.join(SCRATCH, "home")
+ENV = dict(os.environ, TSESSION_PROFILE="release", OLO_HEADLESS_TOUCH="2500", OLO_HEADLESS_TABLET="1")
+# Not the person's display; and no proxy of the shell's (a coding agent's
+# sandbox has one): Slack's first window waits for its sign-in page.
+for var in ("WAYLAND_DISPLAY", "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "ALL_PROXY", "NO_PROXY", "no_proxy", "NODE_EXTRA_CA_CERTS"):
+    ENV.pop(var, None)
+
+QT = r'''
+import sys
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel
+app = QApplication(sys.argv)
+w = QMainWindow(); w.setWindowTitle("Qt Outside Check"); w.setCentralWidget(QLabel("Qt 6 across upgrades")); w.resize(420, 240); w.show()
+app.exec()
+'''
+
+
+def ts(*a):
+    return subprocess.run([sys.executable, os.path.join(ROOT, "tools/dev/tsession"), *a], capture_output=True, text=True, env=ENV)
+
+
+def ipc(r):
+    out = ts("ipc", N, json.dumps(r)).stdout
+    return json.loads(out) if out.strip() else {}
+
+
+def windows():
+    return ipc({"type": "list_windows"}).get("windows", [])
+
+
+def display():
+    return json.load(open(f"/tmp/olo-dev/{N}/env.json"))["WAYLAND_DISPLAY"]
+
+
+def ours(pattern):
+    """This session's processes whose command line has `pattern`, never
+    anyone else's: by `pattern` naming the session's folder (a profile in
+    it), else by the display in their environment (Chromium writes over
+    its environment as it names its processes, so it's matched by its
+    profile)."""
+    found = []
+    for p in subprocess.run(["pgrep", "-f", "--", pattern], capture_output=True, text=True).stdout.split():
+        if int(p) == os.getpid():
+            continue
+        # The program itself, not Chromium's helpers (which come and go).
+        try:
+            cmd = open(f"/proc/{p}/cmdline", "rb").read()
+        except OSError:
+            continue
+        if b"--type=" in cmd or b"crashpad" in cmd:
+            continue
+        if SCRATCH in pattern:
+            found.append(int(p))
+            continue
+        try:
+            env = open(f"/proc/{p}/environ", "rb").read().split(b"\0")
+        except OSError:
+            continue
+        if f"WAYLAND_DISPLAY={display()}".encode() in env:
+            found.append(int(p))
+    return found
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--times", type=int, default=3)
+    ap.add_argument("--scale", default="1.5")
+    ap.add_argument("--only", default="gtk,electron,chrome,qt")
+    ap.add_argument("--keep", action="store_true", help="leave the session running (stop it with tsession stop outside)")
+    a = ap.parse_args()
+    want = set(a.only.split(","))
+    os.makedirs(HOME, exist_ok=True)
+    chrome_install = os.path.expanduser("~/.local/share/olo/chrome")
+    programs = []  # (name, how to find its processes, app id or title to see)
+    failures = []
+
+    def check(ok, what):
+        print(("  ok  " if ok else "  FAIL ") + what)
+        if not ok:
+            failures.append(what)
+
+    try:
+        print(ts("start", N, "1600x1000", "--session", "--home", HOME, "--scale", a.scale).stdout.strip())
+        time.sleep(3)
+        quiet = ["GTK_A11Y=none", "NO_AT_BRIDGE=1"]
+        if "gtk" in want and shutil.which("gnome-text-editor"):
+            ts("run", N, *quiet, "/usr/bin/gnome-text-editor", "--standalone")
+            programs.append(("GTK 4 (Text Editor)", "gnome-text-editor --standalone", "org.gnome.TextEditor"))
+        if "electron" in want and shutil.which("slack"):
+            # (Its data in the session's folder: matched by it.)
+            slack_dir = os.path.join(SCRATCH, "slack")
+            ts("run", N, *quiet, "/usr/bin/slack", "--ozone-platform=wayland", "--enable-features=UseOzonePlatform", "--password-store=basic", f"--user-data-dir={slack_dir}")
+            programs.append(("Electron (Slack)", f"--user-data-dir={slack_dir}", "Slack"))
+        if "chrome" in want and os.path.isdir(chrome_install):
+            # Chrome found through the session's HOME; its profile there too.
+            os.makedirs(os.path.join(HOME, ".local/share/olo"), exist_ok=True)
+            os.symlink(chrome_install, os.path.join(HOME, ".local/share/olo/chrome"))
+            profile = os.path.join(SCRATCH, "chrome-profile")
+            ts("run", N, *quiet, *os.environ.get("OLO_CHECK_CHROME_ENV", "").split(), f"CHROME_CONFIG_HOME={SCRATCH}", os.path.join(ROOT, "target/release/olo-chrome"), f"--user-data-dir={profile}", "--no-first-run", "--password-store=basic", "about:blank")
+            programs.append(("Chrome", f"--user-data-dir={profile}", "about:blank"))
+        if "qt" in want and os.environ.get("OLO_QT_PYTHON"):
+            script = os.path.join(SCRATCH, "qt_window.py")
+            open(script, "w").write(QT)
+            ts("run", N, "QT_QPA_PLATFORM=wayland", os.environ["OLO_QT_PYTHON"], script)
+            programs.append(("Qt 6", script, "Qt Outside Check"))
+        elif "qt" in want:
+            print("  (Qt: skipped; set OLO_QT_PYTHON to a Python with PySide6)")
+        def shown(see):
+            return [w for w in windows() if see in (w.get("app_id") or "") or see in (w.get("title") or "")]
+
+        # Each program's first window, given up to a minute (Chrome's GTK
+        # waits 25 s for an accessibility bus the test session hasn't got;
+        # Slack's for its sign-in page).
+        end = time.time() + 60
+        while time.time() < end and not all(shown(see) for _, _, see in programs):
+            time.sleep(1)
+
+        # Slack with no network shows no window (its first is its sign-in
+        # page): its process is checked, its window can't be.
+        log = os.path.join(SCRATCH, "slack/logs/default/browser.log")
+        offline = os.path.exists(log) and "Could not load url" in open(log, errors="replace").read()
+        if offline:
+            print("  (Slack: no network here for its first window; its process and connection are checked)")
+        windowless = {"Electron (Slack)"} if offline else set()
+
+        before = {}
+        for name, pattern, see in programs:
+            pids = ours(pattern)
+            before[name] = pids
+            check(bool(pids) and (name in windowless or bool(shown(see))), f"{name} running ({len(pids)} processes)" + ("" if name in windowless else " with its window"))
+        for i in range(a.times):
+            ts("reload", N)
+            time.sleep(8)
+            print(f"after restart {i + 1}:")
+            for name, pattern, see in programs:
+                alive = [p for p in before[name] if os.path.exists(f"/proc/{p}")]
+                window = "" if name in windowless else f", window {'shown' if shown(see) else 'GONE'}"
+                check(len(alive) == len(before[name]) and (name in windowless or bool(shown(see))), f"{name}: {len(alive)} of {len(before[name])} processes{window}")
+        log = f"/tmp/olo-dev/{N}/app_server.log"
+        errors = [l.strip()[-160:] for l in open(log, errors="replace") if "app_server's error" in l] if os.path.exists(log) else []
+        check(not errors, "no program's connection ended by app_server" + (f": {errors[:3]}" if errors else ""))
+    finally:
+        if not a.keep:
+            ts("stop", N)
+            shutil.rmtree(SCRATCH, ignore_errors=True)
+    if failures:
+        sys.exit(f"{len(failures)} failed")
+    print("all as they should be")
+
+
+if __name__ == "__main__":
+    main()

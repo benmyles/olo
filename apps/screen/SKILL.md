@@ -42,8 +42,12 @@ is `running`. Delete only screens you made, and only when asked.
 
 ```sh
 olo-screen start demo --size 1920x1080 --scale 2   # a 4K screen (3840 × 2160 pixels)
-olo-screen record-video demo                       # prints {"path": …, "pid": …} at once
+olo-screen record-video demo --show-clicks --show-keys --smooth-pointer   # prints {"path": …, "pid": …} once it's recording
 # … do what the video shows, at a person's pace …
+olo-screen mark-video demo "Choosing a typeface"   # a chapter starts here
+olo-screen caption-video demo "Fonts live in the Font menu" --seconds 3   # in the video only
+olo-screen zoom-video demo 40,60,400,250           # the video zooms to that part (points), held…
+olo-screen zoom-video demo out                     # …and back to the whole screen
 olo-screen pause-video demo                        # set up the next part off camera…
 olo-screen resume-video demo                       # …the pause is cut out of the video
 olo-screen stop-video demo                         # finishes the MP4; prints where it went
@@ -54,7 +58,28 @@ It records only when something changes (a still screen costs nothing),
 up to 30 frames a second (`--fps`), into ~/Videos unless `--to PATH`;
 `--window ID` records one window, `--region X,Y,W,H` part of the screen
 (points from its top left, as `windows` gives frames), `--seconds N`
-stops by itself (counting only what's recorded). For a polished demo:
+stops by itself (counting only what's recorded). `record-video` answers
+once the recording has started (opening the GPU's encoder takes a couple
+of seconds): what you do after it is in the video. `--show-clicks` puts
+a ring where each click lands and `--show-keys` each shortcut on a key
+cap (typing is never shown), so a viewer can follow what you do; `--sound
+computer` records what the screen plays (screens are silent unless
+started with `--sound`), `--as-gif` makes it a GIF (no sound) for a
+short loop, `--codec hevc` makes the file about half the size (it plays in Olo and
+most players; H.264, the default, plays everywhere), `--background`
+(with `--window ID`) shows the window on
+the blurred wallpaper with rounded corners and a shadow, as a polished
+demo of one app usually is, and `--smooth-pointer` makes your pointer's
+jumps (each `move`) glide in the video, as a hand moves it; with
+`--pointer-size 1.5` it's easier to follow. A glide takes about a
+quarter of a second: `move`, wait that long, then `click`. `--zoom-follow` zooms the
+video in around each click and out three seconds after the last click or
+key; for a detail you want seen, `zoom-video` to its frame (from
+`windows` or the tree), let it glide (about 0.7 s), show it, then `out`. Mark each
+step with `mark-video` (the video gets chapters, and the JSON `stop-video`
+prints lists them), and say what's happening with `caption-video`
+(drawn into the video only, low in the middle, never on the screen):
+a short line each, up a little before the step and down after. For a polished demo:
 rehearse it first (without recording), then record it in one go; move
 the pointer deliberately (`move` before `click`), pause a moment after
 each step so it can be seen, and pause the recording (not the demo)
@@ -107,6 +132,13 @@ with every screen, some with one). They're in the screen's own
 Passwords, unlocked and read-only; nothing else of theirs is reachable
 from a screen, and what's shared can't be changed from one. If a login
 you need isn't there, ask the person to share it with your screen.
+
+A screen is a session of its own in other ways too: its own session bus,
+so the person's keyring isn't there (`secret-tool` and libsecret find
+nothing), notifications from programs on it show on the screen (its
+Deskbar's bell), and open and save panels show there. Electron apps
+(Slack, VS Code) run there as the screen's own copy, signed out, as
+Chrome does.
 
 Never `type` a password or code: `type` and `set` keep what they typed
 in the screen's history (and its videos). Fill it, or paste it, one of
@@ -249,6 +281,26 @@ olo-screen history agent --look 12 /tmp/then.png   # the screen as it was when a
 olo-screen history agent --export /tmp/agent.mp4   # all of it as a video, quiet stretches cut
 olo-screen history agent --clear
 ```
+
+## Windows moved between the person and your screen
+
+The person can put one of their windows on your screen for you to work
+in (a Terminal tab, a Chrome window, a document): it just appears there,
+its program running on (an Olo app the same, another program with all
+its windows). Find it with `windows` or `tree` as usual. When you're
+done, or when they ask, hand windows back to their display:
+
+```sh
+olo-screen give agent                          # every window on the screen
+olo-screen give agent --window 4 --workspace 2 # one, onto their workspace 2
+```
+
+It answers JSON: `went` (each program and its windows' new ids on their
+display) and `stayed` (with why). Stopping a screen sends their own
+windows back by itself; what you started there and gave them stays
+theirs. `olo-screen take NAME --window ID` moves the person's windows
+onto a screen: only when they ask you to, never on your own (they're
+their windows).
 
 ## When the person takes control
 

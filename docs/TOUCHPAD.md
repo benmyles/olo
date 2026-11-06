@@ -401,6 +401,93 @@ it reads every slot with `EVIOCGMTSLOTS` (the kernel's state, nothing
 consumed) and sends `Event::TouchContacts` when it changed. Headless,
 `SyntheticEvent::Contacts` stands in for a pad.
 
+## The ThinkPad's touchpad (5 November 2026)
+
+Ben, of the ThinkPad P1 Gen 9: "when i try to do the palm training it
+just thinks my palms are fingertips and only seems to be registering a
+small dot", then "turn this data you collected into the base model for
+the thinkpad touchpad", "it should be ultra optimized specifically for
+this thinkpad touchpad", "each touchpad type should have its own specific
+custom model type and weights and scoring/training should adapt".
+
+**The pad.** A Goodix GXTP5420 (I²C HID, 27C6:0F90), a haptic pad, 135 ×
+85 mm (3600 × 1800 units: 27 and 21 a millimetre). Its HID report (its
+descriptor, read from sysfs) has for each of five contacts: Confidence,
+Tip, the contact id, X, Y and Tip Pressure (0–2000); no width or height.
+The kernel reports Confidence 0 as `ABS_MT_TOOL_TYPE = MT_TOOL_PALM`.
+libinput's own quirk (`30-vendor-goodix.quirks`, "Goodix Haptic Touchpad
+(27C6:0F90)") makes it a pressure pad, so libinput drops its pressure.
+
+**What it sends** (two recordings of Ben's hands, the evdev stream and
+the raw reports read-only as root, step by step: `crates/palm/data/`):
+
+| | firmware's palm | pressure (of 2000) |
+|---|---|---|
+| a flat palm (two contacts, ~47 mm apart) | every report | 0 (at most 39) |
+| the heel of the hand on the bottom edge | every report | 2–19 |
+| a flat thumb | every report | 0 (at most 48) |
+| palms resting as when typing | from the first report (one at 28 ms), then a finger again on 20–40% of reports | 18–75 |
+| a heel resting while a finger points | its first report, then a finger on 98% | up to 56 |
+| fingertips: pointing to every edge and corner, taps, clicks, a drag, two-finger scrolls, a thumb resting low and clicking | never | 0–22; a click up to 348 |
+
+So the pressure is the click's force, not the contact's area (a palm laid
+flat weighs nothing): sizing contacts by it is why the trainer drew a
+palm as a dot. The firmware is right every time on these hands: every
+palm from its first report (or nearly), never a finger. But it calls a
+resting palm a finger again, and libinput (`tp_palm_detect_tool_triggered`)
+follows it both ways, so the palm moves the pointer then. And the kernel
+ends a palm right after reporting it (`hid-multitouch`'s pending palm
+release, a frame 5 µs later) and brings it back at the same place 7 ms on
+under a new id, sometimes a finger from then on. Where a contact is
+tells nothing: thumbs waiting to click and heels land in the same
+corners (a model that read the place took fingertips tapping in the
+bottom corners for palms).
+
+**Its model** (`olo_palm::Kind::ThinkPad`): what the firmware has said of
+the contact (now, ever, how often, at its first report), its speed, its
+force now and at most, and its age; 8 features, 6 hidden units, judged
+from its first report (no wait: the firmware says so at once). A palm
+the kernel ends and brings back within 40 ms and 5 mm is one contact.
+Trained from the hand-written one on both recordings (85 contacts, 25
+palms, 60 fingers): every palm caught (by its 5th report: the one the
+firmware called at 28 ms) and no finger taken, as the firmware's flag
+alone does; fingers it never saw (a fingertip still mid-pad or at an
+edge with another down, a thumb resting low, two scrolling, a press)
+stay fingers (`fingers_it_never_saw_stay_fingers`).
+
+**The filter there** (profile "ThinkPad"): a palm stays a palm until it
+lifts, told to libinput as its tool type: the firmware's palms (across
+the kernel's new ids) and the model's. Replaying both recordings through
+the plugin as libinput would get them, 315 of the firmware's flips back
+to a finger are held as palms (2467 palm reports), and none of 12,663
+finger reports is told a palm; without the filter the first resting
+palm is told a finger at its 19th report. Its quirk takes the pressure
+pad property away (the model reads the force) with `AttrPressureRange=none`
+(libinput's "pressure-based touch detection disabled": its default
+threshold, 240, is past any fingertip here) and
+`AttrPalmPressureThreshold=0` (its default, 130, is under a fingertip's
+click, and a palm by pressure is one for good), as libinput 1.32's
+`tp_init_pressure` and `tp_init_palmdetect_pressure` read them. A frame
+costs the plugin 7.5 µs there (the MacBook's 16–27 µs), and nothing when
+nothing touches.
+
+**The dead touchpad** (Ben, after upgrading, 2026-11-05: "now the
+touchpad doesn't even work"). The quirk first said `AttrPressureRange=0:0`,
+which libinput's parser refuses (`parse_range_property`: the low must be
+under the high; `none` is how to say no range). One line refused and
+libinput loads no quirks at all ("Failed to load the device quirks"), its
+own for this pad too: the pad was no pressure pad then, and libinput
+counted its touches by pressure at its default threshold (240), which no
+fingertip here reaches. With `none`, the real libinput (`libinput
+debug-events --verbose` with the file in a private `XDG_RUNTIME_DIR`,
+read-only) says "quirks: enabling INPUT_PROP_PRESSUREPAD", then
+"disabling", then "pressure-based touch detection disabled", and detects
+palms by their tool ("palm detected (tool-palm)"). And app_server now
+writes a quirk only if every line is one libinput's parser takes
+(`touch_filter::takes`, its rules for what Olo writes, from libinput
+1.32's source): a line it wouldn't take, and the filter goes on without
+its quirk rather than taking every quirk down with it.
+
 ## Preferences ▸ Touchpad & Mouse
 
 - **Touchpad:** the pad app_server found (`Request::InputDevices`:

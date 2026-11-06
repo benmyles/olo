@@ -33,7 +33,9 @@
 //! `{"window_over":{"window":ID,"onto":ID|null,"x":X,"y":Y}}` and
 //! `{"window_dropped":{…}}` → `{"ok":true}`: from app_server, a window of
 //! ours moved over another of ours (surface ids, `onto`'s coordinates),
-//! and let go there (`App::window_dropped`).
+//! and let go there (`App::window_dropped`);
+//! `{"move":MoveTo}` → [`crate::moving::Moved`]: the app, or one of its
+//! windows, to another display's app_server (an agent screen's).
 
 use std::{
     io::{BufRead, BufReader, Write},
@@ -248,6 +250,7 @@ pub enum Ask {
     LoseGpu(bool),
     WindowOver(WindowAt),
     WindowDropped(WindowAt),
+    Move(crate::moving::MoveTo),
 }
 
 /// A command to choose in one window's menus.
@@ -287,6 +290,8 @@ pub enum Query {
     LoseGpu(mpsc::Sender<bool>),
     WindowOver(WindowAt),
     WindowDropped(WindowAt),
+    /// Go to another display, or send a window there.
+    Move(crate::moving::MoveTo, mpsc::Sender<crate::moving::Moved>),
 }
 
 /// How long a tree may take: every window draws a frame for it.
@@ -294,6 +299,10 @@ const TREE_WAIT: Duration = Duration::from_millis(1500);
 
 /// How long the app has to answer (it may be busy drawing).
 const WAIT: Duration = Duration::from_millis(400);
+
+/// How long a move may take to be under way (its state saved, a copy
+/// started).
+const MOVE_WAIT: Duration = Duration::from_secs(4);
 
 fn socket_path(pid: u32) -> PathBuf {
     let rt = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
@@ -324,13 +333,18 @@ fn peer(s: &UnixStream) -> String {
     format!("{} ({})", name.trim(), cred.pid)
 }
 
-/// Remove the sockets of apps that died without cleaning up.
+/// Remove the sockets of apps that died without cleaning up, and the
+/// state an app left for its next self that never came (`restore`: killed
+/// between writing it and re-executing, as a session ends): named by a
+/// pid that has gone, nothing can claim it.
 fn sweep(ours: &std::path::Path) {
     let Some(dir) = ours.parent() else { return };
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for e in entries.flatten() {
         let name = e.file_name();
-        let Some(pid) = name.to_str().and_then(|n| n.strip_prefix("olo-menus-")).and_then(|n| n.strip_suffix(".sock")) else { continue };
+        let Some(name) = name.to_str() else { continue };
+        let pid = name.strip_prefix("olo-menus-").and_then(|n| n.strip_suffix(".sock")).or_else(|| name.strip_prefix("olo-restore-").and_then(|n| n.strip_suffix(".json")));
+        let Some(pid) = pid else { continue };
         if pid.parse::<u32>().is_ok() && !std::path::Path::new("/proc").join(pid).exists() {
             let _ = std::fs::remove_file(e.path());
         }
@@ -414,6 +428,12 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
                         to(Query::WindowDropped(at));
                         serde_json::to_string(&serde_json::json!({ "ok": true }))
                     }
+                    Ok(Ask::Move(to_go)) => {
+                        tracing::info!(window = ?to_go.surface, by = %peer(&s), "asked to move to another display");
+                        let (tx, rx) = mpsc::channel();
+                        to(Query::Move(to_go, tx));
+                        serde_json::to_string(&rx.recv_timeout(MOVE_WAIT).unwrap_or_else(|_| crate::moving::Moved::failed("it didn't answer in time")))
+                    }
                     Ok(Ask::LoseGpu(_)) => {
                         tracing::warn!(by = %peer(&s), "asked to lose the GPU device");
                         let (tx, rx) = mpsc::channel();
@@ -438,10 +458,30 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
 /// Its menus are empty and nothing can be invoked. Runs until the
 /// process ends; the socket is left for the next sweep.
 pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> + Send + 'static) -> std::io::Result<()> {
+    serve(pid, Served { app_id: app_id.to_owned(), trees: Box::new(trees), menus: Box::new(Vec::new), invoke: Box::new(|_| false) })
+}
+
+/// What [`serve`] answers for a program that isn't a kit app.
+pub struct Served {
+    /// The app id its menus are for.
+    pub app_id: String,
+    /// Its windows' widget trees (it can't tell its surfaces apart: all of
+    /// them, matched by title and size); may take up to `TREE_WAIT`.
+    pub trees: Box<dyn Fn() -> Vec<WindowTree> + Send>,
+    /// Its commands, as menu items (the palette lists them); quick.
+    pub menus: Box<dyn Fn() -> Vec<Entry> + Send>,
+    /// Do a command of `menus`'; whether it was done. Quick.
+    pub invoke: Box<dyn Fn(&str) -> bool + Send>,
+}
+
+/// Answer a kit app's socket for process `pid`, a program that isn't one
+/// (the Olo extension's host does it for Chrome, and for olo-slack's
+/// Chrome with Slack's commands), with `served`. Runs until the process
+/// ends; the socket is left for the next sweep.
+pub fn serve(pid: u32, served: Served) -> std::io::Result<()> {
     let path = socket_path(pid);
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
-    let app_id = app_id.to_owned();
     std::thread::Builder::new().name("trees".into()).spawn(move || {
         for s in listener.incoming().flatten() {
             let _ = s.set_read_timeout(Some(WAIT));
@@ -450,14 +490,17 @@ pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> +
                 continue;
             }
             let answer = match serde_json::from_str::<Ask>(&line) {
-                Ok(Ask::Menus(_) | Ask::MenusIn(_)) => serde_json::to_string(&Menus { app_id: app_id.clone(), entries: Vec::new() }),
-                Ok(Ask::Invoke(_) | Ask::InvokeIn(_) | Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
+                Ok(Ask::Menus(_) | Ask::MenusIn(_)) => serde_json::to_string(&Menus { app_id: served.app_id.clone(), entries: (served.menus)() }),
+                Ok(Ask::Invoke(cmd) | Ask::InvokeIn(InvokeIn { command: cmd, .. })) => {
+                    tracing::info!(command = %cmd, by = %peer(&s), "asked to choose a command");
+                    serde_json::to_string(&serde_json::json!({ "ok": (served.invoke)(&cmd) }))
+                }
+                Ok(Ask::Focus(_) | Ask::LoseGpu(_) | Ask::WindowOver(_) | Ask::WindowDropped(_)) => serde_json::to_string(&serde_json::json!({ "ok": false })),
                 Ok(Ask::Frames(_)) => serde_json::to_string(&Vec::<FrameTimes>::new()),
                 Ok(Ask::Review(_)) => serde_json::to_string(&Vec::<WindowReview>::new()),
+                Ok(Ask::Move(_)) => serde_json::to_string(&crate::moving::Moved::failed(crate::moving::NOT_KIT)),
                 Ok(Ask::Path(_)) => serde_json::to_string(&serde_json::json!({ "path": null })),
-                // It can't tell its surfaces apart: all of them, matched
-                // by title and size.
-                Ok(Ask::Tree(_) | Ask::Hints(_)) => serde_json::to_string(&trees()),
+                Ok(Ask::Tree(_) | Ask::Hints(_)) => serde_json::to_string(&(served.trees)()),
                 Err(_) => continue,
             };
             if let Ok(answer) = answer {
@@ -474,7 +517,12 @@ pub const TREE_WAIT_FOR: Duration = TREE_WAIT;
 
 fn ask(pid: u32, ask: &Ask) -> Option<String> {
     let s = UnixStream::connect(socket_path(pid)).ok()?;
-    s.set_read_timeout(Some(if matches!(ask, Ask::Tree(_) | Ask::Review(_)) { TREE_WAIT + WAIT } else { WAIT * 2 })).ok()?;
+    s.set_read_timeout(Some(match ask {
+        Ask::Tree(_) | Ask::Review(_) => TREE_WAIT + WAIT,
+        Ask::Move(_) => MOVE_WAIT + WAIT,
+        _ => WAIT * 2,
+    }))
+    .ok()?;
     s.set_write_timeout(Some(WAIT)).ok()?;
     let mut line = serde_json::to_string(ask).ok()?;
     line.push('\n');
@@ -531,6 +579,11 @@ pub fn tree(pid: u32) -> Option<Vec<WindowTree>> {
 pub fn path(pid: u32, surface: u32) -> Option<PathBuf> {
     let answer: serde_json::Value = serde_json::from_str(&ask(pid, &Ask::Path(surface))?).ok()?;
     answer["path"].as_str().map(PathBuf::from)
+}
+
+/// Ask the kit app with process id `pid` to move ([`crate::moving::ask`]).
+pub(crate) fn ask_move(pid: u32, to: &crate::moving::MoveTo) -> Option<crate::moving::Moved> {
+    serde_json::from_str(&ask(pid, &Ask::Move(to.clone()))?).ok()
 }
 
 /// The layout review of each window of the kit app with process id

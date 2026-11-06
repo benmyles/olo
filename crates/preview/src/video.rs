@@ -44,10 +44,18 @@ struct Frame {
 #[derive(Clone)]
 pub enum Picture {
     Rgba(Image),
-    /// Straight BGRA bytes, `size` pixels (what pages take).
+    /// Straight BGRA bytes, `size` pixels (what pages take); `p3`: in
+    /// Display P3 (a wide video's), else sRGB.
     Bgra {
         size: [usize; 2],
         data: Arc<Vec<u8>>,
+        p3: bool,
+    },
+    /// An HDR picture as HDR10 (PQ in BT.2020), RGBA half floats, for a
+    /// window drawing in it ([`Video::draw_hdr`]).
+    Deep {
+        size: [usize; 2],
+        data: Arc<Vec<u16>>,
     },
 }
 
@@ -56,9 +64,40 @@ impl Picture {
     pub fn into_image(self) -> Image {
         match self {
             Picture::Rgba(i) => i,
-            Picture::Bgra { size, data } => Arc::new(Bitmap::from_bgra_unmultiplied(size, &data)),
+            Picture::Bgra { size, data, p3 } => Arc::new(Bitmap { p3, ..Bitmap::from_bgra_unmultiplied(size, &data) }),
+            Picture::Deep { size, data } => Arc::new(Bitmap::from_rgba_unmultiplied(size, &deep_to_srgb(&data))),
         }
     }
+
+    /// Its numbers are Display P3's (a wide video's: BT.2020, P3).
+    pub fn p3(&self) -> bool {
+        match self {
+            Picture::Rgba(i) => i.p3,
+            Picture::Bgra { p3, .. } => *p3,
+            Picture::Deep { .. } => false,
+        }
+    }
+}
+
+/// An HDR10 picture's half floats (PQ, BT.2020) as sRGB RGBA, its light
+/// to SDR's white (what's brighter clipped): for whoever wants an
+/// ordinary picture of one (a still, a copy).
+fn deep_to_srgb(rgba: &[u16]) -> Vec<u8> {
+    let unhalf = |h: u16| {
+        let (exp, mant) = (u32::from(h >> 10) & 0x1F, u32::from(h & 0x3FF));
+        if exp == 0 { mant as f32 / 16_777_216.0 } else { f32::from_bits(((exp + 112) << 23) | (mant << 13)) }
+    };
+    let m = olo_color::Primaries::BT2020.to(&olo_color::Primaries::SRGB).0;
+    rgba.chunks_exact(4)
+        .flat_map(|p| {
+            let light = [0, 1, 2].map(|i| (olo_color::pq_decode(f64::from(unhalf(p[i]))) * 10_000.0 / olo_color::SDR_WHITE_NITS).min(1.0));
+            let srgb = [0, 1, 2].map(|r| {
+                let v = m[r][0] * light[0] + m[r][1] * light[1] + m[r][2] * light[2];
+                (olo_color::Transfer::Srgb.encode(v.clamp(0.0, 1.0)) * 255.0).round() as u8
+            });
+            [srgb[0], srgb[1], srgb[2], 255]
+        })
+        .collect()
 }
 
 /// A decoded picture: compact as decoded, or ready to show.
@@ -85,19 +124,28 @@ impl Pic {
             Pic::Planes(f) => f.width as usize * f.height as usize * 6,
             Pic::Ready(Picture::Rgba(i)) => i.rgba.len(),
             Pic::Ready(Picture::Bgra { data, .. }) => data.len(),
+            Pic::Ready(Picture::Deep { data, .. }) => data.len() * 2,
         }
     }
 
-    fn picture(&self, bgra: bool) -> Picture {
+    /// As a picture to show; `hdr`, an HDR picture as HDR10
+    /// (`Picture::Deep`).
+    fn picture(&self, bgra: bool, hdr: bool) -> Picture {
         match self {
-            Pic::H264(p) if bgra => Picture::Bgra { size: [p.width, p.height], data: Arc::new(p.bgra()) },
+            Pic::Planes(f) if hdr && f.is_hdr() => match f.to_pq_half() {
+                Some(data) => Picture::Deep { size: [f.width as usize, f.height as usize], data: Arc::new(data) },
+                None => Pic::Planes(f.clone()).picture(bgra, false),
+            },
+            Pic::H264(p) if bgra => Picture::Bgra { size: [p.width, p.height], data: Arc::new(p.bgra()), p3: false },
             Pic::H264(p) => Picture::Rgba(p.image()),
+            // (A wide video's in Display P3: drawn so in a window drawing
+            // in it, converted in one that isn't.)
             Pic::Planes(f) if bgra => {
-                let mut data = f.to_rgba();
+                let (mut data, p3) = f.to_rgba_wide();
                 for px in data.as_chunks_mut::<4>().0 {
                     px.swap(0, 2);
                 }
-                Picture::Bgra { size: [f.width as usize, f.height as usize], data: Arc::new(data) }
+                Picture::Bgra { size: [f.width as usize, f.height as usize], data: Arc::new(data), p3 }
             }
             Pic::Planes(f) => Picture::Rgba(av1_image(f)),
             Pic::Ready(p) => p.clone(),
@@ -177,6 +225,11 @@ struct Shared {
     ahead: usize,
     /// Make pictures BGRA (for pages) rather than RGBA.
     bgra: bool,
+    /// Make an HDR picture HDR10's (`Video::draw_hdr`: a window drawing
+    /// in HDR10 shows it), rather than mapped for SDR.
+    hdr: bool,
+    /// A picture of the stream so far was HDR (`Video::is_hdr`).
+    stream_hdr: bool,
     seek: Option<f64>,
     stop: bool,
     /// The stream ended and the queue holds its last frames.
@@ -346,6 +399,18 @@ impl Video {
         (p.map(Picture::into_image), next)
     }
 
+    /// Whether the stream's pictures are HDR (PQ or HLG), as far as it
+    /// has been seen.
+    pub fn is_hdr(&self) -> bool {
+        self.shared.0.lock().unwrap().stream_hdr
+    }
+
+    /// HDR pictures drawn as HDR10 (`Picture::Deep`) from now, for a
+    /// window drawing in it, or mapped for SDR as they otherwise are.
+    pub fn draw_hdr(&self, on: bool) {
+        self.shared.0.lock().unwrap().hdr = on;
+    }
+
     /// [`Video::tick`] in the form asked for at the start
     /// ([`Options::bgra`]).
     pub fn tick_picture(&self) -> (Option<Picture>, Option<Duration>) {
@@ -398,10 +463,14 @@ impl Video {
         // Playing, or waiting for the picture a seek asked for.
         let idle = if self.picture { Duration::from_millis(15) } else { Duration::from_millis(100) };
         let next = if c.since.is_some() || (c.show_next && !sh.eof) { Some(next.unwrap_or(idle)) } else { None };
+        let hdr = sh.hdr;
+        // (A picture made here, the worker behind: its stream known HDR
+        // all the same.)
+        sh.stream_hdr |= due.as_ref().is_some_and(|f| matches!(&f.pic, Pic::Planes(p) if p.is_hdr()));
         drop(sh);
         drop(c);
         // Ready unless the worker fell behind.
-        (due.map(|f| f.pic.ready().cloned().unwrap_or_else(|| f.pic.picture(self.bgra))), next)
+        (due.map(|f| f.pic.ready().cloned().unwrap_or_else(|| f.pic.picture(self.bgra, hdr))), next)
     }
 }
 
@@ -426,15 +495,16 @@ pub struct Options {
 /// Make the picture at the front of the queue ready to show (outside the
 /// lock: the UI may be waiting on it).
 fn ripen(m: &Mutex<Shared>) {
-    let (pts, pic, bgra) = {
+    let (pts, pic, bgra, hdr) = {
         let sh = m.lock().unwrap();
         match sh.queue.front() {
-            Some(f) if f.pic.ready().is_none() => (f.pts, f.pic.clone(), sh.bgra),
+            Some(f) if f.pic.ready().is_none() => (f.pts, f.pic.clone(), sh.bgra, sh.hdr),
             _ => return,
         }
     };
-    let image = pic.picture(bgra);
+    let image = pic.picture(bgra, hdr);
     let mut sh = m.lock().unwrap();
+    sh.stream_hdr |= matches!(&pic, Pic::Planes(f) if f.is_hdr());
     if let Some(f) = sh.queue.front_mut()
         && f.pts == pts
         && f.pic.ready().is_none()
@@ -444,7 +514,8 @@ fn ripen(m: &Mutex<Shared>) {
 }
 
 fn av1_image(f: &av1::Frame) -> Image {
-    Arc::new(Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &f.to_rgba()))
+    let (rgba, p3) = f.to_rgba_wide();
+    Arc::new(Bitmap { p3, ..Bitmap::from_rgba_unmultiplied([f.width as usize, f.height as usize], &rgba) })
 }
 
 /// One coded picture (H.264 in start-code form, AV1 as stored), with
@@ -461,6 +532,11 @@ trait Demux: Send {
     /// HEVC's track: its decoder configuration and colour.
     fn hevc(&self) -> Option<(hevc::Config, hevc::Colour)> {
         None
+    }
+    /// What the container says of the track's colour (HDR's transfer and
+    /// primaries among it), for pictures whose stream doesn't.
+    fn colour(&self) -> hevc::Colour {
+        Default::default()
     }
     fn next(&mut self) -> Option<Packet>;
     /// Go to the key frame at or before `secs`.
@@ -485,7 +561,7 @@ pub fn picture_at(input: &Input, at: f64) -> Result<Image, String> {
     while sh.queue.is_empty() && !sh.eof && sh.error.is_none() && !worker.is_finished() {
         sh = cv.wait_timeout(sh, Duration::from_millis(10)).unwrap().0;
     }
-    let first = sh.queue.front().map(|f| f.pic.picture(false));
+    let first = sh.queue.front().map(|f| f.pic.picture(false, false));
     sh.stop = true;
     drop(sh);
     cv.notify_all();
@@ -599,6 +675,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
     let mut demux = open(input)?;
     let codec = demux.codec();
     let mut dec = Decoder::new(codec, demux.as_ref())?;
+    let colour = demux.colour();
     // Presentation times of packets sent and not yet out: decoders hand
     // pictures back in display order, so each takes the earliest.
     // (Each with its duration, -1 where not known.)
@@ -717,7 +794,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     None => d.flush(&mut av1_out),
                 }
                 for f in av1_out.drain(..) {
-                    let f = Arc::new(f);
+                    let f = Arc::new(f.with_colour(&colour));
                     if !push(&mut times, from, &mut lead, &|| Pic::Planes(f.clone())) {
                         break;
                     }
@@ -758,7 +835,7 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                     while times.peek().is_some_and(|Reverse((e, _))| *e < t) {
                         times.pop();
                     }
-                    let f = Arc::new(f);
+                    let f = Arc::new(f.with_colour(&colour));
                     if !push(&mut times, from, &mut lead, &|| Pic::Planes(f.clone())) {
                         break;
                     }
@@ -794,6 +871,8 @@ struct Mp4 {
     /// starts from its own, `hevc`).
     sets: Vec<u8>,
     hevc: Option<(hevc::Config, hevc::Colour)>,
+    /// The track's colour as its sample entry says (AV1's, HEVC's).
+    colour: hevc::Colour,
     nal_len: usize,
     /// Each sample's decode time, and the key frames (1-based).
     times: Vec<u64>,
@@ -866,11 +945,16 @@ impl Mp4 {
                 break;
             }
         }
-        Ok(Mp4 { track, codec, timescale, shift, sets, hevc, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
+        let colour = av1.as_ref().map(|a| a.colour).or(hv.as_ref().map(|h| h.colour)).unwrap_or_default();
+        Ok(Mp4 { track, codec, timescale, shift, sets, hevc, colour, nal_len, times, syncs: stbl.stss.as_ref().map(|s| s.entries.clone()), next: 1, reader })
     }
 }
 
 impl Demux for Mp4 {
+    fn colour(&self) -> hevc::Colour {
+        self.colour
+    }
+
     fn codec(&self) -> Codec {
         self.codec
     }
@@ -922,6 +1006,8 @@ struct Mkv {
     sets: Vec<u8>,
     nal_len: usize,
     hevc: Option<(hevc::Config, hevc::Colour)>,
+    /// The track's Colour element, whatever its codec.
+    colour: hevc::Colour,
     frame: matroska_demuxer::Frame,
     /// Send the parameter sets before the next picture (start, seeks).
     fresh: bool,
@@ -955,8 +1041,9 @@ impl Mkv {
             })
             .ok_or("This video's format can't be played.")?;
         // HEVC's CodecPrivate is its decoder configuration record.
+        let colour = t.video().map(media::mkv_colour).unwrap_or_default();
         let hevc = match codec {
-            Codec::Hevc => Some((t.codec_private().and_then(hevc::config).ok_or("no HEVC configuration")?, t.video().map(media::mkv_colour).unwrap_or_default())),
+            Codec::Hevc => Some((t.codec_private().and_then(hevc::config).ok_or("no HEVC configuration")?, colour)),
             _ => None,
         };
         // AV1 blocks are OBUs as the decoder takes them, with sequence
@@ -970,11 +1057,26 @@ impl Mkv {
                 sets.extend_from_slice(&p);
             }
         }
-        Ok(Mkv { track: t.track_number().get(), codec, scale: file.info().timestamp_scale().get() as f64 / 1e9, sets, nal_len, hevc, frame: matroska_demuxer::Frame::default(), fresh: true, file })
+        Ok(Mkv {
+            track: t.track_number().get(),
+            codec,
+            scale: file.info().timestamp_scale().get() as f64 / 1e9,
+            sets,
+            nal_len,
+            hevc,
+            colour,
+            frame: matroska_demuxer::Frame::default(),
+            fresh: true,
+            file,
+        })
     }
 }
 
 impl Demux for Mkv {
+    fn colour(&self) -> hevc::Colour {
+        self.colour
+    }
+
     fn codec(&self) -> Codec {
         self.codec
     }
@@ -1048,6 +1150,16 @@ impl Demux for Mkv {
 mod tests {
     use super::*;
 
+    /// A test's scratch folder, removed however the test ends (a failing
+    /// one too).
+    struct Gone(std::path::PathBuf);
+
+    impl Drop for Gone {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// What a seek costs at 4K (H.264, OpenH264's key frames two seconds
     /// apart): to just before the second key frame, so every picture
     /// before it is decoded (and, held in case it's the one showing,
@@ -1059,6 +1171,7 @@ mod tests {
         use olo_video::{H264, Mp4, Order};
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-preview-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _gone = Gone(dir.clone());
         let path = dir.join("4k.mp4");
         let (w, h) = (3840u32, 2160u32);
         let mut enc = H264::new(w, h, 30).unwrap();
@@ -1077,7 +1190,6 @@ mod tests {
                 t.elapsed().as_secs_f64() * 1000.0
             })
             .collect();
-        let _ = std::fs::remove_dir_all(&dir);
         ms.sort_by(f64::total_cmp);
         println!("seek to 1.95 s of 4K H.264 (59 pictures decoded): {:.0} ms (median of 5; {:.0}–{:.0})", ms[2], ms[0], ms[4]);
     }
@@ -1090,6 +1202,7 @@ mod tests {
         use olo_video::{H264, Mp4, Order};
         let dir = std::path::PathBuf::from(format!("/var/tmp/olo-preview-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _gone = Gone(dir.clone());
         let path = dir.join("still.mp4");
         let (w, h) = (64u32, 48u32);
         let mut enc = H264::new(w, h, 30).unwrap();
@@ -1106,7 +1219,6 @@ mod tests {
             image.rgba[(image.rgba.len() / 2) & !3]
         };
         let shown: Vec<(f64, u8)> = [0.0, 0.05, 0.1, 1.6, 3.09, 3.1, 3.4, 5.0].into_iter().map(|at| (at, level(at))).collect();
-        let _ = std::fs::remove_dir_all(&dir);
         let want = [40, 40, 140, 140, 140, 240, 240, 240];
         for ((at, got), want) in shown.iter().zip(want) {
             assert!((i32::from(*got) - want).abs() < 12, "at {at} s: {got}, not {want} ({shown:?})");
@@ -1177,6 +1289,37 @@ mod tests {
         let Ok(crate::load::Update::Body(crate::load::Body::Media(m))) = media::video(&path, &Arc::new(std::sync::atomic::AtomicBool::new(false))) else { panic!("no facts") };
         assert!(m.playable && m.picture.is_some(), "{:?}", m.rows);
         assert!(m.note.starts_with("AV1 video, 640 × 360"), "{}", m.note);
+    }
+
+    /// HDR10 said only in the stream (its SPS's VUI; no `colr`):
+    /// `OLO_SAMPLES=dir` with Chromium's bear-1280x720-hevc-10bit-hdr10.mp4
+    /// (media/test/data: x265's HDR10 tags on its SDR bear, so its
+    /// pictures blow out as PQ, as tagged). Its facts say HDR, and its
+    /// pictures are wide (P3), and HDR10's when a window draws in it.
+    #[test]
+    #[ignore]
+    fn hdr10_in_the_stream() {
+        let dir = std::path::PathBuf::from(std::env::var("OLO_SAMPLES").expect("OLO_SAMPLES"));
+        let path = dir.join("bear-1280x720-hevc-10bit-hdr10.mp4");
+        let Ok(crate::load::Update::Body(crate::load::Body::Media(m))) = media::video(&path, &Arc::new(std::sync::atomic::AtomicBool::new(false))) else { panic!("no facts") };
+        let colour = m.rows.iter().find(|r| r.0 == "Colour").map(|r| r.1.as_str());
+        assert_eq!(colour, Some("HDR (PQ), BT.2020"), "{:?}", m.rows);
+        let input = Input::file(&path);
+        assert!(picture_at(&input, 1.0).unwrap().p3);
+        let video = Video::start_with(&input, 3.0, Options { playing: false, picture: true, sound: false, bgra: true });
+        video.draw_hdr(true);
+        let t0 = Instant::now();
+        let deep = loop {
+            if let (Some(p), _) = video.tick_picture() {
+                break p;
+            }
+            assert!(t0.elapsed() < Duration::from_secs(10), "no picture");
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        // (The first may have been made before the switch; either way
+        // the stream is known HDR now.)
+        assert!(video.is_hdr());
+        assert!(matches!(deep, Picture::Deep { .. } | Picture::Bgra { p3: true, .. }));
     }
 
     /// VP9 in MPEG-4 and 10-bit VP9 in WebM: `OLO_SAMPLES=dir` with

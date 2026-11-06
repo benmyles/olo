@@ -33,6 +33,8 @@ use crate::{
 };
 
 pub const WIDTH: u32 = 420;
+/// The window's note while a finger or a key could answer it.
+const BOTH: &str = "Touch the fingerprint sensor or your security key, or wait to type your password.";
 const ICON: &str = "authentication";
 /// The password field's label column, as in the polkit agent's.
 const DIVIDER: f32 = 72.0;
@@ -113,6 +115,10 @@ pub enum Event {
     Gone(u64),
     /// PAM takes a fingerprint first.
     Touch(u64),
+    /// A security key set up is plugged in, and waits for a touch.
+    KeyWaiting(u64),
+    /// The security key's answer: the password, or why not.
+    Key(u64, Result<Zeroizing<String>, String>),
 }
 
 /// Listen for olo-sudo, on a thread of its own.
@@ -264,6 +270,13 @@ pub struct Request {
     /// `sudo -n`: never asks the person.
     pub quiet: bool,
     answered: bool,
+    /// A touch of a security key waited for while the window is up
+    /// (stopped when it goes), and the password it gave, till sudo asks.
+    key: Option<olo_fido::Touch>,
+    key_password: Option<Zeroizing<String>>,
+    /// What the window can be answered with besides typing.
+    fingerprint: bool,
+    key_waiting: bool,
 }
 
 /// How a request approved without asking goes.
@@ -283,7 +296,22 @@ pub enum Choice {
 impl Request {
     pub fn new(conn: u64, stream: UnixStream, args: &[String], who: Option<Agent>, tab: Option<String>) -> Request {
         let command = std::iter::once("sudo".to_owned()).chain(args.iter().map(|a| crate::shell_quote(a))).collect::<Vec<_>>().join(" ");
-        Request { conn, stream, who, tab, command, conv: Conversation::default(), field: None, approval: None, quiet: false, answered: false }
+        Request {
+            conn,
+            stream,
+            who,
+            tab,
+            command,
+            conv: Conversation::default(),
+            field: None,
+            approval: None,
+            quiet: false,
+            answered: false,
+            key: None,
+            key_password: None,
+            fingerprint: false,
+            key_waiting: false,
+        }
     }
 
     /// Who asked for what, for the log and the notification.
@@ -394,6 +422,7 @@ impl Request {
                 // Past the fingerprint, if there was one.
                 self.conv.info.clear();
                 self.conv.ask(t, false);
+                self.tell_ways();
             }
             Ask::Done(_) => return true,
             Ask::Begin { .. } => {}
@@ -403,9 +432,71 @@ impl Request {
 
     /// PAM takes a fingerprint first: say so until sudo says otherwise.
     pub fn touch(&mut self) {
-        if self.conv.prompt.is_none() && self.conv.info.is_empty() && !self.conv.checking {
-            self.conv.info = "Touch the fingerprint sensor, or wait to type your password.".into();
+        self.fingerprint = true;
+        self.tell_ways();
+    }
+
+    /// Wait for a touch of a security key set up (if one is plugged in),
+    /// its answer coming to `proxy` as `Event::Key`.
+    pub fn wait_for_key(&mut self, proxy: Proxy) {
+        let Some(user) = olo_system::auth::current_user() else { return };
+        let (conn, p) = (self.conn, proxy.clone());
+        self.key = Some(olo_fido::touch(user, move || p.send(Event::KeyWaiting(conn)), move |r| proxy.send(Event::Key(conn, r.map_err(|e| e.to_string())))));
+    }
+
+    /// The key waits for a touch: say so.
+    pub fn key_waiting(&mut self) {
+        self.key_waiting = true;
+        self.tell_ways();
+    }
+
+    /// Say how the window can be answered (a finger, a key, typing), while
+    /// sudo hasn't said otherwise.
+    fn tell_ways(&mut self) {
+        let ours = ["Touch the fingerprint sensor, or wait to type your password.", olo_fido::TOUCH_OR_TYPE, BOTH];
+        if self.conv.checking || !(self.conv.info.is_empty() || ours.contains(&self.conv.info.as_str())) {
+            return;
         }
+        self.conv.info = match (self.fingerprint && self.conv.prompt.is_none(), self.key_waiting) {
+            (true, true) => BOTH.into(),
+            (true, false) => ours[0].into(),
+            (false, true) => olo_fido::TOUCH_OR_TYPE.into(),
+            (false, false) => String::new(),
+        };
+    }
+
+    /// The security key's answer: its password goes to sudo now if sudo
+    /// is asking, else when it asks; or why it didn't.
+    pub fn key_said(&mut self, r: Result<Zeroizing<String>, String>, cx: &mut App) {
+        self.key_waiting = false;
+        self.key = None;
+        match r {
+            Ok(password) => {
+                self.key_password = Some(password);
+                self.answer_with_key(cx);
+            }
+            Err(why) => {
+                if !self.conv.checking {
+                    self.conv.info = format!("{why} Type your password.");
+                }
+            }
+        }
+    }
+
+    /// The key's password to sudo, if sudo is asking and the key gave one
+    /// (once: asked again, the person types it).
+    pub fn answer_with_key(&mut self, cx: &mut App) {
+        if !self.conv.ready() {
+            return;
+        }
+        let Some(password) = self.key_password.take() else { return };
+        self.clear(cx);
+        let mut r = Reply::Answer(password.to_string());
+        self.reply(&r);
+        if let Reply::Answer(a) = &mut r {
+            a.zeroize();
+        }
+        self.conv.sent();
     }
 }
 

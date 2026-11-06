@@ -274,7 +274,7 @@ impl FolderWin {
                 cx.notify();
             }
             None if press.button == MouseButton::Left => {
-                self.column_band(e.position, window);
+                self.column_band(e.position);
                 cx.notify();
             }
             _ => {}
@@ -283,7 +283,7 @@ impl FolderWin {
 
     /// The band in column `k` reaches `now`: the rows it covers selected,
     /// and near the column's top or bottom it scrolls on.
-    fn column_band(&mut self, now: Point<Pixels>, window: &mut Window) {
+    fn column_band(&mut self, now: Point<Pixels>) {
         let Some((k, from, base)) = self.cols.band.clone() else { return };
         let Some(g) = self.cols.geo.borrow().get(k).copied() else { return };
         let here = now.y - g.top;
@@ -317,7 +317,6 @@ impl FolderWin {
             let h = self.col_scroll(k);
             let (o, max) = (h.offset(), f32::from(h.max_offset().height));
             h.set_offset(point(o.x, px((f32::from(o.y) - step).clamp(-max, 0.0))));
-            window.request_animation_frame();
         }
     }
 

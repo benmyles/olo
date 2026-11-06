@@ -10,7 +10,7 @@ use olo_ui::{
 
 use crate::{
     PanelView, about, ai, airpods, appearance, backup, bluetooth, datetime, default_apps, display, form::Ui, gpus, integrations, keyboard, network, notifications, performance, power, screensaver,
-    security, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
+    security, security_keys, sound, terminal, themes, touchid, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,7 +219,8 @@ impl Panel {
             Panel::Gpus => (900, 448),
             Panel::Integrations => (460, 600),
             Panel::Keyboard => (520, 736),
-            Panel::Network => (460, 318),
+            // Seven tabs; Hosts' four columns; Shaping's two ways side by side.
+            Panel::Network => (640, 420),
             Panel::Notifications => (440, 700),
             // Its Watchdog tab's thresholds two by two, each a pair of sliders.
             Panel::Performance => (900, 560),
@@ -227,10 +228,12 @@ impl Panel {
             // caffeinated beside them.
             Panel::Power => (880, 420),
             Panel::ScreenSaver => (500, 400),
-            Panel::Security => (420, 416),
+            // Passwords' settings, security keys beside them.
+            Panel::Security => (880, 440),
             Panel::Sound => (800, 466),
             Panel::Terminal => (520, 692),
-            Panel::Themes => (560, 712),
+            // The themes, the chosen one's colour sets beside them.
+            Panel::Themes => (800, 600),
             Panel::TouchId => (420, 330),
             // Tall enough for Touch with both of its notes (a pad with no
             // pressure and the Apple driver's click thresholds).
@@ -363,6 +366,7 @@ pub enum State {
     ScreenSaver(screensaver::State),
     About(about::State),
     Integrations(Box<integrations::State>),
+    Security(Box<security_keys::State>),
 }
 
 impl State {
@@ -387,6 +391,7 @@ impl State {
             Panel::ScreenSaver => State::ScreenSaver(screensaver::State::new(window, cx)),
             Panel::About => State::About(about::State::new(cx)),
             Panel::Integrations => State::Integrations(Box::new(integrations::State::new(cx))),
+            Panel::Security => State::Security(Box::new(security_keys::State::new(cx))),
             _ => State::None,
         }
     }
@@ -433,7 +438,7 @@ fn layout(v: &mut PanelView, window: &mut Window, cx: &mut Context<PanelView>) -
         (Panel::Power, State::Power(st)) => power::ui(&mut ui, power, &server, st),
         (Panel::ScreenSaver, State::ScreenSaver(st)) => screensaver::ui(&mut ui, &server, st),
         (Panel::Sound, State::Sound(st)) => sound::ui(&mut ui, st),
-        (Panel::Security, _) => security::ui(&mut ui),
+        (Panel::Security, State::Security(st)) => security::ui(&mut ui, st),
         (Panel::Ai, _) => ai::ui(&mut ui),
         (Panel::Themes, _) => themes::ui(&mut ui),
         (Panel::DateTime, State::DateTime(st)) => datetime::ui(&mut ui, st),

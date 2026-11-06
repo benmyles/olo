@@ -775,7 +775,6 @@ impl FolderWin {
             let o = self.scroll.offset();
             let max = f32::from(self.scroll.max_offset().height);
             self.scroll.set_offset(point(o.x, px((f32::from(o.y) - step).clamp(-max, 0.0))));
-            window.request_animation_frame();
         }
     }
 

@@ -30,6 +30,7 @@ mod autostart;
 mod graphical;
 mod keyd;
 mod keyring;
+mod own_bus;
 mod skills;
 mod upgrade;
 mod watchdog;
@@ -71,6 +72,9 @@ const REAL_SHELL: &[&[&str]] = &[
     &["olo-doctor", "--watch"],
     &["olo-airpods", "--service"],
     &["olo-voice", "--service"],
+    // The SSH agent (Passwords without a window; it exits, not wanted,
+    // with the agent turned off).
+    &["olo-passwords", "--agent"],
 ];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;
@@ -110,12 +114,52 @@ pub fn run() {
         Some("quit") => signal_session(libc::SIGTERM),
         Some("-h" | "--help") => println!("{USAGE}"),
         _ => {
+            take_tmpdir();
             // The session runs the shell: above apps and background work
             // (olo_protocol::performance::tier; -5, the shell's).
             let _ = olo_system::priority::raise_self(-5);
             Session::start(args).run()
         }
     }
+}
+
+/// Passwords is the SSH agent (`security.passwords.ssh_agent` in the
+/// settings app_server keeps; on unless turned off).
+fn ssh_agent_on() -> bool {
+    let path = std::env::var_os("OLO_APP_SERVER_SETTINGS").map(PathBuf::from).unwrap_or_else(|| {
+        let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
+        config.join("olo/app_server.json")
+    });
+    let Ok(text) = std::fs::read_to_string(path) else { return true };
+    serde_json::from_str::<serde_json::Value>(&text).ok().and_then(|v| v.pointer("/security/passwords/ssh_agent")?.as_bool()).unwrap_or(true)
+}
+
+/// Where programs keep temporary files, from Olo Doctor's file for it
+/// (`olo_system::env::TMPDIR_FILE`, systemd's `environment.d` format: what
+/// the user manager reads too), for everything the session starts (apps
+/// from Deskbar, Terminal's shells), unless the login already set them.
+/// Read before any thread is started: the environment can be set safely
+/// only then.
+fn take_tmpdir() {
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"));
+    let Ok(text) = std::fs::read_to_string(config.join(olo_system::env::TMPDIR_FILE)) else { return };
+    for (key, value) in tmpdir_vars(&text) {
+        if std::env::var_os(&key).is_none() && std::path::Path::new(&value).is_dir() {
+            // SAFETY: at the start, before any thread (see above).
+            unsafe { std::env::set_var(&key, &value) };
+        }
+    }
+}
+
+/// The temporary-file variables an `environment.d` file sets.
+fn tmpdir_vars(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| l.split_once('='))
+        .filter(|(k, _)| olo_system::env::TMP_VARS.contains(&k.trim()))
+        .map(|(k, v)| (k.trim().to_owned(), v.trim().trim_matches('"').to_owned()))
+        .collect()
 }
 
 // ---- the control commands ---------------------------------------------------
@@ -170,6 +214,12 @@ struct Resume {
     /// and how far the checking got.
     #[serde(default)]
     stale: Option<(u64, u8)>,
+    /// The upgraded programs still to be nudged once app_server has
+    /// restarted (`nudge_at`): in how many milliseconds. (Lost, a reload
+    /// that re-executed us for its own upgrade nudged no one: each became
+    /// its new version only when `check_stale` asked again, 20 s on.)
+    #[serde(default)]
+    nudge_in_ms: Option<u64>,
 }
 
 /// olo-wlproxy and app_server's two other sockets: one for Olo's own
@@ -204,6 +254,10 @@ struct Session {
     /// Programs an upgrade may have left on the old version: looked at
     /// 20 s after (asked again) and 90 s after (stopped).
     stale_check: Option<(Instant, u8)>,
+    /// Programs of ours left from sessions that have gone, asked to end
+    /// at the first look after an upgrade and killed at the second if they
+    /// hadn't (`sweep_leftovers`): pid and start time.
+    leftovers: Vec<(i32, u64)>,
     /// When to ask the programs still on an old version to re-execute,
     /// after app_server restarted for an upgrade (`NUDGE_AFTER_RELOAD`).
     nudge_at: Option<Instant>,
@@ -229,6 +283,9 @@ struct Session {
     retired: Vec<i32>,
     /// The proxy kept crashing: app_server takes the socket itself.
     no_proxy: bool,
+    /// The session is starting: its first app_server shows Olo's
+    /// start-up screen (`OLO_STARTING`; app_server's `veil.rs`).
+    starting: bool,
 }
 
 const RESUME_ENV: &str = "OLO_SESSION_RESUME";
@@ -245,10 +302,17 @@ impl Session {
             }
         }
         let no_shell = args.iter().any(|a| a == "--no-shell");
+        // An agent screen's: a session bus of its own (`own_bus`).
+        let own_bus = args.iter().position(|a| a == "--own-bus").and_then(|i| args.get(i + 1)).cloned();
+        let mut args = args;
+        if let Some(i) = args.iter().position(|a| a == "--own-bus") {
+            args.drain(i..(i + 2).min(args.len()));
+        }
         let mut backend: Vec<String> = args.into_iter().filter(|a| a != "--no-shell").collect();
         if backend.is_empty() {
             backend.push("--tty-udev".into());
         }
+        let real_start = backend.iter().any(|b| b == "--tty-udev");
         let (display, wayland, lock) = bind_wayland().unwrap_or_else(|e| {
             log(format!("could not create a Wayland socket: {e}"));
             std::process::exit(1);
@@ -262,6 +326,8 @@ impl Session {
             std::process::exit(1);
         });
         set_session_env(&display, &ipc_path);
+        // Before anything that might use it.
+        let bus = own_bus.as_deref().and_then(own_bus::start);
         let _ = std::fs::write(runtime_dir().join(format!("olo-session-{display}.pid")), std::process::id().to_string());
         // Machine-readable, for tools/dev/tsession.
         println!("session: WAYLAND_DISPLAY={display} OLO_SOCKET={}", ipc_path.display());
@@ -279,6 +345,7 @@ impl Session {
             rescue_next: false,
             shell: Vec::new(),
             stale_check: None,
+            leftovers: Vec::new(),
             nudge_at: None,
             binary: own_binary(),
             stopping: false,
@@ -290,6 +357,8 @@ impl Session {
             proxy_binary: None,
             retired: Vec::new(),
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
+            // (A real session's start; a test's when asked.)
+            starting: real_start || std::env::var_os("OLO_STARTUP_VEIL").is_some(),
         };
         s.own_files();
         s.start_server();
@@ -314,10 +383,21 @@ impl Session {
             skills::start();
         }
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
+        // The screen's bus, looked after with the shell (started again if
+        // it ends, ended with the session).
+        if let Some((argv, pid)) = bus.as_ref().map(|b| (b.argv.clone(), b.pid)) {
+            s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
+        }
         if !no_shell {
             let extra: &[&[&str]] = if real { REAL_SHELL } else { &[] };
-            for argv in SHELL.iter().chain(extra) {
-                let argv: Vec<String> = argv.iter().map(|a| a.to_string()).collect();
+            let mut argvs: Vec<Vec<String>> = SHELL.iter().chain(extra).map(|argv| argv.iter().map(|a| a.to_string()).collect()).collect();
+            // On a bus of its own, the services the person's session has
+            // on theirs, for the screen's programs: notifications shown on
+            // the screen, and the portal (open and save panels there).
+            if let Some(b) = &bus {
+                argvs.extend(own_bus::services(&b.address));
+            }
+            for argv in argvs {
                 let pid = spawn(&argv, &[]).unwrap_or(0);
                 s.shell.push(Child { argv, pid, crashes: VecDeque::new() });
             }
@@ -358,7 +438,8 @@ impl Session {
             rescue_next: false,
             shell: r.shell,
             stale_check: r.stale.map(|(at, stage)| (Instant::now() - Duration::from_secs(now_secs().saturating_sub(at)), stage)),
-            nudge_at: None,
+            leftovers: Vec::new(),
+            nudge_at: r.nudge_in_ms.map(|ms| Instant::now() + Duration::from_millis(ms)),
             binary: own_binary(),
             stopping: false,
             real,
@@ -369,6 +450,7 @@ impl Session {
             proxy_binary,
             retired,
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
+            starting: false,
         };
         s.own_files();
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
@@ -457,6 +539,11 @@ impl Session {
         }
         if let Some(fd) = fds.get(2) {
             env.push(("OLO_WAYLAND_PROXY_FD", fd.to_string()));
+        }
+        // The first app_server of a session starting shows Olo's start-up
+        // screen; one restarted, the upgrade's veil.
+        if std::mem::take(&mut self.starting) {
+            env.push(("OLO_STARTING", "1".into()));
         }
         // The listening sockets must survive into app_server.
         for &fd in &fds {
@@ -636,6 +723,30 @@ impl Session {
         self.renew_proxy_if_upgraded();
     }
 
+    /// Programs of ours left from sessions that have gone (their display
+    /// no longer exists: `upgrade::leftovers`), looked for after each
+    /// upgrade: asked to end (SIGTERM) at the first look, killed at the
+    /// second if they're still there.
+    fn sweep_leftovers(&mut self, stage: u8, skip: &[i32]) {
+        if stage == 0 {
+            self.leftovers.clear();
+            for (pid, started, why) in upgrade::leftovers(&runtime_dir(), skip) {
+                log(format!("left from a session that has gone: {why}; asking it to end"));
+                // SAFETY: SIGTERM to our own program.
+                unsafe { libc::kill(pid, libc::SIGTERM) };
+                self.leftovers.push((pid, started));
+            }
+        } else {
+            for (pid, started) in std::mem::take(&mut self.leftovers) {
+                if upgrade::start_time(pid) == Some(started) {
+                    log(format!("pid {pid}, left from a session that has gone, didn't end; killing it"));
+                    // SAFETY: SIGKILL to our own program, the same process.
+                    unsafe { libc::kill(pid, libc::SIGKILL) };
+                }
+            }
+        }
+    }
+
     /// What an upgrade left on the old version (Ben, 2026-11-01): 20 s
     /// after the programs were asked to re-execute, those of this session
     /// still running a replaced binary are named and asked again; 90 s
@@ -646,10 +757,10 @@ impl Session {
     /// waiting out a screen share (`upgrade_waits_while`).
     fn check_stale(&mut self) {
         let Some((since, stage)) = self.stale_check else { return };
-        let Some(w) = &self.upgrades else {
+        if self.upgrades.is_none() {
             self.stale_check = None;
             return;
-        };
+        }
         let elapsed = since.elapsed();
         if (stage == 0 && elapsed < Duration::from_secs(20)) || (stage == 1 && elapsed < Duration::from_secs(90)) {
             return;
@@ -657,6 +768,8 @@ impl Session {
         let mut skip: Vec<i32> = vec![std::process::id() as i32, self.server.pid];
         skip.extend(self.proxy.as_ref().map(|p| p.2.pid));
         skip.extend(self.retired.iter().copied());
+        self.sweep_leftovers(stage, &skip);
+        let Some(w) = &self.upgrades else { return };
         let stale = w.stale(&skip, &self.display);
         if stale.is_empty() {
             if stage == 0 {
@@ -672,6 +785,8 @@ impl Session {
                 unsafe { libc::kill(pid, libc::SIGURG) };
             } else if name == "olo-portal" {
                 log(format!("{name} (pid {pid}) is still the old version; left alone (it may be sharing a screen)"));
+            } else if let Some(by) = upgrade::started_by_another(pid) {
+                log(format!("{name} (pid {pid}) is still the old version; left alone (started by {by}, which wouldn't start it again)"));
             } else if self.shell.iter().any(|c| c.pid == pid) {
                 log(format!("{name} (pid {pid}) is still the old version 90 s after the upgrade; restarting it"));
                 // SAFETY: SIGTERM to our own child.
@@ -792,6 +907,7 @@ impl Session {
             server: self.server.clone(),
             shell: self.shell.clone(),
             stale: self.stale_check.map(|(at, stage)| (now_secs().saturating_sub(at.elapsed().as_secs()), stage)),
+            nudge_in_ms: self.nudge_at.map(|t| t.saturating_duration_since(Instant::now()).as_millis() as u64),
             reloading,
             proxy,
             nudge,
@@ -861,6 +977,11 @@ impl Session {
                     continue;
                 }
                 let c = &mut self.shell[i];
+                if libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == olo_xdg::SERVICE_NOT_WANTED {
+                    log(format!("{} isn't wanted (turned off); not started again", c.argv[0]));
+                    c.pid = 0;
+                    continue;
+                }
                 log(format!("{} exited ({}); restarting it", c.argv[0], describe(status)));
                 if note_crash(c) {
                     c.pid = spawn(&c.argv, &[]).unwrap_or(0);
@@ -1067,9 +1188,14 @@ fn layout_path(display: &str) -> PathBuf {
     run_file(format!("olo-layout-{display}.json"))
 }
 
+/// How many `wayland-N` names are tried (libwayland's own clients stop at
+/// 32): a fuzzer's sweep runs 50 sessions in one runtime directory, and
+/// the 33rd found none.
+const DISPLAY_NAMES: u32 = 256;
+
 fn bind_wayland() -> std::io::Result<(String, UnixListener, std::fs::File)> {
     let dir = runtime_dir();
-    for n in 1..33 {
+    for n in 1..=DISPLAY_NAMES {
         let name = format!("wayland-{n}");
         let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join(format!("{name}.lock")))?;
         // SAFETY: flock on an fd we own.
@@ -1109,6 +1235,12 @@ fn set_session_env(display: &str, ipc: &Path) {
         // SAFETY: single-threaded start-up.
         unsafe { std::env::set_var(k, v) };
     }
+    // Passwords as the SSH agent (Preferences ▸ Security, on by default),
+    // unless the login gave one.
+    if std::env::var_os("SSH_AUTH_SOCK").is_none() && ssh_agent_on() {
+        // SAFETY: single-threaded start-up.
+        unsafe { std::env::set_var("SSH_AUTH_SOCK", olo_xdg::ssh_agent_socket()) };
+    }
     // The login screen's PATH needn't include where we're installed
     // (~/.local/bin): put our directory first, for everything we start.
     if let Some(dir) = exe().parent() {
@@ -1125,8 +1257,10 @@ fn set_session_env(display: &str, ipc: &Path) {
 /// Tell systemd and D-Bus activation about the session, so portals and
 /// services started on demand find our display.
 fn export_environment() {
-    let vars: Vec<(&str, String)> =
-        ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET", "XCURSOR_THEME", "XCURSOR_SIZE"].into_iter().filter_map(|k| Some((k, std::env::var(k).ok()?))).collect();
+    let vars: Vec<(&str, String)> = ["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE", "OLO_SOCKET", "XCURSOR_THEME", "XCURSOR_SIZE", "SSH_AUTH_SOCK"]
+        .into_iter()
+        .filter_map(|k| Some((k, std::env::var(k).ok()?)))
+        .collect();
     // D-Bus calls can stall if a bus is slow to answer; don't hold up start-up.
     std::thread::spawn(move || {
         let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
@@ -1144,4 +1278,13 @@ fn export_environment() {
 /// Seconds since the epoch.
 fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+#[cfg(test)]
+mod tmpdir_tests {
+    #[test]
+    fn reads_doctors_file() {
+        let text = "# Olo Doctor: ...\n# Remove this file to undo.\nTMPDIR=/var/tmp\nTMP = /var/tmp\nTEMP=\"/var/tmp\"\nPATH=/nope\n";
+        assert_eq!(super::tmpdir_vars(text), [("TMPDIR", "/var/tmp"), ("TMP", "/var/tmp"), ("TEMP", "/var/tmp")].map(|(k, v)| (k.to_owned(), v.to_owned())));
+    }
 }

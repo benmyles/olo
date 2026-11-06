@@ -3,7 +3,291 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-05
+
+### Screen recordings on the Intel GPU: AV1 through VA-API
+
+*23:36* — Preferences ▸ GPUs ▸ Screen Recordings offers the Intel GPU where its VA-API driver encodes AV1 (Fedora's drivers make no H.264 or HEVC): recordings are AV1 at constant quality, a 2560 × 1600 screen in about 9 ms a frame, the NVIDIA GPU left asleep.
+
+![Screen recordings on the Intel GPU: AV1 through VA-API](2026-11-05/233632-screen-recordings-on-the-intel-gpu-av1-through-v.png)
+
+### Remote control in Deskbar, with Stop Remote Control
+
+*23:16* — While a program controls the computer, Deskbar's sharing item says so (An app is controlling your keyboard and pointer) and Stop Remote Control ends the session: app_server closes its libei connection and lets go of keys left down.
+
+![Remote control in Deskbar, with Stop Remote Control](2026-11-05/231637-remote-control-in-deskbar-with-stop-remote-contr.png)
+
+### Remote control: the picker asks to share and control
+
+*23:16* — The RemoteDesktop portal: a program that wants to see a screen and control the keyboard and pointer (Chrome Remote Desktop, Deskflow, a call's remote control) gets the screen picker, titled Share and Control Your Screen, saying what it will control, its button Allow. For control alone, the permission dialog asks. Never remembered: asked every time.
+
+![Remote control: the picker asks to share and control](2026-11-05/231637-remote-control-the-picker-asks-to-share-and-cont.png)
+
+### Quick Look scrolls without the pointer moving first
+
+*22:52* — Space in Tracker opened Quick Look under a still pointer, and a touchpad scroll went nowhere until the pointer moved: Smithay only looks at what's under the pointer when it moves. app_server now enters what is under the pointer before a scroll or a click, and as a window comes on screen, forward or away; GPUI takes the place it's entered at as a move, so the cursor and hover are right at once. Here Quick Look, scrolled by the touchpad straight after Space.
+
+![Quick Look scrolls without the pointer moving first](2026-11-05/225243-quick-look-scrolls-without-the-pointer-moving-fi.png)
+
+### Preferences ▸ Touchpad on a ThinkPad: its own palm model
+
+*21:26* — On the ThinkPad's pad: palms kept palms until they lift, Olo's own model for this kind of touchpad (made from Ben's hands), and no pressure controls it has no use for.
+
+![Preferences ▸ Touchpad on a ThinkPad: its own palm model](2026-11-05/212614-preferences-touchpad-on-a-thinkpad-its-own-palm-.png)
+
+### Palm trainer on the ThinkPad: a palm drawn as one
+
+*21:26* — The ThinkPad's pad gives no contact size (its pressure is the click's force: a resting palm weighs 0), so palms were drawn as dots. Now a palm the touchpad marks is drawn palm-sized and a fingertip fingertip-sized; the trainer runs the ThinkPad's own model.
+
+![Palm trainer on the ThinkPad: a palm drawn as one](2026-11-05/212613-palm-trainer-on-the-thinkpad-a-palm-drawn-as-one.png)
+
+### olo-slack: Slack's notifications are Olo's
+
+*20:31* — A Slack message as an Olo notification (Message style, Slack's edge); a click goes to the conversation. Shown here from a stand-in page.
+
+![olo-slack: Slack's notifications are Olo's](2026-11-05/203111-olo-slack-slack-s-notifications-are-olo-s.png)
+
+### olo-slack: Slack as an Olo app
+
+*20:31* — Slack's web app in Olo's Chrome on a profile of its own; its window is olo.slack, so Deskbar names it Slack with Olo's icon.
+
+![olo-slack: Slack as an Olo app](2026-11-05/203111-olo-slack-slack-as-an-olo-app.png)
+
+### Starting Olo: the start-up screen
+
+*19:47* — As a session starts, every display shows Olo's start-up screen (the upgrade veil's look, its own icons), lit as the displays, the desktop and Deskbar come up; Olo's start-up sound plays once a session.
+
+![Starting Olo: the start-up screen](2026-11-05/194742-starting-olo-the-start-up-screen.png)
+
+### Upgrading Olo: the veil
+
+*19:35* — While a restarted app_server brings the windows back, every display shows Olo's wordmark and a row of icons lit stage by stage, after BeOS's boot screen; it lifts once the windows are back.
+
+![Upgrading Olo: the veil](2026-11-05/193521-upgrading-olo-the-veil.png)
+
+### A window's recording with the camera
+
+*19:17* — Recording a window on a background with Show Camera: the camera (here the stand-in's pattern) drawn on the background's corner, ringed as the on-screen bubble is.
+
+![A window's recording with the camera](2026-11-05/191758-a-window-s-recording-with-the-camera.png)
+
+### A shared window, ringed
+
+*18:52* — While an app shares a window, it has a red ring round its body on screen (never in what's shared), flush outside its border at every scale.
+
+![A shared window, ringed](2026-11-05/185204-a-shared-window-ringed.png)
+
+### Private windows kept out of shares
+
+*18:52* — Left: the screen as the person sees it (and a screenshot). Right: the same moment as a screen share or recording gets it, Passwords blacked out; the polkit prompt, Terminal's sudo prompt and the lock screen likewise.
+
+![Private windows kept out of shares](2026-11-05/185203-private-windows-kept-out-of-shares.png)
+
+### A Terminal window moved to an agent screen
+
+*18:04* — The same shell (its pid) on the screen, typed into there.
+
+![A Terminal window moved to an agent screen](2026-11-05/180415-a-terminal-window-moved-to-an-agent-screen.png)
+
+### Terminal: a tab to an agent screen
+
+*18:04* — Terminal's tab menu sends one tab to an agent screen: a Terminal there takes its shell, which keeps running in the person's olo-termd.
+
+![Terminal: a tab to an agent screen](2026-11-05/180415-terminal-a-tab-to-an-agent-screen.png)
+
+### Window menu: Move to Agent Screen
+
+*18:04* — A window's tab menu puts the window on an agent screen (or a new one), the program running on: an Olo app re-executed there, any other program replayed there by olo-wlproxy.
+
+![Window menu: Move to Agent Screen](2026-11-05/180415-window-menu-move-to-agent-screen.png)
+
+### Agent Screens: Move Windows To…
+
+*18:04* — Beside Take Control, every window on the screen goes to one of the person's display-workspaces, its program running on (Control ▸ Move Windows To ▸ too).
+
+![Agent Screens: Move Windows To…](2026-11-05/180414-agent-screens-move-windows-to.png)
+
+### Preferences ▸ Security: Face Unlock
+
+*16:48* — A look at the infrared camera can stand for the password: sudo, administrator requests, Passwords and the lock screen. Olo reads the IR camera over V4L2, lights its emitter through its UVC control, finds and recognises faces with two small models in process, and keeps the faces with a root service no app can read. Install… sets it up as root through Olo's polkit agent; Set Up… takes the password and five looks.
+
+![Preferences ▸ Security: Face Unlock](2026-11-05/164804-preferences-security-face-unlock.png)
+
+### Viewer: text and formatted documents selected, copied and found
+
+*16:22* — Texts and formatted documents (Markdown, Word, OpenDocument) select as anywhere in Olo: a drag, a word with a double-click, a line with a triple, drawn behind the text in the kit's selection. Copy and Select All are in the Edit menu, and Find uses the kit's find bar, the same as PDFs': every match marked, even in a code block, with the one shown selected. Here Olo's README, looking for 'olo'.
+
+![Viewer: text and formatted documents selected, copied and found](2026-11-05/162256-viewer-text-and-formatted-documents-selected-cop.png)
+
+### Viewer: a PDF's text selected, copied and found
+
+*16:05* — A PDF's text is read natively (hayro's interpreter with a device of Olo's own that keeps each glyph's Unicode and box), once a page, on the worker. It's selected by dragging (a word with a double-click, a line with a triple), copied with ⌘C or a right-click, Select All copies the whole document, and Find (⌘F) marks every match, selecting the one shown in the middle of the view. Here the third of 90 'compression's in bzip2's manual, the next one marked.
+
+![Viewer: a PDF's text selected, copied and found](2026-11-05/160514-viewer-a-pdf-s-text-selected-copied-and-found.png)
+
+### Preferences ▸ Network ▸ VPN, with WireGuard imported natively
+
+*15:42* — The VPNs saved (WireGuard, and NetworkManager's plugins' OpenVPN, IPsec…) are each connected and disconnected here, and removed after asking. A WireGuard file (wg-quick's .conf) is imported natively: keys checked, addresses by family, and its DNS asked alone while it's up so a full tunnel's names don't leak. Here “Office” was imported and connected. Also new: a hotspot under Wi-Fi, and IPv6 and MTU on a wired link (nm-fake standing in for NetworkManager).
+
+![Preferences ▸ Network ▸ VPN, with WireGuard imported natively](2026-11-05/154256-preferences-network-vpn-with-wireguard-imported-.png)
+
+### Preferences ▸ Network ▸ Shaping, as a link conditioner
+
+*15:25* — A link made slower, later and lossier than it is, each way, to try a program on a poor network: bandwidth, delay, jitter and loss, from a network to start from (Edge, 3G, LTE, DSL, Busy Wi-Fi, Very Bad Network, Offline). The kernel's netem does it, spoken to over rtnetlink by olo-net-admin as root (an ifb device carries what's received). Here 3G was chosen and is ready to turn on.
+
+![Preferences ▸ Network ▸ Shaping, as a link conditioner](2026-11-05/152552-preferences-network-shaping-as-a-link-conditione.png)
+
+### Preferences ▸ Network: Service Order, with Deskbar following
+
+*15:24* — Network has tabs for Ethernet, Service Order, DNS, Hosts and Shaping now. Here Wi-Fi was put first. NetworkManager's per-kind route metrics, written as root by olo-net-admin, moved the default route without disconnecting anything, and Deskbar's tray drew Ethernet faint and Wi-Fi strong as it happened (nm-fake standing in for NetworkManager).
+
+![Preferences ▸ Network: Service Order, with Deskbar following](2026-11-05/152457-preferences-network-service-order-with-deskbar-f.png)
+
+### Deskbar: Ethernet beside Wi-Fi, with each link's details
+
+*15:01* — An Ethernet port shows in the tray while a wired link is connected. With both connected, the link not carrying the traffic (NetworkManager's default route) is drawn faint. A right-click on either shows what it's joined to, whether it's in use, its signal and rate or speed, addresses, router, DNS servers, interface, hardware address and traffic, then Network Preferences…. Here Wi-Fi stands by while Ethernet carries the traffic (nm-fake, a stand-in NetworkManager).
+
+![Deskbar: Ethernet beside Wi-Fi, with each link's details](2026-11-05/150134-deskbar-ethernet-beside-wi-fi-with-each-link-s-d.png)
+
+### Passwords is the SSH agent
+
+*14:02* — Preferences ▸ Security ▸ Be the SSH agent (on by default): ssh and git sign in with the SSH keys in Passwords, each terminal allowed the first time; where ~/.ssh/config sends ssh to another agent (1Password's app's), it says so and offers the switch once the session has Passwords' agent.
+
+![Passwords is the SSH agent](2026-11-05/140222-passwords-is-the-ssh-agent.png)
+
+### Olo Doctor: temporary files on disk
+
+*12:26* — Doctor finds programs keeping their temporary files in memory (/tmp a tmpfs, TMPDIR unset) and offers to keep them in /var/tmp: an environment.d file of Olo's and the running session's environment.
+
+![Olo Doctor: temporary files on disk](2026-11-05/122649-olo-doctor-temporary-files-on-disk.png)
+
+### HDR wallpapers: what shines (tinted red)
+
+*12:09* — The gain maps wallpaper-hdr made, shown as a red tint where each picture goes above SDR's white in HDR: the sun's glow and LEDs, the moon, glints, the neon grid, speculars; the large blue and yellow surfaces and the skies stay at SDR's white.
+
+![HDR wallpapers: what shines (tinted red)](2026-11-05/120922-hdr-wallpapers-what-shines-tinted-red.png)
+
+### Backgrounds: the pack's pictures have HDR versions
+
+*12:09* — On a display in HDR the chosen pack picture shows in HDR, its lights above everything else's white (a gain map beside each picture, made from it); Backgrounds says so under the pictures.
+
+![Backgrounds: the pack's pictures have HDR versions](2026-11-05/120921-backgrounds-the-pack-s-pictures-have-hdr-version.png)
+
+### Display: Everything else's brightness up to 600 cd/m², on its track
+
+*10:20* — The SDR-in-HDR slider went to 480 while app_server took 600 (and a built-in panel's now follows its brightness, near 600 on the ThinkPad's OLED), so its knob was drawn past the track's end (Ben: it 'runs off the side'). One range for both, in protocol; the kit's Slider draws a value outside its range at the end; the note under it level with the label. At 2×, 1.5× and 1×.
+
+![Display: Everything else's brightness up to 600 cd/m², on its track](2026-11-05/102001-display-everything-else-s-brightness-up-to-600-c.png)
+
+### Display: keep HDR or a new resolution in an alert
+
+*10:20* — Turning HDR on (or choosing a resolution) in Preferences ▸ Display now asks in an alert over the window, counting down, Revert or Keep (the default), as BeOS's Screen preferences did; the line at the foot of the window was easy to miss, and HDR went off by itself 15 s later (Ben, 2026-11-05). The kit's widgets::open_timed_alert.
+
+![Display: keep HDR or a new resolution in an alert](2026-11-05/102000-display-keep-hdr-or-a-new-resolution-in-an-alert.png)
+
+### Captions and chapters in recordings
+
+*08:01* — An agent narrating a demo puts captions in the video (olo-screen caption-video: drawn into the recording only, never on the screen) and marks its steps (mark-video): the marks become the video's chapters, which the Viewer shows as ticks on its timeline and lists in Go, playing from the one chosen.
+
+![Captions and chapters in recordings](2026-11-05/080131-captions-and-chapters-in-recordings.png)
+
+### Recordings in HEVC, and a third smaller in H.264
+
+*07:20* — Preferences ▸ GPUs ▸ Format: H.264 (plays everywhere) or HEVC (about half the size), on NVIDIA's encoder; olo-screenshot --codec takes AV1 too. Each codec now keeps a constant, measured quality instead of a bitrate: the same screen typed into for 5 s was 262 KB in H.264 and is 171 now, 96 in HEVC, the text as sharp. Trimming, GIFs and the Viewer take all three.
+
+![Recordings in HEVC, and a third smaller in H.264](2026-11-05/072017-recordings-in-hevc-and-a-third-smaller-in-h-264.png)
+
+### The camera in a bubble while recording
+
+*06:57* — Record… ▸ Show Camera (or --camera): the camera in a circle low in the screen's right corner while you record, so a recording of the screen has you in it; it's there before the countdown, so you can frame yourself, and drags anywhere. The camera is read natively (V4L2, in process); here a stand-in camera's pattern.
+
+![The camera in a bubble while recording](2026-11-05/065745-the-camera-in-a-bubble-while-recording.png)
+
+### Recordings zoom in on clicks
+
+*06:45* — Record… ▸ Zoom on Clicks (or --zoom-follow): a recording of the screen glides in around each click (twice), pans to keep the pointer in view, holds while you click and type, and glides out three seconds after; a shortcut's key cap stays in its place, unzoomed. Agents zoom to a detail themselves (olo-screen zoom-video NAME X,Y,W,H, then out). The GPU draws the capture magnified, so it costs the recorder nothing; screenshots and the screen are as they are.
+
+![Recordings zoom in on clicks](2026-11-05/064521-recordings-zoom-in-on-clicks.png)
+
+### The pointer in a recording, larger and smoothed
+
+*06:30* — Record… ▸ Larger Pointer and Smooth Pointer (or --pointer-size, --smooth-pointer): recordings draw the pointer bigger (drawn at that size, never enlarged) and gliding after the real one, so a hand's jitter is smoothed and an agent's jumps become moves. Here, the frames after one jump laid over each other, a thirtieth of a second apart. Only recordings have it; a window's recording now shows the pointer too.
+
+![The pointer in a recording, larger and smoothed](2026-11-05/063045-the-pointer-in-a-recording-larger-and-smoothed.png)
+
+### A window recorded on a background
+
+*06:17* — Record… ▸ Window on a Background (or --background): a window's recording shows it on the wallpaper, blurred and a little dimmed, its corners rounded and a soft shadow under it, as a polished demo of one app usually looks. Made once as the recording starts; each frame copies only the window.
+
+![A window recorded on a background](2026-11-05/061718-a-window-recorded-on-a-background.png)
+
+### The Viewer's Trim…
+
+*05:57* — Edit ▸ Trim… on a video puts a handle at each end of its timeline (what's cut dimmed, the picture where a handle is dragged shown); Trim copies the stretch kept into “NAME (trimmed).mp4” beside it, nothing encoded again, and shows it. olo-screenshot --trim does the same for agents.
+
+![The Viewer's Trim…](2026-11-05/055739-the-viewer-s-trim.png)
+
+### Clicks and shortcuts shown while recording
+
+*05:36* — Record… ▸ Show Clicks and Show Shortcuts (or --show-clicks, --show-keys): a ring spreads where a button is pressed, and a shortcut shows on a key cap low on the screen, written as the keyboard profile writes it; typing never shows. Drawn by app_server, so recordings, screen sharing and agents' demos have them.
+
+![Clicks and shortcuts shown while recording](2026-11-05/053603-clicks-and-shortcuts-shown-while-recording.png)
+
+### The lock screen: touch your security key
+
+*04:33* — Asked as the screen locks, again three times, then whenever someone is there.
+
+![The lock screen: touch your security key](2026-11-05/043302-the-lock-screen-touch-your-security-key.png)
+
+### Terminal's sudo window: touch your security key
+
+*04:33* — With a key set up and plugged in, the window says a touch will do; the password the key keeps goes to sudo's prompt.
+
+![Terminal's sudo window: touch your security key](2026-11-05/043302-terminal-s-sudo-window-touch-your-security-key.png)
+
+### Preferences ▸ Security: Security Keys
+
+*04:33* — A security key (a YubiKey) set up so a touch of it stands for the account password: the password checked, then two touches; a spare the same way; and three touches in a row to type its code where you are. Shown set up with the test key.
+
+![Preferences ▸ Security: Security Keys](2026-11-05/043301-preferences-security-security-keys.png)
+
+### Cube, light
+
+*03:52* — The Cube theme: workstation greys, a black tab, deep blue selection, its airbrushed icons and studio wallpaper.
+
+![Cube, light](2026-11-05/035249-cube-light.png)
+
+### Platinum, light
+
+*03:52* — The Platinum theme: platinum grey, a lavender tab, lilac-blue selection, its outlined icons and wallpaper.
+
+![Platinum, light](2026-11-05/035247-platinum-light.png)
+
+### Workbench, dark: deep blue and orange
+
+*03:52* — The Workbench theme's dark colours (Workbench 1.3's blue, orange tab and selection, black outlines), its pixel-art icons and wallpaper.
+
+![Workbench, dark: deep blue and orange](2026-11-05/035246-workbench-dark-deep-blue-and-orange.png)
+
+### Preferences ▸ Themes: Cube, Platinum and Workbench
+
+*03:52* — Three more themes, after NeXTSTEP, Mac OS 9 and AmigaOS: a full icon set each (135, drawn by gpt-image-2.5-sunburst against each theme's references), its wordmark, its wallpaper (light and dark) and its own colours. The panel lays the chosen theme's colour sets beside the ten rows, so it fits 1280 × 800 without scrolling.
+
+![Preferences ▸ Themes: Cube, Platinum and Workbench](2026-11-05/035245-preferences-themes-cube-platinum-and-workbench.png)
+
+### HDR video shown for an sRGB screen
+
+*01:26* — HDR10 and HLG video (phones', streaming's: BT.2020, PQ or HLG) converted for an ordinary screen: its light counted in SDR's white (203 cd/m²), BT.2020 converted to sRGB, highlights rolled off up to the brightest it was mastered to. A test pattern, a PQ ramp to 1,000 cd/m² over BT.2020 colour bars at 100 and 600 cd/m²: above as it shows now, below as before (dull and grey, its samples taken as sRGB).
+
+![HDR video shown for an sRGB screen](2026-11-05/012656-hdr-video-shown-for-an-srgb-screen.png)
+
 ## 2026-11-04
+
+### Window menu: a dialog floats always
+
+*23:57* — An alert or a dialog that names its window floats over it whatever is asked: in auto-tiling its window menu shows Float Over the Tiles checked and dimmed, and app_server leaves it floating when asked to tile it (an alert tiled by hand had stayed over its app's floating windows as their child: a tile over floats, found by the auto fuzzer).
+
+![Window menu: a dialog floats always](2026-11-04/235741-window-menu-a-dialog-floats-always.png)
 
 ### Preferences > GPUs: the power mode sets them all
 

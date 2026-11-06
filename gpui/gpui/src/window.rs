@@ -987,6 +987,8 @@ pub struct Window {
     pub(crate) removed: bool,
     pub(crate) platform_window: Box<dyn PlatformWindow>,
     display_id: Option<DisplayId>,
+    /// Olo: what kind it was opened as (a layer, a lock screen's).
+    kind: crate::WindowKind,
     sprite_atlas: Arc<dyn PlatformAtlas>,
     /// Olo: the path masks drawn recently (`crate::outline`).
     outlines: crate::outline::Outlines,
@@ -1507,6 +1509,7 @@ impl Window {
             removed: false,
             platform_window,
             display_id,
+            kind,
             sprite_atlas,
             outlines: Default::default(),
             text_system,
@@ -2015,8 +2018,13 @@ impl Window {
     ///
     /// If called from within a view, it will notify that view on the next frame. Otherwise, it will refresh the entire window.
     pub fn request_animation_frame(&self) {
-        let entity = self.current_view();
-        self.on_next_frame(move |_, cx| cx.notify(entity));
+        // (Outside drawing, an event handler's, there is no current view:
+        // `current_view` would panic. The whole window, as said above;
+        // Tracker's band selection crashed on it.)
+        match self.rendered_entity_stack.last().copied() {
+            Some(entity) => self.on_next_frame(move |_, cx| cx.notify(entity)),
+            None => self.on_next_frame(|window, _| window.refresh()),
+        }
     }
 
     /// Spawn the future returned by the given closure on the application thread pool.
@@ -2130,6 +2138,11 @@ impl Window {
         over
     }
 
+    /// Olo: what kind of window it was opened as.
+    pub fn window_kind(&self) -> crate::WindowKind {
+        self.kind
+    }
+
     /// Olo: the window's surface's protocol id (Wayland's `wl_surface`),
     /// which app_server names it by (its keyboard hints ask about it).
     pub fn surface_id(&self) -> Option<u32> {
@@ -2169,10 +2182,17 @@ impl Window {
         self.platform_window.set_title(title);
     }
 
+    /// Olo: whether the window is on a display whose HDR is on: an HDR
+    /// picture may then be drawn as HDR (`set_gamut(Gamut::Hdr10)`).
+    pub fn on_hdr_display(&self) -> bool {
+        self.platform_window.on_hdr_display()
+    }
+
     /// Olo: draw this window in `space` (Display P3, while it shows a
-    /// photo wider than sRGB, say): its sRGB colours converted as drawn,
-    /// images in that space as they are. Whether it does: the compositor
-    /// must take the window's colours (wp_color_management_v1).
+    /// photo wider than sRGB, say; HDR10, an HDR video): its sRGB colours
+    /// converted as drawn, images in that space as they are. Whether it
+    /// does: the compositor must take the window's colours
+    /// (wp_color_management_v1).
     pub fn set_gamut(&mut self, space: crate::Gamut) -> bool {
         let drawn = self.platform_window.set_gamut(space);
         self.refresh();
@@ -4301,6 +4321,7 @@ impl Window {
         let params = RenderImageParams {
             image_id: data.id,
             frame_index: 0,
+            deep: data.is_deep(),
         };
         let tile = self
             .sprite_atlas
@@ -4359,6 +4380,7 @@ impl Window {
         let params = RenderImageParams {
             image_id: data.id,
             frame_index,
+            deep: data.is_deep(),
         };
 
         let tile = self
@@ -4379,12 +4401,12 @@ impl Window {
 
         self.next_frame.scene.insert_primitive(PolychromeSprite {
             order: 0,
-            // (Bit 1: the image is Display P3's numbers.)
+            // (Bit 1: the image is Display P3's numbers; bit 2, HDR10's.)
             nearest: u32::from(nearest)
-                | if data.color_space == crate::Gamut::DisplayP3 {
-                    2
-                } else {
-                    0
+                | match data.color_space {
+                    crate::Gamut::DisplayP3 => 2,
+                    crate::Gamut::Hdr10 => 4,
+                    crate::Gamut::Srgb => 0,
                 },
             grayscale,
             bounds: bounds
@@ -4424,6 +4446,7 @@ impl Window {
             let params = RenderImageParams {
                 image_id: data.id,
                 frame_index,
+                deep: data.is_deep(),
             };
 
             self.sprite_atlas.remove(&params.clone().into());
@@ -5449,6 +5472,13 @@ impl Window {
     /// it opened (notifications take it while a reply field shows).
     pub fn set_layer_keyboard(&self, keyboard: crate::LayerKeyboard) {
         self.platform_window.set_layer_keyboard(keyboard);
+    }
+
+    /// Olo: this layer surface's margins (top, right, bottom, left, in
+    /// points), changed after it opened: it moves (a recording's camera
+    /// bubble, dragged).
+    pub fn set_layer_margin(&self, margin: (i32, i32, i32, i32)) {
+        self.platform_window.set_layer_margin(margin);
     }
 
     /// Olo: draws `font`'s printable characters at `font_size` for this
@@ -6673,5 +6703,33 @@ mod memo_tests {
         assert_eq!(painted.get(), 3);
         let quads = cx.update(|window, _| window.rendered_frame.scene.quads.len());
         assert_eq!(quads, 4, "the three rows and the bar over them");
+    }
+
+    /// How many times it was drawn.
+    struct Counted {
+        renders: Rc<Cell<usize>>,
+    }
+
+    impl Render for Counted {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            self.renders.set(self.renders.get() + 1);
+            div().size_full()
+        }
+    }
+
+    /// An animation frame asked for outside drawing (in an event handler,
+    /// as Tracker's band selection did) draws the window again, rather
+    /// than panicking for want of a view being drawn.
+    #[crate::test]
+    fn an_animation_frame_asked_outside_drawing(cx: &mut TestAppContext) {
+        let renders = Rc::new(Cell::new(0));
+        let (_view, cx) = cx.add_window_view(|_, _| Counted {
+            renders: renders.clone(),
+        });
+        let before = renders.get();
+        cx.update(|window, _| window.request_animation_frame());
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear());
+        assert!(renders.get() > before, "drawn again");
     }
 }

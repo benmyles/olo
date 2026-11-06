@@ -106,6 +106,8 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             _ => false,
         };
         self.space.unmap_elem(&window);
+        // The pointer, if it was on it, is on what was behind it.
+        self.repoint_soon();
         if had_focus {
             if surface.wl_surface().client().is_some() {
                 self.focus_topmost();

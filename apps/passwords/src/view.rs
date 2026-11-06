@@ -301,8 +301,10 @@ fn sync_ago(at: chrono::DateTime<chrono::Utc>) -> String {
 fn locked(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwords>) -> AnyElement {
     let me = cx.entity();
     let p = theme::palette(cx);
-    let mut message = match &app.lock.finger {
-        Finger::Listening(s) => s.clone(),
+    let mut message = match (&app.lock.finger, &app.lock.key_note) {
+        (Finger::Listening(s), Some(_)) if s == "Touch ID or enter your password" => "Touch ID, touch your security key, or enter your password".into(),
+        (Finger::Listening(s), _) => s.clone(),
+        (_, Some(k)) => k.clone(),
         _ => format!("Enter the password for “{}” to unlock it.", app.lock.user()),
     };
     // Who is waiting: the app by name, or apps, if more than one.
@@ -1048,6 +1050,21 @@ fn field_row(app: &Passwords, me: &Me, item: &str, f: &ItemField, key: String, r
             to.update(cx, |a, cx| a.copy_field(&it, &k, cx))
         }));
         row = row.child(buttons);
+    }
+    // Right-click: the value copied, or its `op://` reference (for the
+    // `op` command, `op read`, `op inject`).
+    if !key.starts_with("url:") {
+        let (menu_me, menu_key, menu_item) = (me.clone(), key.clone(), item.to_owned());
+        row = row.on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, window, cx| {
+            let m = olo_ui::menu::Menu::new("Field").item("Copy", "copy").item("Copy Reference", "reference");
+            let (to, k, it) = (menu_me.clone(), menu_key.clone(), menu_item.clone());
+            menu::context_menu(window, cx, m, e.position, move |cmd, _, cx| {
+                to.update(cx, |a, cx| match cmd {
+                    "reference" => a.copy_reference(&it, Some(&k), cx),
+                    _ => a.copy_field(&it, &k, cx),
+                })
+            });
+        });
     }
     if link {
         row = row.cursor(CursorStyle::PointingHand);

@@ -216,11 +216,17 @@ fn started(app: &Activity, since_boot: f64) -> String {
     }
 }
 
-/// The Send Signal submenu for `pid`.
-pub fn signal_menu(pid: i32) -> Menu {
+/// "12" or "12,40,41", for a command.
+pub fn pids_text(pids: &[i32]) -> String {
+    pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(",")
+}
+
+/// The Send Signal submenu for `pids`.
+pub fn signal_menu(pids: &[i32]) -> Menu {
     let mut menu = Menu::new("Send Signal");
+    let pids = pids_text(pids);
     for (n, name, what) in SIGNALS {
-        menu = menu.item(format!("{what} ({name})"), format!("signal:{pid}:{n}"));
+        menu = menu.item(format!("{what} ({name})"), format!("signal:{pids}:{n}"));
     }
     menu
 }
@@ -228,29 +234,38 @@ pub fn signal_menu(pid: i32) -> Menu {
 /// The priorities offered, as nice values.
 pub const PRIORITIES: [(i32, &str); 7] = [(-20, "Highest"), (-10, "High"), (-5, "Above Normal"), (0, "Normal"), (5, "Below Normal"), (10, "Low"), (19, "Lowest")];
 
-pub fn priority_menu(pid: i32, nice: i32) -> Menu {
+/// The Priority submenu for `pids`, whose nice values are `nices`: the
+/// one they all have checked (none if they differ).
+pub fn priority_menu(pids: &[i32], nices: &[i32]) -> Menu {
     let mut menu = Menu::new("Priority");
+    let all = nices.first().copied().filter(|n| nices.iter().all(|m| m == n));
+    let pids = pids_text(pids);
     for (n, name) in PRIORITIES {
-        menu = menu.item(format!("{name} ({n})"), format!("nice:{pid}:{n}")).checked(nice == n);
+        menu = menu.item(format!("{name} ({n})"), format!("nice:{pids}:{n}")).checked(all == Some(n));
     }
     menu
 }
 
-fn row_menu(app: &Activity, p: &Proc) -> Menu {
-    let pid = p.pid;
+/// The menu of a row: for the processes chosen (`pids`, the row's among
+/// them), every item acting on them all; Inspect on the first.
+fn row_menu(app: &Activity, pids: &[i32]) -> Menu {
+    let several = pids.len() > 1;
+    let first = pids.first().copied().unwrap_or_default();
+    let list = pids_text(pids);
+    let programs = if several { "Show Programs in Tracker" } else { "Show Program in Tracker" };
     let mut menu = Menu::new("")
-        .item("Inspect", format!("inspect:{pid}"))
+        .item("Inspect", format!("inspect:{first}"))
         .separator()
-        .item("Quit", format!("quit:{pid}"))
-        .item("Force Quit…", format!("force-quit:{pid}"))
+        .item(if several { format!("Quit {} Processes", pids.len()) } else { "Quit".into() }, format!("quit:{list}"))
+        .item(if several { format!("Force Quit {} Processes…", pids.len()) } else { "Force Quit…".into() }, format!("force-quit:{list}"))
         .separator()
-        .submenu(signal_menu(pid))
-        .submenu(priority_menu(pid, p.nice))
+        .submenu(signal_menu(pids))
+        .submenu(priority_menu(pids, &app.nices(pids)))
         .separator()
-        .item("Show Program in Tracker", format!("show-program:{pid}"))
-        .item("Copy Process ID", format!("copy-pid:{pid}"))
-        .item("Copy Command Line", format!("copy-command:{pid}"));
-    if app.access != Access::Full && p.uid != app.uid {
+        .item(programs, format!("show-program:{list}"))
+        .item(if several { "Copy Process IDs" } else { "Copy Process ID" }, format!("copy-pid:{list}"))
+        .item(if several { "Copy Command Lines" } else { "Copy Command Line" }, format!("copy-command:{list}"));
+    if app.access != Access::Full && pids.iter().any(|&pid| app.proc(pid).is_some_and(|p| p.uid != app.uid)) {
         menu = menu.separator().item("Get Full Access…", "full-access").enabled(app.access == Access::Mine);
     }
     menu
@@ -343,23 +358,28 @@ fn triangle(window: &mut Window, mid: olo_ui::gpui::Point<Pixels>, open: bool, c
 pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> AnyElement {
     let me = cx.entity();
     let rows = rows_now(app);
-    // The selection follows its process as rows move, and goes when it
-    // leaves the list (filtered out or quit), so Quit never acts on a
-    // process you can't see.
-    if app.selected.is_some_and(|pid| !rows.pids.contains(&pid)) && !app.reveal_selected {
-        app.selected = None;
+    // The selection follows its processes as rows move, and each goes
+    // when it leaves the list (filtered out or quit), so an action never
+    // reaches a process you can't see chosen.
+    if !app.reveal_selected {
+        app.selected.retain(|pid| rows.pids.contains(pid));
     }
-    let at = app.selected.and_then(|pid| rows.pids.iter().position(|&p| p == pid));
+    let at: std::collections::BTreeSet<usize> = app.selected.iter().filter_map(|pid| rows.pids.iter().position(|p| p == pid)).collect();
+    let first = at.iter().next().copied();
     let reveal = std::mem::take(&mut app.reveal_selected);
     let sort = app.settings.sort;
     app.list.update(cx, |l, _| {
         l.state.sort = sort;
-        l.state.selected = at.into_iter().collect();
-        if l.state.cursor.is_none_or(|c| Some(c) != at) {
-            l.state.cursor = at;
-            l.state.anchor = at;
+        l.state.selected = at.clone();
+        // (The keyboard's place and a range's start stay where they were
+        // while still chosen: they move with their rows.)
+        if l.state.cursor.is_none_or(|c| !at.contains(&c)) {
+            l.state.cursor = first;
         }
-        if reveal && let Some(r) = at {
+        if l.state.anchor.is_none_or(|c| !at.contains(&c)) {
+            l.state.anchor = first;
+        }
+        if reveal && let Some(r) = first {
             l.reveal(r);
         }
     });
@@ -446,9 +466,9 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
         })
     })
     .on_select(move |_, cx| {
-        let pid = select_me.read(cx).list.read(cx).state.single().and_then(|r| select_rows.pids.get(r).copied());
+        let pids: Vec<i32> = select_me.read(cx).list.read(cx).state.selected.iter().filter_map(|&r| select_rows.pids.get(r).copied()).collect();
         select_me.update(cx, |a, cx| {
-            a.selected = pid;
+            a.selected = pids;
             cx.notify();
         });
     })
@@ -475,10 +495,14 @@ pub fn list(app: &mut Activity, _: &mut Window, cx: &mut Context<Activity>) -> A
     })
     .on_context(move |row, at, window, cx| {
         let Some(&pid) = menu_rows.pids.get(row) else { return };
+        // On a chosen row: for every one chosen; else that row, chosen.
         let menu = menu_me.update(cx, |a, cx| {
-            a.selected = Some(pid);
+            if !a.selected.contains(&pid) {
+                a.selected = vec![pid];
+            }
             cx.notify();
-            a.proc(pid).map(|pr| row_menu(a, pr))
+            let pids = a.chosen_pids();
+            (!pids.is_empty()).then(|| row_menu(a, &pids))
         });
         let Some(menu) = menu else { return };
         let to = menu_me.clone();
@@ -540,14 +564,14 @@ pub fn view(app: &mut Activity, width: f32, list: AnyView, window: &mut Window, 
     let threads: u64 = app.processes.iter().map(|p| p.threads as u64).sum();
     let summary: SharedString =
         format!("{} of {} processes, {threads} threads · {} CPU", rows.refs.len(), app.processes.len(), app.latest("cpu").map(|v| format!("{v:.0}%")).unwrap_or_default()).into();
-    let sel = app.selected_proc().map(|p| p.pid);
+    // The buttons act on every process chosen (Inspect on the first).
+    let sel = app.chosen_pids();
     let bw = 96.0;
     let button = |label: &'static str, cmd: &'static str| {
         let me = me.clone();
-        Button::new(label).min_width(bw).enabled(sel.is_some()).on_click(move |window, cx| {
-            if let Some(pid) = sel {
-                me.update(cx, |a, cx| a.command(&format!("{cmd}:{pid}"), Some(window), cx));
-            }
+        let pids = pids_text(&sel);
+        Button::new(label).min_width(bw).enabled(!sel.is_empty()).on_click(move |window, cx| {
+            me.update(cx, |a, cx| a.command(&format!("{cmd}:{pids}"), Some(window), cx));
         })
     };
     let text = style::c(p.panel_text);

@@ -42,6 +42,7 @@ mod picker;
 mod pictures;
 mod portal;
 mod print;
+mod remote;
 mod shortcuts;
 mod shot;
 mod stream;
@@ -105,6 +106,22 @@ pub fn shareables() -> Vec<Shareable> {
         .into_iter()
         .map(|s| Shareable { key: s.output.clone(), label: s.label, window: false, source: capture::Source::Output(Some(s.output)), size: s.size, position: s.position, logical: s.logical })
         .collect();
+    // The agent screens running, on the person's own display: an agent's
+    // screen shared into a call, captured from its own app_server.
+    if olo_ui::moving::menus_offer() {
+        for s in olo_ui::moving::screens() {
+            let (w, h) = (s.size.0 as i32, s.size.1 as i32);
+            all.push(Shareable {
+                key: format!("agent:{}", s.name),
+                label: format!("Agent Screen “{}”", s.label),
+                window: false,
+                source: capture::Source::Display(s.wayland_display),
+                size: s.size,
+                position: (0, 0),
+                logical: (w, h),
+            });
+        }
+    }
     let Ok(Reply::Windows { windows }) = Client::connect().and_then(|mut c| c.request(&Request::ListWindows)) else { return all };
     for w in windows.into_iter().filter(|w| !w.minimized && w.app_id != APP_ID) {
         let (cw, ch) = w.content.as_ref().map_or((0, 0), |r| (r.width.max(0), r.height.max(0)));

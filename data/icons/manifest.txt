@@ -23,6 +23,7 @@ preferences|a preferences panel: a grey control box with three coloured sliders 
 appearance|a painter's palette with blobs of yellow, blue and red paint and a brush
 display|a modern flat display panel on a silver stand, turned slightly to the right in three-quarter view, showing a blue gradient
 keyboard|a compact light grey computer keyboard with dark key legends absent (blank keys)
+keyboard-aluminium|a slim full-size wireless keyboard with a numeric keypad on its right, a thin silver aluminium base and white blank keys, and a small round black key with a silver ring at the top right, seen in three-quarter view from slightly above
 touchpad|a silver glass laptop trackpad with a fingertip pressing on it
 sound|a speaker cone with curved sound waves emanating to the right
 network-prefs|a wireless router with two antennas and curved blue wifi signal arcs above it

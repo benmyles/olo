@@ -217,6 +217,23 @@ pub fn pq_encode(y: f64) -> f64 {
     ((PQ_C1 + PQ_C2 * p) / (1.0 + PQ_C3 * p)).powf(PQ_M2)
 }
 
+const HLG_A: f64 = 0.178_832_77;
+const HLG_B: f64 = 1.0 - 4.0 * HLG_A;
+const HLG_C: f64 = 0.559_910_73;
+
+/// HLG's signal (0–1) to scene light (0–1): its OETF's inverse
+/// (ITU-R BT.2100).
+pub fn hlg_decode(e: f64) -> f64 {
+    let e = e.clamp(0.0, 1.0);
+    if e <= 0.5 { e * e / 3.0 } else { (((e - HLG_C) / HLG_A).exp() + HLG_B) / 12.0 }
+}
+
+/// Scene light (0–1) to HLG's signal: its OETF.
+pub fn hlg_encode(l: f64) -> f64 {
+    let l = l.clamp(0.0, 1.0);
+    if l <= 1.0 / 12.0 { (3.0 * l).sqrt() } else { HLG_A * (12.0 * l - HLG_B).ln() + HLG_C }
+}
+
 /// The reference white of SDR in HDR (ITU-R BT.2408), cd/m².
 pub const SDR_WHITE_NITS: f64 = 203.0;
 
