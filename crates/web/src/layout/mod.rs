@@ -1,6 +1,7 @@
 //! Original DOM box construction and normal flow geometry. Worker-only.
 //! This is an incremental implementation; unsupported layout is explicit.
 mod flow;
+mod images;
 mod tree;
 mod used;
 pub use crate::text::prepare::ControlKind;

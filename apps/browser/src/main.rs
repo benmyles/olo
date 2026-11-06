@@ -447,7 +447,7 @@ impl Render for Browser {
         let tiles = self.tiles.clone();
         let focused = self.interaction.focus;
         let document_snapshot = self.document_snapshot.clone();
-        let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone())).collect();
+        let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image)).collect();
         let viewport = self.viewport.clone();
         let scroll = self.scroll;
         let extent = self.extent;
@@ -480,13 +480,19 @@ impl Render for Browser {
                         );
                         let _ = window.paint_image_nearest(b, image.clone());
                     }
-                    for (text, r, link) in &labels {
+                    for (text, r, link, image) in &labels {
                         agent::record(
                             window,
                             cx,
                             agent::Node {
                                 document_content: true,
-                                role: if link.is_some() { "Link" } else { "Label" },
+                                role: if link.is_some() {
+                                    "Link"
+                                } else if *image {
+                                    "Image"
+                                } else {
+                                    "Label"
+                                },
                                 name: Some(text.clone()),
                                 value: link.as_ref().map(|l| l.url.clone()),
                                 clickable: link.is_some(),

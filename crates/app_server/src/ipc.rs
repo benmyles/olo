@@ -792,6 +792,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                     pointer: self.pointer_track.health(),
                     touch,
                     inputs: self.input_counts.activity(std::time::Instant::now()),
+                    wheel: self.last_wheel.as_ref().map(|(n, at)| olo_protocol::WheelNotch { ago_ms: at.elapsed().as_millis() as u64, ..n.clone() }),
                 }
             }
             Request::PointerTrace { output } => Reply::PointerTrace { frames: self.backend_data.pointer_trace(&output) },

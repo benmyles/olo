@@ -393,7 +393,7 @@ fn frames_poller(send: impl Fn(Msg) + Send + 'static, rx: mpsc::Receiver<FramesA
         }
         let Some(c) = client.as_mut() else { continue };
         match c.request(&Request::Frames) {
-            Ok(Reply::Frames { displays, capture, pointer, touch, inputs }) => send(Msg::Frames(displays, capture, pointer, touch, inputs)),
+            Ok(Reply::Frames { displays, capture, pointer, touch, inputs, .. }) => send(Msg::Frames(displays, capture, pointer, touch, inputs)),
             _ => client = None,
         }
     }

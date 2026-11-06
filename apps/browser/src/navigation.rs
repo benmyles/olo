@@ -73,7 +73,7 @@ pub fn target_rect(page: &page::Page, target: NodeId, cancel: &AtomicBool) -> pa
     }
     for (i, _) in scene.commands().iter().enumerate() {
         check(cancel)?;
-        let mut node = scene.text_node(i as u32);
+        let mut node = scene.node(i as u32);
         while let Some(at) = node {
             if at == target {
                 if let Some(rect) = scene.visible_bounds(i as u32) {
@@ -114,7 +114,7 @@ pub fn focus_targets(page: &page::Page, base: &Url, origin: &Url, cache: &mut Ha
     let mut targets: HashMap<NodeId, FocusTarget> = HashMap::new();
     for (i, _) in page.scene.commands().iter().enumerate() {
         check(cancel)?;
-        let Some(node) = page.scene.text_node(i as u32) else {
+        let Some(node) = page.scene.node(i as u32) else {
             continue;
         };
         let Some(rect) = page.scene.visible_bounds(i as u32) else {

@@ -268,6 +268,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// Clicks, scrolls, gestures and keys a minute back (Activity
     /// Monitor ▸ Inputs).
     pub input_counts: crate::input_counts::InputCounts,
+    /// The last wheel notch as it came and as it went (`Reply::Frames`'s
+    /// `wheel`), and when.
+    pub last_wheel: Option<(olo_protocol::WheelNotch, std::time::Instant)>,
     pub pointer_track: crate::cursor::Track,
     /// When `tick` last did its work (at most every `TICK`).
     pub last_tick: Option<std::time::Instant>,
@@ -1241,6 +1244,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             cursor_status: CursorImageStatus::default_named(),
             pointer_track: Default::default(),
             input_counts: Default::default(),
+            last_wheel: None,
             last_tick: None,
             seat_name,
             seat,

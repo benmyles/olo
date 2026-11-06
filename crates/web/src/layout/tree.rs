@@ -27,6 +27,8 @@ pub enum BoxKind {
     Viewport,
     Block { flow_root: bool, root: bool },
     InlineContent { source: u32 },
+    InlineImage { image: u32 },
+    BlockImage { image: u32 },
 }
 #[derive(Clone, Debug)]
 pub struct BoxNode {
@@ -71,6 +73,7 @@ impl TextSource {
     }
 }
 pub struct Tree {
+    images: Option<Arc<crate::image::Set>>,
     pub(super) boxes: Box<[BoxNode]>,
     pub(super) sources: Box<[TextSource]>,
     pub(super) styles: Arc<StyleTree>,
@@ -81,6 +84,12 @@ pub struct Tree {
     text_bytes: usize,
 }
 impl Tree {
+    pub fn images(&self) -> Option<&Arc<crate::image::Set>> {
+        self.images.as_ref()
+    }
+    pub fn image(&self, index: u32) -> Option<&Arc<crate::image::Image>> {
+        self.images.as_ref()?.image(index)
+    }
     pub fn text_bytes(&self) -> usize {
         self.text_bytes
     }
@@ -118,7 +127,8 @@ impl Tree {
         if self.document != document.id() || self.revision != document.revision() { Err(Error::Stale) } else { Ok(()) }
     }
     pub fn storage_payload_bytes(&self) -> usize {
-        self.boxes.len() * size_of::<BoxNode>()
+        self.images.as_ref().map_or(0, |images| images.payload_bytes())
+            + self.boxes.len() * size_of::<BoxNode>()
             + self.inlines.len() * size_of::<InlineBox>()
             + self.sources.len() * size_of::<Range<u32>>()
             + self.controls.len() * size_of::<Control>()
@@ -169,6 +179,7 @@ struct OpenInline {
     index: usize,
 }
 pub struct BuildJob<'a> {
+    images: Option<Arc<crate::image::Set>>,
     document: &'a Document,
     styles: Arc<StyleTree>,
     limits: BuildLimits,
@@ -192,6 +203,7 @@ impl<'a> BuildJob<'a> {
         }
         let root = BoxId::new(0)?;
         Ok(Self {
+            images: None,
             document,
             styles,
             limits,
@@ -206,6 +218,15 @@ impl<'a> BuildJob<'a> {
             progress: BuildProgress { boxes: 1, ..Default::default() },
             failed: false,
         })
+    }
+    pub fn with_images(mut self, images: Arc<crate::image::Set>) -> Result<Self> {
+        check(self.cancel)?;
+        if self.failed || self.progress.visited != 0 || self.images.is_some() {
+            return Err(Error::Invalid);
+        }
+        images.validate(self.document).map_err(|_| Error::Stale)?;
+        self.images = Some(images);
+        Ok(self)
     }
     pub fn progress(&self) -> BuildProgress {
         self.progress
@@ -241,7 +262,15 @@ impl<'a> BuildJob<'a> {
         }
         let owner = p.spans.first().map_or(self.boxes[p.container.index()].style_node, |s| s.style_node);
         let source = u32::try_from(self.sources.len()).map_err(|_| Error::Limit)?;
-        self.add(self.boxes[p.container.index()].node, owner, BoxKind::InlineContent { source }, p.container)?;
+        let text_box = self.add(self.boxes[p.container.index()].node, owner, BoxKind::InlineContent { source }, p.container)?;
+        for &(at, kind) in &p.controls {
+            if kind == ControlKind::Object {
+                check(self.cancel)?;
+                let span = p.spans.get(p.spans.partition_point(|s| s.range.end <= at)).filter(|s| s.range.start == at).ok_or(Error::Invalid)?;
+                let image = self.images.as_ref().and_then(|images| images.index(span.node)).ok_or(Error::Invalid)?;
+                self.add(span.node, span.style_node, BoxKind::InlineImage { image }, text_box)?;
+            }
+        }
         let start = u32::try_from(self.inlines.len()).map_err(|_| Error::Limit)?;
         self.inlines.extend(p.inlines);
         let end = u32::try_from(self.inlines.len()).map_err(|_| Error::Limit)?;
@@ -407,7 +436,25 @@ impl<'a> BuildJob<'a> {
                         self.append(node, container, node, kind.carrier(), Some(kind))?;
                         continue;
                     }
-                    if matches!(name, Some("img" | "input" | "textarea" | "select" | "button" | "video" | "audio" | "iframe" | "object" | "embed" | "canvas")) {
+                    if name == Some("img") {
+                        if *display == Display::Contents {
+                            continue;
+                        }
+                        if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline)) || !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static)) {
+                            return Err(Error::Unsupported("aligned/positioned image"));
+                        }
+                        let image = self.images.as_ref().and_then(|images| images.index(node)).ok_or(Error::Unsupported("missing decoded image"))?;
+                        match *display {
+                            Display::Box { outer: Outer::Inline, list_item: false, .. } => self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))?,
+                            Display::Box { outer: Outer::Block, list_item: false, .. } => {
+                                self.flush()?;
+                                self.add(node, node, BoxKind::BlockImage { image }, container)?;
+                            }
+                            _ => return Err(Error::Unsupported("image formatting context")),
+                        }
+                        continue;
+                    }
+                    if matches!(name, Some("input" | "textarea" | "select" | "button" | "video" | "audio" | "iframe" | "object" | "embed" | "canvas")) {
                         return Err(Error::Unsupported("replaced/control/forced-break inline object"));
                     }
                     match *display {
@@ -453,6 +500,7 @@ impl<'a> BuildJob<'a> {
         }
         let text_bytes = self.sources.iter().map(|s| s.source.len()).sum();
         Ok(Arc::new(Tree {
+            images: self.images,
             text_bytes,
             document: self.document.id(),
             revision: self.document.revision(),

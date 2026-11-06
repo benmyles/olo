@@ -1,6 +1,7 @@
 //! Compile-time switches recorded by release measurement executables.
 pub fn enabled() -> Vec<&'static str> {
     [
+        ("scalar-image-processing", cfg!(feature = "scalar-image-processing")),
         ("scalar-scans", cfg!(feature = "scalar-scans")),
         ("baseline-storage", cfg!(feature = "baseline-storage")),
         ("baseline-parser", cfg!(feature = "baseline-parser")),

@@ -6416,7 +6416,17 @@ window from the surface): a finger's values × 10 / h^⅔, a notch's
 × 32 / h^⅔ (its values, not `value120`, are what GTK 3 reads).
 Measured with a PyGObject window of numbered lines that prints its
 adjustment: 94–97 px for 100 and 45–47 a notch at 300 and 700 px, 1×
-and 2× (the view a little shorter than the window). Chromium is recognised before
+and 2× (the view a little shorter than the window). A wheel's notch is
+scaled first by Preferences ▸ Touchpad & Mouse ▸ Mouse ▸ Wheel's
+scrolling speed (`Settings::wheel_speed`, 0.25 to 3, `wheel_at_speed`
+for libinput's notches and synthetic ones alike), its value and its
+120ths together, so every program keeps the same step at any speed:
+headless at 1× and 2× (a page reporting `scrollY` in its title, and
+StyledEdit's view compared shot to shot), a notch moves Chrome 48, 96
+and 24 CSS px and StyledEdit 48, 96 and 24 points at 1, 2 and 0.5.
+`{"type":"frames"}`'s `wheel` says the last notch as it came (value,
+120ths, the speed) and as it went (value, 120ths, to which kind of
+program): a person's mouse whose notches feel short is read there. Chromium is recognised before
 the kit's socket, since olo-chrome answers on one named after Chrome's
 pid for its page trees. Chromium also flings on its own when a finger
 scroll stops within 200 ms of its last move, however long the fingers
@@ -7291,6 +7301,23 @@ panels. The document has the keyboard from the moment its window opens
   pan), formatted documents in `RichView`, sheets in `TableView`, and
   text, listings, fonts, sound and video. The window opens at the size
   its content asks (`ideal_size`) for the display it opens on.
+- A video's picture (View menu, `PreviewView::set_video_zoom`,
+  `VideoZoom`): Actual Size (⌘0, as before: at most a frame pixel a
+  device pixel, smaller to fit), Zoom to Fit (⌘9, as big as fits) or
+  Zoom to Fill (⇧⌘9, filling its place, what overflows cut off by a
+  content mask), its proportions kept every way. Enter Full Screen (F,
+  pictures too; Escape or F leaves): the picture is all there is (the
+  menu bar rendered at no height, so its keys still work; the title and
+  facts gone), Actual Size as big as fits, and the transport over its
+  foot while the pointer moved in the last 2.5 s or it's paused (one
+  timer, re-armed as it fires, hides it; a click on the picture plays
+  and pauses then). Leaving full screen, app_server gives a window its
+  place and its own size back (`WindowMeta::before_fullscreen`; asked
+  for none, GPUI took nearly the whole display). Tried headless with a
+  640 × 360 clip in a 700 × 700 window and a 12 s one full screen at 2×:
+  the three ways, the transport gone 3 s after the pointer stopped while
+  playing, and 700 × 600 at (100, 80) back after Escape; the layout
+  review clean at 1×, 1.5× and 2×.
 - A video or a sound showing: ← and → move its time by 10 s
   (`PreviewView::skip`, `SKIP_SECS`, held at its start and end), ↑ and
   ↓ go to the next file; Space or P plays and pauses. Quick Look's keys
@@ -11632,3 +11659,26 @@ proxy and restart lifecycle. Document parsing/layout/raster/upload preparation
 and file I/O stay on its page worker; the UI composites viewport tiles and
 handles input. `tools/dev/ui-lint Browser --screen 1280x800` covers its native
 window, with owned Agent Screens used for visual and live scale-change checks.
+
+Still images use `olo_images::raster::decode` on the resource worker, then
+immutable premultiplied RGBA8 assets in `olo_web::image`. `page::load_assets`
+distinguishes stylesheet and image resources; its older CSS-only adapter remains
+available. Document/revision-scoped bindings share repeated sources across
+boxes and restyles. The initial browser budgets are 128 resource requests,
+16 MiB encoded per image and 64 MiB aggregate decoded pixels. Codec allocation
+hints remain best effort, not process isolation. PNG/JPEG/WebP/GIF stills work;
+animation, responsive sources, SVG, broken-image fallback and complete replaced
+layout/sampling remain open. The CPU sampler uses global device coordinates so
+retained tile boundaries cannot introduce seams. The `scalar-image-processing`
+measurement feature disables packed SIMD ingestion for byte/cost controls.
+Interpolation uses the faster measured compiler-selected arithmetic; an explicit
+four-channel vector implementation was slower and is not retained.
+
+Visible images expose alt text (or "Image"), document bounds and normal link
+actions in the structured tree. Linked images use the same link/origin checks
+and human input dispatch as text links. Image pixels or source bytes are not
+included in snapshots. `tools/browser/image-smoke.py` checks the native image
+nodes, repeated-source fetch reuse, live scales/themes and link navigation on an
+owned Agent Screen. Independent component geometry/pixel results are pinned in
+`crates/web/tests/image*-fixtures`; known nonpasses are explicit and do not count
+as site acceptance.

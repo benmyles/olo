@@ -18,6 +18,7 @@ impl Default for Options {
 }
 #[derive(Clone, Debug)]
 pub enum Primitive {
+    Image { owner: BoxId, image: u32 },
     Fill { color: [u8; 4] },
     Border { owner: BoxId, colors: [[u8; 4]; 4] },
     Text { owner: BoxId, fragment: u32, glyphs: Range<u32>, origin: Point, color: [u8; 4] },
@@ -40,6 +41,9 @@ pub struct Scene {
 impl Scene {
     pub fn layout(&self) -> &Arc<layout::Layout> {
         &self.layout
+    }
+    pub fn node(&self, command: u32) -> Option<crate::dom::NodeId> {
+        if let Primitive::Image { owner, .. } = self.commands.get(command as usize)?.primitive { self.layout.cache().tree().get(owner).map(|b| b.node) } else { self.text_node(command) }
     }
     pub fn commands(&self) -> &[Command] {
         &self.commands
@@ -258,7 +262,46 @@ impl<'a> BuildJob<'a> {
         self.draft.push(Draft { group, text, command: Command { bounds, primitive, clip } });
         Ok(())
     }
-    fn text(&mut self, id: BoxId, source: u32, at: Point, group: u32, clip: u32) -> Result<()> {
+    #[allow(clippy::too_many_arguments)]
+    fn decorate(&mut self, id: BoxId, s: &Style, g: layout::Geometry, outer: Rect, group: u32, clip: u32, text: bool) -> Result<()> {
+        let bg = color(s, P::BackgroundColor)?;
+        if self.canvas_owner != Some(id) && bg[3] != 0 {
+            self.emit(group, text, outer, Primitive::Fill { color: bg }, clip)?;
+        }
+        let widths = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left];
+        let mut colors = [[0; 4]; 4];
+        for i in 0..4 {
+            if widths[i] > 0. {
+                let p = [P::BorderTopStyle, P::BorderRightStyle, P::BorderBottomStyle, P::BorderLeftStyle][i];
+                if !matches!(s.value(p), Value::Keyword(K::Solid)) {
+                    return Err(Error::Unsupported("non-solid border painting"));
+                }
+                colors[i] = color(s, [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor][i])?;
+            }
+        }
+        if widths.iter().any(|w| *w > 0.) {
+            self.emit(group, text, outer, Primitive::Border { owner: id, colors }, clip)?;
+        }
+        Ok(())
+    }
+    fn inline_image(&mut self, id: BoxId, image: u32, at: Point, group: u32, clip: u32) -> Result<()> {
+        let layout = self.layout.clone();
+        let s = layout.cache().tree().style(id).ok_or(Error::Invalid)?;
+        if !visible(s) {
+            return Ok(());
+        }
+        if s.value(P::Opacity).scalar() != Some(1.)
+            || !matches!(s.value(P::Isolation), Value::Keyword(K::Auto))
+            || !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto)) && s.value(P::ZIndex).scalar() != Some(0.)
+        {
+            return Err(Error::Unsupported("image stacking"));
+        }
+        let g = *layout.geometry(id).ok_or(Error::Invalid)?;
+        let outer = Rect { x: at.x + g.border_box.x, y: at.y + g.border_box.y, ..g.border_box };
+        self.decorate(id, s, g, outer, group, clip, true)?;
+        self.emit(group, true, outer, Primitive::Image { owner: id, image }, clip)
+    }
+    fn text<const HAS_IMAGES: bool>(&mut self, id: BoxId, source: u32, at: Point, group: u32, clip: u32) -> Result<()> {
         // Layout is held outside self's mutable command builder borrow.
         let layout = self.layout.clone();
         let text = layout.text_layout(id).ok_or(Error::Invalid)?;
@@ -274,6 +317,9 @@ impl<'a> BuildJob<'a> {
         }
         for c in controls {
             check(self.cancel)?;
+            if c.kind == crate::text::prepare::ControlKind::Object {
+                continue;
+            }
             let span = layout.cache().tree().text_source(source).and_then(|s| s.span_at(c.offset)).ok_or(Error::Invalid)?;
             let s = layout.cache().tree().styles().snapshot(span.style_node).ok_or(Error::Stale)?;
             if visible(s) && color(s, P::BackgroundColor)?[3] != 0 {
@@ -286,6 +332,18 @@ impl<'a> BuildJob<'a> {
         // Styles are immutable for this build. Consecutive glyphs usually
         // belong to the same span: resolve/convert its paint color once.
         let mut paint_color = None;
+        let mut image_owners = Vec::new();
+        if HAS_IMAGES {
+            let mut child = layout.cache().tree().get(id).ok_or(Error::Invalid)?.first_child;
+            while let Some(id) = child {
+                let b = layout.cache().tree().get(id).ok_or(Error::Invalid)?;
+                child = b.next_sibling;
+                let BoxKind::InlineImage { image } = b.kind else { return Err(Error::Invalid) };
+                image_owners.push((b.node.slot(), id, image));
+            }
+            image_owners.sort_unstable_by_key(|(node, _, _)| *node);
+        }
+
         for (li, line) in text.lines().iter().enumerate() {
             check(self.cancel)?;
             // Native text has subpixel x placement and a device-pixel baseline.
@@ -295,6 +353,13 @@ impl<'a> BuildJob<'a> {
             let baseline = ((at.y + text.baseline(li).ok_or(Error::Invalid)?) * scale).round() / scale;
             for fi in line.fragments.clone() {
                 let f = &text.fragments()[fi as usize];
+                if HAS_IMAGES && f.glyphs.is_empty() && !image_owners.is_empty() {
+                    let mapping = prepared.mapping_at_output(f.source.start).ok_or(Error::Invalid)?;
+                    let node = source.spans.get(mapping.span as usize).ok_or(Error::Invalid)?.node;
+                    if let Ok(i) = image_owners.binary_search_by_key(&node.slot(), |(node, _, _)| *node) {
+                        self.inline_image(image_owners[i].1, image_owners[i].2, at, group, clip)?;
+                    }
+                }
                 let run = text.run(f).ok_or(Error::Invalid)?;
                 if !matches!(run.direction, Direction::LeftToRight | Direction::RightToLeft) {
                     return Err(Error::Unsupported("vertical glyph painting"));
@@ -430,7 +495,7 @@ impl<'a> BuildJob<'a> {
             let mut children_clip = clip;
             match b.kind {
                 BoxKind::Viewport => {}
-                BoxKind::Block { .. } => {
+                BoxKind::Block { .. } | BoxKind::BlockImage { .. } => {
                     let s = tree.style(id).ok_or(Error::Invalid)?;
                     if s.value(P::Opacity).scalar() != Some(1.)
                         || !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto) | Value::Numeric(_))
@@ -444,23 +509,9 @@ impl<'a> BuildJob<'a> {
                         group = self.groups;
                     }
                     if visible(s) {
-                        let bg = color(s, P::BackgroundColor)?;
-                        if self.canvas_owner != Some(id) && bg[3] != 0 {
-                            self.emit(group, false, outer, Primitive::Fill { color: bg }, clip)?;
-                        }
-                        let widths = [g.border_width.top, g.border_width.right, g.border_width.bottom, g.border_width.left];
-                        let mut colors = [[0; 4]; 4];
-                        for i in 0..4 {
-                            if widths[i] > 0. {
-                                let p = [P::BorderTopStyle, P::BorderRightStyle, P::BorderBottomStyle, P::BorderLeftStyle][i];
-                                if !matches!(s.value(p), Value::Keyword(K::Solid)) {
-                                    return Err(Error::Unsupported("non-solid border painting"));
-                                }
-                                colors[i] = color(s, [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor][i])?;
-                            }
-                        }
-                        if widths.iter().any(|w| *w > 0.) {
-                            self.emit(group, false, outer, Primitive::Border { owner: id, colors }, clip)?;
+                        self.decorate(id, s, g, outer, group, clip, false)?;
+                        if let BoxKind::BlockImage { image } = b.kind {
+                            self.emit(group, true, outer, Primitive::Image { owner: id, image }, clip)?;
                         }
                     }
                     let x = !matches!(s.value(P::OverflowX), Value::Keyword(K::Visible));
@@ -481,7 +532,15 @@ impl<'a> BuildJob<'a> {
                         self.clips.push(clip_rect);
                     }
                 }
-                BoxKind::InlineContent { source } => self.text(id, source, Point { x: outer.x, y: outer.y }, group, clip)?,
+                BoxKind::InlineImage { .. } => {}
+                BoxKind::InlineContent { source } => {
+                    let at = Point { x: outer.x, y: outer.y };
+                    if layout.text_layout(id).ok_or(Error::Invalid)?.text().object_count() == 0 {
+                        self.text::<false>(id, source, at, group, clip)?;
+                    } else {
+                        self.text::<true>(id, source, at, group, clip)?;
+                    }
+                }
             }
             self.states.push(State { origin, group, clip: children_clip });
             self.progress.boxes += 1;

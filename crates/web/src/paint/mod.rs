@@ -2,6 +2,7 @@
 //! Outline rasterization is not yet Chromium font rasterization or full CSS paint.
 mod border;
 mod glyph;
+mod image;
 mod index;
 mod raster;
 mod scene;

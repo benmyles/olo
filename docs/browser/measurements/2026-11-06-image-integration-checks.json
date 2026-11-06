@@ -1,0 +1,5565 @@
+{
+  "scope": "Initial worker-decoded still-image integration; authored component/native evidence only. No accepted websites.",
+  "main": "6f58acf4",
+  "before": "3035b3ff",
+  "website_passes": 0,
+  "geometry": {
+    "objects_matching": 380,
+    "objects_total": 380,
+    "sizing_matching": 285,
+    "sizing_total": 300,
+    "unsupported": 15
+  },
+  "pixels": {
+    "matching": 49,
+    "total": 60,
+    "observations": [
+      {
+        "file": "border-padding-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "border-padding-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "border-padding-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "border-padding-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "border-padding-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "clip-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "clip-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "clip-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "clip-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "clip-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "downscale-1.25.png",
+        "channels": 48,
+        "max_error": 1,
+        "first": [
+          [
+            500,
+            127,
+            128
+          ],
+          [
+            501,
+            127,
+            128
+          ],
+          [
+            502,
+            127,
+            128
+          ],
+          [
+            504,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-1.5.png",
+        "channels": 60,
+        "max_error": 1,
+        "first": [
+          [
+            1200,
+            127,
+            128
+          ],
+          [
+            1201,
+            127,
+            128
+          ],
+          [
+            1202,
+            127,
+            128
+          ],
+          [
+            1204,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-1.75.png",
+        "channels": 75,
+        "max_error": 16,
+        "first": [
+          [
+            1400,
+            111,
+            107
+          ],
+          [
+            1401,
+            111,
+            107
+          ],
+          [
+            1402,
+            111,
+            107
+          ],
+          [
+            1404,
+            95,
+            87
+          ]
+        ]
+      },
+      {
+        "file": "downscale-1.png",
+        "channels": 27,
+        "max_error": 53,
+        "first": [
+          [
+            400,
+            124,
+            71
+          ],
+          [
+            401,
+            124,
+            71
+          ],
+          [
+            402,
+            124,
+            71
+          ],
+          [
+            404,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "downscale-fractional-1.25.png",
+        "channels": 45,
+        "max_error": 64,
+        "first": [
+          [
+            500,
+            129,
+            161
+          ],
+          [
+            501,
+            129,
+            161
+          ],
+          [
+            502,
+            129,
+            161
+          ],
+          [
+            504,
+            131,
+            195
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-1.5.png",
+        "channels": 54,
+        "max_error": 53,
+        "first": [
+          [
+            1200,
+            131,
+            184
+          ],
+          [
+            1201,
+            131,
+            184
+          ],
+          [
+            1202,
+            131,
+            184
+          ],
+          [
+            1204,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-1.75.png",
+        "channels": 84,
+        "max_error": 1,
+        "first": [
+          [
+            1400,
+            127,
+            128
+          ],
+          [
+            1401,
+            127,
+            128
+          ],
+          [
+            1402,
+            127,
+            128
+          ],
+          [
+            1404,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-1.png",
+        "channels": 36,
+        "max_error": 1,
+        "first": [
+          [
+            400,
+            127,
+            128
+          ],
+          [
+            401,
+            127,
+            128
+          ],
+          [
+            402,
+            127,
+            128
+          ],
+          [
+            404,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-2.png",
+        "channels": 105,
+        "max_error": 18,
+        "first": [
+          [
+            1604,
+            92,
+            84
+          ],
+          [
+            1605,
+            92,
+            84
+          ],
+          [
+            1606,
+            92,
+            84
+          ],
+          [
+            1608,
+            151,
+            156
+          ]
+        ]
+      },
+      {
+        "file": "fractional-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-dark-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-dark-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-dark-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-dark-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "fractional-dark-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "natural-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "natural-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "natural-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "natural-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "natural-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "opaque-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "opaque-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "opaque-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "opaque-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "opaque-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "opaque-fractional-1.25.png",
+        "channels": 1,
+        "max_error": 1,
+        "first": [
+          [
+            11566,
+            147,
+            148
+          ]
+        ]
+      },
+      {
+        "file": "opaque-fractional-1.5.png",
+        "channels": 1,
+        "max_error": 1,
+        "first": [
+          [
+            17466,
+            199,
+            200
+          ]
+        ]
+      },
+      {
+        "file": "opaque-fractional-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "opaque-fractional-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "opaque-fractional-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-rtl-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-rtl-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-rtl-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-rtl-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "overlap-rtl-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "upscale-1.25.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "upscale-1.5.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "upscale-1.75.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "upscale-1.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      },
+      {
+        "file": "upscale-2.png",
+        "channels": 0,
+        "max_error": 0,
+        "first": []
+      }
+    ],
+    "nonpasses": [
+      {
+        "file": "downscale-1.25.png",
+        "channels": 48,
+        "max_error": 1,
+        "first": [
+          [
+            500,
+            127,
+            128
+          ],
+          [
+            501,
+            127,
+            128
+          ],
+          [
+            502,
+            127,
+            128
+          ],
+          [
+            504,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-1.5.png",
+        "channels": 60,
+        "max_error": 1,
+        "first": [
+          [
+            1200,
+            127,
+            128
+          ],
+          [
+            1201,
+            127,
+            128
+          ],
+          [
+            1202,
+            127,
+            128
+          ],
+          [
+            1204,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-1.75.png",
+        "channels": 75,
+        "max_error": 16,
+        "first": [
+          [
+            1400,
+            111,
+            107
+          ],
+          [
+            1401,
+            111,
+            107
+          ],
+          [
+            1402,
+            111,
+            107
+          ],
+          [
+            1404,
+            95,
+            87
+          ]
+        ]
+      },
+      {
+        "file": "downscale-1.png",
+        "channels": 27,
+        "max_error": 53,
+        "first": [
+          [
+            400,
+            124,
+            71
+          ],
+          [
+            401,
+            124,
+            71
+          ],
+          [
+            402,
+            124,
+            71
+          ],
+          [
+            404,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-1.25.png",
+        "channels": 45,
+        "max_error": 64,
+        "first": [
+          [
+            500,
+            129,
+            161
+          ],
+          [
+            501,
+            129,
+            161
+          ],
+          [
+            502,
+            129,
+            161
+          ],
+          [
+            504,
+            131,
+            195
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-1.5.png",
+        "channels": 54,
+        "max_error": 53,
+        "first": [
+          [
+            1200,
+            131,
+            184
+          ],
+          [
+            1201,
+            131,
+            184
+          ],
+          [
+            1202,
+            131,
+            184
+          ],
+          [
+            1204,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-1.75.png",
+        "channels": 84,
+        "max_error": 1,
+        "first": [
+          [
+            1400,
+            127,
+            128
+          ],
+          [
+            1401,
+            127,
+            128
+          ],
+          [
+            1402,
+            127,
+            128
+          ],
+          [
+            1404,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-1.png",
+        "channels": 36,
+        "max_error": 1,
+        "first": [
+          [
+            400,
+            127,
+            128
+          ],
+          [
+            401,
+            127,
+            128
+          ],
+          [
+            402,
+            127,
+            128
+          ],
+          [
+            404,
+            127,
+            128
+          ]
+        ]
+      },
+      {
+        "file": "downscale-fractional-2.png",
+        "channels": 105,
+        "max_error": 18,
+        "first": [
+          [
+            1604,
+            92,
+            84
+          ],
+          [
+            1605,
+            92,
+            84
+          ],
+          [
+            1606,
+            92,
+            84
+          ],
+          [
+            1608,
+            151,
+            156
+          ]
+        ]
+      },
+      {
+        "file": "opaque-fractional-1.25.png",
+        "channels": 1,
+        "max_error": 1,
+        "first": [
+          [
+            11566,
+            147,
+            148
+          ]
+        ]
+      },
+      {
+        "file": "opaque-fractional-1.5.png",
+        "channels": 1,
+        "max_error": 1,
+        "first": [
+          [
+            17466,
+            199,
+            200
+          ]
+        ]
+      }
+    ]
+  },
+  "native": {
+    "scope": "Owned native demo image visuals/structured nodes; all modes/scales, no website or Chrome pixel acceptance.",
+    "rows": [
+      {
+        "mode": "light",
+        "scale": 1,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.84,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.640625,
+              "y": 216.886,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.04861,
+              "y": 237.20801,
+              "width": 48.816,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.886,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.886,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "red_pixels": 1520,
+        "green_pixels": 1520
+      },
+      {
+        "mode": "light",
+        "scale": 1.25,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.4,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 237.04001,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.65,
+              "y": 217.28601,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.058,
+              "y": 237.408,
+              "width": 48.815994,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 273.286,
+              "width": 171.2,
+              "height": 131.20001,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.486,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "red_pixels": 2400,
+        "green_pixels": 2400
+      },
+      {
+        "mode": "light",
+        "scale": 1.5,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.50667,
+              "width": 41.024,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.645836,
+              "y": 216.886,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.05383,
+              "y": 236.87466,
+              "width": 48.81601,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.886,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.886,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "red_pixels": 3420,
+        "green_pixels": 3420
+      },
+      {
+        "mode": "light",
+        "scale": 1.75,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.28571,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 237.26857,
+              "width": 41.024,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.64286,
+              "y": 217.18063,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.05086,
+              "y": 237.63657,
+              "width": 48.815994,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 273.18063,
+              "width": 171.42857,
+              "height": 131.42856,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.6092,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "red_pixels": 4690,
+        "green_pixels": 4690
+      },
+      {
+        "mode": "light",
+        "scale": 2,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.84,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.640625,
+              "y": 216.89381,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.04861,
+              "y": 237.20801,
+              "width": 48.816,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.8938,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.8938,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "red_pixels": 6080,
+        "green_pixels": 6080
+      },
+      {
+        "mode": "dark",
+        "scale": 1,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.84,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.640625,
+              "y": 216.886,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.04861,
+              "y": 237.20801,
+              "width": 48.816,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.886,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.886,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 1520,
+        "green_pixels": 1520
+      },
+      {
+        "mode": "dark",
+        "scale": 1.25,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.4,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 237.04001,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.65,
+              "y": 217.28601,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.058,
+              "y": 237.408,
+              "width": 48.815994,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 273.286,
+              "width": 171.2,
+              "height": 131.20001,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.486,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 2400,
+        "green_pixels": 2400
+      },
+      {
+        "mode": "dark",
+        "scale": 1.5,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.50667,
+              "width": 41.024,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.645836,
+              "y": 216.886,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.05383,
+              "y": 236.87466,
+              "width": 48.81601,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.886,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.886,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 3420,
+        "green_pixels": 3420
+      },
+      {
+        "mode": "dark",
+        "scale": 1.75,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.28571,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 237.26857,
+              "width": 41.024,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.64286,
+              "y": 217.18063,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.05086,
+              "y": 237.63657,
+              "width": 48.815994,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 273.18063,
+              "width": 171.42857,
+              "height": 131.42856,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.6092,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 4690,
+        "green_pixels": 4690
+      },
+      {
+        "mode": "dark",
+        "scale": 2,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.84,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.640625,
+              "y": 216.89381,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.04861,
+              "y": 237.20801,
+              "width": 48.816,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.8938,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.8938,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 6080,
+        "green_pixels": 6080
+      },
+      {
+        "mode": "night",
+        "scale": 1,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.84,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.640625,
+              "y": 216.886,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.04861,
+              "y": 237.20801,
+              "width": 48.816,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.886,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.886,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 1520,
+        "green_pixels": 1520
+      },
+      {
+        "mode": "night",
+        "scale": 1.25,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.4,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 237.04001,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.65,
+              "y": 217.28601,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.058,
+              "y": 237.408,
+              "width": 48.815994,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 273.286,
+              "width": 171.2,
+              "height": 131.20001,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.486,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 734.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 2400,
+        "green_pixels": 2400
+      },
+      {
+        "mode": "night",
+        "scale": 1.5,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.50667,
+              "width": 41.024,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.645836,
+              "y": 216.886,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.05383,
+              "y": 236.87466,
+              "width": 48.81601,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.886,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.886,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 3420,
+        "green_pixels": 3420
+      },
+      {
+        "mode": "night",
+        "scale": 1.75,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.28571,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 237.26857,
+              "width": 41.024,
+              "height": 12.319992,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.64286,
+              "y": 217.18063,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.05086,
+              "y": 237.63657,
+              "width": 48.815994,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 273.18063,
+              "width": 171.42857,
+              "height": 131.42856,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.6092,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 4690,
+        "green_pixels": 4690
+      },
+      {
+        "mode": "night",
+        "scale": 2,
+        "tree": {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 53,
+            "y": 66,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 53.0,
+              "y": 66.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 61.0,
+              "y": 67.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "Navigate",
+              "x": 96.188,
+              "y": 67.0,
+              "width": 66.256,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Back",
+              "x": 65.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Forward",
+              "x": 157.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": false
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "http://127.0.0.1:33497/",
+              "x": 249.0,
+              "y": 104.0,
+              "width": 608.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 869.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 961.0,
+              "y": 104.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "value": "{\"url\":\"http://127.0.0.1:33497/\",\"navigation\":2,\"document\":2}",
+              "x": 53.0,
+              "y": 140.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 75.520004,
+              "y": 168.692,
+              "width": 302.484,
+              "height": 28.028,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Inline",
+              "x": 73.64,
+              "y": 236.84,
+              "width": 41.024,
+              "height": 12.320007,
+              "enabled": true
+            },
+            {
+              "id": 12,
+              "parent": 1,
+              "role": "Image",
+              "name": "Inline colours",
+              "x": 119.640625,
+              "y": 216.89381,
+              "width": 32.0,
+              "height": 32.0,
+              "enabled": true
+            },
+            {
+              "id": 13,
+              "parent": 1,
+              "role": "Label",
+              "name": "image.",
+              "x": 157.04861,
+              "y": 237.20801,
+              "width": 48.816,
+              "height": 15.632004,
+              "enabled": true
+            },
+            {
+              "id": 14,
+              "parent": 1,
+              "role": "Image",
+              "name": "Pixel colours",
+              "x": 85.0,
+              "y": 272.8938,
+              "width": 172.0,
+              "height": 131.99998,
+              "enabled": true
+            },
+            {
+              "id": 15,
+              "parent": 1,
+              "role": "Link",
+              "name": "Linked colours",
+              "value": "http://127.0.0.1:33497/dest",
+              "x": 73.0,
+              "y": 420.8938,
+              "width": 64.0,
+              "height": 64.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 16,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native image pipeline",
+              "x": 69.0,
+              "y": 733.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "red_pixels": 6080,
+        "green_pixels": 6080
+      }
+    ],
+    "requests": [
+      "/",
+      "/image.png",
+      "/dest"
+    ],
+    "source": "<!doctype html><title>Native image pipeline</title><style>body{margin:20px}h1{font-size:28px}p{line-height:28px}.large{display:block;border-width:2px;border-style:solid;border-color:green;padding:4px;margin:12px}</style><h1>Native image pipeline</h1><p>Inline <img src=\"/image.png#one\" alt=\"Inline colours\" width=32 height=32> image.</p><img class=large src=\"/image.png\" alt=\"Pixel colours\" width=160 height=120><p><a href=\"/dest\"><img src=\"/image.png#two\" alt=\"Linked colours\" width=64 height=64></a></p>"
+  },
+  "links": {
+    "scope": "Owned-screen link input regression; production engine/network are Rust.\nStart one release olo-browser on a 1280x800 Agent Screen initially at 2x,\neval its environment, then: THIS_SCRIPT NAME /var/tmp/OWNED/output.\nAdd --inline for inline spacing; --breaks for semantic br/wbr and carrier-free text.\nNo website journey acceptance follows from these authored fixtures.\n",
+    "inline_boxes": true,
+    "semantic_breaks": true,
+    "initial": {
+      "window": 3,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "Navigate",
+          "x": 96.188,
+          "y": 67.0,
+          "width": 66.256,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Back",
+          "x": 65.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Forward",
+          "x": 157.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": false
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "http://127.0.0.1:38725/links",
+          "x": 249.0,
+          "y": 104.0,
+          "width": 608.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "value": "{\"url\":\"http://127.0.0.1:38725/links\",\"navigation\":4,\"document\":4}",
+          "x": 53.0,
+          "y": 140.0,
+          "width": 1000.0,
+          "height": 577.5,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "Link fixture",
+          "x": 75.38,
+          "y": 168.58,
+          "width": 157.584,
+          "height": 21.699997,
+          "enabled": true
+        },
+        {
+          "id": 11,
+          "parent": 1,
+          "role": "Link",
+          "name": "First link",
+          "value": "http://127.0.0.1:38725/dest/one",
+          "x": 81.552,
+          "y": 224.84,
+          "width": 61.631996,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 12,
+          "parent": 1,
+          "role": "Link",
+          "name": "Second link",
+          "value": "http://127.0.0.1:38725/dest/two",
+          "x": 167.3082,
+          "y": 224.84,
+          "width": 84.784004,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 13,
+          "parent": 1,
+          "role": "Link",
+          "name": "Download link",
+          "value": "http://127.0.0.1:38725/unrequested",
+          "x": 81.552,
+          "y": 268.84,
+          "width": 105.28,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 14,
+          "parent": 1,
+          "role": "Link",
+          "name": "Local file link",
+          "value": "file:///dev/null",
+          "x": 81.552,
+          "y": 312.76,
+          "width": 94.944,
+          "height": 12.400009,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 15,
+          "parent": 1,
+          "role": "Link",
+          "name": "New window link",
+          "value": "http://127.0.0.1:38725/unrequested",
+          "x": 81.552,
+          "y": 356.84,
+          "width": 125.119995,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 16,
+          "parent": 1,
+          "role": "Label",
+          "name": "Ordinary text after the links.",
+          "x": 73.976,
+          "y": 400.76,
+          "width": 208.832,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 17,
+          "parent": 1,
+          "role": "Label",
+          "name": "Wrapped inline text crosses",
+          "x": 91.192,
+          "y": 462.84,
+          "width": 205.664,
+          "height": 16.0,
+          "enabled": true
+        },
+        {
+          "id": 18,
+          "parent": 1,
+          "role": "Label",
+          "name": "several lines.",
+          "x": 73.816,
+          "y": 490.84,
+          "width": 94.224,
+          "height": 12.384003,
+          "enabled": true
+        },
+        {
+          "id": 19,
+          "parent": 1,
+          "role": "Label",
+          "name": "Tail.",
+          "x": 197.51532,
+          "y": 490.84,
+          "width": 27.824005,
+          "height": 12.384003,
+          "enabled": true
+        },
+        {
+          "id": 20,
+          "parent": 1,
+          "role": "Label",
+          "name": "Before forced break",
+          "x": 74.552,
+          "y": 534.76,
+          "width": 147.232,
+          "height": 12.399994,
+          "enabled": true
+        },
+        {
+          "id": 21,
+          "parent": 1,
+          "role": "Label",
+          "name": "After forced break",
+          "x": 73.0,
+          "y": 562.76,
+          "width": 136.0,
+          "height": 12.399994,
+          "enabled": true
+        },
+        {
+          "id": 22,
+          "parent": 1,
+          "role": "Label",
+          "name": "Optional",
+          "x": 73.976,
+          "y": 606.83997,
+          "width": 62.576004,
+          "height": 16.0,
+          "enabled": true
+        },
+        {
+          "id": 23,
+          "parent": 1,
+          "role": "Label",
+          "name": "break",
+          "x": 74.36,
+          "y": 634.83997,
+          "width": 41.168,
+          "height": 12.320007,
+          "enabled": true
+        },
+        {
+          "id": 24,
+          "parent": 1,
+          "role": "Label",
+          "name": "Link fixture",
+          "x": 69.0,
+          "y": 733.5,
+          "width": 968.0,
+          "height": 16.5,
+          "enabled": true
+        }
+      ]
+    },
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 62
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 147
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 245
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 379
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 549
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 62
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 147
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 245
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 379
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 549
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 62
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 147
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 245
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 379
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ],
+        "hover_green_pixels": 549
+      }
+    ],
+    "requests": [
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/two",
+      "/links",
+      "/dest/one",
+      "/links",
+      "/links",
+      "/links",
+      "/links"
+    ],
+    "final": {
+      "window": 3,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "Navigate",
+          "x": 96.188,
+          "y": 67.0,
+          "width": 66.256,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Back",
+          "x": 65.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Forward",
+          "x": 157.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": false
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "http://127.0.0.1:38725/links",
+          "x": 249.0,
+          "y": 104.0,
+          "width": 608.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.0,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "value": "{\"url\":\"http://127.0.0.1:38725/links\",\"navigation\":39,\"document\":39}",
+          "x": 53.0,
+          "y": 140.0,
+          "width": 1000.0,
+          "height": 577.5,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "Link fixture",
+          "x": 75.38,
+          "y": 168.58,
+          "width": 157.584,
+          "height": 21.699997,
+          "enabled": true
+        },
+        {
+          "id": 11,
+          "parent": 1,
+          "role": "Link",
+          "name": "First link",
+          "value": "http://127.0.0.1:38725/dest/one",
+          "x": 81.552,
+          "y": 224.84,
+          "width": 61.631996,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 12,
+          "parent": 1,
+          "role": "Link",
+          "name": "Second link",
+          "value": "http://127.0.0.1:38725/dest/two",
+          "x": 167.3082,
+          "y": 224.84,
+          "width": 84.784004,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 13,
+          "parent": 1,
+          "role": "Link",
+          "name": "Download link",
+          "value": "http://127.0.0.1:38725/unrequested",
+          "x": 81.552,
+          "y": 268.84,
+          "width": 105.28,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 14,
+          "parent": 1,
+          "role": "Link",
+          "name": "Local file link",
+          "value": "file:///dev/null",
+          "x": 81.552,
+          "y": 312.76,
+          "width": 94.944,
+          "height": 12.400009,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 15,
+          "parent": 1,
+          "role": "Link",
+          "name": "New window link",
+          "value": "http://127.0.0.1:38725/unrequested",
+          "x": 81.552,
+          "y": 356.84,
+          "width": 125.119995,
+          "height": 12.320007,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 16,
+          "parent": 1,
+          "role": "Label",
+          "name": "Ordinary text after the links.",
+          "x": 73.976,
+          "y": 400.76,
+          "width": 208.832,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 17,
+          "parent": 1,
+          "role": "Label",
+          "name": "Wrapped inline text crosses",
+          "x": 91.192,
+          "y": 462.84,
+          "width": 205.664,
+          "height": 16.0,
+          "enabled": true
+        },
+        {
+          "id": 18,
+          "parent": 1,
+          "role": "Label",
+          "name": "several lines.",
+          "x": 73.816,
+          "y": 490.84,
+          "width": 94.224,
+          "height": 12.384003,
+          "enabled": true
+        },
+        {
+          "id": 19,
+          "parent": 1,
+          "role": "Label",
+          "name": "Tail.",
+          "x": 197.51532,
+          "y": 490.84,
+          "width": 27.824005,
+          "height": 12.384003,
+          "enabled": true
+        },
+        {
+          "id": 20,
+          "parent": 1,
+          "role": "Label",
+          "name": "Before forced break",
+          "x": 74.552,
+          "y": 534.76,
+          "width": 147.232,
+          "height": 12.399994,
+          "enabled": true
+        },
+        {
+          "id": 21,
+          "parent": 1,
+          "role": "Label",
+          "name": "After forced break",
+          "x": 73.0,
+          "y": 562.76,
+          "width": 136.0,
+          "height": 12.399994,
+          "enabled": true
+        },
+        {
+          "id": 22,
+          "parent": 1,
+          "role": "Label",
+          "name": "Optional",
+          "x": 73.976,
+          "y": 606.83997,
+          "width": 62.576004,
+          "height": 16.0,
+          "enabled": true
+        },
+        {
+          "id": 23,
+          "parent": 1,
+          "role": "Label",
+          "name": "break",
+          "x": 74.36,
+          "y": 634.83997,
+          "width": 41.168,
+          "height": 12.320007,
+          "enabled": true
+        },
+        {
+          "id": 24,
+          "parent": 1,
+          "role": "Label",
+          "name": "Link fixture",
+          "x": 69.0,
+          "y": 733.5,
+          "width": 968.0,
+          "height": 16.5,
+          "enabled": true
+        }
+      ]
+    },
+    "accepted_websites": 0
+  },
+  "navigation": {
+    "scope": "Native navigation on an OWN Agent Screen; authored fixtures accept no sites.\nStart release olo-browser there, eval olo-screen env, then run NAME OUTPUT_DIR.\nChecks canonical redirects, in-document identity/no I/O, history, keyboard focus\nand scroll restoration at all native modes/scales. HTTP server is test-only.\n",
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 40,
+          "document": 40
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 41,
+          "document": 40
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 45,
+          "document": 42
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 48,
+          "document": 43
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 49,
+          "document": 43
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 53,
+          "document": 45
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 56,
+          "document": 46
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 57,
+          "document": 46
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 61,
+          "document": 48
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 64,
+          "document": 49
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 65,
+          "document": 49
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 69,
+          "document": 51
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 72,
+          "document": 52
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 73,
+          "document": 52
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 77,
+          "document": 54
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 80,
+          "document": 55
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 81,
+          "document": 55
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 85,
+          "document": 57
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 88,
+          "document": 58
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 89,
+          "document": 58
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 93,
+          "document": 60
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 96,
+          "document": 61
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 97,
+          "document": 61
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 101,
+          "document": 63
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 104,
+          "document": 64
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 105,
+          "document": 64
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 109,
+          "document": 66
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 112,
+          "document": 67
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 113,
+          "document": 67
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 117,
+          "document": 69
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 120,
+          "document": 70
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 121,
+          "document": 70
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 125,
+          "document": 72
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 128,
+          "document": 73
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 129,
+          "document": 73
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 133,
+          "document": 75
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 136,
+          "document": 76
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 137,
+          "document": 76
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 141,
+          "document": 78
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 144,
+          "document": 79
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 145,
+          "document": 79
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 149,
+          "document": 81
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:36419/nav",
+          "navigation": 152,
+          "document": 82
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 153,
+          "document": 82
+        },
+        "restored": {
+          "url": "http://127.0.0.1:36419/nav#section",
+          "navigation": 157,
+          "document": 84
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      }
+    ],
+    "requests": [
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/nav"
+    ],
+    "reload": {
+      "before": {
+        "url": "http://127.0.0.1:36419/nav#section",
+        "navigation": 159,
+        "document": 84
+      },
+      "restored": {
+        "document": 1,
+        "navigation": 1,
+        "url": "http://127.0.0.1:36419/nav#section"
+      },
+      "section_y": 145.20801,
+      "forward_then_back_without_requests": true
+    },
+    "accepted_websites": 0
+  },
+  "source_hashes": {
+    "crates/web/src/image.rs": "5df55cc23f7a252c189ca3eb4066b2a27c62f0ebb9a6dbd84c084f4e3aa30bb2",
+    "crates/web/src/layout/images.rs": "2992be17ef65987e1b19dffcb43d77a9ef3ca20a32aff2a988cc6e9688eaf898",
+    "crates/web/src/paint/image.rs": "2c6d5a236d75bc706e59c941b30f97bb3869bfd023a7630ce6d2e17f9725ba9a",
+    "crates/web/src/page.rs": "22ad48c7b86b44ba3d24b011f4dfc6492d97ed45249397b82c024e92e1aafbdd",
+    "apps/browser/src/worker.rs": "f8703da1971fd3e446c36a40b3d434aa03558d2fe353130ea0e87270ea559eb4",
+    "apps/browser/src/network.rs": "0e0a902b6e1e633a78dab5dd19d4ea1815172b7387669552aa6b889afe3e353b",
+    "tools/browser/image-smoke.py": "9619523e2cdf3af916e54f6844b14040a7c2962f4ca3645c76644b4ee9d9967e",
+    "tools/browser/measure-images.py": "53f9a41d7148e80959f9b068640d085fcebc163843aa0767a520335a09fa4981",
+    "crates/web/src/layout/tree.rs": "6d7d3c744e07237ba7e4f9729e85d92925e7d104c69c43c9779605e25e62f3a2",
+    "crates/web/examples/image_bench.rs": "3450b304be0ee370162709f07f3634ef2f645590ff8859fe49607befa1850db8",
+    "crates/web/src/paint/scene.rs": "0440668fac4a208c94d7373a09e62a4a602266b26c5cb5913a2dedd8d5736685"
+  },
+  "tests": {
+    "default_release": 266,
+    "all_feature_web": 252,
+    "kit_preferences": 13,
+    "strict_clippy": "pass; existing dependency warnings",
+    "workspace_release_seconds": 8.81,
+    "initial_main_workspace_build_seconds": 301,
+    "live_browser_lint": "Browser: 0 errors, 0 to look at\nui-lint: 0 errors, 0 to look at",
+    "ignored": "One optional public-network browser probe; explicit known image pixel failures are recorded separately, not counted as rendering passes."
+  },
+  "captured_at": "2026-11-06T18:39:36.973120+00:00",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "binary_hashes": {
+    "browser-before": "5b4c5a6cba42cead37c77df46adcbb553e931ce753694f15c63b3c520ff3249c",
+    "browser-after": "bb0ad1010ee2418543c4ff48c31ebf4c215de004160c671e54307d688a57cfe4",
+    "image-simd": "0e43212ae166170d7398ccbf9582bd54b6908748bda8bb1414a1df4d4bfae7f6",
+    "image-scalar": "0d79e7aafcc58d1210fdb5b0d2ee90e437d61bdd00419ca7ad8101c06c14a31d",
+    "page-before": "61d010c5f5d5c7d7a8fcfc35950ac3333dc1a20f5370b0a0fe346c9fc9f1589e",
+    "page-after": "011668ca066c36c4590e4c939c0d54f7d879d6b71653a639e0be0175ef4cdff1",
+    "scene-before": "ae6f369a8931fce178631af6756db9e2b05c688c67874d31dd5b14841443dd89",
+    "scene-after": "f55dcea601e4108e94b03d8c60caead9ff059bc4892dc6d0634ab9e279800c7e"
+  },
+  "fuzz_initial": {
+    "seed": 4106,
+    "requested_steps": 24,
+    "result": "failed at step 21",
+    "scope": "Private two-display no-shell session, only one Browser over 40 authored images. Default budgets, no builds. Mapped-window readiness; image content checked explicitly before confirmation. Initial/confirmation fuzz and native UI cost precede the packed ingestion/interpolation optimization; no UI input code changed, and all independent pixels and scalar hashes remain equal. Final main integration will exercise the optimized build.",
+    "log": "perf-fuzz images-fuzz: seed 4106, 24 steps\n   1 shortcuts\n   2 shortcuts\n   3 scale\n   4 resize\n   5 arrange\n   6 scale\n   7 arrange\n   8 drag\n   9 scale\n  10 arrange\n  11 resize\n  12 resize\n  13 shortcuts\n  14 arrange\n  15 theme\n  16 resize\n  17 drag\n  18 scroll\n  19 drag\n  20 resize\n  21 shortcuts\nFAIL step 21 (seed 4106) shortcuts x30: HEADLESS-1: a frame took 30.0 ms to draw (average 2.9 ms over 11)\nFAIL step 21 (seed 4106) shortcuts x30: olo.browser window 'Browser': a frame took 66 ms (average 66.0 ms over 1)\napp_server: fds 46 -> 46, threads 12 -> 12, rss 124 -> 127 MiB\nburst            stall    ping   frame  app frame   answer   slowest handler (worst, ms)\narrange            1.7     0.5     0.4        7.7      0.1   tick 0.2\ndrag               7.3     9.3     0.4        1.7      0.1   request synthetic 9.0\nresize             2.5     2.7     0.5       12.3      0.2   clients' requests 0.2\nscale              1.7     3.5     1.8        0.5      0.2   tick 1.3\nscroll             1.1     1.5     0.3        0.0      0.1   tick 0.2\nshortcuts         28.4    27.4    30.0       66.0      8.2   tick 0.2\ntheme              0.2     0.6     0.3        2.2      0.1   request set_settings 0.3\n2 failures (seed 4106)\n"
+  },
+  "fuzz_confirmation": {
+    "seed": 4106,
+    "steps": 24,
+    "result": "pass; default budgets unchanged",
+    "log": "perf-fuzz images-fuzz: seed 4106, 24 steps\n   1 shortcuts\n   2 shortcuts\n   3 scale\n   4 resize\n   5 arrange\n   6 scale\n   7 arrange\n   8 drag\n   9 scale\n  10 arrange\n  11 resize\n  12 resize\n  13 shortcuts\n  14 arrange\n  15 theme\n  16 resize\n  17 drag\n  18 scroll\n  19 drag\n  20 resize\n  21 shortcuts\n  22 theme\n  23 drag\n  24 arrange\napp_server: fds 46 -> 46, threads 12 -> 12, rss 123 -> 126 MiB\nburst            stall    ping   frame  app frame   answer   slowest handler (worst, ms)\narrange            3.9     3.1     0.4       18.6      0.1   tick 0.2\ndrag               3.0     3.4     0.7        1.5      0.3   tick 0.2\nresize             3.5     2.9     1.3       17.9      0.2   flushing to clients 2.8\nscale              4.9     3.6     5.0        0.5      0.2   request configure_output 0.5\nscroll             0.1     0.5     0.3        0.0      0.1   tick 0.2\nshortcuts          7.5    10.4     1.5       20.8      0.2   clients' requests 5.3\ntheme              0.9     0.9     0.4        7.1      0.1   request set_settings 0.3\nok (seed 4106)\n"
+  },
+  "fuzz_performance_acceptance": "Open: initial 66 ms app/30 ms compositor hitch remains recorded; confirmation worst app20.8 ms exceeds the 8.3 ms target even though it passes the stock 50 ms app-frame threshold.",
+  "native_cost_context": "Other main-worktree compilation was observed during part of this sequential before/after native sample. Idle CPU/wakeups are zero on both. Retained as evidence; no causal latency/speedup claim. A further matched check follows main integration.",
+  "simd_revision": "Four-pixel packed u32x4 premultiply and compiler-selected interpolation. All 42 final rotated processes have zero compiler context samples, identical scalar/default input and output hashes. See cost-initial and cost-packed artifacts for earlier revisions. Text-only paint is specialized to bypass image bookkeeping; 1000-element scene cost remains 4.5% above 3035b3ff.",
+  "native_and_fuzz_binary_sha256": "4cd4b2072db5dd9afe388e10783e58e48502df8cb82c96d4a8863f96c30417ee",
+  "measurements": {
+    "final": "2026-11-06-image-integration-cost.json",
+    "initial": "2026-11-06-image-integration-cost-initial.json",
+    "packed_before_text_specialization": "2026-11-06-image-integration-cost-packed.json",
+    "text_specialization": "2026-11-06-image-scene-specialization.json",
+    "native": "2026-11-06-image-integration-ui-cost.json",
+    "build_waits": [
+      {
+        "at": 1793990886.2026994,
+        "pids": [
+          3488132
+        ]
+      }
+    ]
+  }
+}

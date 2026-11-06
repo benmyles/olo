@@ -6,6 +6,7 @@ pub mod css;
 pub mod dom;
 pub mod font;
 pub mod html;
+pub mod image;
 pub mod layout;
 pub mod page;
 pub mod paint;

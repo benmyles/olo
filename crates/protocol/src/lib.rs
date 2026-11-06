@@ -691,6 +691,9 @@ pub enum Reply {
         touch: TouchHealth,
         #[serde(default)]
         inputs: InputActivity,
+        /// The last wheel notch, as it came and as it was sent on.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wheel: Option<WheelNotch>,
     },
     PointerTrace {
         frames: Vec<PointerFrame>,
@@ -782,6 +785,23 @@ pub struct InputActivity {
     pub scrolls_minute: u32,
     pub gestures_minute: u32,
     pub keys_minute: u32,
+}
+
+/// The last wheel notch (or tilt) as app_server got it and sent it on
+/// ([`Reply::Frames`]): the vertical (else horizontal) value and 120ths
+/// libinput reported, the speed applied (`Settings::wheel_speed`), and
+/// what the program under the pointer was sent, by what draws it
+/// ("chromium", "olo", "gtk3", "gtk4", "as given"); how long ago.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct WheelNotch {
+    pub value: f64,
+    pub v120: i32,
+    pub speed: f64,
+    pub sent_value: f64,
+    pub sent_v120: i32,
+    pub toolkit: String,
+    pub ago_ms: u64,
 }
 
 /// The pointer's reports as app_server gets them ([`Reply::Frames`]):
@@ -1401,6 +1421,10 @@ pub struct Settings {
     pub touchpad: TouchpadSettings,
     pub keyboard: KeyboardSettings,
     pub mouse_speed: f64,
+    /// How far a mouse wheel's notch scrolls, 1.0 as Olo's apps scroll a
+    /// notch (three lines, 48 points): every program alike, Chrome
+    /// included, as app_server scales the wheel before it's sent on.
+    pub wheel_speed: f64,
     /// Mice with settings of their own, or following their model's
     /// profile, by `mice::key` ("046d:40b1"); the rest follow
     /// `mouse_speed` and `touchpad.mouse_accel_profile`.
@@ -2191,6 +2215,7 @@ impl Default for Settings {
             touchpad: TouchpadSettings::default(),
             keyboard: KeyboardSettings::default(),
             mouse_speed: 0.0,
+            wheel_speed: 1.0,
             mice: Default::default(),
             tab_font_size: 12.0,
             tab_title_chars: 100,

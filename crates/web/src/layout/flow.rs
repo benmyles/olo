@@ -20,6 +20,10 @@ fn boundary(prepared: &prepare::Prepared, at: u32) -> Result<u32> {
 }
 fn shaping_breaks(prepared: &prepare::Prepared, source: &[u32]) -> Result<Box<[u32]>> {
     let mut out = source.iter().map(|at| boundary(prepared, *at)).collect::<Result<Vec<_>>>()?;
+    for c in prepared.controls().iter().filter(|c| c.kind() == prepare::ControlKind::Object) {
+        let at = boundary(prepared, c.offset())?;
+        out.extend([at, at + 3]);
+    }
     out.retain(|b| *b > 0 && (*b as usize) < prepared.text().len());
     out.sort_unstable();
     out.dedup();
@@ -35,6 +39,10 @@ fn shape_text(
     cancel: Option<&AtomicBool>,
 ) -> Result<Arc<inline::Text>> {
     let mut s = shaping::ParagraphJob::for_layout_style(engine, scope, style, prepared.text().clone(), Default::default(), cancel)?.with_shaping_breaks(boundaries)?;
+    if prepared.controls().iter().any(|c| c.kind() == prepare::ControlKind::Object) {
+        let positions = prepared.controls().iter().filter(|c| c.kind() == prepare::ControlKind::Object).map(|c| boundary(&prepared, c.offset())).collect::<Result<Box<[_]>>>()?;
+        s = s.with_inline_objects(positions)?;
+    }
     while !s.step(128)?.finished {}
     let s = Arc::new(s.finish()?);
     let mut b = linebreak::Job::new(prepared.text().clone(), Default::default(), cancel)?;
@@ -117,6 +125,9 @@ impl<'a> PrepareJob<'a> {
         for span in &source.spans {
             check(self.cancel)?;
             let s = self.tree.styles.snapshot(span.style_node).ok_or(Error::Stale)?;
+            if source_controls.binary_search_by_key(&span.range.start, |c| c.offset).ok().is_some_and(|i| source_controls[i].kind == prepare::ControlKind::Object) {
+                continue;
+            }
             let control = !source_controls.is_empty() && source_controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
             if s.font().request != style.font().request
                 || s.font().context() != style.font().context()
@@ -456,6 +467,10 @@ impl<'a> Job<'a> {
                 }
             }
         }
+        for c in text.prepared().controls().iter().filter(|c| c.kind() == prepare::ControlKind::Object) {
+            let at = boundary(text.prepared(), c.offset())?;
+            breaks.extend([at, at + 3]);
+        }
         breaks.retain(|b| *b > 0 && (*b as usize) < text.prepared().text().len());
         breaks.sort_unstable();
         breaks.dedup();
@@ -464,7 +479,43 @@ impl<'a> Job<'a> {
             // width-independent cache, but shape the actual used boundaries.
             text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), self.limits.text, self.cancel)?;
         }
+        let prepared = (text.object_count() != 0).then(|| text.prepared().clone());
         let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text, style, self.scope, parent.used.width, self.scale, self.limits.text, self.cancel, spacing)?;
+        let mut image_geometry = Vec::new();
+        let mut objects = Vec::new();
+        let mut next = self.cache.tree.get(id).ok_or(Error::Invalid)?.first_child;
+        let mut image_controls = self.cache.tree.controls(source).iter().filter(|c| c.kind == prepare::ControlKind::Object);
+        while let Some(child) = next {
+            let b = self.cache.tree.get(child).ok_or(Error::Invalid)?;
+            next = b.next_sibling;
+            let BoxKind::InlineImage { image } = b.kind else { return Err(Error::Invalid) };
+            check(self.cancel)?;
+            let pixels = self.cache.tree.image(image).ok_or(Error::Invalid)?;
+            let s = self.cache.tree.style(child).ok_or(Error::Stale)?;
+            let used = super::images::used(
+                s,
+                parent.used.width,
+                parent.used.height.map(|h| parent.used.height(h)),
+                (pixels.width(), pixels.height()),
+                false,
+                parent.used.rtl,
+                &mut self.scratch,
+                self.cancel,
+                self.scale,
+            )?;
+            let source = self.cache.tree.text_source(source).ok_or(Error::Invalid)?;
+            let raw = image_controls.next().ok_or(Error::Invalid)?.offset;
+            if source.span_at(raw).ok_or(Error::Invalid)?.node != b.node {
+                return Err(Error::Invalid);
+            }
+            let at = boundary(prepared.as_deref().ok_or(Error::Invalid)?, raw)?;
+            let g = super::images::geometry(used);
+            objects.push(inline::Object { at, advance: g.border_box.width + used.margin.horizontal(), ascent: g.border_box.height + used.margin.vertical(), descent: 0. });
+            image_geometry.push((child, g, at));
+        }
+        if !objects.is_empty() {
+            j = j.with_objects(objects)?;
+        }
         while !j.step(64)?.finished {}
         let work = j.progress().work;
         let l = j.finish()?;
@@ -476,6 +527,14 @@ impl<'a> Job<'a> {
         self.progress.texts += 1;
         let through = l.lines().is_empty();
         self.geometry[id.index()] = Geometry { border_box: Rect { x: 0., y: 0., width: parent.used.width, height: l.height() }, ..Default::default() };
+        for placed in l.object_fragments() {
+            let index = image_geometry.binary_search_by_key(&placed.at, |(_, _, at)| *at).map_err(|_| Error::Invalid)?;
+            let (child, mut g, _) = image_geometry[index];
+            g.border_box.x = placed.x + g.margin.left;
+            g.border_box.y = l.baseline(placed.line as usize).ok_or(Error::Invalid)? - placed.ascent + g.margin.top;
+            self.geometry[child.index()] = g;
+            self.progress.boxes += 1;
+        }
         self.texts[source as usize] = Some(l);
         Ok(Completed { before: Strut::default(), after: Strut::default(), through, relative_y: 0. })
     }
@@ -511,7 +570,26 @@ impl<'a> Job<'a> {
                         self.place(child, r)?;
                         self.progress.boxes += 1
                     }
-                    BoxKind::Viewport => return Err(Error::Invalid),
+                    BoxKind::BlockImage { image } => {
+                        let parent = self.stack.last().ok_or(Error::Invalid)?.used;
+                        let s = self.cache.tree.style(child).ok_or(Error::Invalid)?;
+                        let pixels = self.cache.tree.image(image).ok_or(Error::Invalid)?;
+                        let used = super::images::used(
+                            s,
+                            parent.width,
+                            parent.height.map(|h| parent.height(h)),
+                            (pixels.width(), pixels.height()),
+                            true,
+                            parent.rtl,
+                            &mut self.scratch,
+                            self.cancel,
+                            self.scale,
+                        )?;
+                        self.geometry[child.index()] = super::images::geometry(used);
+                        self.place(child, Completed { before: Strut::new(used.margin.top), after: Strut::new(used.margin.bottom), through: false, relative_y: 0. })?;
+                        self.progress.boxes += 1;
+                    }
+                    BoxKind::InlineImage { .. } | BoxKind::Viewport => return Err(Error::Invalid),
                 }
             } else {
                 let f = self.stack.pop().ok_or(Error::Invalid)?;

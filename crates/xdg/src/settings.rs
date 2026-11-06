@@ -253,6 +253,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "touchpad", tab: "Touchpad", group: "Basics", name: "Natural scrolling (content follows your fingers)", role: "CheckBox" },
     Setting { panel: "touchpad", tab: "Touchpad", group: "Basics", name: "Click with two fingers for a secondary click", role: "CheckBox" },
     Setting { panel: "touchpad", tab: "Mouse", group: "This Mouse", name: "Settings", role: "ComboBox" },
+    Setting { panel: "touchpad", tab: "Mouse", group: "Wheel", name: "Scrolling speed", role: "Slider" },
     Setting { panel: "touchpad", tab: "Mouse", group: "TrackPoint", name: "Settings", role: "ComboBox" },
     Setting { panel: "touchpad", tab: "Mouse", group: "TrackPoint", name: "Scroll while the middle button is held", role: "CheckBox" },
     Setting { panel: "touchpad", tab: "Mouse", group: "Other Mice", name: "Mouse speed", role: "Slider" },

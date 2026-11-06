@@ -243,6 +243,19 @@ impl<'a> Job<'a> {
         if self.tree.styles.len() >= self.limits.elements || self.tree.styles.len() >= u32::MAX as usize || node.slot() as usize >= self.limits.slots {
             return Err(Error::Limit);
         }
+        let mut hints = Vec::new();
+        if self.document.name(node).map_err(Error::Dom)? == Some("img") && self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Html) {
+            for name in ["width", "height"] {
+                let Some(value) = self.document.attribute(node, name).map_err(Error::Dom)? else { continue };
+                if value.len() > self.limits.inline_bytes {
+                    return Err(Error::Limit);
+                }
+                if let Some(value) = dimension_hint(value) {
+                    let syntax = Syntax::parse(Arc::from(value), self.limits.css, self.cancelled).map_err(Error::css)?;
+                    hints.push(p::Declaration::parse(name, syntax.components(), false, self.limits.property, self.cancelled).map_err(Error::Property)?);
+                }
+            }
+        }
         let mut inline = Vec::new();
         if let Some(source) = self.document.attribute(node, "style").map_err(Error::Dom)? {
             if source.len() > self.limits.inline_bytes {
@@ -275,11 +288,12 @@ impl<'a> Job<'a> {
         let dom = if let Some(states) = self.options.states { selectors::DomTree::with_states(self.document, states) } else { selectors::DomTree::new(self.document) };
         let cascade = self
             .rules
-            .match_element(
+            .match_element_with_hints(
                 &dom,
                 node,
                 selectors::MatchOptions { quirks: self.options.quirks, ..Default::default() },
                 Some(&inline),
+                Some(&hints),
                 parent.map(|p| p as &dyn cascade::Inherited),
                 self.limits.cascade,
                 self.limits.matching,
@@ -331,4 +345,33 @@ impl<'a> Job<'a> {
             if self.next.is_some() { Err(Error::Incomplete) } else { Ok(self.tree) }
         }
     }
+}
+
+// HTML dimension-value microsyntax, used only as an author presentational
+// hint. Author CSS (including an explicit auto) participates in the cascade.
+fn dimension_hint(input: &str) -> Option<String> {
+    let input = input.trim_start_matches(['\t', '\n', '\u{c}', '\r', ' ']);
+    let bytes = input.as_bytes();
+    let mut at = 0;
+    let mut value = 0.;
+    while bytes.get(at).is_some_and(u8::is_ascii_digit) {
+        value = value * 10. + f64::from(bytes[at] - b'0');
+        at += 1;
+        if !value.is_finite() {
+            return None;
+        }
+    }
+    if at == 0 {
+        return None;
+    }
+    if bytes.get(at) == Some(&b'.') {
+        at += 1;
+        let mut divisor = 1.;
+        while bytes.get(at).is_some_and(u8::is_ascii_digit) {
+            divisor *= 10.;
+            value += f64::from(bytes[at] - b'0') / divisor;
+            at += 1;
+        }
+    }
+    Some(format!("{value}{}", if bytes.get(at) == Some(&b'%') { "%" } else { "px" }))
 }

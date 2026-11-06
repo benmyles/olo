@@ -83,6 +83,19 @@ impl Engine {
                 last_clip = c.clip;
             }
             match &c.primitive {
+                Primitive::Image { owner, image } => {
+                    let image = scene.layout.cache().tree().image(*image).ok_or(Error::Invalid)?;
+                    let geometry = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
+                    let mut bounds = c.bounds;
+                    bounds.x += geometry.border_width.left + geometry.padding.left;
+                    bounds.y += geometry.border_width.top + geometry.padding.top;
+                    bounds.width = (bounds.width - geometry.border_width.left - geometry.border_width.right - geometry.padding.left - geometry.padding.right).max(0.);
+                    bounds.height = (bounds.height - geometry.border_width.top - geometry.border_width.bottom - geometry.padding.top - geometry.padding.bottom).max(0.);
+                    if bounds.width == 0. || bounds.height == 0. {
+                        continue;
+                    }
+                    super::image::raster(&mut out, image, bounds, scale, region, mask.as_ref(), cancel)?;
+                }
                 Primitive::Fill { color } => {
                     if let Some(r) = local(c.bounds) {
                         out.fill_rect(r, &paint(*color), transform, mask.as_ref());

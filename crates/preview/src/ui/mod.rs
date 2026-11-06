@@ -54,6 +54,20 @@ const GUTTER_PAD: f32 = 10.0;
 /// Below a video: its title and facts, and the transport when it plays.
 const VIDEO_INFO: f32 = 2.0 * m::LABEL_ROW + 2.0 * m::SPACING;
 const TRANSPORT: f32 = 34.0;
+/// Full screen, how long the transport shows after the pointer last moved.
+const CONTROLS_FOR: std::time::Duration = std::time::Duration::from_millis(2500);
+
+/// How a video's picture fills its place: at most its own size (a frame
+/// pixel a device pixel, smaller to fit), as big as fits, or filling it
+/// (what overflows cut off); its proportions kept every way. Full screen,
+/// `Actual` is as big as fits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VideoZoom {
+    #[default]
+    Actual,
+    Fit,
+    Fill,
+}
 /// What's under a video's picture (its transport and what it is), for a
 /// window's own controls to go over (the Viewer's trim bar).
 pub const UNDER_VIDEO: f32 = VIDEO_INFO + TRANSPORT;
@@ -83,6 +97,11 @@ pub struct PreviewView {
     image: Entity<ImageView>,
     player: Option<audio::Player>,
     video: Option<video::Video>,
+    video_zoom: VideoZoom,
+    /// Full screen, until when the transport shows (the pointer moved),
+    /// and the timer that hides it then.
+    controls_until: Option<Instant>,
+    controls_hide: Option<Task<()>>,
     /// The video's frame showing, or its poster until one comes.
     frame: Option<Arc<RenderImage>>,
     /// Its video is known to be HDR (told as `PreviewEvent::Gamut`: its
@@ -159,6 +178,9 @@ impl PreviewView {
             image,
             player: None,
             video: None,
+            video_zoom: VideoZoom::default(),
+            controls_until: None,
+            controls_hide: None,
             frame: None,
             video_hdr: false,
             art: None,
@@ -447,6 +469,51 @@ impl PreviewView {
 
     /// How far a press of ← or → moves a video or a sound.
     pub const SKIP_SECS: f64 = 10.0;
+
+    /// How a video's picture fills its place.
+    pub fn video_zoom(&self) -> VideoZoom {
+        self.video_zoom
+    }
+
+    pub fn set_video_zoom(&mut self, zoom: VideoZoom, cx: &mut Context<Self>) {
+        if self.video_zoom != zoom {
+            self.video_zoom = zoom;
+            cx.notify();
+        }
+    }
+
+    /// Full screen: the transport shown a while (the pointer moved), and
+    /// hidden again after, by one timer (re-armed as it fires, if the
+    /// pointer moved since).
+    fn show_controls(&mut self, cx: &mut Context<Self>) {
+        let was = self.controls_until.is_some_and(|t| t > Instant::now());
+        self.controls_until = Some(Instant::now() + CONTROLS_FOR);
+        if !was {
+            cx.notify();
+        }
+        if self.controls_hide.is_none() {
+            self.controls_hide = Some(cx.spawn(async move |v, cx| {
+                loop {
+                    let Ok(Some(until)) = v.update(cx, |v, _| v.controls_until) else { return };
+                    let now = Instant::now();
+                    if until <= now {
+                        let _ = v.update(cx, |v, cx| {
+                            v.controls_hide = None;
+                            cx.notify();
+                        });
+                        return;
+                    }
+                    cx.background_executor().timer(until - now).await;
+                }
+            }));
+        }
+    }
+
+    /// Whether the transport shows full screen: the pointer moved lately,
+    /// or the video is paused.
+    fn controls_showing(&self) -> bool {
+        self.controls_until.is_some_and(|t| t > Instant::now()) || !self.playing_video()
+    }
 
     /// Move the video's or sound's time by `secs` (Ben, 2026-11-05: "the
     /// left and right arrows should skip back and forward 10s in the
@@ -1384,8 +1451,9 @@ impl PreviewView {
                         let f = (f32::from(e.position.x - t.bar.left()) / f32::from(t.bar.size.width).max(1.0)).clamp(0.0, 1.0) as f64;
                         let dur = v.body.as_ref().and_then(|b| if let Body::Media(md) = b { md.duration } else { None }).unwrap_or_else(|| transport.duration());
                         transport.seek(f * dur);
-                    } else if v.video.is_some() && e.position.y < t.button.top() {
-                        // A click on the picture plays or pauses.
+                    } else if v.video.is_some() && (t.button.size.width == px(0.0) || e.position.y < t.button.top()) {
+                        // A click on the picture plays or pauses (full
+                        // screen, with the transport hidden, anywhere).
                         transport.toggle();
                     } else {
                         return;
@@ -1393,7 +1461,11 @@ impl PreviewView {
                     cx.notify();
                 }),
             )
-            .on_mouse_move(cx.listener(move |v, e: &MouseMoveEvent, _, cx| {
+            .on_mouse_move(cx.listener(move |v, e: &MouseMoveEvent, window, cx| {
+                // Full screen, a video's transport shows as the pointer moves.
+                if window.is_fullscreen() && v.video.is_some() {
+                    v.show_controls(cx);
+                }
                 if e.pressed_button != Some(MouseButton::Left) {
                     v.trim_drag = None;
                     return;
@@ -1436,7 +1508,10 @@ impl PreviewView {
         let dim = style::disabled_text(&p);
         let mut placed = TransportAt::default();
         if md.video {
-            let info_h = VIDEO_INFO + if self.video.is_some() { TRANSPORT } else { 0.0 };
+            // Full screen: the picture is all there is, the transport over
+            // it while the pointer moves (or it's paused).
+            let full = window.is_fullscreen();
+            let info_h = if full { 0.0 } else { VIDEO_INFO + if self.video.is_some() { TRANSPORT } else { 0.0 } };
             let area = Bounds::from_corners(r.origin, point(r.right(), r.bottom() - px(info_h)));
             window.paint_quad(gpui::fill(area, gpui::black()));
             match &self.frame {
@@ -1444,16 +1519,40 @@ impl PreviewView {
                     let sz = img.size(0);
                     let s = window.scale_factor();
                     let (iw, ih) = (sz.width.0 as f32 / s, sz.height.0 as f32 / s);
-                    // At most a frame pixel a device pixel.
-                    let k = (f32::from(area.size.width) / iw).min(f32::from(area.size.height) / ih).min(1.0);
+                    let (kw, kh) = (f32::from(area.size.width) / iw, f32::from(area.size.height) / ih);
+                    let k = match self.video_zoom {
+                        // At most a frame pixel a device pixel (full
+                        // screen: as big as fits).
+                        VideoZoom::Actual if !full => kw.min(kh).min(1.0),
+                        VideoZoom::Actual | VideoZoom::Fit => kw.min(kh),
+                        VideoZoom::Fill => kw.max(kh),
+                    };
                     let ib = style::snap(window, Bounds::centered_at(area.center(), size(px(iw * k), px(ih * k))));
-                    let _ = window.paint_image(ib, gpui::Corners::default(), img.clone(), 0, false);
-                    agent::record(window, cx, agent::Node { role: "Image", name: Some(md.title.clone().into()), bounds: ib, enabled: true, clickable: self.video.is_some(), ..Default::default() });
+                    // (Filling, what overflows its place is cut off.)
+                    window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
+                        let _ = window.paint_image(ib, gpui::Corners::default(), img.clone(), 0, false);
+                    });
+                    agent::record(
+                        window,
+                        cx,
+                        agent::Node { role: "Image", name: Some(md.title.clone().into()), bounds: ib.intersect(&area), enabled: true, clickable: self.video.is_some(), ..Default::default() },
+                    );
                 }
                 None => {
                     let b = style::snap_centred(window, area.center(), 96.0, 96.0);
                     icons::paint(window, b, "video");
                 }
+            }
+            if full {
+                if let Some(t) = &self.video
+                    && self.controls_showing()
+                {
+                    let strip = Bounds::from_corners(point(r.left(), r.bottom() - px(TRANSPORT + 2.0 * m::SPACING)), r.bottom_right());
+                    let p = theme::palette(cx);
+                    window.paint_quad(gpui::fill(strip, style::c(p.panel_background).opacity(0.92)));
+                    placed = paint_transport(window, cx, r.left() + px(m::WINDOW_INSET), r.right() - px(m::WINDOW_INSET), strip.center().y, t, md.duration, false, self.trim, &md.chapters);
+                }
+                return placed;
             }
             let mut y = area.bottom();
             if let Some(t) = &self.video {

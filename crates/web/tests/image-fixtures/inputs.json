@@ -1,0 +1,482 @@
+[
+  {
+    "name": "natural-inline",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:inline}",
+    "unsupported": null
+  },
+  {
+    "name": "natural-block",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:block}",
+    "unsupported": null
+  },
+  {
+    "name": "natural-inline-block",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:inline-block}",
+    "unsupported": null
+  },
+  {
+    "name": "natural-flex",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:flex}",
+    "unsupported": null
+  },
+  {
+    "name": "natural-inline-flex",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:inline-flex}",
+    "unsupported": null
+  },
+  {
+    "name": "natural-grid",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:grid}",
+    "unsupported": null
+  },
+  {
+    "name": "natural-inline-grid",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:inline-grid}",
+    "unsupported": null
+  },
+  {
+    "name": "natural-table",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:table}",
+    "unsupported": null
+  },
+  {
+    "name": "natural-inline-table",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:inline-table}",
+    "unsupported": null
+  },
+  {
+    "name": "width",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:23.5px}",
+    "unsupported": null
+  },
+  {
+    "name": "height",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{height:7px}",
+    "unsupported": null
+  },
+  {
+    "name": "both",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:20px;height:7px}",
+    "unsupported": null
+  },
+  {
+    "name": "percent-width",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:50%}",
+    "unsupported": null
+  },
+  {
+    "name": "percent-height-definite",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;height:80px}#image{height:50%}",
+    "unsupported": null
+  },
+  {
+    "name": "percent-height-auto",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{height:50%}",
+    "unsupported": null
+  },
+  {
+    "name": "centred-block",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{display:block;margin-left:auto;margin-right:auto}",
+    "unsupported": null
+  },
+  {
+    "name": "rtl-block",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;direction:rtl}#image{display:block;margin:2px 4px 3px 7px}",
+    "unsupported": null
+  },
+  {
+    "name": "border-box",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{box-sizing:border-box;width:23.5px;height:17px;padding:2px;border-width:1px;border-style:solid}",
+    "unsupported": null
+  },
+  {
+    "name": "content-box",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:23.5px;height:17px;padding:2px;border-width:1px;border-style:solid}",
+    "unsupported": null
+  },
+  {
+    "name": "negative-margins",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{margin:-2px -3px -4px -5px}",
+    "unsupported": null
+  },
+  {
+    "name": "max-width",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{max-width:1px}",
+    "unsupported": null
+  },
+  {
+    "name": "max-height",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{max-height:.5px}",
+    "unsupported": null
+  },
+  {
+    "name": "min-width",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{min-width:6px}",
+    "unsupported": null
+  },
+  {
+    "name": "min-height",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{min-height:3px}",
+    "unsupported": null
+  },
+  {
+    "name": "both-max-width-limits",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{max-width:1px;max-height:.75px}",
+    "unsupported": null
+  },
+  {
+    "name": "both-max-height-limits",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{max-width:1.5px;max-height:.5px}",
+    "unsupported": null
+  },
+  {
+    "name": "both-min-width-limits",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{min-width:8px;min-height:3px}",
+    "unsupported": null
+  },
+  {
+    "name": "both-min-height-limits",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{min-width:6px;min-height:5px}",
+    "unsupported": null
+  },
+  {
+    "name": "incompatible-width-min",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{min-width:10px;max-height:3px}",
+    "unsupported": null
+  },
+  {
+    "name": "incompatible-height-min",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{max-width:1px;min-height:3px}",
+    "unsupported": null
+  },
+  {
+    "name": "min-over-max",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{min-width:6px;max-width:1px;min-height:3px;max-height:.5px}",
+    "unsupported": null
+  },
+  {
+    "name": "specified-width-auto-height-limit",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:20px;max-height:3px}",
+    "unsupported": null
+  },
+  {
+    "name": "specified-height-auto-width-limit",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{height:10px;max-width:3px}",
+    "unsupported": null
+  },
+  {
+    "name": "specified-minimum",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:20px;height:10px;min-width:25px;max-height:3px}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'37'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"37\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'23.5'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"23.5\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'23.'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"23.\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'+23'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"+23\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'-23'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"-23\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'.5'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\".5\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'0'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"0\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'50%'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"50%\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'50 %'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"50 %\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'50px'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"50px\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-' 50.5%tail'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\" 50.5%tail\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'23e2'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"23e2\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'23.5e2'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"23.5e2\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'\\t23'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"\t23\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'\\x0b23'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"\u000b23\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'\\xa023'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"\u00a023\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "attribute-'bogus'",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=\"bogus\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "height-attribute",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" height=7></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "both-attributes",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=37 height=9></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "author-auto",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=37></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:auto}",
+    "unsupported": null
+  },
+  {
+    "name": "inline-auto",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=37 style=\"width:auto\"></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{}",
+    "unsupported": null
+  },
+  {
+    "name": "author-zero",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=37></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:0}",
+    "unsupported": null
+  },
+  {
+    "name": "author-revert",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" width=37></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{width:revert}",
+    "unsupported": null
+  },
+  {
+    "name": "alignment-top",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{vertical-align:top}",
+    "unsupported": "aligned/positioned image"
+  },
+  {
+    "name": "alignment-middle",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{vertical-align:middle}",
+    "unsupported": "aligned/positioned image"
+  },
+  {
+    "name": "alignment-bottom",
+    "width": 200,
+    "height": 800,
+    "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
+    "css": "#p{font-size:0;line-height:0;}#image{vertical-align:bottom}",
+    "unsupported": "aligned/positioned image"
+  }
+]

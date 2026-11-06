@@ -30,6 +30,17 @@ pub enum Toolkit {
     Gtk3,
 }
 
+/// `toolkit` as `Reply::Frames`' `wheel` names it.
+pub fn name(toolkit: Toolkit) -> &'static str {
+    match toolkit {
+        Toolkit::AsGiven => "as given",
+        Toolkit::Olo => "olo",
+        Toolkit::Chromium => "chromium",
+        Toolkit::Gtk4 => "gtk4",
+        Toolkit::Gtk3 => "gtk3",
+    }
+}
+
 /// What draws `pid`'s windows, as far as scrolling goes (remembered per
 /// process; a pid is reused only after its process is gone).
 pub fn toolkit(pid: i32) -> Toolkit {

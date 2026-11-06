@@ -12,6 +12,13 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use url::Url;
 const HTML_LIMIT: usize = 16 * 1024 * 1024;
+#[derive(Clone, Copy)]
+enum Kind {
+    Document,
+    Stylesheet,
+    Image,
+}
+const IMAGE_LIMIT: usize = 16 * 1024 * 1024;
 const CSS_LIMIT: usize = 4 * 1024 * 1024;
 #[derive(Clone, Default)]
 pub struct Cancel {
@@ -60,11 +67,11 @@ impl Loader {
         Ok(Url::parse(&format!("https://{source}"))?)
     }
     pub fn document(&self, source: &str, cwd: Option<&std::path::Path>, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<Resource> {
-        self.fetch(Self::navigation(source, cwd)?, None, HTML_LIMIT, cancel, progress)
+        self.fetch(Self::navigation(source, cwd)?, None, HTML_LIMIT, cancel, progress, Kind::Document)
     }
     pub fn stylesheet(&self, document: &Resource, base: Option<&str>, href: &str, cancel: &Cancel, progress: impl FnMut(usize)) -> page::Result<css::Syntax> {
         let base = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone());
-        let resource = self.fetch(base.join(href)?, Some(&document.url), CSS_LIMIT, cancel, progress)?;
+        let resource = self.fetch(base.join(href)?, Some(&document.url), CSS_LIMIT, cancel, progress, Kind::Stylesheet)?;
         if resource.status.is_some_and(|s| !(200..300).contains(&s)) {
             return Err("Stylesheet returned an unsuccessful HTTP status".into());
         }
@@ -74,7 +81,43 @@ impl Loader {
         let encoding = resource.mime.as_ref().and_then(|m| m.get_param("charset")).map(|p| p.as_str());
         Ok(css::Syntax::parse_bytes(&resource.bytes, css::ByteOptions { protocol_encoding: encoding, environment_encoding: Some(document.encoding()) }, Default::default(), Some(cancel))?.syntax)
     }
-    fn fetch(&self, mut url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize)) -> page::Result<Resource> {
+    pub fn image(&self, document: &Resource, url: Url, remaining: usize, cancel: &Cancel, mut progress: impl FnMut(usize)) -> page::Result<Arc<olo_web::image::Image>> {
+        let bytes = if url.scheme() == "data" {
+            let data = data_url::DataUrl::process(url.as_str()).map_err(|_| "Malformed image data URL")?;
+            let mut bytes = Vec::new();
+            let mut reported = 0usize;
+            data.decode(|chunk| {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err("Cancelled");
+                }
+                if chunk.len() > IMAGE_LIMIT.saturating_sub(bytes.len()) {
+                    return Err("Image exceeds its encoded limit");
+                }
+                bytes.extend_from_slice(chunk);
+                if bytes.len() - reported >= 32 << 10 {
+                    reported = bytes.len();
+                    progress(reported);
+                }
+                Ok(())
+            })
+            .map_err(|_| "Image data URL rejected or cancelled")?;
+            progress(bytes.len());
+            bytes
+        } else {
+            let resource = self.fetch(url, Some(&document.url), IMAGE_LIMIT, cancel, &mut progress, Kind::Image)?;
+            if resource.status.is_some_and(|s| !(200..300).contains(&s)) {
+                return Err("Image returned an unsuccessful HTTP status".into());
+            }
+            resource.bytes
+        };
+        let mut limits = olo_images::raster::Limits::default();
+        limits.surface_bytes = limits.surface_bytes.min(remaining as u64);
+        limits.pixels = limits.pixels.min((remaining / 4) as u64);
+        let raster = olo_images::raster::decode(&bytes, limits, Some(cancel))?;
+        let (w, h) = raster.pixels.dimensions();
+        Ok(olo_web::image::Image::from_rgba(w, h, raster.pixels.into_raw(), Default::default(), Some(cancel))?)
+    }
+    fn fetch(&self, mut url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize), kind: Kind) -> page::Result<Resource> {
         let allow_file = url.scheme() == "file";
         self.runtime.block_on(async {
             let work = async {
@@ -102,11 +145,29 @@ impl Loader {
                             append(&mut bytes, &chunk[..n], limit)?;
                             progress(bytes.len());
                         }
-                        let mime = Some(if initiator.is_some() { "text/css" } else { "text/html" }.parse()?);
+                        let mime = Some(
+                            match kind {
+                                Kind::Document => "text/html",
+                                Kind::Stylesheet => "text/css",
+                                Kind::Image => "application/octet-stream",
+                            }
+                            .parse()?,
+                        );
                         return Ok(Resource { url, bytes, mime, status: None, document_encoding: None });
                     }
-                    let mut response =
-                        self.client.get(url.clone()).header(header::ACCEPT, if initiator.is_some() { "text/css,*/*;q=0.1" } else { "text/html,text/plain;q=0.9,*/*;q=0.1" }).send().await?;
+                    let mut response = self
+                        .client
+                        .get(url.clone())
+                        .header(
+                            header::ACCEPT,
+                            match kind {
+                                Kind::Document => "text/html,text/plain;q=0.9,*/*;q=0.1",
+                                Kind::Stylesheet => "text/css,*/*;q=0.1",
+                                Kind::Image => "image/png,image/jpeg,image/webp,image/gif,*/*;q=0.1",
+                            },
+                        )
+                        .send()
+                        .await?;
                     let status = response.status();
                     if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308)
                         && let Some(location) = response.headers().get(header::LOCATION)
@@ -322,7 +383,7 @@ mod tests {
                 write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", gzip.len()).unwrap();
                 stream.write_all(gzip).unwrap();
             });
-            let result = Loader::new().unwrap().fetch(url, None, limit, &Cancel::default(), |_| {});
+            let result = Loader::new().unwrap().fetch(url, None, limit, &Cancel::default(), |_| {}, Kind::Document);
             if limit == 2048 {
                 assert!(result.unwrap().bytes.starts_with(b"<title>Compressed</title>"));
             } else {
@@ -344,6 +405,33 @@ mod tests {
         let loader = Loader::new().unwrap();
         let doc = Resource { url: Url::parse(&base).unwrap(), bytes: vec![], mime: None, status: None, document_encoding: None };
         assert!(loader.stylesheet(&doc, None, "/theme", &Cancel::default(), |_| {}).is_err());
+        server.join().unwrap();
+    }
+    #[test]
+    fn image_data_and_http_use_bounded_worker_decode() {
+        let data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+        let loader = Loader::new().unwrap();
+        let document = Resource { url: Url::parse("https://example.test/page").unwrap(), bytes: Vec::new(), mime: None, status: None, document_encoding: None };
+        let image = loader.image(&document, Url::parse(data).unwrap(), 4, &Cancel::default(), |_| {}).unwrap();
+        assert_eq!(image.rgba(), [255, 0, 0, 255]);
+        assert!(loader.image(&document, Url::parse(data).unwrap(), 3, &Cancel::default(), |_| {}).is_err());
+        let cancelled = Cancel::default();
+        cancelled.cancel();
+        assert!(loader.image(&document, Url::parse(data).unwrap(), 4, &cancelled, |_| {}).is_err());
+        let png = data_url::DataUrl::process(data).unwrap().decode_to_vec().unwrap().0;
+        let socket = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = Url::parse(&format!("http://{}/red.png", socket.local_addr().unwrap())).unwrap();
+        let document = Resource { url: url.clone(), bytes: Vec::new(), mime: None, status: None, document_encoding: None };
+        let server = thread::spawn(move || {
+            let (mut stream, _) = socket.accept().unwrap();
+            let mut request = [0; 4096];
+            let n = stream.read(&mut request).unwrap();
+            assert!(std::str::from_utf8(&request[..n]).unwrap().contains("image/png"));
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", png.len()).unwrap();
+            stream.write_all(&png).unwrap();
+        });
+        let image = loader.image(&document, url, 4, &Cancel::default(), |_| {}).unwrap();
+        assert_eq!(image.rgba(), [255, 0, 0, 255]);
         server.join().unwrap();
     }
 }

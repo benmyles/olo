@@ -2,10 +2,11 @@
 
 `olo-browser [about:engine | /absolute/path/to/file.html]` opens the original
 Rust static page pipeline in a native `olo-ui` window. It is an initial
-single-document shell, not a Chrome-compatible browser. Network navigation,
-JavaScript, complete CSS/layout, input/hit testing and links, tabs/history,
-images/media, sandboxing, password/passkey mediation and full Olo integrations
-are still required. It does not change the installed/default browser.
+single-document shell, not a Chrome-compatible browser. Initial HTTP/HTTPS,
+linked CSS, text/image links, Back/Forward and still images work. JavaScript,
+complete CSS/layout/input, tabs, complete image/media support, sandboxing,
+password/passkey mediation and full Olo integrations are still required.
+It does not change the installed/default browser.
 
 HTML parsing, style, font work, layout, scene construction, tile rasterization,
 file reads and image reclamation run on a worker. Progress streams through
@@ -15,7 +16,15 @@ text shaping and width-independent text geometry have separate bounded
 caches. Tiles are keyed by page/style/scale/viewport and copied pixel-for-pixel
 to GPU textures. This is CPU outline rasterization plus GPU composition,
 not a complete GPU web renderer. File input currently accepts UTF-8 HTML,
-up to 16 MiB; embedded styles up to 4 MiB. File URLs lack full URL decoding.
+up to 16 MiB; embedded styles up to 4 MiB.
+
+PNG/JPEG/WebP/GIF stills load from HTTP/HTTPS, allowed local files and data
+URLs, with 16 MiB encoded input per image and a 64 MiB aggregate decoded
+pixel budget, separate from retained tiles. Repeated canonical image URLs
+share one decode per navigation, and resize/theme restyles reuse those assets.
+Codec allocation hints are best effort; isolation and interruptible codec CPU
+work remain open. Broken-image fallback, responsive sources, animation, SVG,
+complete alignment and minification are not yet implemented.
 
 The page canvas, address field, Go/Stop buttons, visible text, progress/errors
 and menus use the shared structured agent tree and menu API. For example,
@@ -34,9 +43,11 @@ Cmd+L selects the address, Cmd+R reloads, Escape stops. Menu actions use the
 same command handlers as people. Forwarded launches replace the document in
 the existing window; relative paths resolve against the sender's working
 directory. Page and CSS scroll position survive kit re-execution/reconnection.
-Document text snapshots are initial visible paint-run labels; semantic DOM
-snapshots, stable action identities, selection, input/IME and links are not
-implemented. They must not be inferred from this readable text surface.
+Document snapshots include visible paint-run text, image alt text/bounds and
+link actions through the same input dispatch as people. Linked images are
+Link records; other images are Image records. Complete semantic DOM snapshots,
+selection, editing and input/IME remain required. Pixel/source bytes are not
+included in the structured tree.
 
 Native Canvas/CanvasText/system colours follow the palette. This does not
 adapt author-defined light colours into universal dark/night mode. See

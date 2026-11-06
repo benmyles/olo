@@ -17,11 +17,96 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-Nothing: the two performance items Ben had tabled were taken up again
-(2026-11-06) and are blocked on real displays to try them on (see
-Blocked).
+- **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
+  passwords chrome integration should recognize credit card forms and
+  show the credit cards in the olo context menu for filling". Olo's
+  extension finds a page's card fields (number, name, expiry, security
+  code, by their `autocomplete` tokens, names and labels), and Olo's
+  context menu there lists Passwords' cards to fill them with, as it
+  lists logins for a sign-in form.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
+  chrome scrolling does not seem to be the same speed as olo native
+  apps (it's slower) and it's most noticeable on the studio display at
+  2x where each scrollwheel push doesn't go very far at all". So: a
+  wheel notch (and a touchpad's travel) moves Chrome's page as far as
+  it moves a kit app's view at every scale. Found so far (2026-11-02,
+  headless, Chrome 156): a synthetic notch (axis 15, value120 120, as
+  libinput reports a plain wheel) moves Chrome 48 CSS px at 1× and at
+  2× (devicePixelRatio 2), and StyledEdit 48 px at both (3 lines,
+  `SCROLL_LINES`); Chrome takes value120 over the axis value
+  (wayland_event_source.cc) and olo-wlproxy passes both through. So the
+  difference is in what Ben's mouse (a Razer Viper V2 Pro) sends, or in
+  his Chrome (page zoom, a flag): next, log what app_server gets from
+  libinput for one of its notches (`amount`, `amount_v120`) and sends
+  on, with him turning it once in each app; then make Chrome's step and
+  the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
+  both). *Done of it* (2026-11-06, HACKING's "Scrolling"): a wheel
+  speed for every program alike (Preferences ▸ Touchpad & Mouse ▸
+  Mouse ▸ Wheel, `wheel_speed`, the 120ths Chrome reads scaled with the
+  values): headless at 1× and 2×, a notch moves Chrome and StyledEdit
+  48, 96 and 24 px at 1, 2 and 0.5; and the last notch as it came from
+  libinput and as it went on, by kind of program, in `{"type":"frames"}`
+  (`wheel`). *Left* (Ben): the Razer isn't plugged into the ThinkPad
+  (its touchpad and TrackPoint are), so with it back, one notch turned
+  in Chrome and in an Olo app, and `wheel` read for each.
+
+- **Face unlock: sudo and Passwords approved by a look** (Ben,
+  2026-11-04): "support facial recognition as an alternative to the
+  yubikey or password to unlock sudo and passwords. put the setup in
+  prefs -> passwords. do whatever is needed to get olo working with it
+  even if you have to write a custom driver or whatever." Set up in
+  Preferences ▸ Passwords (enrol a face, a few angles, with and without
+  glasses; Forget), then a look approves what the password, the
+  fingerprint or the YubiKey approve now: Terminal's sudo window,
+  Passwords' unlock and `op`, polkit, Approve Without Asking, the lock
+  screen; each window says it's looking and falls back to the others.
+  Only with the infrared camera: a photo or a screen can't pass it (IR
+  shows skin and depth cues a printout and a display don't; the colour
+  camera alone is too easily fooled, so never that alone). Native, in
+  Rust and in process: the frames over V4L2 (no howdy, no OpenCV
+  binaries, no linux-enable-ir-emitter), the emitter switched on by
+  Olo's own UVC extension-unit control (found by trying the unit's
+  controls with the camera's own IR stream watched for the flood
+  lighting it, kept per camera), face detection and embeddings by a
+  small model run in process (as Olo runs its others), liveness from IR
+  (and the emitter's on/off frames), the enrolled templates sealed for
+  the user only. The privacy shutter closed: it says so.
+  *Checked* (2026-11-04, from /sys): the ThinkPad's camera is Chicony's
+  04f2:b8b3 on USB (3-4): a colour camera ("Integrated Camera",
+  /dev/video0 and 1) and an infrared one ("Integrated IR Camera",
+  /dev/video2 and 3; UVC, interface 1.2), a camera HID interface (1.4:
+  hidraw0) and a DFU one; Ben's account can open them (the video
+  group's ACL). Next: the IR node's formats (GREY or Y8 at what size),
+  its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
+  which control lights the emitter, and what the HID interface reports
+  (the shutter, perhaps).
+  *Built* 2026-11-05 (HACKING's "Face unlock"): `olo-face` (V4L2, the
+  emitter's UVC control found by trying, YuNet and SFace in process,
+  infrared-only looks with a relief check), `olo-faced` (root, the system
+  bus, the faces root's only, no password kept), `pam_olo_face.so` (sudo
+  and polkit), Passwords and the lock screen asking it, and Preferences ▸
+  Security ▸ Face Unlock (Install…, Set Up…, Forget…, Remove). Tried end
+  to end without root or a camera (a private bus, portraits for frames, a
+  stand-in PAM stack). *Left*, needing Ben at the machine: Install… (his
+  administrator password), then Set Up… in front of the camera (the
+  emitter found then: the read-only look found its units 10, 13 and 14,
+  unit 14's control 6 the likeliest); sudo, polkit (under SELinux), the
+  lock screen and Passwords tried with his face; the relief and match
+  thresholds tuned on his real looks; what the camera's HID interface
+  says (the shutter).
+  *Re-checked* (2026-11-06, the journal, read-only): installed (Ben ran
+  Install…, `olo-faced install` through pkexec; `pam_olo_face.so` in
+  sudo's and polkit's stacks) and set up (five looks). Since: 10
+  matches, similarity 0.81 to 0.92 (median 0.86) against `MATCH` 0.42,
+  none refused, so the threshold stands (raising it on ten looks of one
+  person would only guess); used for Passwords' unlock and for polkit
+  (pkexec), and for sudo (3 "no face": an agent's `sudo -n` while Ben
+  was away, which shouldn't have been: the camera looked for him). *Left*
+  (Ben): the lock screen with his face, and what the camera's HID
+  interface says as he closes the privacy shutter.
 
 - **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
   2026-11-03): an export from this Mac (sealed,
@@ -1347,153 +1432,6 @@ password, a touch, a camera, a reboot he agrees to), hardware nobody
 here has plugged in, an account to sign in with, or data from more
 people.
 
-- **Every frame on time, every display** (Ben, 2026-11-01: "dropping
-  frames is never acceptable: olo must be buttery smooth on all
-  displays all the time"; the pointer "definitely way slow/stuttery",
-  worst on the Studio Display; app_server at 20% of a core). Done
-  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
-  measured cost and observed drops; `{"type":"frames"}`,
-  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
-  overlay plane as cursor plane, clipped at the display's edge in
-  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
-  flip and app_server restart eight times; a refused flip no longer
-  kills it); windows as scan-out candidates; Smithay vendored with
-  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
-  all `render_output`, and in it the GPU submit (asahi's
-  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
-  in the kernel; plane assignment and atomic tests cost 0.0 ms.
-  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
-  renderer making a fence per texture drawn (a GPU submit an
-  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
-  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
-  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
-  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
-  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
-  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
-  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
-  the radio is the person's to fix (the receiver nearer, its
-  extender, a lower polling rate). **Next**: windows on overlay
-  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
-  agree (a client's cursor on the plane rendered right, or the
-  pointer's plane above every window plane and the window refused
-  while the pointer is drawn in the frame over it); the "draws"
-  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
-  at ~11% with a call on is the tick (now once per 8 ms) and looks;
-  per-display render threads (its own TODO).
-  *Taken up again* (2026-11-06, Ben's goal: every item done but what's
-  truly blocked; and his 2026-11-02 word, no optimizing for its own sake
-  without something a person notices). Measured on the ThinkPad's panel
-  (eDP-1, 60 Hz, read from `{"type":"frames"}`, nothing changed): a frame
-  drawn in 0.98 ms (95th percentile 1.32, slowest 1.70) of an 8.75 ms
-  budget; 219 late of 597,686 frames since login (0.04%), 1 in the last
-  minute. Windows on overlay planes need no new rule: Olo's Smithay
-  already keeps a window off a plane while anything drawn in the frame
-  (the pointer among them) lies over it (`try_assign_overlay_plane`'s
-  overlap test); what's left is trying `OLO_OVERLAY_PLANES=1` on real
-  displays (the "all messed up" of 2026-11-01 was on apple-drm, before
-  the ThinkPad), which headless can't (no planes, no vblank). *Blocked
-  on*: Ben trying `OLO_OVERLAY_PLANES=1` on the ThinkPad during a video
-  call (Activity Monitor ▸ Displays says what went to a plane), or a
-  virtual display to test with: `sudo modprobe vkms enable_cursor=1
-  enable_overlay=1` (in this kernel, not loaded; root needed), kept off
-  his session's seat by a udev rule (`ID_SEAT`), so a test app_server
-  could drive planes and vblank without his screen. The other "Next",
-  the cost of a frame with something changing every frame (a call),
-  looked at headless too (2026-11-06): app_server 6.7% of a core at 60
-  frames a second on Ben's panel (about 1.1 ms of processor a frame,
-  read-only `tools/dev/cost`), 3.3% headless with a Terminal printing
-  nonstop at 2560 × 1600; a profile of that spreads it thinly over
-  Smithay's per-frame bookkeeping (nothing above 16% of 31 ms a
-  second, `popups_for_surface` 0.6%): no low-hanging fruit, so, as Ben
-  asked, nothing changed for its own sake. The main loop's holds are
-  the other item's (below).
-
-- **app_server's critical path on threads of its own** (Ben,
-  2026-11-01: "why run the risk of a blocking call? threads would
-  make sure we don't accidentally block"): input → pointer plane
-  update → commit never shares a thread with anything that can
-  block. Design: an input-and-cursor thread owning libinput and the
-  cursor planes (a pointer move is a plane property commit, no frame);
-  a render-and-commit thread per display owning its GL context, DRM
-  surface and pacing (a slow 5K frame can't delay the built-in
-  display's); the Wayland clients and IPC on the main loop, handing
-  each display's thread a snapshot of what to draw. Our own
-  synchronous work (importing a client's buffer, a fence, a DCP test
-  or commit) is what blocks today, and the heartbeat (`timings`)
-  finds it. After the reliability work.
-  *Taken up again* (2026-11-06). *Done of it*: what holds the main loop
-  (where input, the pointer and every display's commits run) found and
-  taken off it, measured headless on release builds with
-  `tools/dev/perf-fuzz --stall 4` (bursts of drags, resizes, scale and
-  theme flips, windows opening and closing, terminal floods). Nothing
-  held it more than 2.3 ms but windows opening together: seven or five
-  at once held it 7, 10, 12 and 13 ms, and `strace` showed the main
-  thread waiting on a lock, the tab worker's: measuring a new tab's
-  title (`text::measure`) went through the one locked cosmic-text the
-  worker draws tabs with. Each thread now has a font system of its own
-  (`text.rs`, from one font database; the tab family's faces shared):
-  the same burst holds it 4.5, 5.0 and 5.5 ms, the rest being the frame
-  that first draws them, memory the same. The heartbeat now names a
-  burst of small parts by kind ("a new window ×5"), new windows and
-  their placing are timed, and perf-fuzz tells a worker started once
-  (tabs, shm dropping) from a leaked thread, closes the windows apps
-  opened themselves and says which descriptors grew (no leak found:
-  dmabufs held by a document's window that asked to save; once, early
-  in a fresh session, 8 that didn't repeat). Freeing a replaced
-  wallpaper was looked at and costs 1–13 µs: nothing to move.
-  *Blocked*, what's left: the frame itself (drawing and the commit) and
-  input on threads of their own rewrite app_server's core around
-  Smithay's single-threaded state, and only real displays and libinput
-  can show it works and what it buys (a motion event to the plane's
-  move, frames late): headless has neither planes, vblank nor libinput.
-  Unblocked by the same virtual display (vkms on a seat of its own), or
-  by Ben asking for it with his displays to try it on.
-
-- **Face unlock: sudo and Passwords approved by a look** (Ben,
-  2026-11-04): "support facial recognition as an alternative to the
-  yubikey or password to unlock sudo and passwords. put the setup in
-  prefs -> passwords. do whatever is needed to get olo working with it
-  even if you have to write a custom driver or whatever." Set up in
-  Preferences ▸ Passwords (enrol a face, a few angles, with and without
-  glasses; Forget), then a look approves what the password, the
-  fingerprint or the YubiKey approve now: Terminal's sudo window,
-  Passwords' unlock and `op`, polkit, Approve Without Asking, the lock
-  screen; each window says it's looking and falls back to the others.
-  Only with the infrared camera: a photo or a screen can't pass it (IR
-  shows skin and depth cues a printout and a display don't; the colour
-  camera alone is too easily fooled, so never that alone). Native, in
-  Rust and in process: the frames over V4L2 (no howdy, no OpenCV
-  binaries, no linux-enable-ir-emitter), the emitter switched on by
-  Olo's own UVC extension-unit control (found by trying the unit's
-  controls with the camera's own IR stream watched for the flood
-  lighting it, kept per camera), face detection and embeddings by a
-  small model run in process (as Olo runs its others), liveness from IR
-  (and the emitter's on/off frames), the enrolled templates sealed for
-  the user only. The privacy shutter closed: it says so.
-  *Checked* (2026-11-04, from /sys): the ThinkPad's camera is Chicony's
-  04f2:b8b3 on USB (3-4): a colour camera ("Integrated Camera",
-  /dev/video0 and 1) and an infrared one ("Integrated IR Camera",
-  /dev/video2 and 3; UVC, interface 1.2), a camera HID interface (1.4:
-  hidraw0) and a DFU one; Ben's account can open them (the video
-  group's ACL). Next: the IR node's formats (GREY or Y8 at what size),
-  its extension units' GUIDs and controls (UVC_GET_INFO, GET_LEN),
-  which control lights the emitter, and what the HID interface reports
-  (the shutter, perhaps).
-  *Built* 2026-11-05 (HACKING's "Face unlock"): `olo-face` (V4L2, the
-  emitter's UVC control found by trying, YuNet and SFace in process,
-  infrared-only looks with a relief check), `olo-faced` (root, the system
-  bus, the faces root's only, no password kept), `pam_olo_face.so` (sudo
-  and polkit), Passwords and the lock screen asking it, and Preferences ▸
-  Security ▸ Face Unlock (Install…, Set Up…, Forget…, Remove). Tried end
-  to end without root or a camera (a private bus, portraits for frames, a
-  stand-in PAM stack). *Left*, needing Ben at the machine: Install… (his
-  administrator password), then Set Up… in front of the camera (the
-  emitter found then: the read-only look found its units 10, 13 and 14,
-  unit 14's control 6 the likeliest); sudo, polkit (under SELinux), the
-  lock screen and Passwords tried with his face; the relief and match
-  thresholds tuned on his real looks; what the camera's HID interface
-  says (the shutter).
-
 - **A USB 2 device in a Thunderbolt 5 port isn't seen** (found
   2026-11-04 with Ben's YubiKey): in the USB-C port on the Barlow Ridge
   Thunderbolt 5 controller (8086:5780 bridges, its xHCI 8086:5782 at
@@ -1554,26 +1492,6 @@ people.
   - Deskbar: the AirPods' levels from their broadcast while they're not
     connected (the service has them now).
 
-- **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
-  chrome scrolling does not seem to be the same speed as olo native
-  apps (it's slower) and it's most noticeable on the studio display at
-  2x where each scrollwheel push doesn't go very far at all". So: a
-  wheel notch (and a touchpad's travel) moves Chrome's page as far as
-  it moves a kit app's view at every scale. Found so far (2026-11-02,
-  headless, Chrome 156): a synthetic notch (axis 15, value120 120, as
-  libinput reports a plain wheel) moves Chrome 48 CSS px at 1× and at
-  2× (devicePixelRatio 2), and StyledEdit 48 px at both (3 lines,
-  `SCROLL_LINES`); Chrome takes value120 over the axis value
-  (wayland_event_source.cc) and olo-wlproxy passes both through. So the
-  difference is in what Ben's mouse (a Razer Viper V2 Pro) sends, or in
-  his Chrome (page zoom, a flag): next, log what app_server gets from
-  libinput for one of its notches (`amount`, `amount_v120`) and sends
-  on, with him turning it once in each app; then make Chrome's step and
-  the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
-  both). *Re-checked* (2026-11-06): the Razer isn't plugged into the
-  ThinkPad (its input devices are its touchpad and TrackPoint), so the
-  notch to measure needs that mouse back and Ben turning it.
-
 - **The touchpad's latency on Ben's machine, and what next** (from the
   palm model in Activity, 2026-11-03): Activity ▸ Inputs ▸ Touchpad
   now shows how long the pad's reports take to reach app_server (the
@@ -1597,7 +1515,10 @@ people.
   P taken for palms (S by their size)" and the model's time a report;
   nothing runs once the section is left (tried headless with synthetic
   contacts: a fingertip and a palm, 2 judged, 1 palm by its size, 1 µs
-  a report).
+  a report). *Re-checked* (2026-11-06): the machine is now the ThinkPad,
+  whose pad isn't filtered (no pressure to judge: `filter: false`) and
+  reported nothing in the minute read (Ben away from it); its latency
+  and any long wait show only while he uses it (Activity ▸ Inputs).
 
 - **The best baseline palm model there is** (Ben, 2026-11-02): "try to
   optimize the baseline as much as you can -- and if it would be better
@@ -1706,6 +1627,130 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Viewer: a video zoomed to fill, and full screen**~~ (Ben, 2026-11-06):
+  "watching a video in viewer needs to support zooming, like an option
+  to zoom to fill (whilst keeping proportions) and a full screen option
+  (whilst keeping proportions)". A video in the Viewer shown fitting the
+  window (as now), or zoomed to fill it (its proportions kept, what
+  overflows cut off), and full screen (the same two ways), with menu
+  commands and keys, as the Viewer's pictures zoom.
+  *Done* (2026-11-06, HACKING's "Viewer"): View ▸ Actual Size (⌘0),
+  Zoom to Fit (⌘9), Zoom to Fill (⇧⌘9); Enter Full Screen (F; Escape
+  leaves), the transport over the picture while the pointer moves or
+  it's paused; leaving full screen gives the window its place and size
+  back (app_server). Tried headless at 2× (each way, full screen while
+  playing, the window back as it was); review clean at every scale.
+
+- ~~**app_server's critical path on threads of its own**~~ (Ben,
+  2026-11-01: "why run the risk of a blocking call? threads would
+  make sure we don't accidentally block"): input → pointer plane
+  update → commit never shares a thread with anything that can
+  block. Design: an input-and-cursor thread owning libinput and the
+  cursor planes (a pointer move is a plane property commit, no frame);
+  a render-and-commit thread per display owning its GL context, DRM
+  surface and pacing (a slow 5K frame can't delay the built-in
+  display's); the Wayland clients and IPC on the main loop, handing
+  each display's thread a snapshot of what to draw. Our own
+  synchronous work (importing a client's buffer, a fence, a DCP test
+  or commit) is what blocks today, and the heartbeat (`timings`)
+  finds it. After the reliability work.
+  *Taken up again* (2026-11-06). *Done of it*: what holds the main loop
+  (where input, the pointer and every display's commits run) found and
+  taken off it, measured headless on release builds with
+  `tools/dev/perf-fuzz --stall 4` (bursts of drags, resizes, scale and
+  theme flips, windows opening and closing, terminal floods). Nothing
+  held it more than 2.3 ms but windows opening together: seven or five
+  at once held it 7, 10, 12 and 13 ms, and `strace` showed the main
+  thread waiting on a lock, the tab worker's: measuring a new tab's
+  title (`text::measure`) went through the one locked cosmic-text the
+  worker draws tabs with. Each thread now has a font system of its own
+  (`text.rs`, from one font database; the tab family's faces shared):
+  the same burst holds it 4.5, 5.0 and 5.5 ms, the rest being the frame
+  that first draws them, memory the same. The heartbeat now names a
+  burst of small parts by kind ("a new window ×5"), new windows and
+  their placing are timed, and perf-fuzz tells a worker started once
+  (tabs, shm dropping) from a leaked thread, closes the windows apps
+  opened themselves and says which descriptors grew (no leak found:
+  dmabufs held by a document's window that asked to save; once, early
+  in a fresh session, 8 that didn't repeat). Freeing a replaced
+  wallpaper was looked at and costs 1–13 µs: nothing to move.
+  *Blocked*, what's left: the frame itself (drawing and the commit) and
+  input on threads of their own rewrite app_server's core around
+  Smithay's single-threaded state, and only real displays and libinput
+  can show it works and what it buys (a motion event to the plane's
+  move, frames late): headless has neither planes, vblank nor libinput.
+  Unblocked by the same virtual display (vkms on a seat of its own), or
+  by Ben asking for it with his displays to try it on.
+  *Done* (Ben, 2026-11-06, shown the numbers above: "Count them done
+  for now"; reopened if he notices a stutter or lag). What's above under
+  "Next" and "Blocked" stays as the way on if it is: a virtual display
+  to test it on is allowed (vkms on a seat of its own, with sudo).
+
+- ~~**Every frame on time, every display**~~ (Ben, 2026-11-01: "dropping
+  frames is never acceptable: olo must be buttery smooth on all
+  displays all the time"; the pointer "definitely way slow/stuttery",
+  worst on the Studio Display; app_server at 20% of a core). Done
+  2026-11-01 (HACKING "Every frame on time"): per-display pacing from
+  measured cost and observed drops; `{"type":"frames"}`,
+  `capture_drops`, Activity Monitor ▸ Displays; the pointer on an
+  overlay plane as cursor plane, clipped at the display's edge in
+  Olo's Smithay (the first try, unclipped, had apple-drm refuse the
+  flip and app_server restart eight times; a refused flip no longer
+  kills it); windows as scan-out candidates; Smithay vendored with
+  phase timings and scan-out reasons. Found: a 5K frame's 5 ms is
+  all `render_output`, and in it the GPU submit (asahi's
+  agx_flush_batch from the fence) and syncobj waits, ~3 ms a frame
+  in the kernel; plane assignment and atomic tests cost 0.0 ms.
+  **Found since** (2026-11-01, later): the 5 ms was Smithay's GLES
+  renderer making a fence per texture drawn (a GPU submit an
+  element); one fence a frame took the 5K's draw to 0.2/1.2 ms
+  (p50/p95), drops to 0–1 a minute, app_server's kernel time from
+  13% to 1.5%. The pointer's remaining "jitter" and "stuck" are the
+  mouse's reports (Razer Viper V2 Pro, 2.4 GHz receiver on a hub,
+  USB autosuspend on): 429 gaps over 5 ms a minute, the longest 39 ms,
+  673 of 1000 reports a second (`PointerHealth`, Activity Monitor ▸
+  Displays ▸ Pointer). `71-olo-input.rules` keeps receivers awake;
+  the radio is the person's to fix (the receiver nearer, its
+  extender, a lower polling rate). **Next**: windows on overlay
+  planes (OLO_OVERLAY_PLANES=1) once the pointer and such a plane
+  agree (a client's cursor on the plane rendered right, or the
+  pointer's plane above every window plane and the window refused
+  while the pointer is drawn in the frame over it); the "draws"
+  0.2 ms and "finish" 0.2 ms are what's left of a frame; app_server
+  at ~11% with a call on is the tick (now once per 8 ms) and looks;
+  per-display render threads (its own TODO).
+  *Taken up again* (2026-11-06, Ben's goal: every item done but what's
+  truly blocked; and his 2026-11-02 word, no optimizing for its own sake
+  without something a person notices). Measured on the ThinkPad's panel
+  (eDP-1, 60 Hz, read from `{"type":"frames"}`, nothing changed): a frame
+  drawn in 0.98 ms (95th percentile 1.32, slowest 1.70) of an 8.75 ms
+  budget; 219 late of 597,686 frames since login (0.04%), 1 in the last
+  minute. Windows on overlay planes need no new rule: Olo's Smithay
+  already keeps a window off a plane while anything drawn in the frame
+  (the pointer among them) lies over it (`try_assign_overlay_plane`'s
+  overlap test); what's left is trying `OLO_OVERLAY_PLANES=1` on real
+  displays (the "all messed up" of 2026-11-01 was on apple-drm, before
+  the ThinkPad), which headless can't (no planes, no vblank). *Blocked
+  on*: Ben trying `OLO_OVERLAY_PLANES=1` on the ThinkPad during a video
+  call (Activity Monitor ▸ Displays says what went to a plane), or a
+  virtual display to test with: `sudo modprobe vkms enable_cursor=1
+  enable_overlay=1` (in this kernel, not loaded; root needed), kept off
+  his session's seat by a udev rule (`ID_SEAT`), so a test app_server
+  could drive planes and vblank without his screen. The other "Next",
+  the cost of a frame with something changing every frame (a call),
+  looked at headless too (2026-11-06): app_server 6.7% of a core at 60
+  frames a second on Ben's panel (about 1.1 ms of processor a frame,
+  read-only `tools/dev/cost`), 3.3% headless with a Terminal printing
+  nonstop at 2560 × 1600; a profile of that spreads it thinly over
+  Smithay's per-frame bookkeeping (nothing above 16% of 31 ms a
+  second, `popups_for_surface` 0.6%): no low-hanging fruit, so, as Ben
+  asked, nothing changed for its own sake. The main loop's holds are
+  the other item's (below).
+  *Done* (Ben, 2026-11-06, shown the numbers above: "Count them done
+  for now"; reopened if he notices a stutter or lag). What's above under
+  "Next" and "Blocked" stays as the way on if it is: a virtual display
+  to test it on is allowed (vkms on a seat of its own, with sudo).
 
 - ~~**Screen recording: frames to the GPU's encoder as dmabufs, and the
   Intel GPU on battery**~~ (what the screen recording entry below has left;

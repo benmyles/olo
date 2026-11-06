@@ -337,8 +337,26 @@ this is a harness correction, not a browser speedup.
 - [ ] Complete resource decoder isolation and interruptible CPU/colour work,
   animation, SVG and bounded AVIF/JXL/ICO/other formats. Codec allocation hints
   are best effort, not a hard process-memory bound.
-- [ ] Connect decoded image assets to HTML/CSS replaced sizing, tree/flow, paint,
-  raster and structured agent metadata. The atomic API alone renders no images.
+- [x] Initial still-image integration: typed resources, shared decoded assets,
+  inline/block replaced sizing, dimension cascade hints, tiled paint and structured
+  image/link metadata. Full-pipeline object geometry matches 380 Chrome observations;
+  new sizing checks match 285/300 with 15 explicitly unsupported alignment cases.
+- [ ] Complete image behavior: broken/alt fallback, responsive sources,
+  top/middle/bottom alignment, object-fit/position, writing modes, stacking and
+  resource/security policy. Native Chrome pixels currently match 49/60 captures;
+  nine minification failures (up to 64 levels) and two single-byte fractional
+  interpolation differences remain pinned as nonpasses. CPU image sampling is
+  an initial implementation; GPU image composition and bounded minification
+  caches still need quality/cost acceptance.
+- [ ] Resolve image-page performance fuzz latency: seed4106 first run has a
+  66 ms Browser / 30 ms compositor shortcut hitch. Same-seed fresh confirmation
+  passes stock budgets, but its worst app frame is 20.8 ms, above the 8.3 ms
+  target. Preserve both observations and identify the cause before acceptance.
+- [ ] Profile the remaining 1,000-element scene regression after image support:
+  2388.630→2495.630 µs (4.5%), CPU0/seven alternating frozen processes with
+  identical source/geometry/pixels and no compiler activity. Text-only scene
+  specialization avoids image bookkeeping; total pipeline is 8277.681→8068.671
+  µs on the same fixture, which does not resolve the isolated scene finding.
 - [ ] Complete font metric policy: per-inline-item used advances, normal line-height,
   arbitrary fonts/hinting/variation and mixed struts; six independent inline
   coordinate nonpasses remain explicit.
@@ -356,7 +374,8 @@ this is a harness correction, not a browser speedup.
 
 - [ ] Complete document input/hit testing: initial visible text links and
   hover/active/focus ancestry now work through native/agent pointer input.
-  Box/advance/whitespace/empty-anchor/image targets, pointer capture, cursor
+  Box/advance/whitespace/empty-anchor targets, complete image target semantics,
+  pointer capture, cursor
   styling, complete keyboard/focus semantics, selection/editing and default-action
   event dispatch remain required. Cross-node shared ligatures deliberately
   have no invented click target until caret ownership is available.
@@ -369,7 +388,8 @@ this is a harness correction, not a browser speedup.
   actions and documented agent menu commands; worker-built ordered index.
 - [ ] Complete navigation history/tabs/downloads/new windows and allowed URL
   handlers, frame/script histories, BFCache, focus starting points and box/image
-  anchor targets. Unsupported link actions report a reason without requests.
+  anchor behavior. Initial decoded-image link and anchor targets now work.
+  Unsupported link actions report a reason without requests.
 - [x] Share URL/text bytes in per-frame records; immediately repaint pointer
   focus metadata even without focus-dependent CSS and clear it on native blur.
 - [ ] Bound structured metadata work for pathological overlapping content and
@@ -385,11 +405,11 @@ this is a harness correction, not a browser speedup.
 - [x] Initial semantic `br`/`wbr` formatting sources, preserved forced breaks,
   optional breaks under nowrap/pre, carrier-free structured text, bounded
   validated sparse metadata and distinct literal-Unicode cache identity.
-- [ ] Complete inline break behavior: fractional font advances cause four
-  explicit nonpasses among 415 independent Chrome combinations, including two
-  wrap/height failures. Styled/positioned controls, bidi paragraph propagation,
+- [ ] Complete inline break behavior beyond the 415/415 matching independent
+  Chrome combinations. Styled/positioned controls, bidi paragraph propagation,
   caret/anchor ownership of shared clusters and full inline decorations remain
-  required. Image/form/media objects are still unsupported; no website passes.
+  required. Initial decoded still images work; form/other media objects remain
+  unsupported. No website passes.
 
 - [x] Resolve the semantic-control milestone's ordinary-page worker cost
   regression on the authored matched case. Reusing span paint colors measures

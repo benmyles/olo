@@ -5,6 +5,36 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: retained images on a dark native canvas
+
+*10:36* — The same decoded assets survive live theme and scale changes, with one HTTP fetch for repeated sources. Images keep their colors; native canvas/text follow Olo. Night mode and 1/1.25/1.5/1.75/2x were also checked. Universal authored-page dark mode remains open.
+
+![Browser: retained images on a dark native canvas](2026-11-06/103639-browser-retained-images-on-a-dark-native-canvas.png)
+
+### Browser: decoded still images and image links
+
+*10:36* — Original Rust page engine now lays out and paints worker-decoded images, including inline/block sizing, borders and padding. Alt text, bounds and link actions are structured. Fifteen native mode/scale reviews pass; independent pixels match 49/60, with 11 explicit nonpasses. No website acceptance.
+
+![Browser: decoded still images and image links](2026-11-06/103638-browser-decoded-still-images-and-image-links.png)
+
+### Browser: before still-image integration
+
+*10:36* — Frozen 3035b3ff on an owned Agent Screen at 2x: the authored image page is explicitly rejected as an unsupported replaced object.
+
+![Browser: before still-image integration](2026-11-06/103635-browser-before-still-image-integration.png)
+
+### Touchpad & Mouse: the wheel's scrolling speed
+
+*09:49* — One speed for a wheel's notch in every program, Chrome included (app_server scales it before it's sent); at 1.5×
+
+![Touchpad & Mouse: the wheel's scrolling speed](2026-11-06/094942-touchpad-mouse-the-wheel-s-scrolling-speed.png)
+
+### Viewer: a video at Actual Size, Zoom to Fit and Zoom to Fill
+
+*09:49* — View ▸ Actual Size (⌘0), Zoom to Fit (⌘9), Zoom to Fill (⇧⌘9), proportions kept; Enter Full Screen (F), the transport over the picture while the pointer moves
+
+![Viewer: a video at Actual Size, Zoom to Fit and Zoom to Fill](2026-11-06/094941-viewer-a-video-at-actual-size-zoom-to-fit-and-zo.png)
+
 ### Browser font grid after, dark 1.75x
 
 *08:56* — Device-scale font metric correction in the native canvas. Dark and night use the existing native palette; this does not establish universal website darkening or complete typography.

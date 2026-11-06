@@ -3743,3 +3743,94 @@ bounded other formats stay open. Evidence: `2026-11-06-raster-decode-{cost,check
 .json`, retained Python runner and `raster_bench`. No visible change/new journal
 image or personal session install/reload. Fetched main, still already merged
 through **92364e1b**. Website acceptance remains **0/100, 0/3000**, goal active.
+
+### 2026-11-06 — Native page still images
+
+Connected worker-decoded PNG/JPEG/WebP/GIF stills to immutable shared assets,
+typed page resources, inline/block replaced boxes, intrinsic/percentage/min-max
+sizing, HTML dimension cascade hints, retained tiled paint and structured
+image/link records. Repeated canonical URLs share one fetch/decode per navigation;
+resize/theme restyles retain the same assets. A document has at most 128 image
+bindings, rejected during the first walk before external resource callbacks;
+encoded images are capped at 16 MiB each and decoded payload at 64 MiB per page,
+separate from the existing 64 MiB raster tile cache. Codec allocation hints are
+still best effort, with no hard process sandbox or fully interruptible codec CPU.
+
+Full page image geometry matches **380/380** existing independent Chrome object
+observations. The new intrinsic/constraints/display/attribute suite matches
+**285/300**; **15 top/middle/bottom alignment cases remain unsupported**. New
+native Wayland pixel captures match **49/60 exactly**. Nine minification failures
+(up to 64 channel levels) and two fractional opaque one-byte differences are
+pinned separately as failures, not rendering passes. The observed Intel/Mesa/
+ANGLE filter policy is not a universal GPU rounding guarantee. Inputs, independent
+captures, browser/GPU metadata, hashes and explicit nonpasses are retained in the
+image fixture directories. No screenshots are generated from our engine as oracles.
+
+Initial tiny-skia tile-local inverse transforms introduced 11 byte differences
+across tile boundaries at 1.25x. Replaced those with global device coordinates:
+whole/tiled output now agrees at all five scales, including borders/padding and
+alpha. Compact premultiplied RGBA8 is retained once; normalized texels use a 256
+entry lookup. The first two-pixel u16x8 ingestion and explicit f64x4 interpolation
+were measured slower and rejected. The final ingestion packs four RGBA pixels
+into u32x4 lanes; interpolation uses the faster compiler-selected arithmetic.
+A scalar ingestion control produces identical bytes. Minification caches/GPU
+image composition remain open.
+
+**266 default browser/web release tests**, **252 all-feature web tests**, strict
+browser/web clippy, **13 kit/Preferences lint tests**, workspace release build and
+Browser live lint pass. One optional public-network test remains ignored. The
+initial merged workspace build took **5m01s**, final rebuild **8.81s**. Native
+image checks pass **15 mode/scale reviews**, with one HTTP image fetch for three
+fragment variants, no resize/theme refetch and linked-image navigation. Existing
+link/hover/break checks pass another **15 reviews**; navigation/history/focus and
+owned-session re-exec pass **15 reviews**. The image matrix ran against the
+frozen pre-optimization default workspace binary; the packed revision passes
+the same independent pixels and is exercised again after main integration. Global desktop lint was not repeated;
+previous findings outside Browser remain open.
+
+Private no-shell two-display performance fuzz with one mapped Browser and 40
+images, default budgets, seed 4106: initial run fails at step21, with a **66 ms
+app frame and 30 ms compositor frame** during shortcuts. A fresh same-seed
+confirmation completes all **24 steps**: worst loop delay **7.5 ms**, ping
+**10.4 ms**, compositor frame **5.0 ms**, app frame **20.8 ms**; fd46→46,
+threads12→12, RSS123→126 MiB. Both runs are retained. The 8.3 ms target and the
+initial hitch remain unresolved; passing the stock 50 ms app-frame threshold
+is not performance acceptance.
+
+Paired native ordinary-text scroll sample: RSS **107436→113704 KiB**;
+**0 CPU and 0 idle wakeups** for both. Report-to-first-moving-client medians
+(drag/flick/wheel) **8.934/10.383/0.336→8.934/9.041/0.299 ms**; hitches2→0.
+A separate main-worktree build overlapped part of this sequential sample, so
+these are recorded observations, not a causal latency or memory claim. The
+native/fuzz sample precedes the packed optimization; source/binary identities
+and this scope are explicit in the evidence. Main integration gets a fresh check.
+
+Seven alternating frozen processes per comparison on CPU0, zero compiler
+activity in all 42 final samples, identical source/geometry/pixel hashes:
+1080p ingestion including fresh buffer clone, scalar→packed SIMD median
+**1.1565→0.9245 ms opaque, 2.4250→1.2415 ms mixed alpha**. Retained 256² tile
+raster is **0.9482–0.9550 ms** at scales1/1.25/2; scalar-control arithmetic is
+shared, so tiny tile timing differences are not a SIMD interpolation speedup.
+Image harness peak RSS **21272–21636→21048–21544 KiB**, not browser memory.
+The first u16x8/f64x4 implementation measured slower; both its full observations
+and the intermediate packed run remain retained. A benchmark host initially
+supplied scale1 metrics for fractional viewports; corrected to the same scaled
+native-font host used by independent pixel tests before successful measurements.
+
+Common 100/1,000-element full pipeline before3035b3ff→after medians
+**818.319/8277.681→835.393/8068.671 µs**; isolated scenes
+**190.037/2388.630→186.410/2495.630 µs**. The remaining **4.5% 1,000-element
+scene regression** stays open. Specializing text-only scene building removes
+image bookkeeping but does not establish full cost acceptance. Earlier runs
+(including external compiler context) remain visible. These worker samples
+exclude network, codecs, JavaScript, GPU and presentation and do not establish
+maximum-call latency. Source/binary identities and runners accompany results.
+
+Broken/alt fallback, responsive sources, animation/SVG/other formats, complete
+alignment/writing modes/stacking/object-fit and resource/security behavior stay
+open. Journal before/after photos preserve the explicit old rejection and the
+new light/dark native image page; all modes/scales were checked. Main is merged
+through **6f58acf4** with all 601 earlier journal images preserved, plus three
+new entries (604 unique images verified). Another fetch found main146c4375;
+that integration follows this measured checkpoint. No personal install/reload
+or secrets access. Website acceptance remains **0/100, 0/3000**, goal active.

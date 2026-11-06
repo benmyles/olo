@@ -50,6 +50,7 @@ pub enum Message {
     RecycleTargets(Arc<crate::navigation::FocusTargets>),
 }
 pub struct Label {
+    pub image: bool,
     pub text: olo_ui::gpui::SharedString,
     pub rect: layout::Rect,
     pub node: Option<olo_web::dom::NodeId>,
@@ -166,7 +167,9 @@ fn render(
         let mut last = Instant::now();
         let mut phase = None;
         let mut resources = 0usize;
-        let page = page::load_resources(
+        let mut images: HashMap<url::Url, Option<Arc<olo_web::image::Image>>> = HashMap::new();
+        let mut image_bytes = 0usize;
+        let page = page::load_assets(
             source,
             &host,
             scope,
@@ -194,17 +197,43 @@ fn render(
                     ));
                 }
             },
-            |base, href| {
+            |kind, base, href| {
                 let Some(document) = &document else {
                     return Ok(None);
                 };
+                if kind == page::ResourceKind::Image {
+                    let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
+                    url.set_fragment(None);
+                    if let Some(image) = images.get(&url) {
+                        return Ok(image.as_ref().map(|image| page::Resource::Image(image.clone())));
+                    }
+                    resources += 1;
+                    if resources > 128 {
+                        return Err("Page exceeds the development resource request limit".into());
+                    }
+                    proxy.send(Reply::Status(r.id, "Loading image…".into()));
+                    return match loader.image(document, url.clone(), (64usize << 20).saturating_sub(image_bytes), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "image"))
+                    {
+                        Ok(image) => {
+                            image_bytes += image.payload_bytes();
+                            images.insert(url, Some(image.clone()));
+                            Ok(Some(page::Resource::Image(image)))
+                        }
+                        Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
+                        Err(error) => {
+                            eprintln!("Browser image: {error}");
+                            images.insert(url, None);
+                            Ok(None)
+                        }
+                    };
+                }
                 resources += 1;
                 if resources > 128 {
-                    return Err("Page exceeds the development stylesheet request limit".into());
+                    return Err("Page exceeds the development resource request limit".into());
                 }
                 proxy.send(Reply::Status(r.id, "Loading stylesheet…".into()));
                 match loader.stylesheet(document, base, href, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "stylesheet")) {
-                    Ok(sheet) => Ok(Some(sheet)),
+                    Ok(sheet) => Ok(Some(page::Resource::Stylesheet(sheet))),
                     Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
                     Err(error) => {
                         eprintln!("Browser stylesheet: {error}");
@@ -309,10 +338,14 @@ fn render(
     scene.query(visible, &mut hits, Some(&r.cancel))?;
     let mut labels = Vec::new();
     for id in hits {
-        let Some(text) = scene.text_content(id).filter(|s| !s.is_empty()) else {
-            continue;
+        let image = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
+        let node = scene.node(id);
+        let text = if image {
+            std::borrow::Cow::Borrowed(node.map(|n| page.document.attribute(n, "alt")).transpose()?.flatten().filter(|s| !s.is_empty()).unwrap_or("Image"))
+        } else {
+            let Some(text) = scene.text_content(id).filter(|s| !s.is_empty()) else { continue };
+            text
         };
-        let node = scene.text_node(id);
         let Some(rect) = scene.visible_bounds(id) else {
             continue;
         };
@@ -320,7 +353,7 @@ fn render(
             Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
             None => None,
         };
-        labels.push(Label { text: text.into_owned().into(), rect, node, link });
+        labels.push(Label { image, text: text.into_owned().into(), rect, node, link });
     }
     proxy.send(Reply::Content {
         id: r.id,

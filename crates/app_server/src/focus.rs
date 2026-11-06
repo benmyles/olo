@@ -146,6 +146,15 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for PointerFoc
                         })
                         .flatten();
                     let mut frame = crate::scroll::adjust(frame, toolkit, height);
+                    // (What a wheel's notch became, for `Reply::Frames`.)
+                    if matches!(frame.source, Some(smithay::backend::input::AxisSource::Wheel | smithay::backend::input::AxisSource::WheelTilt))
+                        && let Some((n, _)) = data.last_wheel.as_mut()
+                    {
+                        let vertical = frame.axis.1 != 0.0;
+                        n.sent_value = if vertical { frame.axis.1 } else { frame.axis.0 };
+                        n.sent_v120 = frame.v120.map_or(0, |(h, v)| if vertical { v } else { h });
+                        n.toolkit = crate::scroll::name(toolkit).to_owned();
+                    }
                     if toolkit == crate::scroll::Toolkit::Olo && data.pacer.sending_glide {
                         frame.source = Some(smithay::backend::input::AxisSource::Continuous);
                     }

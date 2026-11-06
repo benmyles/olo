@@ -25,7 +25,17 @@ pub enum Phase {
     Layout,
     Paint,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceKind {
+    Stylesheet,
+    Image,
+}
+pub enum Resource {
+    Stylesheet(css::Syntax),
+    Image(Arc<crate::image::Image>),
+}
 pub struct Page {
+    images: Option<Arc<crate::image::Set>>,
     pub document: Document,
     pub scene: Arc<paint::Scene>,
     pub title: String,
@@ -65,8 +75,27 @@ pub fn load_resources(
     painter: &mut paint::Engine,
     viewport: layout::Viewport,
     cancel: Option<&AtomicBool>,
-    mut progress: impl FnMut(Phase, usize),
+    progress: impl FnMut(Phase, usize),
     mut resource: impl FnMut(Option<&str>, &str) -> Result<Option<css::Syntax>>,
+) -> Result<Page> {
+    load_assets(source, host, scope, shaper, painter, viewport, cancel, progress, |kind, base, href| match kind {
+        ResourceKind::Stylesheet => resource(base, href).map(|s| s.map(Resource::Stylesheet)),
+        ResourceKind::Image => Ok(None),
+    })
+}
+/// Typed worker resources. Decoded image allocations are retained across restyle;
+/// the caller owns fetch/decode policy and can share repeated URLs.
+#[allow(clippy::too_many_arguments)]
+pub fn load_assets(
+    source: Arc<str>,
+    host: &impl Host,
+    scope: &Scope,
+    shaper: &mut shaping::Engine,
+    painter: &mut paint::Engine,
+    viewport: layout::Viewport,
+    cancel: Option<&AtomicBool>,
+    mut progress: impl FnMut(Phase, usize),
+    mut resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
 ) -> Result<Page> {
     progress(Phase::Html, 0);
     let parsed = html::parse(source, html::ParseOptions { scripting: false, ..Default::default() }, cancel)?;
@@ -82,6 +111,7 @@ pub fn load_resources(
     let mut resource_issues = 0;
     let mut base = None;
     let mut style_nodes = Vec::new();
+    let mut image_nodes = Vec::new();
     while let Some(node) = next {
         if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
             return Err(paint::Error::Cancelled.into());
@@ -94,6 +124,12 @@ pub fn load_resources(
                     }
                 }
                 Some("style" | "link") => style_nodes.push(node),
+                Some("img") => {
+                    if image_nodes.len() == crate::image::Limits::default().bindings {
+                        return Err(paint::Error::Limit.into());
+                    }
+                    image_nodes.push(node);
+                }
                 Some("script") => scripts += 1,
                 Some("title") => {
                     for child in doc.children(node)? {
@@ -146,7 +182,8 @@ pub fn load_resources(
                 } else if !media.is_empty() && !media.eq_ignore_ascii_case("all") || !kind.is_empty() && !kind.eq_ignore_ascii_case("text/css") {
                     resource_issues += 1;
                 } else if let Some(href) = doc.attribute(node, "href")? {
-                    if let Some(syntax) = resource(base.as_deref(), href)? {
+                    if let Some(resource) = resource(ResourceKind::Stylesheet, base.as_deref(), href)? {
+                        let Resource::Stylesheet(syntax) = resource else { return Err(paint::Error::Invalid.into()) };
                         css_bytes = css_bytes.checked_add(syntax.source().len()).ok_or(paint::Error::Limit)?;
                         if css_bytes > 4 * 1024 * 1024 {
                             return Err(paint::Error::Limit.into());
@@ -160,11 +197,40 @@ pub fn load_resources(
             _ => {}
         }
     }
+    let mut image_bindings = Vec::new();
+    let mut image_unique = std::collections::HashSet::new();
+    let mut image_bytes = 0usize;
+    for node in image_nodes {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            return Err(paint::Error::Cancelled.into());
+        }
+        if doc.attribute(node, "srcset")?.is_some() || doc.attribute(node, "sizes")?.is_some() {
+            resource_issues += 1;
+        }
+        let Some(src) = doc.attribute(node, "src")?.filter(|s| !s.trim().is_empty()) else {
+            resource_issues += 1;
+            continue;
+        };
+        match resource(ResourceKind::Image, base.as_deref(), src)? {
+            Some(Resource::Image(image)) => {
+                if image_unique.insert(Arc::as_ptr(&image)) {
+                    image_bytes = image_bytes.checked_add(image.payload_bytes()).ok_or(paint::Error::Limit)?;
+                    if image_bytes > crate::image::Limits::default().bytes {
+                        return Err(paint::Error::Limit.into());
+                    }
+                }
+                image_bindings.push((node, image));
+            }
+            None => resource_issues += 1,
+            _ => return Err(paint::Error::Invalid.into()),
+        }
+    }
+    let images = if image_bindings.is_empty() { None } else { Some(crate::image::Set::new(&doc, image_bindings, Default::default(), cancel)?) };
     let rules = sheets.finish(cancel)?;
     let interaction_mask = rules.state_mask();
     let quirks = parsed.quirks == html::QuirksMode::Quirks;
-    let (scene, stylesheet_issues) = render(&doc, &rules, quirks, resource_issues, Interaction::default(), host, scope, shaper, painter, viewport, cancel, &mut progress)?;
-    Ok(Page { document: doc, scene, title, scripts, base_href: base, interaction: Interaction::default(), interaction_mask, stylesheet_issues, rules, quirks, resource_issues })
+    let (scene, stylesheet_issues) = render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, scope, shaper, painter, viewport, cancel, &mut progress)?;
+    Ok(Page { images, document: doc, scene, title, scripts, base_href: base, interaction: Interaction::default(), interaction_mask, stylesheet_issues, rules, quirks, resource_issues })
 }
 impl Page {
     /// Recompute viewport-dependent styles without network I/O or HTML parsing.
@@ -182,7 +248,8 @@ impl Page {
         for node in [self.interaction.hover, self.interaction.active, self.interaction.focus, self.interaction.target].into_iter().flatten() {
             self.document.node_type(node)?;
         }
-        let (scene, issues) = render(&self.document, &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, &mut progress)?;
+        let (scene, issues) =
+            render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, &mut progress)?;
         self.scene = scene;
         self.stylesheet_issues = issues;
         Ok(())
@@ -191,6 +258,7 @@ impl Page {
 #[allow(clippy::too_many_arguments)]
 fn render(
     doc: &Document,
+    images: Option<&Arc<crate::image::Set>>,
     rules: &css::cascade::RuleSet,
     quirks: bool,
     resource_issues: usize,
@@ -213,6 +281,9 @@ fn render(
     let stylesheet_issues = resource_issues + styles.report().stylesheet_issues + styles.report().inline_unsupported + styles.report().inline_invalid;
     progress(Phase::Boxes, 0);
     let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
+    if let Some(images) = images {
+        job = job.with_images(images.clone())?;
+    }
     while !job.step(128)?.finished {
         progress(Phase::Boxes, job.progress().boxes)
     }

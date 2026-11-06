@@ -433,10 +433,13 @@ fn mice_boxes(ui: &mut Ui, devices: Option<&[InputDeviceInfo]>) {
     let found: Vec<&InputDeviceInfo> = all.iter().filter(|d| d.kind == DeviceKind::Mouse && remapper(d).is_none() && d.bus != "virtual").collect();
     // (Two columns: the mice found, and what's for every mouse, the
     // computer's own pointing stick above it.)
+    // (The wheel's speed under the mice: the other column has the
+    // pointing stick and what's for every mouse.)
     let mice = ui.collect(|ui| {
         for d in found.iter().filter(|d| !d.pointing_stick) {
             one_mouse(ui, d);
         }
+        wheel(ui);
     });
     let every = ui.collect(|ui| {
         for d in found.iter().filter(|d| d.pointing_stick) {
@@ -465,12 +468,22 @@ fn every_mouse(ui: &mut Ui, devices: Option<&[InputDeviceInfo]>, none: bool) {
         ui.slider("mouse-speed", s.mouse_speed as f32, -1.0..=1.0, |sl| sl.step(0.05).label("Mouse speed").limits("Slow", "Fast"), |s, v| s.mouse_speed = v as f64);
         strings(ui, "mouse-accel", "Acceleration:", &ACCELS, &s.touchpad.mouse_accel_profile, |s, v| s.touchpad.mouse_accel_profile = v);
     });
+
     ui.bbox("Buttons", |ui| {
         ui.check("Left-handed (swap the buttons)", s.touchpad.left_handed, |s, v| s.touchpad.left_handed = v);
         ui.check("Press both buttons for a middle click", s.touchpad.middle_emulation, |s, v| s.touchpad.middle_emulation = v);
     });
     ui.bbox("Focus", |ui| {
         ui.check("Focus follows the pointer", s.focus_follows_mouse, |s, v| s.focus_follows_mouse = v);
+    });
+}
+
+/// How far a wheel's notch scrolls, every program alike.
+fn wheel(ui: &mut Ui) {
+    let speed = ui.s.wheel_speed as f32;
+    ui.bbox("Wheel", |ui| {
+        ui.slider("wheel-speed", speed, 0.25..=3.0, |sl| sl.step(0.05).label("Scrolling speed").value_text(format!("{speed:.2}×")).limits("Slow", "Fast"), |s, v| s.wheel_speed = v as f64);
+        ui.note("A notch scrolls as far in Chrome and other programs as in Olo’s apps.");
     });
 }
 

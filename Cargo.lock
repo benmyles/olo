@@ -7065,9 +7065,11 @@ dependencies = [
 name = "olo-browser"
 version = "0.1.0"
 dependencies = [
+ "data-url",
  "encoding_rs",
  "mime",
  "olo-crash",
+ "olo-images",
  "olo-theme",
  "olo-ui",
  "olo-web",

@@ -1,0 +1,32 @@
+{
+  "kind": "Original authored image fixtures; independently captured native Wayland Chrome observations. No website acceptance.",
+  "capture": "Owned Olo Agent Screens browser-image-ref / browser-image-pixel-ref; native output scales 1/1.25/1.5/1.75/2, no DPR emulation or personal profile.",
+  "references": [
+    "https://www.w3.org/TR/CSS22/visudet.html#inline-replaced-width",
+    "https://www.w3.org/TR/CSS22/visudet.html#min-max-widths",
+    "https://html.spec.whatwg.org/multipage/rendering.html#attributes-for-embedded-content-and-images",
+    "https://chromium.googlesource.com/chromium/src/+/main/cc/paint/paint_flags.cc",
+    "https://skia.googlesource.com/skia/+/main/src/core/SkPixmapDraw.cpp"
+  ],
+  "files": {
+    "chrome-1.25.json": "cb2730d9d438a80fb2941e09efa9cd624268705899220dad2a5aad8f963fb532",
+    "chrome-1.5.json": "2b03b729348e6a5ecd5dd1f38ed0337df54a3b5ea8e37e1d30e8127b1de85631",
+    "chrome-1.75.json": "c3fcd7b991cc3f255b861383f464bd7557763223e83883af90e338d6dbdc3484",
+    "chrome-1.json": "1185481aaf01b040aeec3e03fc9dccf603e04ea5c41eab738641e9968f1464b9",
+    "chrome-2.json": "899bc9f2a89226dcfd0623e0d01aace1d624e3ed21851ee7a6398157cf15c557",
+    "generate.py": "0f2d565b8ea3cd4945ee1d2e98ac7138d29da4a54896c824b558b122e5716d5f",
+    "inputs.json": "630f2422dae7c3975173c59e01c9cc17bc09b71be119155cf7fededd213cf749",
+    "probe.html": "f18c6193ed1218178a7510e25eb0f2d6b5af5bc5201e177038433883b53f79fb",
+    "serve.py": "f93b10e433a21df9704b7c5bd1c4d72523f99ee28097f26acf6ac0a9decfff19"
+  },
+  "coverage": {
+    "observations": 300,
+    "matching": 285,
+    "unsupported": 15,
+    "website_passes": 0
+  },
+  "font": {
+    "file": "../inline-fixtures/plain.ttf",
+    "sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb"
+  }
+}

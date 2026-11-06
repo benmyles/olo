@@ -13,7 +13,7 @@ impl math::Context for Basis {
         if unit == math::RelativeUnit::Percentage { self.0.map(|v| v / 100.).ok_or(math::Error::ContextUnavailable) } else { Err(math::Error::ContextUnavailable) }
     }
 }
-fn length(s: &Style, p: P, basis: Option<f64>, fallback: Option<f64>, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Option<f64>> {
+pub(super) fn length(s: &Style, p: P, basis: Option<f64>, fallback: Option<f64>, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Option<f64>> {
     match s.value(p) {
         Value::Keyword(K::Auto | K::None) => Ok(fallback),
         Value::Numeric(n) => {

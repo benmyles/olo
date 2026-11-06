@@ -365,6 +365,22 @@ impl RuleSet {
         scratch: &mut MatchScratch,
         cancelled: Option<&'a AtomicBool>,
     ) -> Result<Cascade<'a>> {
+        self.match_element_with_hints(tree, node, options, inline, None, parent, limits, match_limits, scratch, cancelled)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn match_element_with_hints<'a, T: selectors::Tree>(
+        &'a self,
+        tree: &T,
+        node: T::Node,
+        options: selectors::MatchOptions<'_, T::Node>,
+        inline: Option<&'a [p::Declaration]>,
+        hints: Option<&'a [p::Declaration]>,
+        parent: Option<&'a dyn Inherited>,
+        limits: Limits,
+        match_limits: selectors::MatchLimits,
+        scratch: &mut MatchScratch,
+        cancelled: Option<&'a AtomicBool>,
+    ) -> Result<Cascade<'a>> {
         check(cancelled)?;
         if options.visited_style {
             return Err(Error::Unsupported("private visited paint path"));
@@ -450,6 +466,13 @@ impl RuleSet {
         {
             for (i, d) in inline.iter().enumerate() {
                 builder.add(d, Priority { inline: true, order: u64::MAX, rule: u64::MAX, declaration: i as u32, ..Default::default() })?;
+            }
+        }
+        if options.pseudo.is_none()
+            && let Some(hints) = hints
+        {
+            for (i, d) in hints.iter().enumerate() {
+                builder.add(d, Priority { origin: Origin::PresentationalHint, rule: u64::MAX - 1, declaration: i as u32, ..Default::default() })?;
             }
         }
         builder.finish(has_parent, parent)

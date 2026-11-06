@@ -240,6 +240,13 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
                     f.clear();
                 }
             }
+            // (Its place and size kept the first time, not again from full
+            // screen.)
+            if !window.meta().fullscreen.get()
+                && let Some(at) = self.space.element_location(&window)
+            {
+                window.meta().before_fullscreen.set(Some(smithay::utils::Rectangle::new(at, window.0.geometry().size)));
+            }
             window.meta().fullscreen.set(true);
 
             surface.with_pending_state(|state| {
@@ -262,13 +269,19 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        // Back where it was and as big, as it went full screen.
+        let window = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface.wl_surface())).cloned();
+        let before = window.as_ref().and_then(|w| w.meta().before_fullscreen.take());
         let ret = surface.with_pending_state(|state| {
             state.states.unset(xdg_toplevel::State::Fullscreen);
-            state.size = None;
+            state.size = before.map(|r| r.size);
             state.fullscreen_output.take()
         });
-        if let Some(w) = self.space.elements().find(|w| w.wl_surface().as_deref() == Some(surface.wl_surface())) {
+        if let Some(w) = &window {
             w.meta().fullscreen.set(false);
+            if let Some(r) = before {
+                self.space.map_element(w.clone(), r.loc, false);
+            }
         }
         if let Some(output) = ret {
             let output = Output::from_resource(&output).unwrap();
