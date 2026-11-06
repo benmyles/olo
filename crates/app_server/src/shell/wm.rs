@@ -228,6 +228,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         self.space.raise_element(window, true);
+        // What's under the pointer may have changed.
+        self.repoint_soon();
         // Floating windows stay over auto-tiled tiles and Focus's window
         // (a tile activated takes the keyboard under them), in their own
         // order; then children over parents.

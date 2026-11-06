@@ -761,6 +761,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         *window.meta().left_among.borrow_mut() = self.display_frames();
         self.space.unmap_elem(window);
         self.parked.0.borrow_mut().push(window.clone());
+        self.repoint_soon();
     }
 
     pub fn display_frames(&self) -> Vec<(String, Rectangle<i32, Logical>)> {
@@ -784,6 +785,7 @@ impl<B: Backend + 'static> AnvilState<B> {
         }
         let home = self.display_of(window);
         self.space.map_element(window.clone(), loc, false);
+        self.repoint_soon();
         self.welcome_back(window, changed);
         // Back on the display it was parked on, whatever its frame says: a
         // frame left out of reach of it meanwhile (an Undo putting it back

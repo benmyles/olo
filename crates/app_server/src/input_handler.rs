@@ -668,6 +668,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
 
         if wl_pointer::ButtonState::Pressed == state {
+            self.repoint();
             self.show_click();
             // Clicking puts keyboard hints away.
             if self.hints.active() {
@@ -910,6 +911,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if self.overview.as_ref().is_some_and(|o| !o.leaving()) {
             return;
         }
+        self.repoint();
         let horizontal_amount = evt.amount(input::Axis::Horizontal).unwrap_or_else(|| evt.amount_v120(input::Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.);
         let vertical_amount = evt.amount(input::Axis::Vertical).unwrap_or_else(|| evt.amount_v120(input::Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.);
         let horizontal_amount_discrete = evt.amount_v120(input::Axis::Horizontal);
@@ -1445,6 +1447,42 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         });
     }
 
+    /// The pointer enters what is under it now, if that isn't what it is
+    /// in (or it is, but has moved): a window that opened, closed, moved
+    /// or came forward under a still pointer (Space in Tracker opening
+    /// Viewer under it) takes the scroll or the click that comes next,
+    /// not only once the pointer has moved. Not while a grab has the
+    /// pointer (a button held, a window dragged, a menu open): the grab
+    /// says where it goes.
+    pub fn repoint(&mut self) {
+        let t = std::time::Instant::now();
+        let pointer = self.pointer.clone();
+        if pointer.is_grabbed() {
+            return;
+        }
+        let location = pointer.current_location();
+        let under = self.surface_under(location);
+        if under != pointer.current_focus_at() {
+            pointer.motion(self, under, &MotionEvent { location, serial: SCOUNTER.next_serial(), time: InputTime::now() });
+            pointer.frame(self);
+        }
+        self.timings.phase("repoint", t);
+    }
+
+    /// [`repoint`](Self::repoint) once this turn of the loop is done
+    /// (what changed under the pointer has settled): so the window under
+    /// it has it (its cursor, its hover) without waiting for the pointer
+    /// to move. Once, however often asked in a turn.
+    pub fn repoint_soon(&mut self) {
+        if std::mem::replace(&mut self.repoint_queued, true) {
+            return;
+        }
+        self.handle.insert_idle(|state| {
+            state.repoint_queued = false;
+            state.repoint();
+        });
+    }
+
     /// Move the pointer to `pos` (its display went away).
     pub fn warp_pointer(&mut self, pos: Point<f64, Logical>) {
         let under = self.surface_under(pos);
@@ -1525,6 +1563,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     return;
                 }
                 if pressed {
+                    self.repoint();
                     // (An agent's clicks shown too: its demo's.)
                     self.show_click();
                     self.update_keyboard_focus(pointer.current_location(), serial);
@@ -1542,6 +1581,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             S::Wheel { dx, dy } => {
                 // As libinput reports a wheel: 15° and 120 a notch.
+                self.repoint();
                 self.stop_glide();
                 let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
                 if dx != 0 {
@@ -1595,6 +1635,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 if dx == 0.0 && dy == 0.0 {
                     self.pacer.lifted(now);
                 } else {
+                    self.repoint();
                     let out = self.pacer.fingers(now, dx, dy);
                     self.send_paced(out);
                 }

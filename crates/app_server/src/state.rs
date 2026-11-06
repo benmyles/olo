@@ -155,6 +155,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// A finger scroll's stop held back from a Chromium window, and when
     /// it is due (input_handler.rs, `hold_stop`).
     pub held_stop: Option<(WlSurface, std::time::Instant)>,
+    /// A `repoint` waits for the end of this turn of the loop.
+    pub repoint_queued: bool,
     /// When the pacer last sent a move.
     pub last_paced_move: Option<std::time::Instant>,
 
@@ -1148,6 +1150,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             touch_hides_pointer: false,
             scroll_direction: (smithay::backend::input::AxisRelativeDirection::Identical, smithay::backend::input::AxisRelativeDirection::Identical),
             held_stop: None,
+            repoint_queued: false,
             last_paced_move: None,
             compositor_state,
             data_device_state,

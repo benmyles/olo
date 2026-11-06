@@ -5564,6 +5564,23 @@ vblank, real and drawn position, the last report's age and interval).
 Hit-testing, focus and what clients get use the real position.
 `OLO_POINTER_AHEAD=0` draws the real position.
 
+What the pointer is in follows what is under it, not only its moves
+(Smithay looks again only on motion): a window that opens, closes,
+comes forward or moves under a still pointer (Space in Tracker opening
+Quick Look under it) takes the scroll or the click that comes next
+(Ben, 2026-11-05: Quick Look didn't scroll until the pointer moved).
+Before a scroll and a button press, `repoint` enters what is under the
+pointer if that isn't what it is in, or is but moved (about 2 µs a
+scroll event, 300 wheel notches measured, and no motion sent when
+nothing changed); not while a grab has the pointer (a button held, a
+drag, a menu). A window or layer that comes on screen, a window
+brought forward, minimized, restored or closed asks for it once that
+turn of the loop is done (`repoint_soon`), so the window under the
+pointer has it, its cursor and its hover, without a move. GPUI takes
+the place it is entered at as a move (`wl_pointer.enter` dispatches a
+`MouseMove`): otherwise a GPUI window entered without a move kept the
+last cursor and hover until the pointer moved.
+
 The pointer's reports themselves are watched (`Track::health`,
 `PointerHealth` in `{"type":"frames"}`, Activity Monitor ▸ Inputs'
 Pointer card): reports a second, the device's interval (1 ms for a

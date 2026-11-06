@@ -499,6 +499,12 @@ where
             .clone()
             .map(|(focus, _)| focus)
     }
+
+    /// Retrieve the current pointer focus and where its surface is (in
+    /// the coordinates the pointer moves in), as the last motion found it.
+    pub fn current_focus_at(&self) -> Option<(<D as SeatHandler>::PointerFocus, Point<f64, Logical>)> {
+        self.arc.inner.lock().unwrap().focus.clone()
+    }
 }
 
 /// This inner handle is accessed from inside a pointer grab logic, and directly

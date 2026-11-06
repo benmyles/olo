@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Quick Look scrolls without the pointer moving first
+
+*22:52* — Space in Tracker opened Quick Look under a still pointer, and a touchpad scroll went nowhere until the pointer moved: Smithay only looks at what's under the pointer when it moves. app_server now enters what is under the pointer before a scroll or a click, and as a window comes on screen, forward or away; GPUI takes the place it's entered at as a move, so the cursor and hover are right at once. Here Quick Look, scrolled by the touchpad straight after Space.
+
+![Quick Look scrolls without the pointer moving first](2026-11-05/225243-quick-look-scrolls-without-the-pointer-moving-fi.png)
+
 ### Preferences ▸ Touchpad on a ThinkPad: its own palm model
 
 *21:26* — On the ThinkPad's pad: palms kept palms until they lift, Olo's own model for this kind of touchpad (made from Ben's hands), and no pressure controls it has no use for.
