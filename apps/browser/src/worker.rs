@@ -149,6 +149,7 @@ fn render(
     let newly_loaded = cached.as_ref().is_none_or(|c| c.key.source != r.key.source || c.key.cwd != r.key.cwd || c.key.revision != r.key.revision);
     if newly_loaded {
         *cached = None;
+        painter.clear_image_cache();
         cache.clear();
         proxy.send(Reply::Status(r.id, "Loading…".into()));
         let mut document = if r.key.source == "about:engine" {

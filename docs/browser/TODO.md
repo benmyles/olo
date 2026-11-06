@@ -343,11 +343,20 @@ this is a harness correction, not a browser speedup.
   new sizing checks match 285/300 with 15 explicitly unsupported alignment cases.
 - [ ] Complete image behavior: broken/alt fallback, responsive sources,
   top/middle/bottom alignment, object-fit/position, writing modes, stacking and
-  resource/security policy. Native Chrome pixels currently match 49/60 captures;
-  nine minification failures (up to 64 levels) and two single-byte fractional
-  interpolation differences remain pinned as nonpasses. CPU image sampling is
-  an initial implementation; GPU image composition and bounded minification
-  caches still need quality/cost acceptance.
+  resource/security policy. Native Chrome pixels currently match 53/60 captures;
+  five minification differences (at most two channel levels) and two single-byte
+  fractional interpolation differences remain pinned as nonpasses. Bounded
+  worker mip caches and scalar/SIMD byte controls are implemented; independent
+  odd-source/anisotropic controls, exact GPU filtering and GPU composition
+  remain required. The original 49/60 classifications are preserved.
+- [x] Bounded, cancellable source-pixel minification cache, weak lifetimes,
+  navigation reclamation, tile seam controls and scalar/SIMD reduction controls.
+  Four more pinned Chrome captures now match exactly (53/60 total).
+- [ ] Recover the ordinary-image upscale cost after mip integration: seven
+  rotated frozen release processes measure about 0.94→0.98 ms per 256² tile
+  (roughly 4%). Initial generic blending was about 40% slower; const draw
+  specialization and removal of redundant snapped-edge coverage recovered most
+  of it. Preserve both datasets; remaining regression is not accepted.
 - [ ] Resolve image-page performance fuzz latency: seed4106 first run has a
   66 ms Browser / 30 ms compositor shortcut hitch. Same-seed fresh confirmation
   passes stock budgets, but its worst app frame is 20.8 ms, above the 8.3 ms
@@ -356,6 +365,12 @@ this is a harness correction, not a browser speedup.
   repeat; worst app frame 14.4 ms and native first-motion response about 9 ms still
   miss 120 Hz. Discarded forwarded-launch runs cannot establish coverage; native
   cost runner now asserts fresh PID ownership and awaits Quit/process exit.
+  Minification fixture seed4107 fails step14/24, arrange x12:78.8ms app frame
+  (23.4ms average of four), despite PID/binary/image verification. Concurrent
+  compilation is recorded but not established as the cause. Keep this nonpass;
+  compare a baseline and profile before claiming latency acceptance. Paired
+  native text trials overlap compiler work and have opposite hitch counts;
+  their latency/memory observations cannot establish a causal change.
 - [ ] Profile the remaining 1,000-element scene regression after image support:
   2388.630→2495.630 µs (4.5%), CPU0/seven alternating frozen processes with
   identical source/geometry/pixels and no compiler activity. Text-only scene

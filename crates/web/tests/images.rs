@@ -82,7 +82,7 @@ fn independent_native_chrome_image_pixels_and_explicit_nonpasses() {
             }
         }
     }
-    assert_eq!((exact, known), (49, 11));
+    assert_eq!((exact, known), (53, 7));
 }
 #[test]
 fn asset_premultiplication_and_shared_binding_budgets() {
@@ -261,6 +261,47 @@ fn native_image_alpha_tiles_and_restyle_keep_the_same_asset() {
         assert!(Arc::ptr_eq(set.get(node).unwrap(), &pixels));
         assert_eq!(calls, 1);
     }
+}
+
+#[test]
+fn minified_alpha_tiles_are_seamless_cached_and_reclaimed() {
+    let scope = scope();
+    let mut shaper = Engine::default();
+    let mut painter = paint::Engine::default();
+    let pixels = Image::from_rgba(63, 35, (0..63 * 35).flat_map(|i| [(i * 17) as u8, (i * 61) as u8, (i * 11) as u8, (i * 29) as u8]).collect(), Default::default(), None).unwrap();
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
+        let host = paint_host::Scaled::new(scope.clone(), scale);
+        let mut calls = 0;
+        let mut page=page::load_assets(Arc::from("<!doctype html><style>body{margin:0}div{width:18px;height:13px;overflow:hidden}img{display:block;width:15.5px;height:10.25px;margin-left:2.125px;padding:1px;border-width:1px;border-style:solid;border-color:green}</style><div><img src=source></div>"),&host,&scope,&mut shaper,&mut painter,layout::Viewport{width:32.,height:24.,scale},None,|_,_|{},|_,_,_|{calls+=1;Ok(Some(page::Resource::Image(pixels.clone())))}).unwrap();
+        assert_eq!(page.stylesheet_issues, 0);
+        let region = paint::DeviceRect { x: 0, y: 0, width: 64, height: 48 };
+        let whole = painter.raster(&page.scene, region, None).unwrap();
+        let generated = painter.image_cache_stats().generated_pixels;
+        let mut tiled = vec![0; 64 * 48 * 4];
+        for y in (0..48).step_by(8) {
+            for x in (0..64).step_by(8) {
+                let tile = painter.raster(&page.scene, paint::DeviceRect { x, y, width: 8, height: 8 }, None).unwrap();
+                for row in 0..8 {
+                    let at = ((y as usize + row) * 64 + x as usize) * 4;
+                    tiled[at..at + 32].copy_from_slice(&tile.rgba()[row * 32..row * 32 + 32]);
+                }
+            }
+        }
+        assert_eq!(tiled.iter().zip(whole.rgba()).filter(|(a, b)| a != b).count(), 0, "minification seam at {scale}");
+        assert_eq!(painter.image_cache_stats().generated_pixels, generated);
+        assert!(painter.image_cache_stats().bytes <= paint::Limits::default().image_mip_bytes);
+        page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 40., height: 24., scale }, None, |_, _| {}).unwrap();
+        painter.raster(&page.scene, region, None).unwrap();
+        assert_eq!(painter.image_cache_stats().generated_pixels, generated);
+        assert_eq!(calls, 1);
+    }
+    assert!(painter.image_cache_stats().hits > 0);
+    drop(pixels);
+    let host = paint_host::Scaled::new(scope.clone(), 1.);
+    let plain =
+        page::load(Arc::from("<!doctype html><p>New document</p>"), &host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
+    painter.raster(&plain.scene, paint::DeviceRect { x: 0, y: 0, width: 32, height: 32 }, None).unwrap();
+    assert_eq!(painter.image_cache_stats().bytes, 0);
 }
 
 #[test]

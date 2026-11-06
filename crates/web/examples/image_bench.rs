@@ -17,7 +17,7 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
     time::Instant,
 };
-fn pixels(w: u32, h: u32, opaque: bool) -> Vec<u8> {
+fn pattern(w: u32, h: u32, opaque: bool) -> Vec<u8> {
     let mut out = Vec::with_capacity(w as usize * h as usize * 4);
     let mut value = 7u32;
     for _ in 0..w * h {
@@ -43,13 +43,13 @@ fn main() {
     let mut painter = paint::Engine::default();
     let mut rows = Vec::new();
     for opaque in [true, false] {
-        let source = pixels(1920, 1080, opaque);
+        let source = pattern(1920, 1080, opaque);
         let at = Instant::now();
         for _ in 0..rounds {
             black_box(Image::from_rgba(1920, 1080, source.clone(), Default::default(), Some(&cancel)).unwrap());
         }
         rows.push(json!({"operation":"ingest","opaque":opaque,"micros":at.elapsed().as_secs_f64()*1e6/rounds as f64,"pixels":1920*1080,"source_sha256":format!("{:x}",Sha256::digest(&source)),"result_sha256":format!("{:x}",Sha256::digest(Image::from_rgba(1920,1080,source,Default::default(),Some(&cancel)).unwrap().rgba()))}));
-        let pixels = Image::from_rgba(64, 64, pixels(64, 64, opaque), Default::default(), Some(&cancel)).unwrap();
+        let pixels = Image::from_rgba(64, 64, pattern(64, 64, opaque), Default::default(), Some(&cancel)).unwrap();
         for scale in [1., 1.25, 2.] {
             let host = paint_host::Scaled::new(scope.clone(), scale);
             let source: Arc<str> =
@@ -74,6 +74,38 @@ fn main() {
             }
             rows.push(json!({"operation":"raster","opaque":opaque,"scale":scale,"micros":at.elapsed().as_secs_f64()*1e6/rounds as f64,"pixels":256*256,"source_sha256":format!("{:x}",Sha256::digest(source.as_bytes())),"result_sha256":format!("{:x}",Sha256::digest(warm.rgba()))}));
         }
+        let raw = pattern(2048, 1536, opaque);
+        let hash = format!("{:x}", Sha256::digest(&raw));
+        let large = Image::from_rgba(2048, 1536, raw, Default::default(), Some(&cancel)).unwrap();
+        let host = paint_host::Scaled::new(scope.clone(), 1.25);
+        let page = page::load_assets(
+            Arc::from("<!doctype html><style>body{margin:0;font-size:0;line-height:0}img{display:block;width:160px;height:120px;margin-left:1.5px;margin-top:2.25px}</style><img src=large>"),
+            &host,
+            &scope,
+            &mut shaper,
+            &mut painter,
+            layout::Viewport { width: 800., height: 600., scale: 1.25 },
+            Some(&cancel),
+            |_, _| {},
+            |_, _, _| Ok(Some(page::Resource::Image(large.clone()))),
+        )
+        .unwrap();
+        for phase in ["cold", "warm"] {
+            painter.clear_image_cache();
+            let region = paint::DeviceRect { x: 17, y: 23, width: 256, height: 256 };
+            let reference = painter.raster(&page.scene, region, Some(&cancel)).unwrap();
+            let at = Instant::now();
+            for _ in 0..rounds {
+                if phase == "cold" {
+                    painter.clear_image_cache();
+                }
+                black_box(painter.raster(&page.scene, region, Some(&cancel)).unwrap());
+            }
+            let elapsed = at.elapsed().as_secs_f64() * 1e6 / rounds as f64;
+            let stats = painter.image_cache_stats();
+            rows.push(json!({"operation":"mip_raster","opaque":opaque,"scale":1.25,"phase":phase,"micros":elapsed,"pixels":256*256,"source_sha256":hash,"result_sha256":format!("{:x}",Sha256::digest(reference.rgba())),"decoded_bytes":large.payload_bytes(),"mip_bytes":stats.bytes,"mip_levels":stats.levels,"generated_pixels":stats.generated_pixels,"hits":stats.hits,"misses":stats.misses}));
+        }
+        painter.clear_image_cache();
     }
     println!(
         "{}",

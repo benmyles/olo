@@ -4,10 +4,12 @@ mod border;
 mod glyph;
 mod image;
 mod index;
+mod mipmap;
 mod raster;
 mod scene;
 use crate::{css, dom, font, layout};
 pub use glyph::{CacheStats, Engine};
+pub use mipmap::ImageCacheStats;
 pub use raster::{DeviceRect, Tile};
 pub use scene::{BuildJob, Command, Options, Primitive, Progress, Scene};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -66,6 +68,8 @@ pub struct Limits {
     pub path_bytes: usize,
     pub path_segments: usize,
     pub tile_pixels: usize,
+    pub image_mip_bytes: usize,
+    pub image_mip_sources: usize,
 }
 impl Default for Limits {
     fn default() -> Self {
@@ -79,6 +83,8 @@ impl Default for Limits {
             path_bytes: 16 * 1024 * 1024,
             path_segments: 262144,
             tile_pixels: 512 * 512,
+            image_mip_bytes: 32 << 20,
+            image_mip_sources: 128,
         }
     }
 }

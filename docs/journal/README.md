@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser bounded minification
+
+*12:24* — Lazy source-pixel mipmaps reduce aliasing; bounded worker cache, cancellation and scalar/SIMD byte controls. All 15 native mode/scale reviews pass. Chrome component pixels improve 49/60 to 53/60; seven nonpasses and the 79 ms stress-test frame remain open.
+
+![Browser bounded minification](2026-11-06/122409-browser-bounded-minification.png)
+
+### Browser minification before
+
+*12:24* — Baseline bilinear sampling of the authored 512×384 source on an owned Agent Screen at 1×. Native image/link nodes work; fine detail aliases when reduced.
+
+![Browser minification before](2026-11-06/122405-browser-minification-before.png)
+
 ### Browser: retained images on a dark native canvas
 
 *10:36* — The same decoded assets survive live theme and scale changes, with one HTTP fetch for repeated sources. Images keep their colors; native canvas/text follow Olo. Night mode and 1/1.25/1.5/1.75/2x were also checked. Universal authored-page dark mode remains open.

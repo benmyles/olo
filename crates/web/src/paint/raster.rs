@@ -38,6 +38,10 @@ impl Engine {
         if pixels == 0 {
             return Err(Error::Invalid);
         }
+        if let Some(cache) = self.image_mips.as_mut() {
+            let tree = scene.layout.cache().tree();
+            cache.prepare(tree.get(tree.root()).ok_or(Error::Invalid)?.node.document());
+        }
         let scale = scene.device_scale();
         let rect = Rect { x: f64::from(region.x) / scale, y: f64::from(region.y) / scale, width: f64::from(region.width) / scale, height: f64::from(region.height) / scale };
         if !valid(rect) {
@@ -94,7 +98,7 @@ impl Engine {
                     if bounds.width == 0. || bounds.height == 0. {
                         continue;
                     }
-                    super::image::raster(&mut out, image, bounds, scale, region, mask.as_ref(), cancel)?;
+                    super::image::raster(self, &mut out, image, bounds, scale, region, mask.as_ref(), cancel)?;
                 }
                 Primitive::Fill { color } => {
                     if let Some(r) = local(c.bounds) {

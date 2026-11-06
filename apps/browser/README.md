@@ -24,7 +24,11 @@ pixel budget, separate from retained tiles. Repeated canonical image URLs
 share one decode per navigation, and resize/theme restyles reuse those assets.
 Codec allocation hints are best effort; isolation and interruptible codec CPU
 work remain open. Broken-image fallback, responsive sources, animation, SVG,
-complete alignment and minification are not yet implemented.
+complete alignment and GPU sampling remain incomplete. Minification uses lazy,
+cancellable source-pixel mip levels with a separate 32 MiB / 128-source LRU
+budget. Resize/theme changes reuse levels; navigation releases them. The pinned
+Chrome pixel controls match 53/60 captures exactly, with seven explicit nonpasses;
+this is component coverage, not website compatibility.
 
 The page canvas, address field, Go/Stop buttons, visible text, progress/errors
 and menus use the shared structured agent tree and menu API. For example,

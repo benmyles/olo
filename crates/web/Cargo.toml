@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-# Identical image pixels with a scalar premultiplication control.
+# Identical pixels with scalar premultiplication and mip reduction controls.
 scalar-image-processing = []
 # Measurement baseline, same token semantics without memchr's SIMD scans.
 scalar-scans = []

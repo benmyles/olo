@@ -6,7 +6,10 @@
     "https://www.w3.org/TR/CSS22/visudet.html#min-max-widths",
     "https://html.spec.whatwg.org/multipage/rendering.html#attributes-for-embedded-content-and-images",
     "https://chromium.googlesource.com/chromium/src/+/main/cc/paint/paint_flags.cc",
-    "https://skia.googlesource.com/skia/+/main/src/core/SkPixmapDraw.cpp"
+    "https://skia.googlesource.com/skia/+/main/src/core/SkPixmapDraw.cpp",
+    "https://skia.googlesource.com/skia/+/ca84ce0a6f1659748188469a89361ccea71e3a64/src/core/SkMipmap.cpp",
+    "https://skia.googlesource.com/skia/+/ca84ce0a6f1659748188469a89361ccea71e3a64/src/core/SkMipmapBuilder.h",
+    "https://skia.googlesource.com/skia/+/ca84ce0a6f1659748188469a89361ccea71e3a64/include/gpu/ganesh/GrContextOptions.h"
   ],
   "files": {
     "assets.json": "7e9f919639ffee78f255be0b3848ca1c1076705c28769fa26939255ad64e2f0a",
@@ -50,7 +53,7 @@
     "natural-1.75.png": "54c24140cd0ddfb322124f28bb2fd26d6b463088de36fdc835a5e07dc4149ddc",
     "natural-1.png": "e141bd18a0690796998b07bbc6d7091f21f208edd9de70bbf5185562128a49eb",
     "natural-2.png": "fbb731961708f98f3a06b8b912e583fd94f83e80dcbcfd61fa7a03a9b78a1520",
-    "nonpasses.json": "819ddacb7130294e72a39d9618e4d0121f9516911a6946972f95bfe7db89c63c",
+    "nonpasses.json": "ed6a88bd7985c11ba6e41e6226974fd3831fd319f23c39ed5510f9f362ce8d23",
     "opaque-1.25.png": "46ed29ac5a185eead12ec0eb8f0d75bb654edca6dc4cc2bb165531ee4993e819",
     "opaque-1.5.png": "df07e657a4862ddeb58b18308df2640a660308e7d0e0256a5446db575f3690d2",
     "opaque-1.75.png": "a396b00f6aa0b76502fc64f3231907d70060ed64e1dc2ad564997e871c113033",
@@ -75,16 +78,34 @@
     "upscale-1.5.png": "be7f1c751e869bd5db40b5b623ca11ee61ddde9a5ecaae19863bed74c6af2c38",
     "upscale-1.75.png": "16bc9e928f04716df95c9f4c0331722cb16bd84c1d25982daced534026633b28",
     "upscale-1.png": "0b7c9ec1585f49e02416a45d5da39120a1ee9378238aea880a5aeeb2faa7b25d",
-    "upscale-2.png": "8905337b09d0b21d0458b1b34b10e505b2b92ea1b9a65735d61f321075484021"
+    "upscale-2.png": "8905337b09d0b21d0458b1b34b10e505b2b92ea1b9a65735d61f321075484021",
+    "nonpasses-bilinear.json": "819ddacb7130294e72a39d9618e4d0121f9516911a6946972f95bfe7db89c63c"
   },
   "coverage": {
     "observations": 60,
-    "matching": 49,
-    "nonpasses": 11,
+    "matching": 53,
+    "nonpasses": 7,
     "website_passes": 0
   },
   "font": {
     "file": "../inline-fixtures/plain.ttf",
     "sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb"
+  },
+  "historical_bilinear": {
+    "matching": 49,
+    "nonpasses": 11,
+    "file": "nonpasses-bilinear.json"
+  },
+  "fixed_cases": [
+    "downscale-1.25.png",
+    "downscale-1.5.png",
+    "downscale-fractional-1.75.png",
+    "downscale-fractional-1.png"
+  ],
+  "minification": {
+    "policy": "RGBA8 premultiplied box/odd-axis triangle mipmaps; trilinear LOD=max(log2(max(source/device ratio))-0.5,0); source half-texel normalization retained. No target-specific GPU LOD approximation tuning.",
+    "pinned_chromium": "a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "pinned_skia": "ca84ce0a6f1659748188469a89361ccea71e3a64",
+    "remaining": "Five minification captures differ by at most two channel levels; two existing opaque fractional captures by one. Odd-source/anisotropic browser comparisons still need broader coverage."
   }
 }

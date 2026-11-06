@@ -1,16 +1,30 @@
 #!/usr/bin/python3
 """Native image nodes and visuals, live mode/scale changes on an owned Agent Screen.
-Start one release Browser first; SCREEN /var/tmp/OWNED/output.
+Start one release Browser first; SCREEN /var/tmp/OWNED/output [--minify].
 Component observations only; not website compatibility or pixel acceptance.
 """
-import json,os,socket,copy,subprocess,base64,http.server,threading
+import json,os,socket,copy,subprocess,base64,http.server,threading,io,hashlib
 from pathlib import Path
 from PIL import Image
 import sys
 screen=sys.argv[1];out=Path(sys.argv[2]).resolve();assert out.is_relative_to('/var/tmp');out.mkdir(parents=True,exist_ok=True)
 assert os.environ.get('OLO_SCREEN')==screen
+assert all(v=='--minify' for v in sys.argv[3:])
+minify='--minify' in sys.argv[3:]
 assets=json.loads((Path(__file__).resolve().parents[2]/'crates/web/tests/image-paint-fixtures/assets.json').read_text())
 url=next(u for u,a in assets.items() if a['name']=='opaque');png=base64.b64decode(url.split(',',1)[1]);requests=[]
+if minify:
+ rgba=bytearray()
+ for y in range(384):
+  for x in range(512):
+   if y<192 and x<256:
+    c=255 if (x+y)%2 else 0;p=(c,c,c,255)
+   elif y<192:p=(255,0,0,255)
+   elif x<256:p=(0,255,0,255)
+   else:p=((x*13+y*11)%256,(x*7+y*19)%256,255,((x^y)*17)%256)
+   rgba.extend(p)
+ encoded=io.BytesIO();Image.frombytes('RGBA',(512,384),bytes(rgba)).save(encoded,format='PNG');png=encoded.getvalue()
+(out/'input.png').write_bytes(png)
 source='<!doctype html><title>Native image pipeline</title><style>body{margin:20px}h1{font-size:28px}p{line-height:28px}.large{display:block;border-width:2px;border-style:solid;border-color:green;padding:4px;margin:12px}</style><h1>Native image pipeline</h1><p>Inline <img src="/image.png#one" alt="Inline colours" width=32 height=32> image.</p><img class=large src="/image.png" alt="Pixel colours" width=160 height=120><p><a href="/dest"><img src="/image.png#two" alt="Linked colours" width=64 height=64></a></p>'
 class Handler(http.server.BaseHTTPRequestHandler):
  def do_GET(self):
@@ -51,4 +65,4 @@ try:
  assert requests==['/','/image.png','/dest'],requests
 finally:
  ipc({'type':'set_settings','settings':original});server.shutdown();server.server_close()
-(out/'report.json').write_text(json.dumps(dict(scope='Owned native demo image visuals/structured nodes; all modes/scales, no website or Chrome pixel acceptance.',rows=rows,requests=requests,source=source),indent=2)+'\n');print('Passed',len(rows),'native reviews')
+(out/'report.json').write_text(json.dumps(dict(scope='Owned native demo image visuals/structured nodes; all modes/scales, no website or Chrome pixel acceptance.',minification=minify,image_sha256=hashlib.sha256(png).hexdigest(),rows=rows,requests=requests,source=source),indent=2)+'\n');print('Passed',len(rows),'native reviews')

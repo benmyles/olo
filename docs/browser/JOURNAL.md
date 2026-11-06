@@ -3897,3 +3897,84 @@ No extra image/performance reruns without changed inputs or code. Evidence:
 `2026-11-06-image-session-followup.json`. All earlier known compatibility,
 pixel and performance failures remain open. Website acceptance **0/100,
 0/3000**; goal active. Test windows/screens and owned scratch are cleaned up.
+
+### 2026-11-06 — Bounded image minification
+
+GitHub authentication was restored; verified with `gh api user` and repository
+access, then pushed pending f220336a using gh's Git credential helper. No token
+was printed or saved in the repository.
+
+The worker now lazily generates source-pixel mip levels with cooperative
+cancellation, packed SIMD reduction and an independently exercised scalar
+control. The LRU has separate 32 MiB pixel / 128-source bounds, keeps weak source
+references and releases levels on new navigation, including failed loads.
+Restyle/resize reuse levels; no idle timer or eager full pyramid. Budget
+exhaustion falls back to an available level. These are allocation budgets,
+not a process memory limit or codec isolation.
+
+Pinned Chrome157/Skia ca84ce0a6f1659748188469a89361ccea71e3a64 sources inform
+box/odd-axis triangle reduction and half-level sharpening bias. Actual renderer
+comparisons improve **49/60→53/60 exact** against unchanged independent captures.
+Five minification captures still differ by at most two channel levels (formerly
+up to64); two opaque fractional cases retain a one-byte difference. The original
+classification is archived. No GPU-specific LOD approximation was tuned to
+force these remaining cases to pass. Broader odd/anisotropic independent browser
+comparisons and GPU composition remain open.
+
+Release default browser/web **270 tests**, all-feature web **256**, Browser13,
+kit13 and strict browser/web clippy pass. Workspace release build **19.70s**;
+existing dependency warnings remain. New tests cover odd/even normalized
+convolution, premultiplied alpha, cache limits/LRU/weak lifetimes/cancellation,
+whole-page versus 8×8 tiles at five scales, restyle reuse and reclamation.
+All68 fixture hashes verify. No reference capture or authored input was changed.
+
+The initial generic two-level draw measured ordinary image sampling about40%
+slower, with substantial compiler overlap retained in that initial dataset.
+Separate const draw paths and removal of redundant snapped-edge coverage recover
+most of it. Seven rotated frozen release processes per variant, CPU0, retain
+**49 accepted observations** and four compiler-overlap attempts separately.
+Final ordinary 256² upscale tiles remain **~0.94→0.98ms (~4% slower)**; this stays
+open, rather than being hidden by the new path's SIMD improvement. A 2048×1536
+image minified into a 256² tile takes **2.94/3.01ms cold SIMD versus7.32/7.36ms
+scalar** (opaque/alpha), **~0.70ms warm**. Three cached levels retain4,128,768bytes
+and warm runs generate no additional mip pixels. All common old/new bytes and
+new scalar/SIMD bytes agree. Matched new-process image RSS median25764/25816KiB
+(default/scalar); old/new process RSS is not comparable because workloads differ.
+Text pipeline100/1000 elements **846.48→844.54 / 8371.00→8113.74µs**; scene
+**185.12→190.71 / 2535.98→2464.44µs**. These observations do not erase the earlier
+isolated scene regression or establish full-host isolation.
+
+Owned native minification demo: **15 mode/scale reviews pass**, source reuse
+across resize/theme, structured image/link bounds and image-link navigation.
+Source SHA and actual fresh window PID/executable SHA are verified. The full
+contact sheet and original-resolution before/after details were inspected;
+all light/dark/night modes and1/1.25/1.5/1.75/2× were exercised live. This tests
+native palette behavior, not universal author-colour darkening.
+
+Live Browser layout/review lint at1280×800 and all five scales reports zero
+findings. The paired ordinary-text native sample reports RSS108008→110756KiB,
+idle0 CPU/0wakeups both; first-moving-client drag/flick/wheel medians
+9.329/9.112/.435→9.629/9.243/.976ms. Compilation overlapped both native attempts;
+their opposite hitch counts (54→0 initially, 0→57 on repeat) and latency figures
+are **inconclusive**, not evidence of a speedup or an established regression.
+Both datasets and compiler context are retained. These are client submissions,
+not compositor presentation or optical latency.
+
+A fresh two-display private session, real PID/binary/drawn-image identity and
+seed4107 **fails at step14/24**: arrange x12 produces a **78.8ms app frame**
+(23.4ms average over four), above the stock50ms budget. Worst loop27.9ms,
+ping11.7ms, compositor8.2ms, answer179.3ms. FD48→46, threads15→15,
+RSS126→128MiB. Heavy foreign workspace compilation was active; that alone does
+not establish the cause. This is retained as an actual nonpass and needs
+profiling/control comparison. Two earlier preflight failures never ran the
+fuzzer: a frozen executable outside the tree, in a fresh fake home, lacked
+`OLO_DATA` and correctly exposed “Browser font is unavailable”. The last tree
+is retained; supplying the repository data directory (same font SHA as the
+installed copy) fixed the fixture. No empty/error-page run counts as coverage.
+
+Evidence: `2026-11-06-minification-{checks,cost,ui-cost}.json`, initial cost and
+native samples, pinned fixture provenance, benchmark/smoke tools. Added two
+before/after global screenshot entries; all604 earlier entries are preserved.
+Only owned screens/test sessions were used; no personal upgrade or install.
+Website acceptance remains **0/100, 0/3000**. Full JS, layout, security, universal
+dark mode and desktop integrations remain substantial unfinished work.

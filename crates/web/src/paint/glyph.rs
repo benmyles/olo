@@ -23,6 +23,7 @@ pub struct CacheStats {
     pub misses: usize,
 }
 pub struct Engine {
+    pub(super) image_mips: Option<Box<super::mipmap::Cache>>,
     fonts: HashMap<usize, FontEntry>,
     limits: Limits,
     clock: u64,
@@ -35,18 +36,25 @@ impl Default for Engine {
 }
 impl Engine {
     pub fn new(limits: Limits) -> Self {
-        Self { fonts: HashMap::new(), limits, clock: 0, stats: CacheStats::default() }
+        Self { image_mips: None, fonts: HashMap::new(), limits, clock: 0, stats: CacheStats::default() }
     }
     pub(super) fn limits(&self) -> Limits {
         self.limits
     }
     pub fn clear(&mut self) {
+        self.clear_image_cache();
         self.fonts.clear();
         self.clock = 0;
         self.stats = CacheStats::default()
     }
     pub fn cache_stats(&self) -> CacheStats {
         self.stats
+    }
+    pub fn image_cache_stats(&self) -> super::ImageCacheStats {
+        self.image_mips.as_ref().map_or_else(Default::default, |c| c.stats())
+    }
+    pub fn clear_image_cache(&mut self) {
+        self.image_mips = None;
     }
     pub(super) fn ink(&mut self, font: &Arc<GlyphFont>, glyph: u32, cancel: Option<&AtomicBool>) -> Result<Ink> {
         check(cancel)?;

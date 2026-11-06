@@ -1,0 +1,4810 @@
+{
+  "scope": "Frozen release minification controls on one performance CPU.\n\nUsage: /var/tmp/OWNED OUTPUT.json. Expects image-before/image-after/image-scalar\nand page-before/after, scene-before/after. Before is the f220336a renderer.\nSeven rotated processes; stop own builds/screens first. Common old/new image\noperations must agree byte-for-byte; new SIMD/scalar mip operations must too.\nImage process RSS differs in workload from the old executable (new mip cases);\nonly new default/scalar RSS is matched. No network/codec/GPU/presentation scope.\n",
+  "before": "f220336a",
+  "cpu": 0,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "platform": "Linux-7.2.15-300.fc45.x86_64-x86_64-with-glibc2.44",
+  "binaries": {
+    "image-before": "0e43212ae166170d7398ccbf9582bd54b6908748bda8bb1414a1df4d4bfae7f6",
+    "image-after": "695cbac92ab6458a8b6f134a2ef8a5d6554e5aa2387a33328092fad15d62d8a1",
+    "image-scalar": "f7817291cfa3b9479e6269adccd30bd8ba09e1b7122b84f1bfa8bf9450aa7245",
+    "page-before": "011668ca066c36c4590e4c939c0d54f7d879d6b71653a639e0be0175ef4cdff1",
+    "page-after": "5803e3ba4c119513c731303f5e36921bcc776c7f58e43f7dd7482ff20ced40cf",
+    "scene-before": "f55dcea601e4108e94b03d8c60caead9ff059bc4892dc6d0634ab9e279800c7e",
+    "scene-after": "bed99b4e3ad8654d9a6bfd73e93152a4a06080461c050182a6b70e02cb17b58a"
+  },
+  "observations": [
+    {
+      "mode": "image",
+      "variant": "before",
+      "repeat": 0,
+      "rss_kib": 21160,
+      "before_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1178.4342000000001,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 939.5421499999999,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 945.9753000000001,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 945.2792499999999,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1353.5715166666666,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 951.4861833333333,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 944.8388,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 945.0693333333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "after",
+      "repeat": 0,
+      "rss_kib": 25860,
+      "before_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1079.9807333333333,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 994.93555,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 987.2172333333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 985.7486,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 3230.968033333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 714.5203166666668,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 1589.7691333333335,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 982.106,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 980.7209166666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 983.4217166666666,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 3046.2337666666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 706.4894833333334,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "scalar",
+      "repeat": 0,
+      "rss_kib": 25696,
+      "before_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [
+        "scalar-image-processing"
+      ],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1252.6575833333334,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 984.8713333333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 987.8513333333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 984.0849166666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7479.676766666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 706.0383,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 2601.5250166666665,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 973.9884,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 970.5329833333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 975.3554666666665,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7448.355416666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 710.7802666666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "before",
+      "repeat": 1,
+      "rss_kib": 21260,
+      "before_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 956.2751166666666,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 943.0227833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 947.5126166666668,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 942.8291333333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1475.0137166666668,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 944.3940833333332,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 946.7640333333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 943.06485,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "scalar",
+      "repeat": 1,
+      "rss_kib": 25568,
+      "before_context": {
+        "loadavg": [
+          20.8193359375,
+          27.35302734375,
+          24.451171875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          20.8193359375,
+          27.35302734375,
+          24.451171875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [
+        "scalar-image-processing"
+      ],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1281.2350833333333,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 989.9380666666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 989.2036833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 993.5250500000001,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7321.018733333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 711.2450333333334,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 2534.3319333333334,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 979.1412333333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 981.9242666666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 981.4164999999999,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7571.699316666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 712.5516833333334,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "after",
+      "repeat": 1,
+      "rss_kib": 25756,
+      "before_context": {
+        "loadavg": [
+          20.8193359375,
+          27.35302734375,
+          24.451171875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          20.8193359375,
+          27.35302734375,
+          24.451171875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1044.6899833333332,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 992.5022333333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 997.4471,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 991.8891666666666,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2983.955016666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 709.392,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 1702.4821000000002,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 1157.85805,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 980.3150166666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 979.2776666666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2957.45185,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 707.7619833333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "scalar",
+      "repeat": 2,
+      "rss_kib": 25972,
+      "before_context": {
+        "loadavg": [
+          20.8193359375,
+          27.35302734375,
+          24.451171875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          19.87255859375,
+          27.0478515625,
+          24.3681640625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [
+        "scalar-image-processing"
+      ],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1220.7087166666668,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 988.6545333333332,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 978.3256500000001,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 988.2063833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7390.9502,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 709.0553833333335,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 2522.6668,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 973.1467333333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 979.3475000000001,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 978.31615,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7262.6873000000005,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 854.8752333333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 21160,
+      "before_context": {
+        "loadavg": [
+          19.87255859375,
+          27.0478515625,
+          24.3681640625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          19.87255859375,
+          27.0478515625,
+          24.3681640625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 933.6958500000001,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 934.5537499999999,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 940.6379666666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 939.9309,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1351.6932833333333,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 943.1368833333332,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 934.3929833333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 939.9873,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "after",
+      "repeat": 2,
+      "rss_kib": 25764,
+      "before_context": {
+        "loadavg": [
+          19.87255859375,
+          27.0478515625,
+          24.3681640625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          19.87255859375,
+          27.0478515625,
+          24.3681640625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 904.2875499999999,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 982.5132666666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 983.01915,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 983.0429,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 3152.725233333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 707.0883166666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 1251.8180666666667,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 977.0056000000001,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 980.65845,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 980.5172333333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 3006.7469499999997,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 704.4594333333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "scalar",
+      "repeat": 3,
+      "rss_kib": 25816,
+      "before_context": {
+        "loadavg": [
+          19.87255859375,
+          27.0478515625,
+          24.3681640625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          19.87255859375,
+          27.0478515625,
+          24.3681640625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [
+        "scalar-image-processing"
+      ],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1264.6565833333334,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 981.6045,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 980.3896166666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 986.6171666666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7450.100483333334,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 743.88805,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 2708.3327166666663,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 977.87765,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 973.1791666666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 969.08245,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7365.957133333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 700.0154666666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "after",
+      "repeat": 3,
+      "rss_kib": 25792,
+      "before_context": {
+        "loadavg": [
+          19.87255859375,
+          27.0478515625,
+          24.3681640625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 952.0985166666667,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 984.1867,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 982.9984666666666,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 981.14855,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2944.03735,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 703.9280666666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 1370.26395,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 1186.29785,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 977.1345833333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 976.2327833333333,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2982.7974166666663,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 700.3536999999999,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "before",
+      "repeat": 3,
+      "rss_kib": 21028,
+      "before_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 940.1990000000001,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 937.6491,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 938.6542999999999,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 939.0054500000001,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1334.10955,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 938.1240999999999,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 935.2109833333333,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 935.0950833333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 25736,
+      "before_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1335.6785666666667,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 982.97765,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 985.7035166666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 979.3589,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2913.6946833333336,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 704.7155500000001,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 1312.8375166666667,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 974.9675833333333,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 978.1202166666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 975.3381,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2960.5814333333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 704.4854666666668,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "scalar",
+      "repeat": 4,
+      "rss_kib": 25916,
+      "before_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [
+        "scalar-image-processing"
+      ],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1545.5897833333333,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 984.9602833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 985.0766833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 985.2772833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7008.8309500000005,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 704.2284500000001,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 2581.7854500000003,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 1008.74935,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1148.2790833333333,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 973.7467166666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7033.353783333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 706.3583500000001,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "before",
+      "repeat": 4,
+      "rss_kib": 21220,
+      "before_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 937.9166,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 935.50425,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 942.5482666666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 943.8124833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1541.01225,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 1111.4616333333333,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 933.4621166666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 935.8869666666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "after",
+      "repeat": 5,
+      "rss_kib": 25904,
+      "before_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 962.1382166666666,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 980.81745,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 981.20025,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 984.6260333333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2932.2542666666673,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 706.5772833333334,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 1467.5662,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 977.5626166666666,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 980.2884666666666,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1013.66935,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 3283.312233333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 700.7601833333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "before",
+      "repeat": 5,
+      "rss_kib": 21260,
+      "before_context": {
+        "loadavg": [
+          18.76123046875,
+          26.6982421875,
+          24.26904296875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.7392578125,
+          26.3544921875,
+          24.1708984375
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 960.1277166666666,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 936.19815,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 942.4163333333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 940.2697666666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1371.24285,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 938.5764,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 938.0159333333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 946.6294166666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "scalar",
+      "repeat": 5,
+      "rss_kib": 25872,
+      "before_context": {
+        "loadavg": [
+          17.7392578125,
+          26.3544921875,
+          24.1708984375
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.7392578125,
+          26.3544921875,
+          24.1708984375
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [
+        "scalar-image-processing"
+      ],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1232.8692833333332,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 983.63185,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1187.2460833333332,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 984.4445833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7025.677333333334,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 704.6954666666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 2512.449833333333,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 969.9384833333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 976.5778166666666,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 975.3531666666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7359.173249999999,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 703.9888833333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "before",
+      "repeat": 6,
+      "rss_kib": 21088,
+      "before_context": {
+        "loadavg": [
+          17.7392578125,
+          26.3544921875,
+          24.1708984375
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.7392578125,
+          26.3544921875,
+          24.1708984375
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 965.5523666666667,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 939.3274166666666,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 938.4502333333334,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 936.7437666666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1320.4008833333332,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 932.2194833333332,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 936.3775499999999,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 932.6607500000001,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "after",
+      "repeat": 6,
+      "rss_kib": 25612,
+      "before_context": {
+        "loadavg": [
+          16.2158203125,
+          25.74853515625,
+          23.9970703125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          16.2158203125,
+          25.74853515625,
+          23.9970703125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1253.3203499999997,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 987.7637833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 985.7746666666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 975.7680166666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2907.2437,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 702.2887333333332,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 1350.888333333333,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 978.2726666666666,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 975.4349333333333,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 977.1939166666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 3011.2219833333334,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 736.2081166666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "scalar",
+      "repeat": 6,
+      "rss_kib": 25676,
+      "before_context": {
+        "loadavg": [
+          16.2158203125,
+          25.74853515625,
+          23.9970703125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          16.2158203125,
+          25.74853515625,
+          23.9970703125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "features": [
+        "scalar-image-processing"
+      ],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1472.0042,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 987.5123833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 988.9318666666666,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 988.20935,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7039.641266666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 709.6962,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 2482.07105,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 1150.0261833333332,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 974.4327666666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 981.7192833333334,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 6992.254116666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 705.3409833333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 0,
+      "rss_kib": 9088,
+      "before_context": {
+        "loadavg": [
+          16.2158203125,
+          25.74853515625,
+          23.9970703125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          16.2158203125,
+          25.74853515625,
+          23.9970703125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 833.7476666666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8577.553699999999,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 0,
+      "rss_kib": 9008,
+      "before_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 844.5409833333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8002.018166666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 1,
+      "rss_kib": 9012,
+      "before_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 831.8221833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8371.00115,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 1,
+      "rss_kib": 9100,
+      "before_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 822.7168,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8176.367033333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 8948,
+      "before_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 827.6730833333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8013.2973,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 2,
+      "rss_kib": 9052,
+      "before_context": {
+        "loadavg": [
+          17.818359375,
+          24.6474609375,
+          23.72265625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 873.8548333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8112.1802333333335,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 3,
+      "rss_kib": 8920,
+      "before_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 857.533,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8717.259966666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 3,
+      "rss_kib": 8952,
+      "before_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 845.9626666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8113.7444,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 4,
+      "rss_kib": 8980,
+      "before_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 863.6445500000001,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8624.177399999999,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 9112,
+      "before_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 829.5362666666666,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8093.610816666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 5,
+      "rss_kib": 8992,
+      "before_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 869.1209166666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8250.900599999999,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 5,
+      "rss_kib": 9116,
+      "before_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 847.1744833333335,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8211.44085,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 6,
+      "rss_kib": 8968,
+      "before_context": {
+        "loadavg": [
+          16.1025390625,
+          23.70751953125,
+          23.4365234375
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 846.4792,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8110.654233333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 6,
+      "rss_kib": 9040,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 823.7991333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8419.184716666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 0,
+      "rss_kib": 7864,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 190.57873333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2535.976416666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 0,
+      "rss_kib": 8044,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 194.0530666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2464.435566666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 1,
+      "rss_kib": 8108,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 182.53363333333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2658.4077333333335,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 1,
+      "rss_kib": 8096,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 187.9260833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2454.70665,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 2,
+      "rss_kib": 8056,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 181.35681666666667,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2483.02685,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 2,
+      "rss_kib": 8144,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 196.49380000000002,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2549.1209166666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 3,
+      "rss_kib": 8112,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 191.57646666666668,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2539.116916666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 3,
+      "rss_kib": 7940,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 191.90226666666663,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2865.46675,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 4,
+      "rss_kib": 7944,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 185.11679999999998,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2470.167866666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 4,
+      "rss_kib": 8064,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 190.70683333333332,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2508.443133333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 5,
+      "rss_kib": 7992,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 183.5390833333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2503.040483333333,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 5,
+      "rss_kib": 7928,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 187.96208333333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2435.9799333333335,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "before",
+      "repeat": 6,
+      "rss_kib": 7944,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 188.60908333333333,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2851.945816666667,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    },
+    {
+      "mode": "scene",
+      "variant": "after",
+      "repeat": 6,
+      "rss_kib": 8264,
+      "before_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          15.53369140625,
+          23.462890625,
+          23.35888671875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "controls": false,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 189.71843333333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pixels_sha256": "c1ce24cb08070d0fd1fd599adeac6f0e6722b5518a35c72092b29ec6d862096d",
+          "scene_us": 2452.6998,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ],
+      "scope": "Repeated retained scene construction and destruction. Raster hash is untimed validation only; excludes live updates/GPU/presentation/websites."
+    }
+  ],
+  "discarded": [
+    {
+      "mode": "image",
+      "variant": "scalar",
+      "repeat": 1,
+      "rss_kib": 25828,
+      "before_context": {
+        "loadavg": [
+          22.10986328125,
+          27.7138671875,
+          24.55126953125
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          20.8193359375,
+          27.35302734375,
+          24.451171875
+        ],
+        "compiler_processes": 1,
+        "compiler_pids": [
+          3833782
+        ]
+      },
+      "features": [
+        "scalar-image-processing"
+      ],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1261.5910666666668,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 1314.5054833333334,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 994.6811166666666,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 989.8776166666667,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7158.863316666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 710.9428166666665,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 2574.6863999999996,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 985.0006333333333,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1009.06255,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 1162.8525666666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 7166.473516666667,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 713.2226166666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "image",
+      "variant": "after",
+      "repeat": 6,
+      "rss_kib": 25760,
+      "before_context": {
+        "loadavg": [
+          17.7392578125,
+          26.3544921875,
+          24.1708984375
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.7392578125,
+          26.3544921875,
+          24.1708984375
+        ],
+        "compiler_processes": 1,
+        "compiler_pids": [
+          3834246
+        ]
+      },
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "micros": 1282.19675,
+          "opaque": true,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269",
+          "source_sha256": "fb7e1143a148ee6b37842182098ef1ceb7a9537321133b7406c58191c4b82269"
+        },
+        {
+          "micros": 984.2246166666666,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "f7164edc0b0256ab7a70e419a46b201cc50396e40bf4b373d2e76c36d855a0cc",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 982.4418833333333,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "809b41a951578b71b71371ea5e283c97594e2dcc2dfdc74904cd913dc504bf54",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 984.6811333333334,
+          "opaque": true,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "d477da42ffbf3ab395600be45bf8f45acf5b837b4de0ed92cd2441544140ea0b",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2901.896633333333,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 698.4148666666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": true,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "fc4f6c37ba3467d1e7b1cae630a80e05ffd2ece22ae36d3ef19dad43b08f8784",
+          "scale": 1.25,
+          "source_sha256": "f2a3796a293aae8963f44b0b43e5dda497fd820765ac8fcd7dec9a84bfb2fb96"
+        },
+        {
+          "micros": 1331.0156833333335,
+          "opaque": false,
+          "operation": "ingest",
+          "pixels": 2073600,
+          "result_sha256": "e8f218805ee78a66e5af87d168cd67174601e10f475cc979e3ef80ac3b18b941",
+          "source_sha256": "ec3623a5ee235667f3418862e786f2aa67724f98b9dd2fd99e78d67911f8b570"
+        },
+        {
+          "micros": 970.59385,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "30c2e12226308e85d6853e386abbd65d18f3d9723aeb05adb4ae7cbdf25482ba",
+          "scale": 1.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 970.53535,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "654eda99611acd71f76d026058d267e78e42b9c4e90ecb0eaa8e0d623c9f7b9c",
+          "scale": 1.25,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "micros": 969.7612166666667,
+          "opaque": false,
+          "operation": "raster",
+          "pixels": 65536,
+          "result_sha256": "98759a4ac1c012ad0afaa99f3539ad7f61bf36a92f7f6b3d16bb3c81440e789f",
+          "scale": 2.0,
+          "source_sha256": "acc24f4c929b99a658504dff91250e6513d69903ad54a1e556b485f290255d03"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 0,
+          "micros": 2985.3141666666666,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "cold",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        },
+        {
+          "decoded_bytes": 12582912,
+          "generated_pixels": 1032192,
+          "hits": 120,
+          "micros": 743.1335333333334,
+          "mip_bytes": 4128768,
+          "mip_levels": 3,
+          "misses": 2,
+          "opaque": false,
+          "operation": "mip_raster",
+          "phase": "warm",
+          "pixels": 65536,
+          "result_sha256": "f9ee0625db21cf0772a5edec8832c6dbc45676c98ff4b43e169feba0d299dddf",
+          "scale": 1.25,
+          "source_sha256": "53aeea4c6f21ba7c31d858eee304b2db4b914d045556f71feb4316ab76ce5f0f"
+        }
+      ],
+      "scope": "Authored RGBA input clone/ingestion and retained 256x256 CPU tiles. Real false cancellation flag. Excludes decode/network/GPU/presentation/animation. Ingestion includes the fresh caller buffer clone; raster includes output allocation/query and cleanup."
+    },
+    {
+      "mode": "page",
+      "variant": "after",
+      "repeat": 2,
+      "rss_kib": 9180,
+      "before_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          16.1982421875,
+          25.58642578125,
+          23.9541015625
+        ],
+        "compiler_processes": 1,
+        "compiler_pids": [
+          3834865
+        ]
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 815.37175,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8366.368216666666,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    },
+    {
+      "mode": "page",
+      "variant": "before",
+      "repeat": 6,
+      "rss_kib": 9112,
+      "before_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 0,
+        "compiler_pids": []
+      },
+      "after_context": {
+        "loadavg": [
+          17.11181640625,
+          24.38720703125,
+          23.6435546875
+        ],
+        "compiler_processes": 3,
+        "compiler_pids": [
+          3836112,
+          3836129,
+          3836130
+        ]
+      },
+      "command_bytes": 80,
+      "features": [],
+      "rounds": 60,
+      "rows": [
+        {
+          "commands": 200,
+          "elements": 100,
+          "geometry_sha256": "50ef626a5ed99df7b8002b457a823af4b253fde37f41c3981550799c3a8989ee",
+          "pipeline_us": 840.4971333333334,
+          "source_sha256": "8b96b26d61adad282e90aa16e5337bed4da344f4a5ac748d69a041f0e4eb87d7"
+        },
+        {
+          "commands": 2000,
+          "elements": 1000,
+          "geometry_sha256": "b1d9ad7fc134bfa6a413514e52f480905dde06dbe9e14d906aa08c03439d2cd6",
+          "pipeline_us": 8164.839633333334,
+          "source_sha256": "d2052a21584b9dd84937fb22e05df4e4b714eeb570311044b23e55479e790fd9"
+        }
+      ]
+    }
+  ],
+  "build_waits": [
+    {
+      "at": 1793996233.525388,
+      "loadavg": [
+        20.8193359375,
+        27.35302734375,
+        24.451171875
+      ],
+      "compiler_processes": 1,
+      "compiler_pids": [
+        3833782
+      ]
+    },
+    {
+      "at": 1793996250.998179,
+      "loadavg": [
+        17.7392578125,
+        26.3544921875,
+        24.1708984375
+      ],
+      "compiler_processes": 1,
+      "compiler_pids": [
+        3834246
+      ]
+    },
+    {
+      "at": 1793996265.208078,
+      "loadavg": [
+        16.1982421875,
+        25.58642578125,
+        23.9541015625
+      ],
+      "compiler_processes": 1,
+      "compiler_pids": [
+        3834865
+      ]
+    },
+    {
+      "at": 1793996285.2421827,
+      "loadavg": [
+        18.27001953125,
+        25.43798828125,
+        23.9384765625
+      ],
+      "compiler_processes": 2,
+      "compiler_pids": [
+        3834865,
+        3834898
+      ]
+    },
+    {
+      "at": 1793996293.409148,
+      "loadavg": [
+        18.12255859375,
+        25.17529296875,
+        23.86865234375
+      ],
+      "compiler_processes": 1,
+      "compiler_pids": [
+        3834865
+      ]
+    },
+    {
+      "at": 1793996313.4398074,
+      "loadavg": [
+        17.818359375,
+        24.6474609375,
+        23.72265625
+      ],
+      "compiler_processes": 1,
+      "compiler_pids": [
+        3834865
+      ]
+    },
+    {
+      "at": 1793996321.698561,
+      "loadavg": [
+        17.11181640625,
+        24.38720703125,
+        23.6435546875
+      ],
+      "compiler_processes": 3,
+      "compiler_pids": [
+        3836112,
+        3836129,
+        3836130
+      ]
+    },
+    {
+      "at": 1793996323.7766824,
+      "loadavg": [
+        17.18310546875,
+        24.28076171875,
+        23.61279296875
+      ],
+      "compiler_processes": 2,
+      "compiler_pids": [
+        3836112,
+        3836129
+      ]
+    },
+    {
+      "at": 1793996338.8677406,
+      "loadavg": [
+        16.1025390625,
+        23.70751953125,
+        23.4365234375
+      ],
+      "compiler_processes": 1,
+      "compiler_pids": [
+        3836112
+      ]
+    }
+  ]
+}

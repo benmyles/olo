@@ -11725,8 +11725,9 @@ A Telegram client of Olo's own: MTProto in process through grammers
 static page pipeline (`page`, `paint`, `layout`). It opens `about:engine` or
 local UTF-8 HTML, with native address/Go/Stop/menu controls, structured visible
 text and status, worker progress/cancellation, retained scrolling tiles and
-kit restart state. It is not yet a complete web browser: network navigation,
-JavaScript, full layout/painting, semantic document actions, universal page
+kit restart state. Initial HTTP/HTTPS navigation and still images work. It is
+not yet a complete web browser: network security policy, JavaScript, full
+layout/painting, semantic document actions, universal page
 darkening and desktop/password/passkey integrations remain open. Nothing
 registers it as the default browser. See `apps/browser/README.md` and the
 acceptance/journal/TODO in `docs/browser` before making compatibility claims.
@@ -11747,9 +11748,19 @@ hints remain best effort, not process isolation. PNG/JPEG/WebP/GIF stills work;
 animation, responsive sources, SVG, broken-image fallback and complete replaced
 layout/sampling remain open. The CPU sampler uses global device coordinates so
 retained tile boundaries cannot introduce seams. The `scalar-image-processing`
-measurement feature disables packed SIMD ingestion for byte/cost controls.
+measurement feature disables packed SIMD ingestion and mip reduction for byte/cost controls.
 Interpolation uses the faster measured compiler-selected arithmetic; an explicit
 four-channel vector implementation was slower and is not retained.
+
+Minification lazily builds source-pixel mip levels on the page worker, with
+cooperative cancellation and a separate 32 MiB pixel / 128-source LRU budget.
+Even axes use box reduction, odd axes weighted triangle reduction; packed SIMD
+and scalar controls produce identical bytes. The sampler blends adjacent levels
+with a half-level sharpening bias. Cache entries hold weak source references;
+new navigation clears them even if loading fails. Resize/restyle reuse levels,
+and reclamation follows page work without idle timers. Budget exhaustion falls
+back to available levels. These are allocation budgets, not a process-memory
+limit; exact GPU filtering and anisotropic image quality remain incomplete.
 
 Visible images expose alt text (or "Image"), document bounds and normal link
 actions in the structured tree. Linked images use the same link/origin checks

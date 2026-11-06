@@ -64,9 +64,22 @@ class Reports(scroll.Check):
         return result
 
 
+def context():
+    compilers = []
+    for entry in Path('/proc').iterdir():
+        if entry.name.isdigit():
+            try:
+                if (entry / 'comm').read_text().strip() in ('cargo', 'rustc'):
+                    compilers.append(int(entry.name))
+            except OSError:
+                pass
+    return dict(loadavg=os.getloadavg(), compiler_pids=compilers)
+
+
 rows = []
 assert not any(w['app_id'] == 'olo.browser' for w in json.loads(run('windows', screen))), 'Start with no Browser on this owned screen; a surviving instance can take a frozen launch'
 for variant in ['before', 'after']:
+    before_context = context()
     binary = root / f'browser-{variant}'
     pid = int(run('run', screen, binary, fixture))
     try:
@@ -93,7 +106,7 @@ for variant in ['before', 'after']:
         run('wait', screen, '--idle')
         idle = json.loads(subprocess.check_output(['/usr/bin/python3', 'tools/dev/cost', str(pid), '3', '--json'], text=True))
         status = dict(line.split(':', 1) for line in Path(f'/proc/{pid}/status').read_text().splitlines() if ':' in line)
-        rows.append(dict(variant=variant, binary_sha256=hashlib.file_digest(binary.open('rb'), 'sha256').hexdigest(),
+        rows.append(dict(variant=variant, before_context=before_context, after_context=context(), binary_sha256=hashlib.file_digest(binary.open('rb'), 'sha256').hexdigest(),
             rss_kib=int(status['VmRSS'].split()[0]), hwm_kib=int(status['VmHWM'].split()[0]), idle=idle, bursts=bursts,
             compositor=scroll.req(check.sock, {'type': 'timings'})))
         Path(destination).write_text(json.dumps(dict(scope=__doc__, fixture_sha256=hashlib.file_digest(fixture.open('rb'), 'sha256').hexdigest(), rows=rows), indent=2) + '\n')
