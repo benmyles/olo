@@ -1,0 +1,13 @@
+ELF section sizes in bytes. Debug/file size is separate from runtime payload.
+before-style_bench {".rodata": 113392, ".text": 880704, ".debug_info": 7296933}
+before-shaping_bench {".rodata": 513276, ".text": 1681520, ".debug_info": 7240978}
+before-whitespace_bench {".rodata": 42732, ".text": 290723, ".debug_info": 7076232}
+before-cascade_property_bench {".rodata": 70964, ".text": 493296, ".debug_info": 7075562}
+after-style_bench {".rodata": 113208, ".text": 876896, ".debug_info": 7300054}
+after-shaping_bench {".rodata": 512636, ".text": 1672416, ".debug_info": 7244099}
+after-whitespace_bench {".rodata": 42732, ".text": 290723, ".debug_info": 7079353}
+after-cascade_property_bench {".rodata": 70644, ".text": 484768, ".debug_info": 7078683}
+after-linebreak_bench {".rodata": 75012, ".text": 293427, ".debug_info": 7077915}
+scalar-linebreak_bench {".rodata": 74684, ".text": 290467, ".debug_info": 7085156}
+no-runs-linebreak_bench {".rodata": 74940, ".text": 290595, ".debug_info": 7085237}
+class-table-linebreak_bench {".rodata": 74812, ".text": 294499, ".debug_info": 7078437}

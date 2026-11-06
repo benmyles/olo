@@ -45,6 +45,12 @@ baseline-text-ascii = []
 baseline-text-prepare = []
 # Same source map facts with 24-byte instead of 12-byte stored records.
 baseline-text-map-wide = []
+# Same Unicode 18 facts/rules without ASCII property/pair/run shortcuts.
+baseline-linebreak-ascii = []
+# Same ASCII property/pair paths without bulk ASCII run state transitions.
+baseline-linebreak-runs = []
+# Same class facts via a checked table decode instead of direct packed IDs.
+baseline-linebreak-class-table = []
 
 [dependencies]
 memchr = "2"

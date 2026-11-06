@@ -1,0 +1,51 @@
+--- a/crates/web/src/text/linebreak.rs
++++ b/crates/web/src/text/linebreak.rs
+@@ -438,39 +438,29 @@
+         if self.failed {
+             return Err(Error::Failed);
+         }
+-        if let Err(error) = check(self.cancel) {
+-            self.failed = true;
+-            return Err(error);
+-        }
+-        // Dispatch once per worker slice, not once per non-ASCII scalar. The
+-        // no-bulk monomorph has no speculative run checks in its hot loop.
+-        let ascii_slice = !cfg!(feature = "baseline-linebreak-ascii")
+-            && !cfg!(feature = "baseline-linebreak-runs")
+-            && byte_budget >= 4
+-            && self.source.as_bytes()[self.at..self.source.len().min(self.at.saturating_add(byte_budget))].is_ascii();
+-        let result = if ascii_slice { self.advance::<true>(byte_budget) } else { self.advance::<false>(byte_budget) };
++        let result = self.advance(byte_budget);
+         if result.is_err() {
+             self.failed = true;
+         }
+         result
+     }
+-    fn advance<const BULK: bool>(&mut self, mut budget: usize) -> Result<Progress> {
++    fn advance(&mut self, mut budget: usize) -> Result<Progress> {
+         check(self.cancel)?;
+         if self.progress.finished {
+             return Ok(self.progress);
+         }
+         while budget > 0 && self.at < self.source.len() {
+             check(self.cancel)?;
+-            if BULK
++            let run_class = self.pending.map(Unit::class);
++            if !cfg!(feature = "baseline-linebreak-ascii")
++                && !cfg!(feature = "baseline-linebreak-runs")
+                 && budget >= 4
+-                && self.source.as_bytes()[self.at].is_ascii_alphanumeric()
+                 && self.ready.len() == 2
+-                && let Some(run_class) = self.pending.map(Unit::class)
+-                && matches!(run_class, class::AL | class::NU)
+-                && self.context.left.is_some_and(|u| u.class() == run_class)
+-                && self.ready.iter().all(|u| u.class() == run_class)
++                && matches!(run_class, Some(class::AL | class::NU))
++                && self.context.left.map(Unit::class) == run_class
++                && self.ready.iter().all(|u| Some(u.class()) == run_class)
+             {
+-                let class = run_class;
++                let class = run_class.unwrap();
+                 let count = ascii_run_prefix(&self.source.as_bytes()[self.at..self.source.len().min(self.at + budget.min(65536))], class);
+                 if count != 0 {
+                     // Every skipped boundary is AL × AL or NU × NU. Advance the

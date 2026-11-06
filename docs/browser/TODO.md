@@ -159,6 +159,22 @@ item means implemented and verified; a partial implementation stays open.
   shaping rejects unprocessed controls/oversized uniform spans. Font/shaper
   opaque cache accounting, adversarial CPU bounds and cancellation/isolation
   remain required before web fonts; source budgets are not total RSS limits.
+- [x] Original Unicode 18 default line-break opportunities: all 19,346
+  LineBreakTest strings, every boundary/kind at scalar and 4 KiB budgets;
+  constant-size lookahead/context, packed internal offsets, implicit EOT,
+  streaming/cancellation/quotas and preparation source sharing. This is UAX14
+  default behavior, not CSS/language tailoring, line fitting or page layout.
+- [ ] CSS break/nowrap/preserve-space policy, grapheme-safe emergency breaks,
+  language/strictness tailoring and complex-context segmentation/dictionaries.
+  Raw SA counts remain visible; default AL treatment is not Thai/Lao/Khmer/
+  Myanmar browser segmentation. Width selection, safe reshaping and painting
+  are still required before text can render in the original engine.
+- [ ] Profile residual line-break dispatch/code-layout costs and outliers:
+  final default/no-bulk 36 KiB Latin 315.953/305.090 µs, 53 KiB Arabic
+  404.457/392.465, 530 KiB combining 2,404.206/2,211.133; combining max-step
+  median 661 µs. Bulk wins the 74 KiB word (197.457 vs 565.826 µs), with
+  mixed other cases. Keep initial/guard/final raw release evidence rather
+  than treating a control improvement as universal browser acceptance.
 - [ ] Resolve whitespace reference differences with actual native line/raster
   evidence: Chrome 157 local projections have 45 identical, 12 different and
   eight reference-unsupported cases. Four differences need Chrome-compatible

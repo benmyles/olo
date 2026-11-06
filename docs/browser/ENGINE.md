@@ -1612,3 +1612,71 @@ them. No usable browser or website acceptance follows from this milestone.
 
 References: [CSS Text 3 whitespace processing](https://www.w3.org/TR/css-text-3/#white-space-processing),
 [CSS Text 4 shorthand](https://drafts.csswg.org/css-text-4/#white-space-property).
+
+## Original Unicode line-break opportunities
+
+`text::linebreak` implements the default Unicode 18 UAX #14 revision 57 rules
+in original safe Rust. Generated raw Line_Break/General_Category/EastAsianWidth/
+Extended_Pictographic facts remain distinct from the runtime algorithm. LB1
+defaults resolve AI/SG/XX to AL, CJ to NS and SA marks to CM/other SA to AL;
+raw classes remain available for future CSS tailoring. Quote categories,
+dotted-circle identity, unassigned potential emoji and raw SA provenance are
+retained. No new runtime dependency or external engine supplies decisions.
+
+Worker `Job::step(byte_budget)` builds combining units incrementally and
+applies ordered rules with two-unit right context and four fixed backward
+unit values. It never allocates a character array or rescans unbounded numeric,
+space or combining sequences. Normal lookahead retains up to three complete
+units plus one pending unit; repeated combining marks do not grow scratch.
+Progress, immutable completed frontiers, cancellation and failure-poisoned
+publication are explicit. Defaults cap input at 8 MiB and 262,144 logical
+opportunities, including EOT. A scalar can exceed the remaining byte budget
+by up to three UTF-8 bytes; all construction/processing/finish belongs on workers.
+
+Internal opportunities store four-byte offset/kind values. EOT is implicit,
+derived from the shared source length, so an unbroken word needs no offset
+allocation. An allocation-free exact-size, double-ended iterator includes that
+required marker, even at zero for empty input; it does not itself create a
+blank line. Input must be shorter than 2 GiB because one packed bit stores
+mandatory kind. The measured x86_64 Job is 200 B. These are storage/work quotas,
+not process isolation, fallible allocation or whole-browser memory bounds.
+
+Focused ASCII property/pair shortcuts and portable SIMD letter/digit-run
+transitions preserve the scalar context/lookahead frontier. The worker selects
+a bulk/no-bulk specialization once per slice, avoiding speculative run checks
+inside the multilingual scalar loop. Cancellation is checked before scanning
+slice eligibility as well as during processing. Direct packed
+class IDs avoid a redundant checked class decode. Full-rule, no-bulk and
+class-table controls use identical facts/opportunities; all controls remain
+measurement paths, not feature substitutes. `Breaks::source` shares the
+prepared text Arc, and byte opportunities map through preparation to original
+source spans. Choosing actual widths and caret hit testing remain separate.
+
+`tests/linebreak-fixtures` pins unchanged Unicode files and source/license
+reuse. All **19,346 default test strings** compare every boundary and mandatory/
+allowed kind at one-byte and 4,096-byte job budgets. Five regression groups
+also cover streaming/poisoning/limits/cancellation, UTF-8, hard/empty terminal
+semantics, 100,000 combining marks, mixed iterator traversal, source sharing
+and ASCII-run context invariance against scalar steps. The property generator
+does not use test expectations or Olo decisions. Raw resources, generator,
+generated facts and fixture documentation are hash checked.
+
+**This is default UAX14, not browser CSS line layout.** `complex_context_scalars`
+keeps raw SA usage visible; language dictionaries/complex-context segmentation
+are still needed for scripts such as Thai, Lao, Khmer and Myanmar. CSS line-
+break/word-break/overflow-wrap/nowrap/preserve-space policy, emergency grapheme
+boundaries, safe width fitting/line reshaping, phase-II whitespace, actual
+inline/block geometry and rasterization remain next. No CSS WPT, pixel or
+website pass is inferred from the Unicode conformance result.
+
+Release measurements and replay are in
+`measurements/2026-11-05-linebreak{.json,-measure.py}`. Initial and guarded-loop
+measurements stay in separate JSON files, with replay patches against the final
+source; they motivated dispatch outside the character loop. Three alternating
+CPU0 processes per variant separate full-rule, no-bulk and checked-class-table
+controls, cold calls/constructor/max 4 KiB slices and exact offset payload from
+whole-process RSS/CPU. The full browser/line fitter is not measured by these
+worker-library cases. Residual mixed-workload variation remains explicit.
+
+Primary references: [UAX14-57](https://www.unicode.org/reports/tr14/tr14-57.html),
+[Unicode 18 corpus](https://www.unicode.org/Public/18.0.0/ucd/auxiliary/LineBreakTest.txt).

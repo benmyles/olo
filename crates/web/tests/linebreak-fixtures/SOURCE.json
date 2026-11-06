@@ -1,0 +1,36 @@
+{
+  "unicode_version": "18.0.0",
+  "revision": "UAX14-57",
+  "specification": "https://www.unicode.org/reports/tr14/tr14-57.html",
+  "files": {
+    "ucd/LineBreak.txt": {
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/LineBreak.txt",
+      "sha256": "ae8cf1970c73f3f1a12d77852df96c4b2b1723ca8b388e36bb5739250c6849de"
+    },
+    "ucd/EastAsianWidth.txt": {
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/EastAsianWidth.txt",
+      "sha256": "a0cf29eacd00cfcaec4381c6b7c281685f18dbb4e7ff82b4076ccb342ca839aa"
+    },
+    "ucd/DerivedGeneralCategory.txt": {
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/extracted/DerivedGeneralCategory.txt",
+      "sha256": "d6b151d2d40ee9b1876d26f417980f45ffae47b6055ccf7203cb31f07a030f94"
+    },
+    "ucd/LineBreakTest.txt": {
+      "url": "https://www.unicode.org/Public/18.0.0/ucd/auxiliary/LineBreakTest.txt",
+      "sha256": "fd9ff9eca411080085b41471bba79ae19d9db2e16924f9770b8509f1affd3f95"
+    },
+    "../shaping-fixtures/ucd/emoji-data.txt": {
+      "reused": true,
+      "sha256": "80d00f8e616a0ef27fd6b8de3b758c06383b5d917e2977709578e68baf733bf1"
+    },
+    "../shaping-fixtures/ucd/UNICODE-LICENSE.txt": {
+      "reused": true,
+      "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+    }
+  },
+  "local_files": {
+    "README.md": "903917abe987aa3ce80549abe6dcfe1d4728603e1b43b8b56291fb17a96cb825",
+    "../../src/text/linebreak_data.rs": "12f977dfbc1373f4316fa464abe9b2ee75e42e1fb48bf839d42c2bf83fe5e3c7",
+    "../../../../tools/browser/generate-linebreak-unicode.py": "343e2f6d2d0c7c55cc3cb324dea1114d3e5844cf2d010868693a3f90f83a642e"
+  }
+}

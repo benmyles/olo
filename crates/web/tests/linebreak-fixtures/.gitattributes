@@ -1,0 +1,2 @@
+# Preserve original upstream bytes, including trailing comment whitespace.
+ucd/*.txt -whitespace

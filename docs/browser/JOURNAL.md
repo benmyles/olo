@@ -2529,3 +2529,137 @@ phase-II whitespace/tab/wrap behavior, styled shaping/safe line breaking and
 original inline/block layout, then native painting. Networking/V8, full CSS,
 isolation, native shell, universal dark/night adaptation and structured
 browser/Olo/password/passkey integrations remain substantial work.
+
+## 2026-11-05 — original Unicode 18 line-break opportunities
+
+Previous goal turn was progress: 858b2818 is pushed, and the worktree started
+clean. Read HACKING.md and BTextView/CanEndLine before changing code. Retain the
+Be Book's explicit offsets/context hooks; use current Unicode rules rather
+than its ASCII-era break choices. Consulted primary UAX14 revision 57 and
+Unicode 18 data. The workspace unicode-linebreak 0.1.5 uses Unicode 15; it
+cannot establish current behavior. ICU4X 2.4 offers current data/dictionaries,
+but the initial default boundary engine here is original safe Rust, with no
+new runtime dependency or borrowed engine.
+
+`text::linebreak` applies all default UAX14 rules over generated factual raw
+Line_Break/General_Category/EastAsianWidth/Extended_Pictographic data. Keep raw
+classes for future CSS tailoring. Runtime LB1 resolves AI/SG/XX→AL, CJ→NS and
+SA marks→CM/other SA→AL, preserving SA provenance. Ordered quote, numeric,
+space, Hebrew-hyphen, Korean/Brahmic, RI and emoji context rules retain fixed
+backward state and bounded right lookahead. Combining continuations are folded
+incrementally, without a character array or unbounded scan/backtracking.
+
+The worker is **200 B** on measured x86_64. It holds up to three complete
+lookahead units plus one pending unit and four fixed backward unit values.
+`step(byte_budget)` reports progress/completed frontiers and checks cancellation;
+failure poisons publication. Defaults cap source at 8 MiB and logical
+opportunities at 262,144, including EOT. A scalar may exceed the remaining
+budget by up to three UTF-8 bytes. All construction/steps/finish belong on the
+worker. These are bounded-work/storage policies, not process isolation,
+fallible allocation or total RSS limits.
+
+Each internal opportunity stores a packed **four-byte offset/kind**. EOT is an
+implicit required marker derived from shared source length; a word without
+internal breaks allocates no offset array. Exact-size, double-ended/fused
+iteration includes EOT (zero for empty input), without itself creating a blank
+line. One packed bit limits source to <2 GiB. Source Arc sharing with CSS
+preparation and mappings back to original source spans are verified. Actual
+widths, caret hit testing and line geometry are not implemented by this module.
+
+**All 19,346 original Unicode 18 LineBreakTest strings pass**, comparing every
+boundary and allowed/mandatory kind at one-byte and 4 KiB budgets. Five groups
+also test progress frontiers, quotas/cancellation/poisoning, UTF-8/empty/hard
+breaks, mixed iterator traversal, 100,000 combining marks, source sharing and
+bulk-run context against scalar steps. Raw resources/license reuse, generator,
+generated facts and fixture docs are SHA pinned. The generator does not use
+Olo or test expectations to decide boundaries; regeneration is byte-identical.
+Every isolated measurement control also passes all five groups on final code.
+
+Raw SA counts remain explicit: default AL treatment is permitted by UAX14 but
+is not Thai/Lao/Khmer/Myanmar browser segmentation. CSS strict/loose, word-break,
+overflow-wrap, nowrap/preserve-space policy, emergency grapheme boundaries,
+phase-II whitespace, width fitting, safe boundary reshaping, actual inline/
+block layout and painting remain. No CSS WPT, native pixels or website pass
+is inferred from Unicode corpus conformance.
+
+Measured before optimizing and retained the negative evidence. Initial bulk
+checks penalized multilingual scalar processing; an ASCII eligibility guard
+reduced work but left overhead. Final code selects bulk/no-bulk specialization
+once per worker slice, with cancellation checked before eligibility scanning.
+Portable SIMD letter/digit runs preserve the exact scalar lookahead/context
+frontier. Focused property/pair paths and direct packed class IDs avoid
+unnecessary full-rule/table work. Full-rule, no-bulk and checked-class-table
+controls preserve identical facts and output. The direct ID invariant follows
+from private generated IDs (<49), LB1 resolution and two fixed bulk classes.
+
+Evidence/replay: **measurements/2026-11-05-linebreak{.json,-measure.py}**, plus
+checks/ELF evidence. Initial and guard JSON files retain **132 earlier frozen
+processes**; replay patches against final runtime source reproduce their source
+snapshots/hashes and pass git apply --check. Final **66 CPU0 processes**, three
+alternating samples, run without concurrent builds/tests/owned GUI/source
+mutations. All 79 measured source hashes match afterward. Parent 858b2818's
+four before-example hashes exactly match the preceding checkpoint's after
+hashes, independently confirming the parent binaries.
+
+Final large-case medians (µs; build/drop includes worker orchestration):
+
+| Scene / source bytes | Full-rule control | Default | No-bulk control | Class-table control | Stored offsets B |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Latin / 36,864 | 642.834 | 315.953 | 305.090 | 358.239 | 24,572 |
+| CJK / 45,056 | 307.133 | 309.100 | 303.071 | 332.041 | 49,148 |
+| Arabic / 53,248 | 506.545 | 404.457 | 392.465 | 438.873 | 16,380 |
+| Devanagari / 77,824 | 469.576 | 374.115 | 373.984 | 409.566 | 16,380 |
+| Thai default / 77,824 | 550.871 | 423.905 | 415.944 | 462.083 | 16,380 |
+| Emoji / 61,440 | 330.033 | 310.842 | 306.059 | 334.663 | 24,572 |
+| Joiners / 43,008 | 589.334 | 323.829 | 315.773 | 342.425 | 16,380 |
+| Hard breaks / 18,432 | 182.287 | 131.821 | 125.316 | 137.029 | 24,572 |
+| Alphanumeric word / 73,728 | 1,282.248 | 197.457 | 565.826 | 194.066 | 0 |
+| Combining / 530,432 | 2,185.149 | 2,404.206 | 2,211.133 | 2,472.438 | 8,188 |
+
+Default cold calls in that order: **307.090 / 320.441 / 404.106 / 373.346 /
+436.966 / 337.312 / 317.691 / 124.221 / 169.679 / 2,259.389 µs**. Medians of
+process max 4 KiB steps: **51.934 / 39.234 / 45.170 / 24.412 / 28.218 / 31.904 /
+37.949 / 39.551 / 16.654 / 660.542 µs**. Constructor and every raw/max observation
+remain in JSON. These are trusted synthetic library cases, not adversarial or
+UI frame acceptance. Residual no-bulk costs and combining outliers remain
+profiling work; no universal SIMD/latency speedup claim.
+
+Whole line-break process RSS: default **3,420–3,540 KiB**, full-rule
+**3,344–3,632**, no-bulk **3,528–3,568**, class-table **3,468–3,604**. User CPU:
+default **.58/.53/.53 s**, full-rule **.77/.74/.74**, no-bulk **.59/.56/.56**,
+class-table **.59/.57/.57**. Initial and guarded default CPU were
+**.58/.58/.58** and **.55/.55/.55**; wall maxima/context switches vary. No
+individual timing difference's cause is established solely by these counters.
+
+Common parent/current 10k style build medians (ms): bare **15.064→14.566**,
+uniform **21.860→21.360**, varying **29.673→29.048**; max slice medians (µs)
+**392→383 / 639→601 / 8,047→768**. Style-tree payload is unchanged. Raw width/
+margin-left/color/missing-height (ns): **11.631→10.672 / 11.271→10.580 /
+7.689→7.740 / 2.868→2.898**. Previously observed style regressions/outliers
+remain open; unrelated module/link changes and sampling are not a causal fix.
+Cached ~4 KiB shaping paragraphs (µs), Latin/Arabic/Hebrew/Devanagari/Thai:
+**250.377→250.946 / 328.723→324.289 / 329.903→322.481 / 267.351→265.332 /
+148.110→147.301**. Parent/current shaping process CPU **.46/.45/.44→.46/.45/.43 s**.
+Preparation unchanged/collapsed/multilingual/pre/1,000 spans/long-word (µs):
+**56.602→56.251 / 114.749→118.897 / 233.843→233.753 / 54.632→57.816 /
+140.908→145.078 / 1.729→1.781**. Keep mixed results and raw scheduler counters.
+
+New line-break example ELF .text/.rodata **293,427 / 75,012 B**; parent/current
+common shaping **1,681,520/513,276→1,672,416/512,636 B**. Debug/file bytes are
+separate; these include benchmark scaffolding and are not a stripped browser
+size or full-engine RSS claim. No network, JS, GPU, page or Chrome speed claim.
+
+**193 default / 192 all-feature release tests pass** after the class
+representation change. All five line-break groups are rerun on final dispatch/
+cancellation code in default, all-feature and each isolated control config.
+Strict default/all-feature all-target release clippy, formatting, source/hash/
+regeneration/replay-patch/diff checks pass. Workspace release build: cargo
+**7.97 s**, wall **8.17 s**, with existing GPUI/proc-macro-error2 notices. No GUI
+was started, so no native visual/reload acceptance is implied; no personal
+session install/upgrade/reload. Owned scratch is removed after pushing.
+
+Full goal remains active: **0/3,000 website combinations, 0/100 websites**.
+Next: CSS/phase-II whitespace policy and actual line fitting/styled shaping,
+then original inline/block layout and native drawing. Networking/V8, full CSS,
+isolation, native shell, universal dark/night behavior and structured browser/
+Olo/password/passkey integrations remain substantial open work.
