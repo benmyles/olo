@@ -2663,3 +2663,88 @@ Next: CSS/phase-II whitespace policy and actual line fitting/styled shaping,
 then original inline/block layout and native drawing. Networking/V8, full CSS,
 isolation, native shell, universal dark/night behavior and structured browser/
 Olo/password/passkey integrations remain substantial open work.
+
+## 2026-11-06 — retained horizontal text geometry
+
+GitHub access is restored: origin/browser was verified at a88b8775 before this
+milestone. Implemented original `text::layout`, joining prepared source,
+Unicode opportunities and retained native glyph runs. Width-independent
+integer cluster/edge indices and safe glyph slices avoid copying or reshaping
+whole lines on resize. Unsafe edge windows reshape with font/script/language
+and paragraph context. Nonmonotonic ligature advances cannot hide a later
+fitting candidate. LF has bidi/source identity without a visible glyph; blank
+lines and LF-only paragraphs work. Initial SP trimming/hanging, break-spaces,
+no-wrap, visual bidi fragments, alignment/last alignment, CSS line height and
+font-scope/direction/whitespace binding are covered. Worker progress,
+cancellation, quotas and poisoned publication remain explicit. Job sizes on
+this x86_64 build: TextJob **400 B**, layout Job **432 B**.
+
+Three **original** tiny fonts reproduce cross-space ligatures, a narrowing
+longer candidate and contextual prefix deletion. FontTools 4.60.1 lives only
+in an owned /var/tmp venv; font timestamps are fixed. Font and oracle
+regeneration is byte exact. Independent native HarfBuzz **15.0.0** brute-force
+fitting supplies **216 layouts**, checked at one/128-candidate budgets for
+line ranges, advances (1e-9 px arithmetic tolerance) and exact glyph IDs,
+clusters and positions. Nine regression groups additionally cover SP hanging,
+LF/empty/no-wrap, RTL/alignment, computed styles, limits, source provenance,
+cancellation and error poisoning. This is not a Chrome/Skia/pixel reference.
+
+Final release measurements: **36 alternating CPU0 processes**, 100 inline
+rounds each, no concurrent builds/tests/owned GUI/source edits; all nine
+control geometry/glyph hashes agree. Parent a88b8775 common binaries were
+frozen before source changes. `baseline-inline-reshape` is an isolated
+counterfactual in the same fitter, not an earlier browser. At widths
+120/400/1,000 CSS px, median resize/drop µs (reshape control → retained):
+
+| Scene / source | 120 | 400 | 1,000 |
+| --- | ---: | ---: | ---: |
+| Latin / 4,096 B | 352.262 → 85.076 | 213.174 → 31.651 | 165.852 → 20.839 |
+| Arabic / 6,400 B | 466.890 → 60.493 | 324.772 → 31.977 | 283.047 → 22.075 |
+| Mixed Latin/Hebrew/Arabic / 4,864 B | 505.033 → 94.538 | 462.389 → 70.160 | 454.266 → 67.831 |
+
+Retained text geometry payload is **77,848 / 71,704 / 92,184 B** for those
+scenes, excluding shared source/fonts/base glyphs, headers/capacity/hash and
+allocator overhead. At width 400 the layout payload is **10,272 / 6,144 /
+25,336 B**, versus control **107,628 / 119,040 / 130,448 B**. All nine default
+resize cases reshape **zero** glyphs; unsafe cuts are exercised separately by
+the adversarial references. The payload is not total retained memory/RSS.
+Inline process RSS: default **7,076–7,228 KiB**, control **7,188–7,464 KiB**;
+process CPU **.20/.21/.20 vs .48/.48/.48 s**. These include fonts/harness/all
+scenes and are not a browser footprint.
+
+Whole prepare/shape/break/index build/drop medians are **332.068 / 580.430 /
+652.520 µs**. Maximum observed index constructors **16.105 / 16.566 / 17.345
+µs**; index 128-point slices **26.580 / 335.884 / 9.159 µs**. Worst observed
+64-candidate resize slices across widths **18.633 / 323.380 / 21.022 µs**.
+Keep outliers and scheduler counters; these are observed worker slices, not
+hard latency guarantees or UI/frame/scroll tests.
+
+Common parent/current 10k style build medians (ms): bare **14.159→14.285**,
+uniform **21.000→20.979**, varying **27.954→28.250**; style payload unchanged.
+Cached ~4 KiB paragraph medians (µs): Latin **246.383→273.308**, Arabic
+**318.917→311.532**, Hebrew **316.550→311.187**, Thai **145.853→147.307**.
+Latin remains an open variation/regression: the reverse-order pair is
+**242.303/242.151 µs**, while original-order samples are slower in current.
+Shaping process CPU is equal **.44/.43/.44 s** in both variants. The initial
+measurement also showed Latin variation; it is preserved with its one-change
+replay patch. Restoring the control-free byte-class scan avoids unnecessary
+UTF-8 decoding, but does **not** establish a fix for this timing difference.
+Default line-break large Latin/Arabic/long-word (µs): **309.309→309.408 /
+401.432→404.027 / 164.503→169.845**; process CPU parent **.53/.53/.53**, current
+**.54/.53/.53 s**. No universal performance acceptance follows.
+
+**202 default / 201 all-feature release tests pass**. Strict default/all-feature
+all-target clippy, package formatting, hash/regeneration and diff checks pass;
+full workspace release build passes (see exact wall time/check commands in
+`measurements/2026-11-06-inline-checks.json`). Raw initial/final results,
+binary/source hashes and replay script are kept beside it. No GUI was started;
+no pixel, theme/scale, reload or page acceptance is implied. No personal
+session installation/upgrade/reload. Owned scratch is removed after pushing.
+
+Remaining text work includes mixed inline styles/boxes and fallback line-box
+heights, tab stops, other-Zs hanging outside break-spaces, complex visual-edge
+trimming, soft hyphens, dictionaries, CSS tailoring/spacing/justification,
+caret/hit testing and device/subpixel raster geometry. Next: original inline/
+block box layout and native drawing. Networking/V8, full CSS, isolation, shell,
+universal dark/night and agent/Olo/password/passkey integrations remain open.
+The full goal remains active: **0/100 websites, 0/3,000 website combinations**.

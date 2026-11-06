@@ -51,6 +51,8 @@ baseline-linebreak-ascii = []
 baseline-linebreak-runs = []
 # Same class facts via a checked table decode instead of direct packed IDs.
 baseline-linebreak-class-table = []
+# Measurement control: reshape each visual fragment instead of sharing safe glyph slices.
+baseline-inline-reshape = []
 
 [dependencies]
 memchr = "2"

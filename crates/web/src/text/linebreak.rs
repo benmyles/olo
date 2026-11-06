@@ -68,6 +68,9 @@ pub struct Breaks {
     complex_context_scalars: usize,
 }
 impl Breaks {
+    pub fn get(&self, index: usize) -> Option<Opportunity> {
+        self.offsets.get(index).copied().map(decode).or_else(|| (index == self.offsets.len()).then_some(Opportunity { offset: self.source.len() as u32, kind: Kind::Required }))
+    }
     pub fn source(&self) -> &Arc<str> {
         &self.source
     }

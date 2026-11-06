@@ -1,0 +1,12 @@
+--- a/crates/web/src/text/shaping/paragraph.rs
++++ b/crates/web/src/text/shaping/paragraph.rs
+@@ -222,8 +222,7 @@
+             return Err(Error::Unsupported("vertical paragraph itemization"));
+         }
+         let analysis = Analysis::new(source, base, limits.text_bytes, cancel)?;
+-        let has_controls = analysis.classes.iter().any(|c| matches!(c, unicode_bidi::BidiClass::B | unicode_bidi::BidiClass::S));
+-        if (has_controls && (!allow_lf || analysis.source.char_indices().any(|(i, c)| matches!(analysis.classes[i], unicode_bidi::BidiClass::B | unicode_bidi::BidiClass::S) && c != '\n')))
++        if analysis.source.char_indices().any(|(i, c)| matches!(analysis.classes[i], unicode_bidi::BidiClass::B | unicode_bidi::BidiClass::S) && !(allow_lf && c == '\n'))
+             || analysis.source.contains(['\u{2028}', '\u{c}'])
+         {
+             return Err(Error::Unsupported("paragraph controls require CSS whitespace/line processing"));

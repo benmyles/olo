@@ -64,6 +64,9 @@ impl Analysis {
     pub fn paragraphs(&self) -> impl Iterator<Item = (Range<usize>, u8)> + '_ {
         self.paragraphs.iter().map(|p| (p.range.clone(), p.level.number()))
     }
+    pub fn paragraph_level(&self, byte: usize) -> Option<u8> {
+        self.paragraphs.get(self.paragraphs.partition_point(|p| p.range.end <= byte)).filter(|p| p.range.contains(&byte)).map(|p| p.level.number())
+    }
     pub fn visual_runs(&self, line: Range<usize>) -> Result<Vec<VisualRun>> {
         if line.start > line.end || line.end > self.source.len() || !self.source.is_char_boundary(line.start) || !self.source.is_char_boundary(line.end) {
             return Err(Error::Invalid);
@@ -71,7 +74,7 @@ impl Analysis {
         if line.is_empty() {
             return Ok(Vec::new());
         }
-        let paragraph = self.paragraphs.iter().find(|p| p.range.start <= line.start && p.range.end >= line.end).ok_or(Error::Invalid)?;
+        let paragraph = self.paragraphs.get(self.paragraphs.partition_point(|p| p.range.end <= line.start)).filter(|p| p.range.start <= line.start && p.range.end >= line.end).ok_or(Error::Invalid)?;
         // Copy only this line's byte data, never the entire paragraph per line. The
         // dependency applies L1/L2 against already-resolved paragraph embedding levels.
         let p = ParagraphInfo { range: 0..line.len(), level: paragraph.level };
@@ -97,6 +100,8 @@ impl Default for ParagraphLimits {
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ParagraphReport {
+    /// Layout-mode LF controls, retained in bidi/source data without glyphs.
+    pub hard_breaks: usize,
     /// No candidate mapped every non-ignorable scalar in this grapheme.
     pub missing_clusters: usize,
     /// No candidate supported the requested UVS; ordinary base coverage was used.
@@ -116,8 +121,34 @@ pub struct Paragraph {
     pub runs: Box<[Run]>,
     pub report: ParagraphReport,
     pub font_size: f64,
+    pub language: Box<str>,
+    request: FontRequest,
+    font_context: u64,
 }
 impl Paragraph {
+    pub fn request(&self) -> &FontRequest {
+        &self.request
+    }
+    pub fn font_context(&self) -> u64 {
+        self.font_context
+    }
+    /// Shaping context for a source interval; excludes its paragraph's LF.
+    pub fn context_range(&self, range: Range<usize>) -> Result<Range<usize>> {
+        let p = self
+            .analysis
+            .paragraphs
+            .get(self.analysis.paragraphs.partition_point(|p| p.range.end <= range.start))
+            .filter(|p| range.start >= p.range.start && range.end <= p.range.end)
+            .ok_or(Error::Invalid)?;
+        let mut end = p.range.end;
+        if end > p.range.start && self.analysis.source.as_bytes()[end - 1] == b'\n' {
+            end -= 1;
+        }
+        if range.end > end {
+            return Err(Error::Invalid);
+        }
+        Ok(p.range.start..end)
+    }
     pub fn glyph_payload_bytes(&self) -> usize {
         self.runs.iter().map(Run::glyph_payload_bytes).sum()
     }
@@ -164,15 +195,37 @@ pub struct ParagraphJob<'a> {
     progress: Progress,
     report: ParagraphReport,
     failed: bool,
+    allow_lf: bool,
 }
 impl<'a> ParagraphJob<'a> {
     pub fn new(engine: &'a mut Engine, scope: &'a Scope, request: FontRequest, source: Arc<str>, base: BaseDirection, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
+        Self::build(engine, scope, request, source, base, limits, cancel, false)
+    }
+    /// Layout input: LF ends a bidi paragraph and has no glyph. Tabs and other
+    /// unprocessed controls remain unsupported until their layout policies exist.
+    pub fn for_layout(engine: &'a mut Engine, scope: &'a Scope, request: FontRequest, source: Arc<str>, base: BaseDirection, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
+        Self::build(engine, scope, request, source, base, limits, cancel, true)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        engine: &'a mut Engine,
+        scope: &'a Scope,
+        request: FontRequest,
+        source: Arc<str>,
+        base: BaseDirection,
+        limits: ParagraphLimits,
+        cancel: Option<&'a AtomicBool>,
+        allow_lf: bool,
+    ) -> Result<Self> {
         check(cancel)?;
         if request.axes.writing_mode != WritingMode::HorizontalTb {
             return Err(Error::Unsupported("vertical paragraph itemization"));
         }
         let analysis = Analysis::new(source, base, limits.text_bytes, cancel)?;
-        if analysis.classes.iter().any(|c| matches!(c, unicode_bidi::BidiClass::B | unicode_bidi::BidiClass::S)) || analysis.source.contains(['\u{2028}', '\u{c}']) {
+        let has_controls = analysis.classes.iter().any(|c| matches!(c, unicode_bidi::BidiClass::B | unicode_bidi::BidiClass::S));
+        if (has_controls && (!allow_lf || analysis.source.char_indices().any(|(i, c)| matches!(analysis.classes[i], unicode_bidi::BidiClass::B | unicode_bidi::BidiClass::S) && c != '\n')))
+            || analysis.source.contains(['\u{2028}', '\u{c}'])
+        {
             return Err(Error::Unsupported("paragraph controls require CSS whitespace/line processing"));
         }
         let selected = scope.first_available(&request, cancel).map_err(Error::from)?;
@@ -233,7 +286,7 @@ impl<'a> ParagraphJob<'a> {
                 following = Some(clusters[i].script);
             }
         }
-        let primary = if clusters.is_empty() { None } else { Some(engine.font(&selected)?.0) };
+        let primary = if clusters.iter().all(|c| &analysis.source[c.range.clone()] == "\n") { None } else { Some(engine.font(&selected)?.0) };
         Ok(Self {
             engine,
             scope,
@@ -251,6 +304,7 @@ impl<'a> ParagraphJob<'a> {
             progress: Progress::default(),
             report: ParagraphReport::default(),
             failed: false,
+            allow_lf,
         })
     }
     pub fn for_style(engine: &'a mut Engine, scope: &'a Scope, style: &Style, source: Arc<str>, base: BaseDirection, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
@@ -258,6 +312,13 @@ impl<'a> ParagraphJob<'a> {
             return Err(Error::Stale);
         }
         Self::new(engine, scope, style.font().request.clone(), source, base, limits, cancel)
+    }
+    pub fn for_layout_style(engine: &'a mut Engine, scope: &'a Scope, style: &Style, source: Arc<str>, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
+        if style.font().context() != scope.context() {
+            return Err(Error::Stale);
+        }
+        let base = if style.axes().direction == crate::css::style::Direction::Rtl { BaseDirection::Rtl } else { BaseDirection::Ltr };
+        Self::for_layout(engine, scope, style.font().request.clone(), source, base, limits, cancel)
     }
     pub fn progress(&self) -> Progress {
         self.progress
@@ -291,6 +352,7 @@ impl<'a> ParagraphJob<'a> {
             return Err(Error::Limit);
         }
         let para = self.analysis.paragraphs.get(p.paragraph).ok_or(Error::Invalid)?;
+        let context_end = para.range.end - usize::from(self.allow_lf && self.analysis.source.as_bytes()[para.range.end - 1] == b'\n');
         let run = self.engine.shape_run(
             p.font.selection(),
             self.analysis.source.clone(),
@@ -301,8 +363,8 @@ impl<'a> ParagraphJob<'a> {
                 language: Some(self.scope.language()),
                 features: &[],
                 beginning_of_text: p.range.start == para.range.start,
-                end_of_text: p.range.end == para.range.end,
-                context: Some((para.range.start, para.range.end)),
+                end_of_text: p.range.end == context_end,
+                context: Some((para.range.start, context_end)),
             },
             self.cancel,
         )?;
@@ -334,8 +396,8 @@ impl<'a> ParagraphJob<'a> {
             return Ok(self.progress);
         }
         let source = self.analysis.source.clone();
-        let primary = self.primary.as_ref().ok_or(Error::Invalid)?.clone();
-        let charmap = primary.model.charmap();
+        let primary = self.primary.clone();
+        let charmap = primary.as_ref().map(|p| p.model.charmap());
         for _ in 0..budget {
             check(self.cancel)?;
             let Some(cluster) = self.clusters.get(self.next) else {
@@ -346,6 +408,15 @@ impl<'a> ParagraphJob<'a> {
             let range = cluster.range.clone();
             let (level, script, paragraph) = (cluster.level, cluster.script, cluster.paragraph);
             let text = &source[range.clone()];
+            if self.allow_lf && text == "\n" {
+                self.flush()?;
+                self.next += 1;
+                self.progress.clusters += 1;
+                self.report.hard_breaks += 1;
+                continue;
+            }
+            let primary = primary.as_ref().ok_or(Error::Invalid)?;
+            let charmap = charmap.as_ref().ok_or(Error::Invalid)?;
             let mut previous = None;
             let mut covered = true;
             for c in text.chars() {
@@ -395,6 +466,14 @@ impl<'a> ParagraphJob<'a> {
         if !self.progress.finished {
             return Err(Error::Incomplete);
         }
-        Ok(Paragraph { analysis: self.analysis, runs: self.runs.into_boxed_slice(), report: self.report, font_size: self.request.size })
+        Ok(Paragraph {
+            analysis: self.analysis,
+            runs: self.runs.into_boxed_slice(),
+            report: self.report,
+            font_size: self.request.size,
+            language: Box::from(self.scope.language()),
+            request: self.request,
+            font_context: self.scope.context(),
+        })
     }
 }

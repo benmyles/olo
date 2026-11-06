@@ -1680,3 +1680,79 @@ worker-library cases. Residual mixed-workload variation remains explicit.
 
 Primary references: [UAX14-57](https://www.unicode.org/reports/tr14/tr14-57.html),
 [Unicode 18 corpus](https://www.unicode.org/Public/18.0.0/ucd/auxiliary/LineBreakTest.txt).
+
+## Initial retained horizontal text geometry
+
+`text::layout` connects prepared source, Unicode break opportunities and shaped
+paragraphs. This is a worker library, with structured source/glyph/line data
+for later painting and agent inspection; it does not yet lay out a DOM or draw
+a page. `ParagraphJob::for_layout` accepts LF as a hard paragraph separator,
+keeps it in bidi/source analysis, and excludes it from shaping context and
+glyph/fallback counts. The older `new` entry still rejects paragraph controls.
+LF-only input uses no shaping font cache. Paragraphs retain their original
+font request, scope context and language for boundary reshaping/style binding.
+
+Build `Arc<Text>` with `TextJob` from the **same source Arc** in Prepared,
+Paragraph and Breaks. Width-independent geometry stores logical cluster edges
+and integer advance prefixes (16 B each), break points (32 B each), per-run
+indices and unsafe-edge shape results. Monotonicity checks measure adjacent
+candidate endpoints rather than repeatedly summing the whole paragraph.
+`Job` fits this retained text at a width and yields completed lines in bounded
+candidate slices. Resize jobs share base glyph arrays; certified safe cuts use
+slices, while unsafe edges reshape the smallest enclosing safe windows with
+original font/script/language/paragraph context. No graphics context, timer or
+idle task is created. Constructor, step, finish and font work all belong on
+workers. Step budgets count candidates, not elapsed time; quotas/cancellation
+are cooperative, not a hard CPU sandbox or fallible-allocation guarantee.
+
+The initial scope is horizontal, one font request/size, uniform whitespace,
+with font fallback and script/bidi runs. It handles greedy fitting, oversized
+unbreakable words, SP edge trimming, preserved-space hanging, conditional
+hanging at hard/end breaks, break-spaces opportunities, LF/blank lines and
+start/end/left/right/center plus last-line alignment. Fragment order uses
+line-specific bidi L1/L2 results. Integer font-unit sums convert to CSS pixels
+once per original run, avoiding subtracting large floating-point prefixes.
+Fonts with ligatures across spaces and context-deleted glyphs exercise unsafe
+cuts; a narrower later candidate is still considered when advances are
+nonmonotonic. Start-edge unsafe windows also delay the early-overflow exit.
+
+`Options::for_style`, `ParagraphJob::for_layout_style` and `Job::for_style`
+bind the computed font/context, CSS direction, line height and alignment to
+this stage. They reject vertical text, nonzero letter/word spacing,
+justification and non-normal word-break/overflow-wrap. `TextJob` rejects mixed
+whitespace settings, tabs and unsupported Cc handling. Default limits cap
+source at 64 KiB, cluster/break indices and fragments at 131,072 each, lines at
+65,536, cached boundary runs at 512/32,768 glyphs, reshape input/output at
+4 MiB bytes/4,194,304 glyphs, and candidate work at 4,194,304. Errors poison
+publication, cancellation is explicit, and immutable outputs are Send + Sync.
+
+**Remaining CSS behavior is substantial.** General inline boxes and mixed
+fonts/sizes/styles, fallback-derived line-box heights/vertical alignment,
+visual-edge trimming in complex mixed bidi, other-Zs hanging outside
+break-spaces, tab stops, soft-hyphen realization, dictionaries, CSS break
+classes/tailoring/emergency wrapping, justification, text transforms,
+decoration, selection/caret/hit testing, fragmentation, block layout and
+rasterization remain. Font-unit geometry is not Chromium's device/subpixel
+shaping/raster scale. The lower-level Options API is not a complete CSS
+conformance API; unsupported/missing behavior is not a website pass.
+
+`tests/inline-fixtures` contains three reproducible original adversarial fonts
+and **216 independent native HarfBuzz 15 layouts**. A brute-force external
+fitter reshapes every candidate, including ones past overflow. Tests check
+ranges/advances/glyph integers at one- and 128-candidate slices. Nine groups
+also check literal whitespace/LF/bidi/style behavior, quotas, cancellation,
+provenance and poisoned results. There is no independent mixed-bidi layout
+or Chrome pixel oracle in this set.
+
+`examples/inline_bench` measures build/drop, retained resize/drop, constructor
+and worker-slice maxima, geometry payload and glyph/geometry hashes. The
+isolated `baseline-inline-reshape` control reshapes every visual fragment;
+all nine hashes agree with the retained-slice path. Raw parent/common and
+control measurements, including the initial variant and its replay patch,
+are in `measurements/2026-11-06-inline*`. Payload excludes shared source/fonts/
+base glyphs, collection capacity/headers and hash/allocator overhead; process
+RSS is separately recorded. No page, idle/frame, GPU or Chrome speed claim.
+
+References: [CSS Text phase II](https://www.w3.org/TR/css-text-3/#white-space-phase-2),
+[shaping across breaks](https://www.w3.org/TR/css-text-3/#shaping-line-breaking),
+[CSS Inline line layout](https://drafts.csswg.org/css-inline-3/#line-layout).

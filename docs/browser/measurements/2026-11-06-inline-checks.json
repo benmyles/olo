@@ -1,0 +1,135 @@
+[
+  {
+    "name": "default-tests",
+    "args": [
+      "cargo",
+      "test",
+      "--release",
+      "-p",
+      "olo-web"
+    ],
+    "exit": 0,
+    "wall_seconds": 21.320584508001048
+  },
+  {
+    "name": "default-examples",
+    "args": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "olo-web",
+      "--examples"
+    ],
+    "exit": 0,
+    "wall_seconds": 0.16958746800082736
+  },
+  {
+    "name": "all-feature-tests",
+    "args": [
+      "cargo",
+      "test",
+      "--release",
+      "-p",
+      "olo-web",
+      "--all-features"
+    ],
+    "exit": 0,
+    "wall_seconds": 15.021525256001041
+  },
+  {
+    "name": "all-feature-clippy",
+    "args": [
+      "cargo",
+      "clippy",
+      "--release",
+      "-p",
+      "olo-web",
+      "--all-targets",
+      "--all-features",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit": 0,
+    "wall_seconds": 2.285797475997242
+  },
+  {
+    "name": "control-build",
+    "args": [
+      "cargo",
+      "build",
+      "--release",
+      "-p",
+      "olo-web",
+      "--example",
+      "inline_bench",
+      "--features",
+      "baseline-inline-reshape"
+    ],
+    "exit": 0,
+    "wall_seconds": 3.8272353800057317
+  },
+  {
+    "name": "workspace-build",
+    "args": [
+      "cargo",
+      "build",
+      "--release",
+      "--workspace"
+    ],
+    "exit": 0,
+    "wall_seconds": 3.7121443069991074
+  },
+  {
+    "name": "format",
+    "args": [
+      "cargo",
+      "fmt",
+      "-p",
+      "olo-web",
+      "--",
+      "--check"
+    ],
+    "exit": 0,
+    "wall_seconds": 0.3120116899954155
+  },
+  {
+    "name": "diff",
+    "args": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit": 0,
+    "wall_seconds": 0.005328986997483298
+  },
+  {
+    "name": "default-clippy",
+    "args": [
+      "cargo",
+      "clippy",
+      "--release",
+      "-p",
+      "olo-web",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit": 0,
+    "log_tail": "    Finished `release` profile [optimized + debuginfo] target(s) in 2.87s"
+  },
+  {
+    "name": "fixture-regeneration",
+    "exit": 0,
+    "method": "fontTools 4.60.1 original font generation and native HarfBuzz 15 reference regeneration compared byte-exact by SHA-256"
+  },
+  {
+    "name": "measurement-replay-hashes",
+    "exit": 0,
+    "processes": 36,
+    "source_files": 85,
+    "control_geometry_equal": true
+  }
+]

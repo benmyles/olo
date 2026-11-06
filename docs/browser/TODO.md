@@ -151,6 +151,17 @@ item means implemented and verified; a partial implementation stays open.
   cancellable worker scans, unchanged text sharing, 12-byte encoded maps and
   binary byte lookups. 3,925 independent regex references and 52 pinned WPT
   acceptance ports pass; no CSSOM/layout/website acceptance implied.
+- [x] Initial retained horizontal text geometry for uniform font request/size
+  and whitespace: safe shared glyph slices, unsafe-edge reshaping, width fitting,
+  SP trimming/hanging, LF/blank lines, bidi fragments and alignment/style binding.
+  216 independent HarfBuzz layouts at two slice budgets; nine regression groups;
+  measured release resize and whole-fragment-reshape control. This is a library
+  stage, not complete CSS Inline or page rendering.
+- [ ] Profile the remaining common Latin paragraph variation after layout
+  metadata/LF work: final cached ~4 KiB parent/current medians 246.383→273.308
+  µs; reverse-order pair 242.303/242.151 µs and whole-process CPU equal.
+  Fast control validation was restored; these data do not establish a fix or
+  identify the cause. Preserve both measurement sets and scheduler counters.
 - [ ] Complete text integration: phase-II whitespace trimming/tab stops/hanging,
   soft-wrap opportunities, styled shaping/spacing, markup
   bidi contexts, script-extension/paired-punctuation itemization, script/GSUB
@@ -239,8 +250,9 @@ HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostic
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.
 
-Next: phase-II whitespace and styled inline text/line breaking, then
-original inline/block layout and native drawing. Initial native font/shaping
+Next: connect retained text geometry to original inline/block boxes and native
+drawing; complete mixed-style/visual-edge whitespace, other-Zs hanging, tab
+stops, CSS tailoring and line-box metrics. Initial native font/shaping
 work is verified at glyph/Unicode/library scope; no website acceptance follows.
 Web fonts/sanitization, complete CSS/live invalidation, networking/V8, the native
 shell, universal dark mode and agent/Olo/password/passkey integration remain.
