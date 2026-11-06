@@ -474,6 +474,10 @@ impl<B: Backend + 'static> AnvilState<B> {
             return;
         }
         let Some(p) = self.take_placement(&window) else { return };
+        // Back into a group on screen: the group's size now, not the one
+        // saved (`returning_group_size`).
+        let display = self.saved_display(&p);
+        let group = self.returning_group_size(&window, &p.grouping, display.as_ref());
         // A fixed-size window (an alert) is the size it asks for now: its
         // text, or the version drawing it, may have changed since.
         if p.width > 0
@@ -481,7 +485,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             && crate::shell::tiling::resizable(&window)
             && let Some(toplevel) = window.0.toplevel()
         {
-            toplevel.with_pending_state(|state| state.size = Some((p.width, p.height).into()));
+            let size = group.unwrap_or_else(|| (p.width, p.height).into());
+            if group.is_some_and(|g| g != (p.width, p.height).into()) {
+                info!(window = window.id(), app_id = window.app_id(), w = size.w, h = size.h, "back into its group: at the group's size");
+            }
+            toplevel.with_pending_state(|state| state.size = Some(size));
         }
         *window.meta().returning.borrow_mut() = Some(p);
     }
