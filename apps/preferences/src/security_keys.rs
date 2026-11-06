@@ -12,7 +12,7 @@
 use olo_sync::Mutex;
 use std::sync::{
     Arc, OnceLock,
-    atomic::{AtomicBool, AtomicU32, Ordering},
+    atomic::{AtomicBool, Ordering},
     mpsc::{Sender, channel},
 };
 
@@ -42,10 +42,26 @@ struct Plugged {
 }
 
 struct Doing {
+    /// What to do now, in full (where to touch, and when).
     message: String,
+    /// The step, in a few words (the bar's label).
+    step: &'static str,
     /// Touches had (of two).
     touched: u32,
     cancel: Arc<AtomicBool>,
+}
+
+/// Where to touch a key, said once in the steps and again as it waits.
+const WHERE: &str = "its gold contact (on a YubiKey Nano, the gold edge at its end)";
+
+/// What setting up says as the key waits for touch `a`.
+fn asking(a: olo_fido::Asked) -> String {
+    match (a.touch, a.again) {
+        (1, false) => format!("Touch the key now: its light is blinking. Touch {WHERE}."),
+        (1, true) => format!("The key stopped waiting with no touch, and is blinking again: touch {WHERE} now."),
+        (_, false) => "Got it. Touch the key once more: its light is blinking again.".into(),
+        (_, true) => "The key stopped waiting with no touch, and is blinking again: touch it once more now.".into(),
+    }
 }
 
 #[derive(Default)]
@@ -152,7 +168,7 @@ fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, device: &Dev
     {
         let mut s = sh.lock().unwrap();
         (s.error, s.note) = (None, None);
-        s.doing = Some(Doing { message: "Checking your password…".into(), touched: 0, cancel: cancel.clone() });
+        s.doing = Some(Doing { message: "Checking your password…".into(), step: "Checking your password", touched: 0, cancel: cancel.clone() });
     }
     proxy.send(Msg::Redraw);
     let checked = olo_system::auth::check_password(me, password);
@@ -169,12 +185,13 @@ fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, device: &Dev
         });
         return;
     }
-    let asked = AtomicU32::new(0);
-    let touch = || {
-        let n = asked.fetch_add(1, Ordering::Relaxed);
+    tracing::info!(key = %device.name, "setting a security key up: the password checked, waiting for its touches");
+    let touch = |a: olo_fido::Asked| {
+        tracing::info!(touch = a.touch, again = a.again, "the security key waits for a touch");
         if let Some(d) = sh.lock().unwrap().doing.as_mut() {
-            d.touched = n;
-            d.message = if n == 0 { "Touch the key (its light blinks).".into() } else { "Touch it once more.".into() };
+            d.touched = u32::from(a.touch) - 1;
+            d.step = if a.touch == 1 { "Waiting for the first touch" } else { "Waiting for the second touch" };
+            d.message = asking(a);
         }
         proxy.send(Msg::Redraw);
     };
@@ -186,12 +203,18 @@ fn set_up(sh: &Arc<Mutex<Shared>>, proxy: &olo_ui::Proxy, me: &str, device: &Dev
             let mut keys = olo_fido::seal::load(me);
             keys.push(sealed);
             match olo_fido::seal::save(me, &keys) {
-                Ok(()) => s.note = Some("The key is set up: a touch of it now does what typing your password does.".into()),
+                Ok(()) => {
+                    tracing::info!(key = %device.name, "a security key set up");
+                    s.note = Some("The key is set up: from now on, a touch of it does what typing your password does.".into());
+                }
                 Err(e) => s.error = Some(format!("The key couldn’t be kept ({e}).")),
             }
         }
-        Err(olo_fido::Error::Cancelled) => {}
-        Err(e) => s.error = Some(e.to_string()),
+        Err(olo_fido::Error::Cancelled) => tracing::info!("setting a security key up: cancelled"),
+        Err(e) => {
+            tracing::warn!(error = ?e, "setting a security key up failed");
+            s.error = Some(format!("{e} Choose Set Up… to try again."));
+        }
     }
 }
 
@@ -254,7 +277,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let sh = st.link.shared.lock().unwrap();
     let plugged = sh.plugged.clone();
     let set_up = sh.set_up.clone();
-    let doing = sh.doing.as_ref().map(|d| (d.message.clone(), d.touched, d.cancel.clone()));
+    let doing = sh.doing.as_ref().map(|d| (d.message.clone(), d.step, d.touched, d.cancel.clone()));
     let (error, note) = (sh.error.clone(), sh.note.clone());
     drop(sh);
     let link = st.link;
@@ -302,7 +325,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             }
         }
         if let Some(device) = &st.setting_up {
-            ui.add(StringView::new(format!("To set up the {}, type your password, then touch the key twice.", key_name(&device.name))).wrap(true));
+            let name = key_name(&device.name);
+            ui.add(StringView::new(format!("Setting up your {name} takes your password and two touches of the key:")).wrap(true));
+            ui.add(StringView::new("1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.").wrap(true));
+            ui.add(StringView::new(format!("2. When the key’s light starts blinking, touch {WHERE}. A touch before it blinks does nothing.")).wrap(true));
+            ui.add(StringView::new("3. When it blinks again, touch it once more.").wrap(true));
             ui.add(TextControl::new(st.password.clone()).label("Password:"));
             let typed = !st.password.read(ui.cx).text().is_empty();
             ui.add(buttons(vec![
@@ -315,8 +342,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     .into_any_element(),
             ]));
         }
-        if let Some((message, touched, cancel)) = doing {
-            ui.add(StatusBar::new(touched as f32 / 2.0).label(SharedString::from(message)).trailing(format!("{touched} of 2")));
+        if let Some((message, step, touched, cancel)) = doing {
+            ui.add(StringView::new(message).wrap(true));
+            ui.add(StatusBar::new(touched as f32 / 2.0).label(SharedString::from(step)).trailing(format!("{touched} of 2 touches")));
             ui.add(buttons(vec![Button::new("Cancel").on_click(move |_, _| cancel.store(true, Ordering::Relaxed)).into_any_element()]));
         } else if let Some(e) = error {
             ui.add(StringView::new(e).wrap(true));

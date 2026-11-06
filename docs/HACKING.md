@@ -5744,7 +5744,17 @@ uaccess) and CTAP2 itself (GetInfo, ClientPIN's key agreement in PIN
 protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
 
 * **Setting up** (Preferences ▸ Security ▸ Security Keys, `security_keys.rs`):
-  the password is checked through PAM, then two touches: a credential
+  the box says the steps first (the password, then a touch when the
+  key's light blinks, of its gold contact, on a Nano the gold edge at its
+  end; a touch before it blinks types a code, which app_server swallows,
+  so nothing happens), then what to do as each touch is waited for, with
+  the touches had. A key stops waiting for a touch after about 30 seconds
+  (a YubiKey answers "operation denied"): each touch is asked for again,
+  three times in all (`olo_fido::TOUCH_TRIES`, `Asked`), saying so, and
+  one never touched is "The key wasn't touched in time." (Ben's first
+  setup ran out while he touched the wrong part of his key: the box
+  said only "touch the key twice".)
+  The password is checked through PAM, then two touches: a credential
   made for Olo (relying party `olo.local`, not discoverable,
   `hmac-secret` on), then its secret for a random salt, which seals the
   password (XChaCha20-Poly1305 under HKDF of it, the user and credential
@@ -5786,7 +5796,9 @@ protocol 2 or 1, MakeCredential, GetAssertion with `hmac-secret`).
   ("never"); with the PAM stand-in (`OLO_PAM_CONFDIR`/`OLO_PAM_SERVICE`),
   `OLO_SUDO_REAL` and `OLO_POLKIT_HELPER` the whole thing runs headless.
   `cargo run -p olo-fido --example info` asks every key plugged in what it
-  is, without a touch. `cargo test -p olo-fido` (both PIN protocols
+  is, without a touch; `--example touch` runs setting up's two touches on
+  the first key plugged in (nothing kept, no password), every CTAPHID
+  message printed with when, to see what a key does. `cargo test -p olo-fido` (both PIN protocols
   against the soft key, cancelling, sealing).
 * **Olo Doctor** (`security_keys`): a key plugged in whose FIDO node isn't
   the person's to open is a finding, its fix

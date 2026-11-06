@@ -85,8 +85,8 @@ impl fmt::Display for Error {
             Error::Cancelled => write!(f, "Cancelled."),
             Error::Hid(ctap::HID_ERR_BUSY) => write!(f, "The key is busy with another request."),
             Error::Hid(c) => write!(f, "The key had a USB error ({c:#04x})."),
-            Error::Ctap(ctap::ERR_USER_ACTION_TIMEOUT) => write!(f, "The key wasn't touched in time."),
-            Error::Ctap(ctap::ERR_OPERATION_DENIED) => write!(f, "The key said no."),
+            // (A YubiKey gives up on a touch with "operation denied".)
+            Error::Ctap(ctap::ERR_USER_ACTION_TIMEOUT | ctap::ERR_OPERATION_DENIED) => write!(f, "The key wasn't touched in time."),
             Error::Ctap(ctap::ERR_PIN_REQUIRED) => write!(f, "The key wants its PIN, which Olo doesn't ask for yet."),
             Error::Ctap(c) => write!(f, "The key refused ({c:#04x})."),
             Error::Cbor => write!(f, "The key's answer couldn't be read."),
@@ -172,11 +172,40 @@ pub fn plugged(user: &str) -> Vec<Plugged> {
         .collect()
 }
 
+/// How many times setting up asks for each touch: the key stops waiting
+/// for one after about 30 seconds (a YubiKey answers "operation denied"),
+/// and someone finding where to touch it may need longer (Ben's first
+/// setup ran out while he touched the wrong part of his key).
+pub const TOUCH_TRIES: u32 = 3;
+
+/// Which touch setting up wants, as its key starts waiting for it: the
+/// first (a credential made on the key) or the second (its secret, which
+/// locks the password), and whether it's asked again (the key stopped
+/// waiting with no touch).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Asked {
+    pub touch: u8,
+    pub again: bool,
+}
+
+/// `f` (a request a touch answers), asked again when the key stops
+/// waiting for its touch, [`TOUCH_TRIES`] in all, `touch` told each time.
+fn touched<T>(which: u8, cancel: &AtomicBool, touch: &(dyn Fn(Asked) + Sync), mut f: impl FnMut(&Wait) -> Result<T>) -> Result<T> {
+    let mut n = 0;
+    loop {
+        let say = move || touch(Asked { touch: which, again: n > 0 });
+        let wait = Wait { cancel, touch: &say, limit: Duration::from_secs(40) };
+        match f(&wait) {
+            Err(Error::Ctap(ctap::ERR_OPERATION_DENIED | ctap::ERR_USER_ACTION_TIMEOUT)) if n + 1 < TOUCH_TRIES && !cancel.load(std::sync::atomic::Ordering::Relaxed) => n += 1,
+            r => return r,
+        }
+    }
+}
+
 /// Set key `device` up for `user`'s `password` (checked already): two
-/// touches, `touch` called as each is wanted. The caller keeps the
-/// result (`seal::save`).
-pub fn set_up(device: &Device, user: &str, password: &str, cancel: &AtomicBool, touch: &(dyn Fn() + Sync)) -> Result<Sealed> {
-    let wait = Wait { cancel, touch, limit: Duration::from_secs(40) };
+/// touches, `touch` told as each is wanted (each asked again if the key
+/// stops waiting for it). The caller keeps the result (`seal::save`).
+pub fn set_up(device: &Device, user: &str, password: &str, cancel: &AtomicBool, touch: &(dyn Fn(Asked) + Sync)) -> Result<Sealed> {
     let mut ch = busy_retry(cancel, || open(device))?;
     let info = ch.get_info()?;
     if !info.hmac_secret() {
@@ -185,10 +214,10 @@ pub fn set_up(device: &Device, user: &str, password: &str, cancel: &AtomicBool, 
     if info.make_credential_needs_pin() {
         return Err(Error::PinNeeded);
     }
-    let made = cred::make(&mut ch, user, &wait)?;
+    let made = touched(1, cancel, touch, |wait| cred::make(&mut ch, user, wait))?;
     let mut salt = [0u8; 32];
     getrandom::fill(&mut salt).map_err(|_| Error::Random)?;
-    let secret = cred::secret(&mut ch, info.pin_protocol(), &made.id, &salt, &wait)?;
+    let secret = touched(2, cancel, touch, |wait| cred::secret(&mut ch, info.pin_protocol(), &made.id, &salt, wait))?;
     seal::seal(&device.name, &made.aaguid, user, &made.id, &salt, &secret, password)
 }
 
@@ -343,6 +372,29 @@ mod tests {
         }
         // A touch asked for each make and each secret (not for `holds`).
         assert_eq!(touches.load(Ordering::Relaxed), 8);
+    }
+
+    /// A touch the key stopped waiting for is asked for again, up to
+    /// TOUCH_TRIES times, each said (which touch, and again); then it
+    /// gives up, saying the key wasn't touched in time.
+    #[test]
+    fn a_missed_touch_is_asked_for_again() {
+        let never = AtomicBool::new(false);
+        let asked = std::sync::Mutex::new(Vec::new());
+        let touch = |a: Asked| asked.lock().unwrap().push(a);
+        let mut key = soft::Soft::new([4; 32], Some(Duration::from_millis(30)));
+        key.misses = 2;
+        let mut ch = Channel::open(key).unwrap();
+        let made = touched(1, &never, &touch, |w| cred::make(&mut ch, "ben", w)).unwrap();
+        touched(2, &never, &touch, |w| cred::secret(&mut ch, 2, &made.id, &[1; 32], w)).unwrap();
+        // (The two missed asked no touch of their own: answered at once.)
+        assert_eq!(*asked.lock().unwrap(), [Asked { touch: 1, again: true }, Asked { touch: 2, again: false }]);
+        // Missed every time: given up, as one not touched in time.
+        let mut key = soft::Soft::new([4; 32], Some(Duration::from_millis(30)));
+        key.misses = TOUCH_TRIES as usize;
+        let mut ch = Channel::open(key).unwrap();
+        let e = touched(1, &never, &touch, |w| cred::make(&mut ch, "ben", w)).unwrap_err();
+        assert!(matches!(e, Error::Ctap(ctap::ERR_OPERATION_DENIED)) && e.to_string() == "The key wasn't touched in time.", "{e:?}");
     }
 
     #[test]

@@ -38,13 +38,17 @@ pub struct Soft {
     counter: u32,
     /// Touches it has taken (tests).
     pub touches: usize,
+    /// Waits for a touch it gives up on first (tests): each answered "no
+    /// touch came" (operation denied, as a YubiKey does when it stops
+    /// waiting) at once.
+    pub misses: usize,
 }
 
 impl Soft {
     /// A key with `master` as its secret, touched `touch_after` after it
     /// starts waiting (never with `None`).
     pub fn new(master: [u8; 32], touch_after: Option<Duration>) -> Soft {
-        Soft { master, cid: [0x50, 0x4F, 0x46, 0x54], incoming: None, out: VecDeque::new(), pending: None, touch_after, agreement: None, counter: 0, touches: 0 }
+        Soft { master, cid: [0x50, 0x4F, 0x46, 0x54], incoming: None, out: VecDeque::new(), pending: None, touch_after, agreement: None, counter: 0, touches: 0, misses: 0 }
     }
 
     /// The device it stands for.
@@ -110,6 +114,10 @@ impl Soft {
                 let params: Option<Value> = if params.is_empty() { None } else { ciborium::from_reader(params).ok() };
                 match self.cbor(command, params.as_ref()) {
                     Answer::Now(a) => self.reply(cid, 0x10, &a),
+                    Answer::OnTouch(_) if self.misses > 0 => {
+                        self.misses -= 1;
+                        self.reply(cid, 0x10, &[ctap::ERR_OPERATION_DENIED]);
+                    }
                     Answer::OnTouch(a) => self.pending = Some((self.touch_after.map(|d| Instant::now() + d), a)),
                 }
             }
