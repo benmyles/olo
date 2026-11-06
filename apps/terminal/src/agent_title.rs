@@ -119,30 +119,89 @@ fn answer(msg: &Value, set: &mut Set) -> Option<Value> {
 }
 
 /// `olo-terminal --mcp`: the server, until its agent closes its stdin.
-/// An upgrade (olo-session's SIGURG) makes it the new version in place,
-/// between messages, its stdin and stdout carried over: the agent sees
-/// nothing. (Neither agent starts a server again: one stopped as an old
-/// version, as olo-session stops what hasn't become the new one 90 s
-/// after an upgrade, was gone for the rest of the agent's session.)
+/// Neither agent starts a server again once it has gone (Claude Code
+/// till `/mcp` reconnects it, Codex till the session ends), so it stays
+/// as it is through upgrades: it doesn't become the new version
+/// (olo-session's SIGURG is left ignored; olo-session leaves alone what
+/// an agent started). A Codex server ended a few minutes after it had
+/// re-executed for the 22:27 upgrade on 2026-11-05, nothing saying why
+/// (the same in a test, with Codex's environment, carried on), and its
+/// session's titles failed from then on ("Transport closed"). The
+/// handover to Terminal (`--set-tab-title` through its instance socket)
+/// is kept the same from version to version. Its life is noted in
+/// `log_path()`: when it started, for whom, and how it ended.
 pub fn serve() -> std::process::ExitCode {
     let mut set = |title: &str, cwd: Option<&Path>| -> Result<String, String> {
         let tab = find_tab(cwd).ok_or("This session isn't in an Olo Terminal tab (or Terminal's setting for it is off).")?;
         hand_over(&tab, title)?;
         Ok(if title.is_empty() { "The tab's title is its own again.".into() } else { format!("The tab is titled \u{201c}{title}\u{201d}.") })
     };
-    let upgrade = olo_kit_base::restore::upgrade_signal();
+    note_life();
     let mut out = std::io::stdout().lock();
-    serve_on(0, upgrade.as_ref().map(std::os::fd::AsRawFd::as_raw_fd), &mut out, &mut set, &mut || {
-        let e = olo_kit_base::restore::exec_new_version();
-        eprintln!("olo-terminal --mcp: couldn't become the new version: {e}");
-    })
+    let mut why = "";
+    let code = serve_on(0, None, &mut out, &mut set, &mut || {}, &mut why);
+    note(&format!("ended: {why}"));
+    code
+}
+
+/// Where the servers' lives are noted (a few lines each; kept short).
+pub fn log_path() -> PathBuf {
+    let state = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/state"));
+    state.join("olo/terminal-mcp.log")
+}
+
+/// A line in the log: when, this process, `what`.
+fn note(what: &str) {
+    let path = log_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // (Kept to its last 64 KB.)
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 64 * 1024)
+        && let Ok(text) = std::fs::read_to_string(&path)
+    {
+        let keep = &text[text.len() - 32 * 1024..];
+        let keep = keep.find('\n').map_or(keep, |i| &keep[i + 1..]);
+        let _ = std::fs::write(&path, keep);
+    }
+    let when = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{when} pid {} {what}", std::process::id());
+    }
+}
+
+/// Note the start (for which program), and the end if a signal brings
+/// it (written from the handler: a fixed line, then exit).
+fn note_life() {
+    let ppid = std::os::unix::process::parent_id();
+    let parent = std::fs::read_to_string(format!("/proc/{ppid}/comm")).unwrap_or_default();
+    note(&format!("started for {} (pid {ppid}), version {}", parent.trim(), env!("CARGO_PKG_VERSION")));
+    static LOG: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+    static LINE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    let Ok(f) = std::fs::OpenOptions::new().append(true).open(log_path()) else { return };
+    let _ = LINE.set(format!("- pid {} ended by a signal\n", std::process::id()).into_bytes());
+    LOG.store(std::os::fd::IntoRawFd::into_raw_fd(f), std::sync::atomic::Ordering::Relaxed);
+    extern "C" fn ended(_: libc::c_int) {
+        let fd = LOG.load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(line) = LINE.get() {
+            // SAFETY: write(2) and _exit(2) are async-signal-safe; the
+            // line was made before the handler was set.
+            unsafe { libc::write(fd, line.as_ptr().cast(), line.len()) };
+        }
+        // SAFETY: as above.
+        unsafe { libc::_exit(0) };
+    }
+    for sig in [libc::SIGTERM, libc::SIGHUP, libc::SIGINT] {
+        // SAFETY: a handler that only writes and exits.
+        unsafe { libc::signal(sig, ended as *const () as libc::sighandler_t) };
+    }
 }
 
 /// The server's loop: requests read from `input` (a line each) into a
 /// buffer of its own, so none is half-read in a reader's buffer when it
 /// becomes the new version (`become_new`, once `upgrade` is readable and
 /// what came has been answered).
-fn serve_on(input: std::os::fd::RawFd, upgrade: Option<std::os::fd::RawFd>, out: &mut dyn Write, set: &mut Set, become_new: &mut dyn FnMut()) -> std::process::ExitCode {
+fn serve_on(input: std::os::fd::RawFd, upgrade: Option<std::os::fd::RawFd>, out: &mut dyn Write, set: &mut Set, become_new: &mut dyn FnMut(), why: &mut &'static str) -> std::process::ExitCode {
     let mut pending: Vec<u8> = Vec::new();
     let mut upgrading = false;
     let mut ended = false;
@@ -161,10 +220,12 @@ fn serve_on(input: std::os::fd::RawFd, upgrade: Option<std::os::fd::RawFd>, out:
             if let Some(reply) = reply
                 && (writeln!(out, "{reply}").is_err() || out.flush().is_err())
             {
+                *why = "its agent stopped reading (a reply couldn't be written)";
                 return std::process::ExitCode::SUCCESS;
             }
         }
         if ended {
+            *why = "its agent closed it (its input ended)";
             return std::process::ExitCode::SUCCESS;
         }
         // Asked to upgrade, nothing half-read: the new version carries on.
@@ -178,6 +239,7 @@ fn serve_on(input: std::os::fd::RawFd, upgrade: Option<std::os::fd::RawFd>, out:
             if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
                 continue;
             }
+            *why = "waiting for its input failed";
             return std::process::ExitCode::FAILURE;
         }
         if fds[1].revents & libc::POLLIN != 0 {
@@ -401,7 +463,7 @@ mod tests {
         }
         let execs = replies.clone();
         let seen = counted.clone();
-        serve_on(input.as_raw_fd(), Some(signal.as_raw_fd()), &mut Counting(&mut out, counted), &mut set, &mut || execs.borrow_mut().push(seen.get()));
+        serve_on(input.as_raw_fd(), Some(signal.as_raw_fd()), &mut Counting(&mut out, counted), &mut set, &mut || execs.borrow_mut().push(seen.get()), &mut "");
         writer.join().unwrap();
         let got = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         (got, replies.take())

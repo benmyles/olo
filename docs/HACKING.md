@@ -2720,9 +2720,7 @@ back where they were. A program with no kit loop takes it with
 `exec_on_upgrade` re-executes with the same arguments (`olo-doctor
 --watch`, whose state is on disk); one with a poll loop of its own takes
 `upgrade_signal()` (a file that becomes readable) and calls
-`exec_new_version()` when it's between things (`olo-terminal --mcp`
-re-executes between messages, its stdin and stdout carried over to the
-new version, so its agent sees nothing), and the Chrome extension's host
+`exec_new_version()` when it's between things, and the Chrome extension's host
 (`olo-chrome chrome-extension://…`) exits once no request is being
 answered, for the extension to start the new one. Whatever is still
 old 90 s after is stopped (`check_stale`). A new olo-session re-executes itself without a
@@ -8622,10 +8620,16 @@ and no second launch ever arrived). Codex starts its MCP servers with a
 bare environment (HOME, PATH, LANG, LOGNAME, SHELL, TERM, USER,
 SSL_CERT_FILE: no `XDG_RUNTIME_DIR`, no display), so the snapshot and
 the socket are found in `olo_xdg::runtime_dir()` (`XDG_RUNTIME_DIR`,
-else /run/user/UID). An upgrade re-executes the server in place between
-messages (its own read buffer, so nothing is half-read; SIGURG through
-`restore::upgrade_signal`), and olo-session leaves a stale one alone
-(its agent started it). `tools/dev/agent-title-check` drives it both
+else /run/user/UID). An upgrade leaves the server as it is: neither
+agent starts one again once it has gone (Codex not until its session
+ends), and a Codex server that re-executed for the 22:27 upgrade on
+2026-11-05 was gone minutes later with nothing saying why, its titles
+failing from then on ("Transport closed"); so SIGURG stays ignored, the
+handover above is kept the same from version to version, and
+olo-session leaves a stale one alone (its agent started it). Each
+server notes its life in `~/.local/state/olo/terminal-mcp.log` (when it
+started, for which program, and how it ended: input closed, a reply it
+couldn't write, a signal), for the next one that goes. `tools/dev/agent-title-check` drives it both
 ways in a headless session: as Codex (a bare environment, outside the
 tab, by folder) and as Claude Code (from the tab's shell, across the
 server's file replaced and SIGURG). The tab shows it (`Tab::agent_title`,
