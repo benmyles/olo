@@ -1,0 +1,35 @@
+{
+  "kind": "Original authored inputs and independent Chrome geometry; no website acceptance",
+  "date": "2026-11-06",
+  "reference": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "hashes": {
+    "cases.json": "289ac6423bedbba491bcc353810eb7e0c66ff09f9acb849163bc115374491722",
+    "chrome.json": "08dab171d144bc2c0d08adb3fa2c70e9bbe723372d80bfca59da941ea659a106",
+    "capture.py": "de0b5128a171004c63ec046aaadc7805973d21f4b9b0bb006c0b2d37da96f13e",
+    "README.md": "da5ec190fd775c60b4a5043abc2611ceaccb61d5069fb76ad97b227f6418874f"
+  },
+  "font_hashes": {
+    "plain": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb",
+    "ligature": "4a8c9d60138ce4a11088e4a7ae48719bf560e6671599ed15d1e71b469c9bc138",
+    "deletion": "fab018b5e0ba8e39185c13bac6ef482e0515c96bd3b4e48746f726fcc165343b"
+  },
+  "observations": {
+    "cases": 60,
+    "native_dprs": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "min_max_pairs": 300,
+    "widths": 600,
+    "original_rows_preserved": 140
+  }
+}

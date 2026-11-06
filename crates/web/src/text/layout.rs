@@ -1,6 +1,7 @@
 //! Horizontal text geometry over prepared source and retained glyph runs.
 //! Worker-only. This is not block layout, painting or complete CSS Inline.
 mod index;
+mod intrinsic;
 mod objects;
 mod spacing;
 use super::{
@@ -9,6 +10,7 @@ use super::{
     shaping::{self, Direction, Engine, Paragraph, Run, RunOptions},
 };
 use index::{End, Index, Window};
+pub use intrinsic::{IntrinsicJob, IntrinsicProgress, IntrinsicWidths};
 pub use objects::{Object, ObjectFragment};
 use smallvec::SmallVec;
 use spacing::Spaces;

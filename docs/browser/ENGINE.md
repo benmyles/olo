@@ -1795,6 +1795,41 @@ are in `measurements/2026-11-06-inline*`. Payload excludes shared source/fonts/
 base glyphs, collection capacity/headers and hash/allocator overhead; process
 RSS is separately recorded. No page, idle/frame, GPU or Chrome speed claim.
 
+`IntrinsicJob::new(text, pixel_scale, limits, cancel)` now measures initial text
+min/max content directly from retained glyphs and original cluster edges. It
+builds temporary numeric prefixes in bounded glyph slices, scans soft/required
+breaks, and publishes only two numbers; it creates no line/fragment geometry,
+new shaping, timers or UI work. Keep the result with the layout snapshot across
+width-only changes; invalidate it for changed source/font/whitespace or device
+scale. Work and prefix payload are bounded, cancellation is checked during
+slices and failed jobs cannot publish partial values. `working_payload_bytes`
+counts numeric entries only, excluding collection capacity/shared Text/fonts.
+
+The operation deliberately does not reuse reshaped line-cut End units: ligatures
+spanning spaces need their original cluster positions. Minimum widths subtract
+enclosed retained prefixes; maximum widths enclose hard-line advances. Wrapped
+initial preserved spaces have a separate item measure. Device mode retains
+float centipixel effective-size arithmetic,26.6 font sizes and16.16 linear glyph
+advances before layout-grid enclosure. The existing line fitter's device metric
+path is unchanged. The new operation is not yet called by page layout.
+
+Independent `tests/intrinsic-fixtures` uses identical original plain/ligature/
+deletion TTF bytes in Chrome:60 cases ×5 native DPRs =300 min/max pairs,600
+widths, all within0.0001 CSS px. Every original140 row survives the expanded
+capture unchanged. Fractional/zero/small font sizes, collapsed/preserved and
+leading spaces, nowrap/forced breaks, ligatures, deleted glyphs and zero-width
+opportunities are covered. This does not establish arbitrary GPOS/variable-font
+metrics. Initial scope is uniform horizontal LTR text and one shaping item per
+hard line. Bidi/adjacent font or script runs, inline objects/decorations and
+soft-hyphen realization fail explicitly; complete inline/flex sizing remains.
+
+`inline_bench ROUNDS intrinsic|materialized` compares the new design-unit Latin
+operation with a control that materializes minimum/maximum line geometry.
+That control is equivalent only for its ordinary Latin words, not the general
+Chrome fixture family. It reports constructor/slice latency, numeric-versus-line
+payload and16-byte published result separately from source preparation and
+whole-process RSS; this is not a website speed or presented-frame measurement.
+
 References: [CSS Text phase II](https://www.w3.org/TR/css-text-3/#white-space-phase-2),
 [shaping across breaks](https://www.w3.org/TR/css-text-3/#shaping-line-breaking),
 [CSS Inline line layout](https://drafts.csswg.org/css-inline-3/#line-layout).

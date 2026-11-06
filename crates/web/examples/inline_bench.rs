@@ -80,6 +80,59 @@ fn digest(l: &layout::Layout) -> String {
     }
     format!("{:x}", h.finalize())
 }
+// Controlled semantic comparison for the new worker operation. The materialized
+// control is equivalent only for these ordinary Latin words at design scale;
+// Chrome fixtures independently test ligatures, whitespace and device metrics.
+fn intrinsic_bench(engine: &mut Engine, scope: &Scope, rounds: usize, materialized: bool) {
+    let mut rows = Vec::new();
+    for count in [100, 500] {
+        let (text, _, _) = build(engine, scope, Arc::from("office affine alpha beta gamma. ".repeat(count)), "Noto Sans");
+        let mut run = |control| {
+            if control {
+                let (min, c1, s1, _) = fit(engine, text.clone(), 0.);
+                let (max, c2, s2, _) = fit(engine, text.clone(), f64::MAX);
+                let widths = layout::IntrinsicWidths { min_content: min.lines().iter().map(|l| l.advance).fold(0., f64::max), max_content: max.lines().iter().map(|l| l.advance).fold(0., f64::max) };
+                (widths, c1.max(c2), s1.max(s2), min.geometry_payload_bytes() + max.geometry_payload_bytes())
+            } else {
+                let at = Instant::now();
+                let mut job = layout::IntrinsicJob::new(text.clone(), None, Default::default(), None).unwrap();
+                let ctor = at.elapsed().as_secs_f64() * 1e6;
+                let mut step = 0f64;
+                let mut payload = 0;
+                loop {
+                    let at = Instant::now();
+                    let progress = job.step(128).unwrap();
+                    step = step.max(at.elapsed().as_secs_f64() * 1e6);
+                    payload = payload.max(job.working_payload_bytes());
+                    if progress.finished {
+                        break;
+                    }
+                }
+                (job.finish().unwrap(), ctor, step, payload)
+            }
+        };
+        let expected = run(true).0;
+        let actual = run(false).0;
+        assert!((actual.min_content - expected.min_content).abs() < 1e-6);
+        assert!((actual.max_content - expected.max_content).abs() < 1e-6);
+        let mut ctor = 0f64;
+        let mut step = 0f64;
+        let mut payload = 0;
+        let at = Instant::now();
+        for _ in 0..rounds {
+            let (widths, c, s, p) = run(materialized);
+            black_box(widths);
+            ctor = ctor.max(c);
+            step = step.max(s);
+            payload = payload.max(p);
+        }
+        rows.push(json!({"words":count * 5,"text_payload_bytes":text.geometry_payload_bytes(),"min_content":actual.min_content,"max_content":actual.max_content,"measure_drop_us":at.elapsed().as_secs_f64()*1e6/rounds as f64,"max_ctor_us":ctor,"max_step_us":step,"numeric_or_line_payload_bytes":payload}));
+    }
+    println!(
+        "{}",
+        json!({"scope":"new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation", "rounds":rounds,"materialized":materialized,"job_bytes":size_of::<layout::IntrinsicJob<'static>>(),"result_bytes":size_of::<layout::IntrinsicWidths>(),"rows":rows})
+    );
+}
 fn main() {
     let rounds: usize = std::env::args().nth(1).unwrap_or_else(|| "50".into()).parse().unwrap();
     assert!(rounds > 0);
@@ -94,6 +147,11 @@ fn main() {
     }
     let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Noto Sans", "Noto Sans Arabic", "Noto Sans Hebrew"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
     let mut e = Engine::default();
+    if let Some(mode) = std::env::args().nth(2) {
+        assert!(matches!(mode.as_str(), "intrinsic" | "materialized"));
+        intrinsic_bench(&mut e, &scope, rounds, mode == "materialized");
+        return;
+    }
     let mut cases = Vec::new();
     for (scene, unit, name) in
         [("latin", "office affine alpha beta gamma. ", "Noto Sans"), ("arabic", "مرحبا بالعالم العربية سلام ", "Noto Sans Arabic"), ("mixed", "Hello שלום world مرحبا text. ", "Noto Sans")]

@@ -12,7 +12,9 @@ site. Component work now follows observed Stripe blockers. Startup is still a
 nonpass: CSS disabled state and environment substitution are implemented;
 horizontal box query-container lengths are implemented and the actual live page
 now reaches layout, where it stops at Unsupported("flex box formatting").
-Implement the required original flex layout next. Stripe's own container
+Initial retained LTR text intrinsic widths now match300 independent Chrome
+min/max pairs; they are not wired into page sizing yet. Implement the required
+original flex layout next. Stripe's own container
 geometry remains unobserved until its formatting tree can be built.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.

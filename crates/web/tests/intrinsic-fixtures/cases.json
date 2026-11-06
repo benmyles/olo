@@ -1,0 +1,422 @@
+[
+  {
+    "id": "case-0",
+    "font": "plain",
+    "text": "A B C",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-1",
+    "font": "plain",
+    "text": "AAAA BB",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-2",
+    "font": "plain",
+    "text": " A \n B\tC ",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-3",
+    "font": "plain",
+    "text": "A B C",
+    "whitespace": "nowrap",
+    "size": 20
+  },
+  {
+    "id": "case-4",
+    "font": "plain",
+    "text": "A  B\nC",
+    "whitespace": "pre",
+    "size": 20
+  },
+  {
+    "id": "case-5",
+    "font": "plain",
+    "text": "A  B\nC",
+    "whitespace": "pre-wrap",
+    "size": 20
+  },
+  {
+    "id": "case-6",
+    "font": "plain",
+    "text": "A  B",
+    "whitespace": "break-spaces",
+    "size": 20
+  },
+  {
+    "id": "case-7",
+    "font": "plain",
+    "text": "",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-8",
+    "font": "plain",
+    "text": "   ",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-9",
+    "font": "plain",
+    "text": "A   ",
+    "whitespace": "pre-wrap",
+    "size": 20
+  },
+  {
+    "id": "case-10",
+    "font": "plain",
+    "text": "   A",
+    "whitespace": "pre-wrap",
+    "size": 20
+  },
+  {
+    "id": "case-11",
+    "font": "plain",
+    "text": "A  \nB",
+    "whitespace": "pre-wrap",
+    "size": 20
+  },
+  {
+    "id": "case-12",
+    "font": "plain",
+    "text": "   ",
+    "whitespace": "pre-wrap",
+    "size": 20
+  },
+  {
+    "id": "case-13",
+    "font": "plain",
+    "text": "   ",
+    "whitespace": "break-spaces",
+    "size": 20
+  },
+  {
+    "id": "case-14",
+    "font": "plain",
+    "text": "A\u200bB",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-15",
+    "font": "ligature",
+    "text": "A B",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-16",
+    "font": "ligature",
+    "text": "A B C",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-17",
+    "font": "ligature",
+    "text": "C A B C",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-18",
+    "font": "ligature",
+    "text": "fi A fi",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-19",
+    "font": "ligature",
+    "text": "fi fi",
+    "whitespace": "nowrap",
+    "size": 20
+  },
+  {
+    "id": "case-20",
+    "font": "deletion",
+    "text": "D E",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-21",
+    "font": "deletion",
+    "text": "A D E B",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-22",
+    "font": "deletion",
+    "text": "D E D E",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-23",
+    "font": "plain",
+    "text": "A\n\nB",
+    "whitespace": "pre-line",
+    "size": 20
+  },
+  {
+    "id": "case-24",
+    "font": "plain",
+    "text": "A  B",
+    "whitespace": "pre-line",
+    "size": 20
+  },
+  {
+    "id": "case-25",
+    "font": "plain",
+    "text": "A A A",
+    "whitespace": "normal",
+    "size": 20.3
+  },
+  {
+    "id": "case-26",
+    "font": "plain",
+    "text": "AB C",
+    "whitespace": "normal",
+    "size": 20.3
+  },
+  {
+    "id": "case-27",
+    "font": "ligature",
+    "text": "fi A fi",
+    "whitespace": "normal",
+    "size": 20.3
+  },
+  {
+    "id": "case-28",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 9.99
+  },
+  {
+    "id": "case-29",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 9.99
+  },
+  {
+    "id": "case-30",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 13.71
+  },
+  {
+    "id": "case-31",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 13.71
+  },
+  {
+    "id": "case-32",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 17.37
+  },
+  {
+    "id": "case-33",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 17.37
+  },
+  {
+    "id": "case-34",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 20.01
+  },
+  {
+    "id": "case-35",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 20.01
+  },
+  {
+    "id": "case-36",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 20.29
+  },
+  {
+    "id": "case-37",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 20.29
+  },
+  {
+    "id": "case-38",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 20.31
+  },
+  {
+    "id": "case-39",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 20.31
+  },
+  {
+    "id": "case-40",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 20.99
+  },
+  {
+    "id": "case-41",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 20.99
+  },
+  {
+    "id": "case-42",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 21.01
+  },
+  {
+    "id": "case-43",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 21.01
+  },
+  {
+    "id": "case-44",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 21.125
+  },
+  {
+    "id": "case-45",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 21.125
+  },
+  {
+    "id": "case-46",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 0
+  },
+  {
+    "id": "case-47",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 0
+  },
+  {
+    "id": "case-48",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 0.5
+  },
+  {
+    "id": "case-49",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 0.5
+  },
+  {
+    "id": "case-50",
+    "font": "plain",
+    "text": "A AB C",
+    "whitespace": "normal",
+    "size": 7.999
+  },
+  {
+    "id": "case-51",
+    "font": "ligature",
+    "text": "fi A B fi",
+    "whitespace": "normal",
+    "size": 7.999
+  },
+  {
+    "id": "case-52",
+    "font": "plain",
+    "text": "   A",
+    "whitespace": "break-spaces",
+    "size": 20
+  },
+  {
+    "id": "case-53",
+    "font": "plain",
+    "text": "   A",
+    "whitespace": "pre",
+    "size": 20
+  },
+  {
+    "id": "case-54",
+    "font": "plain",
+    "text": " A B ",
+    "whitespace": "normal",
+    "size": 20
+  },
+  {
+    "id": "case-55",
+    "font": "plain",
+    "text": "A\n   B C",
+    "whitespace": "pre-wrap",
+    "size": 20
+  },
+  {
+    "id": "case-56",
+    "font": "plain",
+    "text": "A\n   B C",
+    "whitespace": "pre-line",
+    "size": 20
+  },
+  {
+    "id": "case-57",
+    "font": "plain",
+    "text": "   ",
+    "whitespace": "pre",
+    "size": 20
+  },
+  {
+    "id": "case-58",
+    "font": "plain",
+    "text": " A B ",
+    "whitespace": "nowrap",
+    "size": 20
+  },
+  {
+    "id": "case-59",
+    "font": "plain",
+    "text": "A\n\nB",
+    "whitespace": "pre-wrap",
+    "size": 20
+  }
+]

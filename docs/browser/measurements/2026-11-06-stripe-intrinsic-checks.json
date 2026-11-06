@@ -1,0 +1,1066 @@
+{
+  "scope": "Initial homogeneous LTR text min/max prerequisite for Stripe flex; not wired into page layout and no site acceptance",
+  "parent": "4016837d",
+  "independent_reference": {
+    "pairs": 300,
+    "widths": 600,
+    "fixture": "crates/web/tests/intrinsic-fixtures",
+    "original_rows_preserved": 140
+  },
+  "iterations": {
+    "intrinsic-native.json": {
+      "rows": 140,
+      "passing": 116,
+      "failures": [
+        {
+          "expected": [
+            10.0,
+            10.0
+          ],
+          "got": [
+            20.0,
+            10.0
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.296875,
+            81.140625
+          ],
+          "got": [
+            20.296875,
+            81.1875
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            40.578125,
+            71.0
+          ],
+          "got": [
+            40.59375,
+            71.046875
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.28125,
+            77.078125
+          ],
+          "got": [
+            20.296875,
+            77.140625
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.012500762939453,
+            50.025001525878906
+          ],
+          "got": [
+            20.0125,
+            50.0125
+          ],
+          "id": "case-10",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            10.012499809265137,
+            10.012499809265137
+          ],
+          "got": [
+            20.0125,
+            10.0125
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.0,
+            40.01250076293945
+          ],
+          "got": [
+            20.0125,
+            40.0125
+          ],
+          "id": "case-16",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.0,
+            76.01250457763672
+          ],
+          "got": [
+            20.0125,
+            76.0125
+          ],
+          "id": "case-18",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.0,
+            30.012500762939453
+          ],
+          "got": [
+            20.0125,
+            30.0125
+          ],
+          "id": "case-20",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.0,
+            70.01250457763672
+          ],
+          "got": [
+            20.0125,
+            70.0125
+          ],
+          "id": "case-22",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.30000114440918,
+            81.1624984741211
+          ],
+          "got": [
+            20.3,
+            81.2
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            40.587501525878906,
+            71.01250457763672
+          ],
+          "got": [
+            40.6,
+            71.05
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.287500381469727,
+            77.0999984741211
+          ],
+          "got": [
+            20.3,
+            77.15
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            10.0,
+            10.0
+          ],
+          "got": [
+            20.0,
+            10.0
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 1.5
+        },
+        {
+          "expected": [
+            20.008930206298828,
+            50.017860412597656
+          ],
+          "got": [
+            20.008928571428573,
+            50.00892857142857
+          ],
+          "id": "case-10",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            10.008929252624512,
+            10.008929252624512
+          ],
+          "got": [
+            20.008928571428573,
+            10.008928571428571
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.0,
+            40.00893020629883
+          ],
+          "got": [
+            20.008928571428573,
+            40.00892857142857
+          ],
+          "id": "case-16",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.0,
+            76.0089340209961
+          ],
+          "got": [
+            20.008928571428573,
+            76.00892857142857
+          ],
+          "id": "case-18",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.0,
+            30.008930206298828
+          ],
+          "got": [
+            20.008928571428573,
+            30.008928571428573
+          ],
+          "id": "case-20",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.0,
+            70.0089340209961
+          ],
+          "got": [
+            20.008928571428573,
+            70.00892857142857
+          ],
+          "id": "case-22",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            10.0,
+            10.0
+          ],
+          "got": [
+            20.0,
+            10.0
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            20.2890625,
+            81.15625
+          ],
+          "got": [
+            20.3046875,
+            81.1953125
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            40.578125,
+            71.015625
+          ],
+          "got": [
+            40.6015625,
+            71.046875
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            20.2890625,
+            77.1015625
+          ],
+          "got": [
+            20.3046875,
+            77.1328125
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 2
+        }
+      ]
+    },
+    "intrinsic-native-prefix.json": {
+      "rows": 140,
+      "passing": 108,
+      "failures": [
+        {
+          "expected": [
+            10.0,
+            10.0
+          ],
+          "got": [
+            20.0,
+            10.0
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.0,
+            90.0
+          ],
+          "got": [
+            30.0,
+            90.0
+          ],
+          "id": "case-21",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.0,
+            70.0
+          ],
+          "got": [
+            30.0,
+            70.0
+          ],
+          "id": "case-22",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.296875,
+            81.140625
+          ],
+          "got": [
+            20.296875,
+            81.1875
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            40.578125,
+            71.0
+          ],
+          "got": [
+            40.59375,
+            71.046875
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.28125,
+            77.078125
+          ],
+          "got": [
+            20.296875,
+            77.140625
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.012500762939453,
+            80.01250457763672
+          ],
+          "got": [
+            20.0,
+            80.0
+          ],
+          "id": "case-2",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.012500762939453,
+            50.025001525878906
+          ],
+          "got": [
+            20.000000000000004,
+            50.0125
+          ],
+          "id": "case-10",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            10.012499809265137,
+            10.012499809265137
+          ],
+          "got": [
+            20.0125,
+            10.0125
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.0,
+            40.01250076293945
+          ],
+          "got": [
+            20.0125,
+            40.0125
+          ],
+          "id": "case-16",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.0,
+            30.012500762939453
+          ],
+          "got": [
+            20.0125,
+            30.0125
+          ],
+          "id": "case-20",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.012500762939453,
+            90.01250457763672
+          ],
+          "got": [
+            30.000000000000004,
+            90.0125
+          ],
+          "id": "case-21",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.0,
+            70.01250457763672
+          ],
+          "got": [
+            30.000000000000004,
+            70.0125
+          ],
+          "id": "case-22",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.30000114440918,
+            81.1624984741211
+          ],
+          "got": [
+            20.300000000000004,
+            81.2
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            40.587501525878906,
+            71.01250457763672
+          ],
+          "got": [
+            40.6,
+            71.05
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.287500381469727,
+            77.0999984741211
+          ],
+          "got": [
+            20.3,
+            77.15
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            10.0,
+            10.0
+          ],
+          "got": [
+            20.0,
+            10.0
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 1.5
+        },
+        {
+          "expected": [
+            20.0,
+            90.0
+          ],
+          "got": [
+            30.0,
+            90.0
+          ],
+          "id": "case-21",
+          "passed": false,
+          "scale": 1.5
+        },
+        {
+          "expected": [
+            20.0,
+            70.0
+          ],
+          "got": [
+            30.0,
+            70.0
+          ],
+          "id": "case-22",
+          "passed": false,
+          "scale": 1.5
+        },
+        {
+          "expected": [
+            20.008930206298828,
+            80.0089340209961
+          ],
+          "got": [
+            20.0,
+            80.0
+          ],
+          "id": "case-2",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.008930206298828,
+            50.017860412597656
+          ],
+          "got": [
+            19.999999999999996,
+            50.00892857142857
+          ],
+          "id": "case-10",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            10.008929252624512,
+            10.008929252624512
+          ],
+          "got": [
+            20.008928571428573,
+            10.008928571428571
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.0,
+            40.00893020629883
+          ],
+          "got": [
+            20.008928571428573,
+            40.00892857142857
+          ],
+          "id": "case-16",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.0,
+            30.008930206298828
+          ],
+          "got": [
+            20.008928571428573,
+            30.008928571428573
+          ],
+          "id": "case-20",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.008930206298828,
+            90.0089340209961
+          ],
+          "got": [
+            29.999999999999996,
+            90.00892857142857
+          ],
+          "id": "case-21",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.0,
+            70.0089340209961
+          ],
+          "got": [
+            29.999999999999996,
+            70.00892857142857
+          ],
+          "id": "case-22",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            10.0,
+            10.0
+          ],
+          "got": [
+            20.0,
+            10.0
+          ],
+          "id": "case-15",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            20.0,
+            90.0
+          ],
+          "got": [
+            30.0,
+            90.0
+          ],
+          "id": "case-21",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            20.0,
+            70.0
+          ],
+          "got": [
+            30.0,
+            70.0
+          ],
+          "id": "case-22",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            20.2890625,
+            81.15625
+          ],
+          "got": [
+            20.3046875,
+            81.1953125
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            40.578125,
+            71.015625
+          ],
+          "got": [
+            40.6015625,
+            71.046875
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            20.2890625,
+            77.1015625
+          ],
+          "got": [
+            20.296875,
+            77.1328125
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 2
+        }
+      ]
+    },
+    "intrinsic-native-boundary.json": {
+      "rows": 140,
+      "passing": 127,
+      "failures": [
+        {
+          "expected": [
+            20.296875,
+            81.140625
+          ],
+          "got": [
+            20.296875,
+            81.1875
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            40.578125,
+            71.0
+          ],
+          "got": [
+            40.59375,
+            71.046875
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.28125,
+            77.078125
+          ],
+          "got": [
+            20.296875,
+            77.140625
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            20.012500762939453,
+            80.01250457763672
+          ],
+          "got": [
+            20.0,
+            80.0
+          ],
+          "id": "case-2",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.012500762939453,
+            50.025001525878906
+          ],
+          "got": [
+            20.000000000000004,
+            50.0125
+          ],
+          "id": "case-10",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.30000114440918,
+            81.1624984741211
+          ],
+          "got": [
+            20.300000000000004,
+            81.2
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            40.587501525878906,
+            71.01250457763672
+          ],
+          "got": [
+            40.6,
+            71.05
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.287500381469727,
+            77.0999984741211
+          ],
+          "got": [
+            20.3,
+            77.15
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            20.008930206298828,
+            80.0089340209961
+          ],
+          "got": [
+            20.0,
+            80.0
+          ],
+          "id": "case-2",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.008930206298828,
+            50.017860412597656
+          ],
+          "got": [
+            19.999999999999996,
+            50.00892857142857
+          ],
+          "id": "case-10",
+          "passed": false,
+          "scale": 1.75
+        },
+        {
+          "expected": [
+            20.2890625,
+            81.15625
+          ],
+          "got": [
+            20.3046875,
+            81.1953125
+          ],
+          "id": "case-25",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            40.578125,
+            71.015625
+          ],
+          "got": [
+            40.6015625,
+            71.046875
+          ],
+          "id": "case-26",
+          "passed": false,
+          "scale": 2
+        },
+        {
+          "expected": [
+            20.2890625,
+            77.1015625
+          ],
+          "got": [
+            20.296875,
+            77.1328125
+          ],
+          "id": "case-27",
+          "passed": false,
+          "scale": 2
+        }
+      ]
+    },
+    "intrinsic-native-retained.json": {
+      "rows": 140,
+      "passing": 140,
+      "failures": []
+    },
+    "intrinsic-native-expanded.json": {
+      "rows": 300,
+      "passing": 294,
+      "failures": [
+        {
+          "expected": [
+            19.96875,
+            49.9375
+          ],
+          "got": [
+            19.9375,
+            49.859375
+          ],
+          "id": "case-28",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            9.0,
+            32.953125
+          ],
+          "got": [
+            8.984375,
+            32.90625
+          ],
+          "id": "case-29",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            41.96875,
+            104.9375
+          ],
+          "got": [
+            41.9375,
+            104.84375
+          ],
+          "id": "case-40",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            18.890625,
+            69.25
+          ],
+          "got": [
+            18.875,
+            69.203125
+          ],
+          "id": "case-41",
+          "passed": false,
+          "scale": 1
+        },
+        {
+          "expected": [
+            50.01250076293945,
+            50.01250076293945
+          ],
+          "got": [
+            50.0125,
+            50.025
+          ],
+          "id": "case-53",
+          "passed": false,
+          "scale": 1.25
+        },
+        {
+          "expected": [
+            50.00893020629883,
+            50.00893020629883
+          ],
+          "got": [
+            50.00892857142857,
+            50.017857142857146
+          ],
+          "id": "case-53",
+          "passed": false,
+          "scale": 1.75
+        }
+      ]
+    },
+    "intrinsic-native-expanded-final.json": {
+      "rows": 300,
+      "passing": 300,
+      "failures": []
+    }
+  },
+  "checks": {
+    "default": {
+      "passed": 284,
+      "failed": 0,
+      "ignored": 2
+    },
+    "all_features": {
+      "passed": 270,
+      "failed": 0,
+      "ignored": 1
+    }
+  },
+  "strict_clippy": "pass; -p olo-web -p olo-browser --all-targets --no-deps -- -D warnings",
+  "workspace_release": "pass; 8.83s; no personal session reload/install",
+  "other_checks": [
+    "cargo fmt -p olo-web -p olo-browser",
+    "Python capture/measurement AST parse",
+    "git diff --check"
+  ],
+  "source_sha256": {
+    "crates/web/src/text/layout/intrinsic.rs": "3cfb3f53c514beac032edb193f613179628976592fa275cfba4c5aa56c0bd1d1",
+    "crates/web/src/text/layout/index.rs": "1725828d44e7aa00e50b83055db71d14ac2b732f61682df35eb73b9d4fab4424",
+    "crates/web/src/text/layout.rs": "f862c34cb9652386b977f8a920b50b9b3a30cb94c579c52fa40e76a39701ecc4",
+    "crates/web/examples/inline_bench.rs": "4a96d7ffecc690dfeebca2ff14a53ce62b4ed611d9bc560ba00a6058cc52e76e",
+    "crates/web/tests/inline.rs": "b905ef79a582684e2805c17443a72157da4c0386734d8f9d0e2524517c4a0b2b"
+  },
+  "rejected_preflights": [
+    "Scratch diagnostic JavaScript quoting error; no geometry accepted; owned Chrome closed",
+    "Scratch diagnostic --idle timed out at 10000ms; no geometry accepted; owned Chrome closed. Diagnostic used two animation-frame acknowledgements plus actual DPR for its later metric-only query. Original/expanded reference captures passed their original idle/DPR guards.",
+    "Initial benchmark 1000-unit Latin run exceeded existing 16KiB shaping-run quota during untimed setup; no performance samples accepted. Uses100/500 units (500/2500 words), without changing production quotas."
+  ],
+  "unsupported": [
+    "bidi or adjacent font/script shaping items",
+    "inline objects/decorations",
+    "soft hyphen realization",
+    "mixed whitespace policies",
+    "general GPOS/variable-font metric parity unestablished"
+  ],
+  "screens": "All owned diagnostic/reference Chrome processes exited and reference screen stopped; no personal desktop interaction",
+  "acceptance": {
+    "stripe_configurations": 0,
+    "websites": 0,
+    "corpus_configurations": 0
+  },
+  "prior_nonpasses": "Image pixel/minification, larger ordinary pipeline/scene and perf-fuzz regressions remain open; see earlier journal/measurements"
+}

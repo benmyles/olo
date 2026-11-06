@@ -1,0 +1,730 @@
+{
+  "scope": "Release worker cost: same-binary materialized-line control vs intrinsic widths.\nOrdinary Latin design-unit measures only, excluding preparation and UI/GPU.\nBoth variants warm and validate both paths, so process peak RSS is not an\nisolated allocation comparison. Numeric/line payloads exclude capacities,\nshared text/fonts, allocator overhead and control shaping caches.\n",
+  "cpu": 0,
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
+  "binary_sha256": "5f5cd7e81ff6104b855499d5a18d5903349c8798c6d56c07217984412bb7a582",
+  "script": "#!/usr/bin/python3\n\"\"\"Release worker cost: same-binary materialized-line control vs intrinsic widths.\nOrdinary Latin design-unit measures only, excluding preparation and UI/GPU.\nBoth variants warm and validate both paths, so process peak RSS is not an\nisolated allocation comparison. Numeric/line payloads exclude capacities,\nshared text/fonts, allocator overhead and control shaping caches.\n\"\"\"\nimport hashlib,json,os,select,statistics,subprocess\nfrom pathlib import Path\nroot=Path('/var/tmp/olo-browser-stripe/flex/cost')\nbinary=root/'inline-after'\nallowed=sorted(os.sched_getaffinity(0))\ndef frequency(cpu):\n p=Path(f'/sys/devices/system/cpu/cpu{cpu}/cpufreq/cpuinfo_max_freq')\n return int(p.read_text())if p.exists()else 0\ncpu=max(allowed,key=frequency);os.sched_setaffinity(0,{cpu})\ndef context():\n procs={}\n for p in Path('/proc').iterdir():\n  if p.name.isdigit():\n   try:\n    name=(p/'comm').read_text().strip()\n    if name in ('cargo','rustc'):procs[p.name]=name\n   except OSError:pass\n return dict(loadavg=os.getloadavg(),build_processes=procs)\nrows,discarded,waits=[],[],[]\nfor repeat in range(7):\n for mode in (['materialized','intrinsic']if repeat%2==0 else ['intrinsic','materialized']):\n  while True:\n   before=context();compilers=[p for p,n in before['build_processes'].items()if n=='rustc']\n   if compilers:\n    waits.append(before);fds=[]\n    try:\n     for pid in compilers:\n      try:fds.append(os.pidfd_open(int(pid)))\n      except ProcessLookupError:pass\n     if fds:select.select(fds,[],[],20)\n    finally:\n     for fd in fds:os.close(fd)\n    continue\n   rss=root/'intrinsic.rss'\n   data=json.loads(subprocess.check_output(['/usr/bin/time','-f','%M','-o',str(rss),str(binary),'100',mode],text=True))\n   observation=dict(mode=mode,repeat=repeat,before_context=before,after_context=context(),rss_kib=int(rss.read_text()),**data)\n   if 'rustc'in observation['after_context']['build_processes'].values():discarded.append(observation);continue\n   rows.append(observation);print(repeat,mode,flush=True);break\nsummary={}\nfor words in [500,2500]:\n summary[str(words)]={mode:{k:statistics.median(c[k]for r in rows if r['mode']==mode for c in r['rows']if c['words']==words)for k in ['measure_drop_us','max_ctor_us','max_step_us','numeric_or_line_payload_bytes']}for mode in ['materialized','intrinsic']}\nsource=Path(__file__).read_text()\nPath('docs/browser/measurements/2026-11-06-stripe-intrinsic-worker-cost.json').write_text(json.dumps(dict(scope=__doc__,cpu=cpu,allowed_cpus=allowed,binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),script=source,observations=rows,discarded=discarded,build_waits=waits,summary=summary),indent=2)+'\\n')\nprint(json.dumps(summary),flush=True)\n",
+  "observations": [
+    {
+      "mode": "materialized",
+      "repeat": 0,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8224,
+      "job_bytes": 248,
+      "materialized": true,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.08,
+          "max_step_us": 26.055,
+          "measure_drop_us": 117.36612000000001,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 48096,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.36600000000000005,
+          "max_step_us": 56.041000000000004,
+          "measure_drop_us": 626.31375,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 240096,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "intrinsic",
+      "repeat": 0,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8472,
+      "job_bytes": 248,
+      "materialized": false,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.13,
+          "max_step_us": 14.07,
+          "measure_drop_us": 33.877739999999996,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 22416,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.704,
+          "max_step_us": 16.541999999999998,
+          "measure_drop_us": 191.57928,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 112016,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "intrinsic",
+      "repeat": 1,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8364,
+      "job_bytes": 248,
+      "materialized": false,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.134,
+          "max_step_us": 10.375,
+          "measure_drop_us": 33.65089,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 22416,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.619,
+          "max_step_us": 20.012999999999998,
+          "measure_drop_us": 190.23765000000003,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 112016,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "materialized",
+      "repeat": 1,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8436,
+      "job_bytes": 248,
+      "materialized": true,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.362,
+          "max_step_us": 24.884,
+          "measure_drop_us": 115.76341000000001,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 48096,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.365,
+          "max_step_us": 65.764,
+          "measure_drop_us": 615.04469,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 240096,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "materialized",
+      "repeat": 2,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8300,
+      "job_bytes": 248,
+      "materialized": true,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.154,
+          "max_step_us": 28.217000000000002,
+          "measure_drop_us": 123.03823,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 48096,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.305,
+          "max_step_us": 58.494,
+          "measure_drop_us": 653.09158,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 240096,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "intrinsic",
+      "repeat": 2,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8316,
+      "job_bytes": 248,
+      "materialized": false,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.136,
+          "max_step_us": 9.097,
+          "measure_drop_us": 33.50976,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 22416,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.928,
+          "max_step_us": 309.67100000000005,
+          "measure_drop_us": 194.41580000000002,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 112016,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "intrinsic",
+      "repeat": 3,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8480,
+      "job_bytes": 248,
+      "materialized": false,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.13199999999999998,
+          "max_step_us": 12.187999999999999,
+          "measure_drop_us": 40.02446,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 22416,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.938,
+          "max_step_us": 282.22499999999997,
+          "measure_drop_us": 309.4171,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 112016,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "materialized",
+      "repeat": 3,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8448,
+      "job_bytes": 248,
+      "materialized": true,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.119,
+          "max_step_us": 33.524,
+          "measure_drop_us": 118.83559,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 48096,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.229,
+          "max_step_us": 824.928,
+          "measure_drop_us": 750.29783,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 240096,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "materialized",
+      "repeat": 4,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8240,
+      "job_bytes": 248,
+      "materialized": true,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.39299999999999996,
+          "max_step_us": 26.457,
+          "measure_drop_us": 125.97896,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 48096,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.207,
+          "max_step_us": 60.634,
+          "measure_drop_us": 652.48577,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 240096,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "intrinsic",
+      "repeat": 4,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8244,
+      "job_bytes": 248,
+      "materialized": false,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.19999999999999998,
+          "max_step_us": 9.377,
+          "measure_drop_us": 33.35287,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 22416,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 3.2830000000000004,
+          "max_step_us": 63.88,
+          "measure_drop_us": 184.1715,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 112016,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "intrinsic",
+      "repeat": 5,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8356,
+      "job_bytes": 248,
+      "materialized": false,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.213,
+          "max_step_us": 8.839,
+          "measure_drop_us": 33.435280000000006,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 22416,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.661,
+          "max_step_us": 21.588,
+          "measure_drop_us": 188.06537,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 112016,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "materialized",
+      "repeat": 5,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8416,
+      "job_bytes": 248,
+      "materialized": true,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.083,
+          "max_step_us": 30.938000000000002,
+          "measure_drop_us": 119.06769,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 48096,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.286,
+          "max_step_us": 97.74,
+          "measure_drop_us": 621.05686,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 240096,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "materialized",
+      "repeat": 6,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8292,
+      "job_bytes": 248,
+      "materialized": true,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.151,
+          "max_step_us": 30.48,
+          "measure_drop_us": 119.27785,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 48096,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 0.425,
+          "max_step_us": 54.607,
+          "measure_drop_us": 621.22733,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 240096,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    },
+    {
+      "mode": "intrinsic",
+      "repeat": 6,
+      "before_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "after_context": {
+        "loadavg": [
+          13.47900390625,
+          11.2021484375,
+          10.3134765625
+        ],
+        "build_processes": {}
+      },
+      "rss_kib": 8552,
+      "job_bytes": 248,
+      "materialized": false,
+      "result_bytes": 16,
+      "rounds": 100,
+      "rows": [
+        {
+          "max_content": 30340.800000000192,
+          "max_ctor_us": 0.124,
+          "max_step_us": 8.245,
+          "measure_drop_us": 33.0235,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 22416,
+          "text_payload_bytes": 60824,
+          "words": 500
+        },
+        {
+          "max_content": 151724.80000000412,
+          "max_ctor_us": 3.5420000000000003,
+          "max_step_us": 19.447,
+          "measure_drop_us": 185.73451,
+          "min_content": 77.50000000000364,
+          "numeric_or_line_payload_bytes": 112016,
+          "text_payload_bytes": 304024,
+          "words": 2500
+        }
+      ],
+      "scope": "new worker intrinsic sizing versus materialized min/max line control; ordinary Latin/design-unit geometry only; excludes source preparation, device metrics, site layout, GPU and presentation"
+    }
+  ],
+  "discarded": [],
+  "build_waits": [],
+  "summary": {
+    "500": {
+      "materialized": {
+        "measure_drop_us": 119.06769,
+        "max_ctor_us": 0.151,
+        "max_step_us": 28.217000000000002,
+        "numeric_or_line_payload_bytes": 48096
+      },
+      "intrinsic": {
+        "measure_drop_us": 33.50976,
+        "max_ctor_us": 0.134,
+        "max_step_us": 9.377,
+        "numeric_or_line_payload_bytes": 22416
+      }
+    },
+    "2500": {
+      "materialized": {
+        "measure_drop_us": 626.31375,
+        "max_ctor_us": 0.305,
+        "max_step_us": 60.634,
+        "numeric_or_line_payload_bytes": 240096
+      },
+      "intrinsic": {
+        "measure_drop_us": 190.23765000000003,
+        "max_ctor_us": 0.928,
+        "max_step_us": 21.588,
+        "numeric_or_line_payload_bytes": 112016
+      }
+    }
+  }
+}

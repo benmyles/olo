@@ -70,9 +70,11 @@ Do not suppress selector/value failures or replace the site with authored HTML.
   The initial live20-context inventory is retained in `flex-inventory.json`:
   complete Stripe URL, loaded fonts, native DPR2, no text/account interaction,
   not a frozen replay. Header rows use auto content sizes, gaps and alignment.
-  Next prerequisite: retained intrinsic text widths, then flex item sizing/
-  wrapping/alignment and anonymous-item box construction. Existing glyph-prefix
-  and break-opportunity data should supply measurements; no guessed text widths.
+  Initial retained LTR intrinsic text widths now match300 independent Chrome
+  min/max pairs at five native scales. They remain outside page sizing, with
+  bidi/multi-run items, inline objects/decorations and soft hyphens explicit
+  unsupported contexts. Next: flex item sizing/wrapping/alignment and anonymous
+  item construction using these measurements; no guessed text widths.
 - [ ] Complete container semantics: early/inherited contexts, query conditions,
   vertical modes, replaced containment and additional type/name grammars.
 - [ ] Pin a complete replay, locale/region/cohort, assets, fonts and dynamic clock

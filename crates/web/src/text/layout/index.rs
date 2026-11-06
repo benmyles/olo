@@ -162,6 +162,20 @@ impl Index {
         }
         Ok(width)
     }
+    /// Original shaping edge; unlike line ends, this never reshapes a cut.
+    pub fn retained_edge(&self, p: &Paragraph, ri: usize, byte: u32) -> Result<usize> {
+        let run = &p.runs[ri];
+        if byte < run.range.start || byte > run.range.end {
+            return Err(Error::Invalid);
+        }
+        let rtl = run.direction == Direction::RightToLeft;
+        if byte == run.range.end {
+            return Ok(if rtl { 0 } else { run.glyphs.len() });
+        }
+        let rows = &self.rows[self.runs[ri].rows.clone()];
+        let at = rows.partition_point(|r| r.byte <= byte).saturating_sub(1);
+        Ok((rows[at].edge & !UNSAFE) as usize)
+    }
     pub fn glyph_slice(&self, p: &Paragraph, ri: usize, range: Range<u32>) -> Result<Option<Range<u32>>> {
         let run = &p.runs[ri];
         let info = &self.runs[ri];

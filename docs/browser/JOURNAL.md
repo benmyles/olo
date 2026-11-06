@@ -4293,3 +4293,66 @@ wrapping/alignment and anonymous item construction. The current text API retains
 those inputs but exposes no intrinsic-width operation yet. No line width will
 be guessed and no existing browser engine substituted. **Stripe0/30, corpus0/100,
 0/3000; goal active.** Prior performance nonpasses stay open.
+
+### 2026-11-06 — Retained intrinsic text widths for the Stripe flex dependency
+
+Implemented original `text::layout::IntrinsicJob`, currently outside the page
+formatter. It measures retained glyph/cluster prefixes and break points without
+line/fragment output or new shaping. Its248-byte job bounds numeric prefixes,
+steps/cancels on the worker, poisons errors and publishes a16-byte min/max pair
+for the caller's layout snapshot. A width-only change need not rerun it. Initial
+scope is homogeneous horizontal LTR text with uniform whitespace and one shaping
+item per hard line. Bidi/adjacent script/font runs, inline objects/decorations,
+discretionary hyphens and complete item/intrinsic/flex CSS remain unsupported.
+General GPOS/variable-font metric parity is unestablished. Normal line fitting
+and actual page geometry do not call this operation yet.
+
+Independent original Chrome fixtures embed the same three adversarial TTF files:
+60 cases ×5 verified live DPRs =300 min/max pairs,600 widths, all within0.0001
+CSS px. Every original140 row remains unchanged in the expanded capture. The
+first native attempt failed24/140 (unsafe ligature cuts and rounding); an
+intermediate prefix attempt failed32, original retained boundaries reduced that
+to13, and the first new retained pass matched140. Expanded cases then exposed6
+further failures, all corrected without changing expected widths or tolerance:
+font effective-size buckets require float (not double) multiplication before
+flooring, and preserved leading spaces split only with wrapping. Final default
+and all-feature suites cover the full300 pairs. Primary Chrome/Skia source was
+read to trace these mechanisms; no existing layout engine is substituted.
+Historical failures are retained in stripe-intrinsic-checks.json.
+
+Rejected scratch diagnostic attempts: malformed JS quoting and10s --idle
+timeout; no reference data accepted, owned Chrome quit. A later metric-only
+diagnostic used frame acknowledgements plus actual DPR; its original140 values
+match the first capture. The independent expanded capture itself passed the
+original idle/DPR guards. All owned Chrome processes exited and screens stopped;
+no personal session interaction. No site or screenshot acceptance is implied.
+
+Release Browser/web284 pass,2 ignored; all-feature web270 pass,1 ignored.
+Strict all-target clippy, format/AST/diff checks and release workspace8.83s pass.
+`inline_bench ROUNDS intrinsic|materialized` validates equivalent ordinary Latin
+widths before timing. The initial1000-unit untimed setup exceeded the existing
+16KiB shaping-run limit; reduced the benchmark to100/500 units (500/2500 words),
+without widening production quotas. CPU0, seven rotated100-round processes per
+variant,14 accepted/no discards/no compiler contexts, load13.48: materialized
+119.07/626.31µs versus intrinsic33.51/190.24µs. Numeric temporary payload
+22,416/112,016B versus line/glyph payload48,096/240,096B; excludes capacity,
+shared source/fonts, headers/allocator overhead and control shaping caches.
+Worst observed constructor/128-step3.54/309.67µs for intrinsic; control's worst
+step824.93µs. Both variants warm both paths, so process RSS8,300/8,364KiB is not
+an isolated allocation comparison. This is a worker-control comparison, not a
+website or frame-speed claim.
+
+Ordinary before/after uses frozen default-feature webea49514a (unchanged in
+parent4016837d).28 accepted samples,0 discards,60 compiler waits and1 accepted
+Cargo context; load14.92–16.81, CPU0, geometry/pixel/source hashes agree.
+100/1000-element pipeline809.94→814.49 /9000.35→8886.89µs; retained scene
+186.14→190.19 /3265.09→3496.42µs. Scene~2.2%/~7.1% and small pipeline~0.6%
+regressions remain nonpasses; the new operation is not invoked on these paths
+and causality/full isolation is not established. Prior performance/image/fuzz
+nonpasses remain open. Evidence:stripe-intrinsic-{checks,ordinary-cost,worker-cost}
+JSON and original text fixtures. No overall performance improvement is claimed.
+
+Fetched origin/main12069396 using gh-backed credentials; merge after this
+working checkpoint. **Stripe0/30, corpus0/100 and0/3000; goal active.** Next:
+original flex item construction/sizing/alignment consuming measured content,
+then retry the same actual Stripe URL. No other site is selected.

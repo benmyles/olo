@@ -41,7 +41,10 @@ fn shaped(engine: &mut Engine, scope: &Scope, p: &Prepared, base: BaseDirection)
     shaped_family(engine, scope, p, base, "Noto Sans")
 }
 fn shaped_family(engine: &mut Engine, scope: &Scope, p: &Prepared, base: BaseDirection, name: &str) -> Arc<Paragraph> {
-    let request = FontRequest { size: 20., weight: 400., width: 100., slant: FontSlant::Normal, families: family(name), axes: Axes::default() };
+    shaped_family_size(engine, scope, p, base, name, 20.)
+}
+fn shaped_family_size(engine: &mut Engine, scope: &Scope, p: &Prepared, base: BaseDirection, name: &str, size: f64) -> Arc<Paragraph> {
+    let request = FontRequest { size, weight: 400., width: 100., slant: FontSlant::Normal, families: family(name), axes: Axes::default() };
     let mut job = shaping::ParagraphJob::for_layout(engine, scope, request, p.text().clone(), base, Default::default(), None).unwrap();
     while !job.step(16).unwrap().finished {}
     Arc::new(job.finish().unwrap())
@@ -52,9 +55,12 @@ fn fixture_scope(name: &str) -> Scope {
     FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&[&format!("Olo Inline {name}")]).unwrap(), Default::default()).unwrap().scope("en").unwrap()
 }
 fn fixture_text(e: &mut Engine, name: &str, input: &str, w: WhiteSpace) -> Arc<Text> {
+    fixture_text_size(e, name, input, w, 20.)
+}
+fn fixture_text_size(e: &mut Engine, name: &str, input: &str, w: WhiteSpace, size: f64) -> Arc<Text> {
     let scope = fixture_scope(name);
     let p = prepared(input, w);
-    let s = shaped_family(e, &scope, &p, BaseDirection::Ltr, &format!("Olo Inline {name}"));
+    let s = shaped_family_size(e, &scope, &p, BaseDirection::Ltr, &format!("Olo Inline {name}"), size);
     let mut b = linebreak::Job::new(p.text().clone(), Default::default(), None).unwrap();
     while !b.step(64).unwrap().finished {}
     let mut job = layout::TextJob::new(e, p, s, Arc::new(b.finish().unwrap()), Default::default(), None).unwrap();
@@ -78,6 +84,104 @@ fn fit(engine: &mut Engine, text: Arc<Text>, options: Options, budget: usize) ->
 }
 fn visible(l: &layout::Layout) -> Vec<&str> {
     l.lines().iter().map(|line| &l.text().prepared().text()[line.text.start as usize..line.text.end as usize]).collect()
+}
+#[test]
+fn intrinsic_text_widths_follow_wrap_policy_and_hard_breaks() {
+    let mut engine = Engine::default();
+    for (source, whitespace, min, max) in [
+        ("A B C", WhiteSpace::default(), 20., 80.),
+        ("AAAA BB", WhiteSpace::default(), 80., 130.),
+        (" A \n B\tC ", WhiteSpace::default(), 20., 80.),
+        ("A B C", WhiteSpace { wrap: false, ..Default::default() }, 80., 80.),
+        ("A  B\nC", WhiteSpace { collapse: Collapse::Preserve, wrap: false }, 60., 60.),
+        ("A  B\nC", WhiteSpace { collapse: Collapse::Preserve, wrap: true }, 20., 60.),
+        ("A  B", WhiteSpace { collapse: Collapse::BreakSpaces, wrap: true }, 30., 60.),
+        ("", WhiteSpace::default(), 0., 0.),
+        ("   ", WhiteSpace::default(), 0., 0.),
+    ] {
+        let text = fixture_text(&mut engine, "plain", source, whitespace);
+        for budget in [1, 3, 256] {
+            let mut job = layout::IntrinsicJob::new(text.clone(), Some(1.), Default::default(), None).unwrap();
+            while !job.step(budget).unwrap().finished {}
+            assert_eq!(job.finish().unwrap(), layout::IntrinsicWidths { min_content: min, max_content: max }, "{source:?} {whitespace:?}");
+        }
+    }
+}
+#[test]
+fn intrinsic_jobs_bound_work_cancel_and_do_not_publish_partial_sizes() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let mut engine = Engine::default();
+    let text = fixture_text(&mut engine, "plain", "A B C", WhiteSpace::default());
+    assert!(matches!(layout::IntrinsicJob::new(text.clone(), Some(0.), Default::default(), None), Err(layout::Error::Invalid)));
+    assert!(matches!(layout::IntrinsicJob::new(text.clone(), None, layout::Limits { text_bytes: 0, ..Default::default() }, None), Err(layout::Error::Limit)));
+    assert!(matches!(layout::IntrinsicJob::new(text.clone(), None, layout::Limits { points: 0, ..Default::default() }, None), Err(layout::Error::Limit)));
+    assert!(matches!(layout::IntrinsicJob::new(text.clone(), None, layout::Limits { clusters: 0, ..Default::default() }, None), Err(layout::Error::Limit)));
+    let job = layout::IntrinsicJob::new(text.clone(), None, Default::default(), None).unwrap();
+    assert!(matches!(job.finish(), Err(layout::Error::Incomplete)));
+    let mut job = layout::IntrinsicJob::new(text.clone(), None, layout::Limits { work: 0, ..Default::default() }, None).unwrap();
+    assert!(matches!(job.step(1), Err(layout::Error::Limit)));
+    assert!(matches!(job.step(1), Err(layout::Error::Failed)));
+    assert!(matches!(job.finish(), Err(layout::Error::Failed)));
+    let cancelled = AtomicBool::new(false);
+    let mut job = layout::IntrinsicJob::new(text, None, Default::default(), Some(&cancelled)).unwrap();
+    assert!(!job.step(1).unwrap().finished);
+    cancelled.store(true, Ordering::Relaxed);
+    assert!(matches!(job.step(1), Err(layout::Error::Cancelled)));
+    assert!(matches!(job.finish(), Err(layout::Error::Cancelled)));
+}
+#[test]
+fn intrinsic_contexts_fail_before_publishing_guessed_sizes() {
+    let mut engine = Engine::default();
+    let soft = fixture_text(&mut engine, "plain", "A\u{ad}B", WhiteSpace::default());
+    assert!(matches!(layout::IntrinsicJob::new(soft, None, Default::default(), None), Err(layout::Error::Unsupported("discretionary hyphen intrinsic sizing"))));
+    let scope = scope();
+    let rtl = text(&mut engine, &scope, "שלום", WhiteSpace::default(), BaseDirection::Rtl);
+    assert!(matches!(layout::IntrinsicJob::new(rtl, Some(1.), Default::default(), None), Err(layout::Error::Unsupported("bidi intrinsic item sizing"))));
+    let mixed = text(&mut engine, &scope, "abc Ελληνικά", WhiteSpace::default(), BaseDirection::Ltr);
+    assert!(matches!(layout::IntrinsicJob::new(mixed, Some(1.), Default::default(), None), Err(layout::Error::Unsupported("multi-run intrinsic item sizing"))));
+}
+#[test]
+fn intrinsic_text_min_max_match_original_chrome_fonts_at_five_scales() {
+    use sha2::{Digest, Sha256};
+    let cases: serde_json::Value = serde_json::from_str(include_str!("intrinsic-fixtures/cases.json")).unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("intrinsic-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("intrinsic-fixtures/cases.json"))), reference["cases_sha256"]);
+    for font in ["plain", "ligature", "deletion"] {
+        let data = std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/inline-fixtures/{font}.ttf"))).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(data)), reference["fonts_sha256"][font]);
+    }
+    let mut engine = Engine::default();
+    let mut rows = Vec::new();
+    let mut failures = Vec::new();
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let whitespace = match case["whitespace"].as_str().unwrap() {
+            "normal" => WhiteSpace::default(),
+            "nowrap" => WhiteSpace { wrap: false, ..Default::default() },
+            "pre" => WhiteSpace { collapse: Collapse::Preserve, wrap: false },
+            "pre-wrap" => WhiteSpace { collapse: Collapse::Preserve, wrap: true },
+            "pre-line" => WhiteSpace { collapse: Collapse::PreserveBreaks, wrap: true },
+            "break-spaces" => WhiteSpace { collapse: Collapse::BreakSpaces, wrap: true },
+            unsupported => panic!("unported whitespace {unsupported}"),
+        };
+        let text = fixture_text_size(&mut engine, case["font"].as_str().unwrap(), case["text"].as_str().unwrap(), whitespace, case["size"].as_f64().unwrap());
+        let mut job = layout::IntrinsicJob::new(text, Some(row["scale"].as_f64().unwrap()), Default::default(), None).unwrap();
+        while !job.step(1).unwrap().finished {}
+        let got = job.finish().unwrap();
+        let expected_min = row["values"]["min-content"]["width"].as_f64().unwrap();
+        let expected_max = row["values"]["max-content"]["width"].as_f64().unwrap();
+        let passed = (got.min_content - expected_min).abs() < 0.0001 && (got.max_content - expected_max).abs() < 0.0001;
+        let result = serde_json::json!({"id":row["id"],"scale":row["scale"],"got":[got.min_content,got.max_content],"expected":[expected_min,expected_max],"passed":passed});
+        if !passed {
+            failures.push(result.clone());
+        }
+        rows.push(result);
+    }
+    if let Ok(path) = std::env::var("OLO_INTRINSIC_REPORT") {
+        std::fs::write(path, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
+    }
+    assert_eq!(rows.len(), 300);
+    assert!(failures.is_empty(), "{}", serde_json::to_string_pretty(&failures).unwrap());
 }
 #[test]
 fn wraps_real_glyphs_trims_edges_and_reuses_width_independent_text() {

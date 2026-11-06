@@ -1,0 +1,5118 @@
+{
+  "scope": "Original text intrinsic-width fixtures, identical embedded TTF data; native live DPRs, no device emulation, box decorations, inline objects, discretionary hyphens or website acceptance.",
+  "version": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "cases_sha256": "289ac6423bedbba491bcc353810eb7e0c66ff09f9acb849163bc115374491722",
+  "fonts_sha256": {
+    "plain": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb",
+    "ligature": "4a8c9d60138ce4a11088e4a7ae48719bf560e6671599ed15d1e71b469c9bc138",
+    "deletion": "fab018b5e0ba8e39185c13bac6ef482e0515c96bd3b4e48746f726fcc165343b"
+  },
+  "rows": [
+    {
+      "scale": 1,
+      "id": "case-0",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-1",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80,
+          "computed": "80px"
+        },
+        "max-content": {
+          "width": 130,
+          "computed": "130px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-2",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-3",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80,
+          "computed": "80px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-4",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 60,
+          "computed": "60px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-5",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-6",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30,
+          "computed": "30px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-7",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-8",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-9",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-10",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-11",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-12",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-13",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10,
+          "computed": "10px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-14",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-15",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10,
+          "computed": "10px"
+        },
+        "max-content": {
+          "width": 10,
+          "computed": "10px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-16",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-17",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 70,
+          "computed": "70px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-18",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 76,
+          "computed": "76px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-19",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 46,
+          "computed": "46px"
+        },
+        "max-content": {
+          "width": 46,
+          "computed": "46px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-20",
+      "dpr": 1,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-21",
+      "dpr": 1,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 90,
+          "computed": "90px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-22",
+      "dpr": 1,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 70,
+          "computed": "70px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-23",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 20,
+          "computed": "20px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-24",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-25",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.296875,
+          "computed": "20.2969px"
+        },
+        "max-content": {
+          "width": 81.140625,
+          "computed": "81.1406px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-26",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 40.578125,
+          "computed": "40.5781px"
+        },
+        "max-content": {
+          "width": 71,
+          "computed": "71px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-27",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.28125,
+          "computed": "20.2812px"
+        },
+        "max-content": {
+          "width": 77.078125,
+          "computed": "77.0781px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-28",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 19.96875,
+          "computed": "19.9688px"
+        },
+        "max-content": {
+          "width": 49.9375,
+          "computed": "49.9375px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-29",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 9,
+          "computed": "9px"
+        },
+        "max-content": {
+          "width": 32.953125,
+          "computed": "32.9531px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-30",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 27.40625,
+          "computed": "27.4062px"
+        },
+        "max-content": {
+          "width": 68.515625,
+          "computed": "68.5156px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-31",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 12.34375,
+          "computed": "12.3438px"
+        },
+        "max-content": {
+          "width": 45.234375,
+          "computed": "45.2344px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-32",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 34.71875,
+          "computed": "34.7188px"
+        },
+        "max-content": {
+          "width": 86.796875,
+          "computed": "86.7969px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-33",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 15.625,
+          "computed": "15.625px"
+        },
+        "max-content": {
+          "width": 57.296875,
+          "computed": "57.2969px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-34",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 40,
+          "computed": "40px"
+        },
+        "max-content": {
+          "width": 100,
+          "computed": "100px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-35",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 18,
+          "computed": "18px"
+        },
+        "max-content": {
+          "width": 66,
+          "computed": "66px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-36",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 40.5625,
+          "computed": "40.5625px"
+        },
+        "max-content": {
+          "width": 101.421875,
+          "computed": "101.422px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-37",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 18.265625,
+          "computed": "18.2656px"
+        },
+        "max-content": {
+          "width": 66.9375,
+          "computed": "66.9375px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-38",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 40.59375,
+          "computed": "40.5938px"
+        },
+        "max-content": {
+          "width": 101.484375,
+          "computed": "101.484px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-39",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 18.28125,
+          "computed": "18.2812px"
+        },
+        "max-content": {
+          "width": 66.984375,
+          "computed": "66.9844px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-40",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 41.96875,
+          "computed": "41.9688px"
+        },
+        "max-content": {
+          "width": 104.9375,
+          "computed": "104.938px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-41",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 18.890625,
+          "computed": "18.8906px"
+        },
+        "max-content": {
+          "width": 69.25,
+          "computed": "69.25px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-42",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 42,
+          "computed": "42px"
+        },
+        "max-content": {
+          "width": 105,
+          "computed": "105px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-43",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 18.90625,
+          "computed": "18.9062px"
+        },
+        "max-content": {
+          "width": 69.3125,
+          "computed": "69.3125px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-44",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 42.21875,
+          "computed": "42.2188px"
+        },
+        "max-content": {
+          "width": 105.546875,
+          "computed": "105.547px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-45",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 19,
+          "computed": "19px"
+        },
+        "max-content": {
+          "width": 69.671875,
+          "computed": "69.6719px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-46",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-47",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-48",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 1,
+          "computed": "1px"
+        },
+        "max-content": {
+          "width": 2.5,
+          "computed": "2.5px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-49",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 0.453125,
+          "computed": "0.453125px"
+        },
+        "max-content": {
+          "width": 1.65625,
+          "computed": "1.65625px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-50",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 15.96875,
+          "computed": "15.9688px"
+        },
+        "max-content": {
+          "width": 39.9375,
+          "computed": "39.9375px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-51",
+      "dpr": 1,
+      "font": "\"Olo Inline ligature\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 7.1875,
+          "computed": "7.1875px"
+        },
+        "max-content": {
+          "width": 26.359375,
+          "computed": "26.3594px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-52",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-53",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50,
+          "computed": "50px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-54",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-55",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-56",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-57",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30,
+          "computed": "30px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-58",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50,
+          "computed": "50px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1,
+      "id": "case-59",
+      "dpr": 1,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 20,
+          "computed": "20px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-0",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 80.01250457763672,
+          "computed": "80.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-1",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80.01250457763672,
+          "computed": "80.0125px"
+        },
+        "max-content": {
+          "width": 130.0124969482422,
+          "computed": "130.012px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-2",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 80.01250457763672,
+          "computed": "80.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-3",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80.01250457763672,
+          "computed": "80.0125px"
+        },
+        "max-content": {
+          "width": 80.01250457763672,
+          "computed": "80.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-4",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 60.01250076293945,
+          "computed": "60.0125px"
+        },
+        "max-content": {
+          "width": 60.01250076293945,
+          "computed": "60.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-5",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 60.01250076293945,
+          "computed": "60.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-6",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30.012500762939453,
+          "computed": "30.0125px"
+        },
+        "max-content": {
+          "width": 60.01250076293945,
+          "computed": "60.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-7",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-8",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-9",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 50.01250076293945,
+          "computed": "50.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-10",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 50.025001525878906,
+          "computed": "50.025px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-11",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 40.01250076293945,
+          "computed": "40.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-12",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 30.012500762939453,
+          "computed": "30.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-13",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10.012499809265137,
+          "computed": "10.0125px"
+        },
+        "max-content": {
+          "width": 30.012500762939453,
+          "computed": "30.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-14",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 40.01250076293945,
+          "computed": "40.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-15",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10.012499809265137,
+          "computed": "10.0125px"
+        },
+        "max-content": {
+          "width": 10.012499809265137,
+          "computed": "10.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-16",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40.01250076293945,
+          "computed": "40.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-17",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 70.01250457763672,
+          "computed": "70.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-18",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 76.01250457763672,
+          "computed": "76.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-19",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 46.01250076293945,
+          "computed": "46.0125px"
+        },
+        "max-content": {
+          "width": 46.01250076293945,
+          "computed": "46.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-20",
+      "dpr": 1.25,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 30.012500762939453,
+          "computed": "30.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-21",
+      "dpr": 1.25,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 90.01250457763672,
+          "computed": "90.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-22",
+      "dpr": 1.25,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 70.01250457763672,
+          "computed": "70.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-23",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-24",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 50.01250076293945,
+          "computed": "50.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-25",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.30000114440918,
+          "computed": "20.3px"
+        },
+        "max-content": {
+          "width": 81.1624984741211,
+          "computed": "81.1625px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-26",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 40.587501525878906,
+          "computed": "40.5875px"
+        },
+        "max-content": {
+          "width": 71.01250457763672,
+          "computed": "71.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-27",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.287500381469727,
+          "computed": "20.2875px"
+        },
+        "max-content": {
+          "width": 77.0999984741211,
+          "computed": "77.1px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-28",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 19.950000762939453,
+          "computed": "19.95px"
+        },
+        "max-content": {
+          "width": 49.88750076293945,
+          "computed": "49.8875px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-29",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 8.987500190734863,
+          "computed": "8.9875px"
+        },
+        "max-content": {
+          "width": 32.92499923706055,
+          "computed": "32.925px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-30",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 27.399999618530273,
+          "computed": "27.4px"
+        },
+        "max-content": {
+          "width": 68.5,
+          "computed": "68.5px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-31",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 12.33750057220459,
+          "computed": "12.3375px"
+        },
+        "max-content": {
+          "width": 45.212501525878906,
+          "computed": "45.2125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-32",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 34.72500228881836,
+          "computed": "34.725px"
+        },
+        "max-content": {
+          "width": 86.82500457763672,
+          "computed": "86.825px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-33",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 15.637499809265137,
+          "computed": "15.6375px"
+        },
+        "max-content": {
+          "width": 57.29999923706055,
+          "computed": "57.3px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-34",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 40,
+          "computed": "40px"
+        },
+        "max-content": {
+          "width": 100.01250457763672,
+          "computed": "100.012px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-35",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 18.012500762939453,
+          "computed": "18.0125px"
+        },
+        "max-content": {
+          "width": 66.01250457763672,
+          "computed": "66.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-36",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 40.57500076293945,
+          "computed": "40.575px"
+        },
+        "max-content": {
+          "width": 101.45000457763672,
+          "computed": "101.45px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-37",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 18.262500762939453,
+          "computed": "18.2625px"
+        },
+        "max-content": {
+          "width": 66.95000457763672,
+          "computed": "66.95px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-38",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 40.60000228881836,
+          "computed": "40.6px"
+        },
+        "max-content": {
+          "width": 101.5,
+          "computed": "101.5px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-39",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 18.274999618530273,
+          "computed": "18.275px"
+        },
+        "max-content": {
+          "width": 67,
+          "computed": "67px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-40",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 41.95000076293945,
+          "computed": "41.95px"
+        },
+        "max-content": {
+          "width": 104.875,
+          "computed": "104.875px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-41",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 18.887500762939453,
+          "computed": "18.8875px"
+        },
+        "max-content": {
+          "width": 69.2249984741211,
+          "computed": "69.225px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-42",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 42,
+          "computed": "42px"
+        },
+        "max-content": {
+          "width": 105,
+          "computed": "105px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-43",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 18.899999618530273,
+          "computed": "18.9px"
+        },
+        "max-content": {
+          "width": 69.30000305175781,
+          "computed": "69.3px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-44",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 42.22500228881836,
+          "computed": "42.225px"
+        },
+        "max-content": {
+          "width": 105.5625,
+          "computed": "105.562px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-45",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 19.012500762939453,
+          "computed": "19.0125px"
+        },
+        "max-content": {
+          "width": 69.67500305175781,
+          "computed": "69.675px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-46",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-47",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-48",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 0.9750000238418579,
+          "computed": "0.975px"
+        },
+        "max-content": {
+          "width": 2.450000047683716,
+          "computed": "2.45px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-49",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 0.45000001788139343,
+          "computed": "0.45px"
+        },
+        "max-content": {
+          "width": 1.6125000715255737,
+          "computed": "1.6125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-50",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 15.975000381469727,
+          "computed": "15.975px"
+        },
+        "max-content": {
+          "width": 39.95000076293945,
+          "computed": "39.95px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-51",
+      "dpr": 1.25,
+      "font": "\"Olo Inline ligature\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 7.200000286102295,
+          "computed": "7.2px"
+        },
+        "max-content": {
+          "width": 26.36250114440918,
+          "computed": "26.3625px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-52",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 50.025001525878906,
+          "computed": "50.025px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-53",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50.01250076293945,
+          "computed": "50.0125px"
+        },
+        "max-content": {
+          "width": 50.01250076293945,
+          "computed": "50.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-54",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 50.01250076293945,
+          "computed": "50.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-55",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 80.0250015258789,
+          "computed": "80.025px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-56",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 50.01250076293945,
+          "computed": "50.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-57",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30.012500762939453,
+          "computed": "30.0125px"
+        },
+        "max-content": {
+          "width": 30.012500762939453,
+          "computed": "30.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-58",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50.01250076293945,
+          "computed": "50.0125px"
+        },
+        "max-content": {
+          "width": 50.01250076293945,
+          "computed": "50.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.25,
+      "id": "case-59",
+      "dpr": 1.25,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        },
+        "max-content": {
+          "width": 20.012500762939453,
+          "computed": "20.0125px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-0",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-1",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80,
+          "computed": "80px"
+        },
+        "max-content": {
+          "width": 130,
+          "computed": "130px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-2",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-3",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80,
+          "computed": "80px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-4",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 60,
+          "computed": "60px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-5",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-6",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30,
+          "computed": "30px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-7",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-8",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-9",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-10",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-11",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-12",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-13",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10,
+          "computed": "10px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-14",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-15",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10,
+          "computed": "10px"
+        },
+        "max-content": {
+          "width": 10,
+          "computed": "10px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-16",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-17",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 70,
+          "computed": "70px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-18",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 76,
+          "computed": "76px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-19",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 46,
+          "computed": "46px"
+        },
+        "max-content": {
+          "width": 46,
+          "computed": "46px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-20",
+      "dpr": 1.5,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-21",
+      "dpr": 1.5,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 90,
+          "computed": "90px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-22",
+      "dpr": 1.5,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 70,
+          "computed": "70px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-23",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 20,
+          "computed": "20px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-24",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-25",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.291667938232422,
+          "computed": "20.2917px"
+        },
+        "max-content": {
+          "width": 81.16667175292969,
+          "computed": "81.1667px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-26",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 40.583335876464844,
+          "computed": "40.5833px"
+        },
+        "max-content": {
+          "width": 71.02083587646484,
+          "computed": "71.0208px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-27",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.291667938232422,
+          "computed": "20.2917px"
+        },
+        "max-content": {
+          "width": 77.11458587646484,
+          "computed": "77.1146px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-28",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 19.95833396911621,
+          "computed": "19.9583px"
+        },
+        "max-content": {
+          "width": 49.895835876464844,
+          "computed": "49.8958px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-29",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 8.989583969116211,
+          "computed": "8.98958px"
+        },
+        "max-content": {
+          "width": 32.9375,
+          "computed": "32.9375px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-30",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 27.39583396911621,
+          "computed": "27.3958px"
+        },
+        "max-content": {
+          "width": 68.5,
+          "computed": "68.5px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-31",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 12.333333969116211,
+          "computed": "12.3333px"
+        },
+        "max-content": {
+          "width": 45.208335876464844,
+          "computed": "45.2083px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-32",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 34.72916793823242,
+          "computed": "34.7292px"
+        },
+        "max-content": {
+          "width": 86.83333587646484,
+          "computed": "86.8333px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-33",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 15.635416984558105,
+          "computed": "15.6354px"
+        },
+        "max-content": {
+          "width": 57.3125,
+          "computed": "57.3125px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-34",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 40,
+          "computed": "40px"
+        },
+        "max-content": {
+          "width": 100,
+          "computed": "100px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-35",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 18,
+          "computed": "18px"
+        },
+        "max-content": {
+          "width": 66,
+          "computed": "66px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-36",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 40.5625,
+          "computed": "40.5625px"
+        },
+        "max-content": {
+          "width": 101.41667175292969,
+          "computed": "101.417px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-37",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 18.260417938232422,
+          "computed": "18.2604px"
+        },
+        "max-content": {
+          "width": 66.9375,
+          "computed": "66.9375px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-38",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 40.60416793823242,
+          "computed": "40.6042px"
+        },
+        "max-content": {
+          "width": 101.52083587646484,
+          "computed": "101.521px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-39",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 18.28125,
+          "computed": "18.2812px"
+        },
+        "max-content": {
+          "width": 67,
+          "computed": "67px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-40",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 41.958335876464844,
+          "computed": "41.9583px"
+        },
+        "max-content": {
+          "width": 104.90625,
+          "computed": "104.906px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-41",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 18.885417938232422,
+          "computed": "18.8854px"
+        },
+        "max-content": {
+          "width": 69.23958587646484,
+          "computed": "69.2396px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-42",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 42,
+          "computed": "42px"
+        },
+        "max-content": {
+          "width": 105.01042175292969,
+          "computed": "105.01px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-43",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 18.90625,
+          "computed": "18.9062px"
+        },
+        "max-content": {
+          "width": 69.30208587646484,
+          "computed": "69.3021px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-44",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 42.22916793823242,
+          "computed": "42.2292px"
+        },
+        "max-content": {
+          "width": 105.57292175292969,
+          "computed": "105.573px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-45",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 19.010417938232422,
+          "computed": "19.0104px"
+        },
+        "max-content": {
+          "width": 69.6875,
+          "computed": "69.6875px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-46",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-47",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-48",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 1,
+          "computed": "1px"
+        },
+        "max-content": {
+          "width": 2.5104167461395264,
+          "computed": "2.51042px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-49",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 0.4583333432674408,
+          "computed": "0.458333px"
+        },
+        "max-content": {
+          "width": 1.65625,
+          "computed": "1.65625px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-50",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 15.979166984558105,
+          "computed": "15.9792px"
+        },
+        "max-content": {
+          "width": 39.94791793823242,
+          "computed": "39.9479px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-51",
+      "dpr": 1.5,
+      "font": "\"Olo Inline ligature\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 7.1979169845581055,
+          "computed": "7.19792px"
+        },
+        "max-content": {
+          "width": 26.375,
+          "computed": "26.375px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-52",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-53",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50,
+          "computed": "50px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-54",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-55",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-56",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-57",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30,
+          "computed": "30px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-58",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50,
+          "computed": "50px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 1.5,
+      "id": "case-59",
+      "dpr": 1.5,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 20,
+          "computed": "20px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-0",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 80.0089340209961,
+          "computed": "80.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-1",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80.0089340209961,
+          "computed": "80.0089px"
+        },
+        "max-content": {
+          "width": 130.00894165039062,
+          "computed": "130.009px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-2",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 80.0089340209961,
+          "computed": "80.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-3",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80.0089340209961,
+          "computed": "80.0089px"
+        },
+        "max-content": {
+          "width": 80.0089340209961,
+          "computed": "80.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-4",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 60.00893020629883,
+          "computed": "60.0089px"
+        },
+        "max-content": {
+          "width": 60.00893020629883,
+          "computed": "60.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-5",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 60.00893020629883,
+          "computed": "60.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-6",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30.008930206298828,
+          "computed": "30.0089px"
+        },
+        "max-content": {
+          "width": 60.00893020629883,
+          "computed": "60.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-7",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-8",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-9",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 50.00893020629883,
+          "computed": "50.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-10",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 50.017860412597656,
+          "computed": "50.0179px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-11",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 40.00893020629883,
+          "computed": "40.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-12",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 30.008930206298828,
+          "computed": "30.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-13",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10.008929252624512,
+          "computed": "10.0089px"
+        },
+        "max-content": {
+          "width": 30.008930206298828,
+          "computed": "30.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-14",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 40.00893020629883,
+          "computed": "40.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-15",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10.008929252624512,
+          "computed": "10.0089px"
+        },
+        "max-content": {
+          "width": 10.008929252624512,
+          "computed": "10.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-16",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40.00893020629883,
+          "computed": "40.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-17",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 70.0089340209961,
+          "computed": "70.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-18",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 76.0089340209961,
+          "computed": "76.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-19",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 46.00893020629883,
+          "computed": "46.0089px"
+        },
+        "max-content": {
+          "width": 46.00893020629883,
+          "computed": "46.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-20",
+      "dpr": 1.75,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 30.008930206298828,
+          "computed": "30.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-21",
+      "dpr": 1.75,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 90.0089340209961,
+          "computed": "90.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-22",
+      "dpr": 1.75,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 70.0089340209961,
+          "computed": "70.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-23",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-24",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 50.00893020629883,
+          "computed": "50.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-25",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.29464340209961,
+          "computed": "20.2946px"
+        },
+        "max-content": {
+          "width": 81.17857360839844,
+          "computed": "81.1786px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-26",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 40.58928680419922,
+          "computed": "40.5893px"
+        },
+        "max-content": {
+          "width": 71.03572082519531,
+          "computed": "71.0357px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-27",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.29464340209961,
+          "computed": "20.2946px"
+        },
+        "max-content": {
+          "width": 77.125,
+          "computed": "77.125px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-28",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 19.96428680419922,
+          "computed": "19.9643px"
+        },
+        "max-content": {
+          "width": 49.91071701049805,
+          "computed": "49.9107px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-29",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 8.991071701049805,
+          "computed": "8.99107px"
+        },
+        "max-content": {
+          "width": 32.94643020629883,
+          "computed": "32.9464px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-30",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 27.410715103149414,
+          "computed": "27.4107px"
+        },
+        "max-content": {
+          "width": 68.53572082519531,
+          "computed": "68.5357px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-31",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 12.339285850524902,
+          "computed": "12.3393px"
+        },
+        "max-content": {
+          "width": 45.23214340209961,
+          "computed": "45.2321px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-32",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 34.71428680419922,
+          "computed": "34.7143px"
+        },
+        "max-content": {
+          "width": 86.78572082519531,
+          "computed": "86.7857px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-33",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 15.625000953674316,
+          "computed": "15.625px"
+        },
+        "max-content": {
+          "width": 57.28571701049805,
+          "computed": "57.2857px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-34",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 40,
+          "computed": "40px"
+        },
+        "max-content": {
+          "width": 100.0089340209961,
+          "computed": "100.009px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-35",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 18.008930206298828,
+          "computed": "18.0089px"
+        },
+        "max-content": {
+          "width": 66.0089340209961,
+          "computed": "66.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-36",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 40.57143020629883,
+          "computed": "40.5714px"
+        },
+        "max-content": {
+          "width": 101.43750762939453,
+          "computed": "101.438px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-37",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 18.258930206298828,
+          "computed": "18.2589px"
+        },
+        "max-content": {
+          "width": 66.9464340209961,
+          "computed": "66.9464px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-38",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 40.60714340209961,
+          "computed": "40.6071px"
+        },
+        "max-content": {
+          "width": 101.52678680419922,
+          "computed": "101.527px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-39",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 18.27678680419922,
+          "computed": "18.2768px"
+        },
+        "max-content": {
+          "width": 67.0089340209961,
+          "computed": "67.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-40",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 41.96428680419922,
+          "computed": "41.9643px"
+        },
+        "max-content": {
+          "width": 104.91964721679688,
+          "computed": "104.92px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-41",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 18.892858505249023,
+          "computed": "18.8929px"
+        },
+        "max-content": {
+          "width": 69.25,
+          "computed": "69.25px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-42",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 42,
+          "computed": "42px"
+        },
+        "max-content": {
+          "width": 105.0089340209961,
+          "computed": "105.009px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-43",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 18.90178680419922,
+          "computed": "18.9018px"
+        },
+        "max-content": {
+          "width": 69.30357360839844,
+          "computed": "69.3036px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-44",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 42.23214340209961,
+          "computed": "42.2321px"
+        },
+        "max-content": {
+          "width": 105.58928680419922,
+          "computed": "105.589px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-45",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 19.008930206298828,
+          "computed": "19.0089px"
+        },
+        "max-content": {
+          "width": 69.6875,
+          "computed": "69.6875px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-46",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-47",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-48",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 0.9821429252624512,
+          "computed": "0.982143px"
+        },
+        "max-content": {
+          "width": 2.455357313156128,
+          "computed": "2.45536px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-49",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 0.4464285969734192,
+          "computed": "0.446429px"
+        },
+        "max-content": {
+          "width": 1.6250001192092896,
+          "computed": "1.625px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-50",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 15.98214340209961,
+          "computed": "15.9821px"
+        },
+        "max-content": {
+          "width": 39.96428680419922,
+          "computed": "39.9643px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-51",
+      "dpr": 1.75,
+      "font": "\"Olo Inline ligature\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 7.1964287757873535,
+          "computed": "7.19643px"
+        },
+        "max-content": {
+          "width": 26.375001907348633,
+          "computed": "26.375px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-52",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 50.017860412597656,
+          "computed": "50.0179px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-53",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50.00893020629883,
+          "computed": "50.0089px"
+        },
+        "max-content": {
+          "width": 50.00893020629883,
+          "computed": "50.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-54",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 50.00893020629883,
+          "computed": "50.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-55",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 80.01786041259766,
+          "computed": "80.0179px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-56",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 50.00893020629883,
+          "computed": "50.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-57",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30.008930206298828,
+          "computed": "30.0089px"
+        },
+        "max-content": {
+          "width": 30.008930206298828,
+          "computed": "30.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-58",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50.00893020629883,
+          "computed": "50.0089px"
+        },
+        "max-content": {
+          "width": 50.00893020629883,
+          "computed": "50.0089px"
+        }
+      }
+    },
+    {
+      "scale": 1.75,
+      "id": "case-59",
+      "dpr": 1.75,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        },
+        "max-content": {
+          "width": 20.008930206298828,
+          "computed": "20.0089px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-0",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-1",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80,
+          "computed": "80px"
+        },
+        "max-content": {
+          "width": 130,
+          "computed": "130px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-2",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-3",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 80,
+          "computed": "80px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-4",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 60,
+          "computed": "60px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-5",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-6",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30,
+          "computed": "30px"
+        },
+        "max-content": {
+          "width": 60,
+          "computed": "60px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-7",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-8",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-9",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-10",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-11",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-12",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-13",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10,
+          "computed": "10px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-14",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-15",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 10,
+          "computed": "10px"
+        },
+        "max-content": {
+          "width": 10,
+          "computed": "10px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-16",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 40,
+          "computed": "40px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-17",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 70,
+          "computed": "70px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-18",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 76,
+          "computed": "76px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-19",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 46,
+          "computed": "46px"
+        },
+        "max-content": {
+          "width": 46,
+          "computed": "46px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-20",
+      "dpr": 2,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-21",
+      "dpr": 2,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 90,
+          "computed": "90px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-22",
+      "dpr": 2,
+      "font": "\"Olo Inline deletion\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 70,
+          "computed": "70px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-23",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 20,
+          "computed": "20px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-24",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-25",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.2890625,
+          "computed": "20.2891px"
+        },
+        "max-content": {
+          "width": 81.15625,
+          "computed": "81.1562px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-26",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 40.578125,
+          "computed": "40.5781px"
+        },
+        "max-content": {
+          "width": 71.015625,
+          "computed": "71.0156px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-27",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.3px",
+      "values": {
+        "min-content": {
+          "width": 20.2890625,
+          "computed": "20.2891px"
+        },
+        "max-content": {
+          "width": 77.1015625,
+          "computed": "77.1016px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-28",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 19.96875,
+          "computed": "19.9688px"
+        },
+        "max-content": {
+          "width": 49.921875,
+          "computed": "49.9219px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-29",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "9.99px",
+      "values": {
+        "min-content": {
+          "width": 8.9921875,
+          "computed": "8.99219px"
+        },
+        "max-content": {
+          "width": 32.953125,
+          "computed": "32.9531px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-30",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 27.40625,
+          "computed": "27.4062px"
+        },
+        "max-content": {
+          "width": 68.515625,
+          "computed": "68.5156px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-31",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "13.71px",
+      "values": {
+        "min-content": {
+          "width": 12.3359375,
+          "computed": "12.3359px"
+        },
+        "max-content": {
+          "width": 45.2265625,
+          "computed": "45.2266px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-32",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 34.734375,
+          "computed": "34.7344px"
+        },
+        "max-content": {
+          "width": 86.84375,
+          "computed": "86.8438px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-33",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "17.37px",
+      "values": {
+        "min-content": {
+          "width": 15.6328125,
+          "computed": "15.6328px"
+        },
+        "max-content": {
+          "width": 57.3125,
+          "computed": "57.3125px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-34",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 40.015625,
+          "computed": "40.0156px"
+        },
+        "max-content": {
+          "width": 100.046875,
+          "computed": "100.047px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-35",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.01px",
+      "values": {
+        "min-content": {
+          "width": 18.0078125,
+          "computed": "18.0078px"
+        },
+        "max-content": {
+          "width": 66.03125,
+          "computed": "66.0312px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-36",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 40.578125,
+          "computed": "40.5781px"
+        },
+        "max-content": {
+          "width": 101.4453125,
+          "computed": "101.445px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-37",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.29px",
+      "values": {
+        "min-content": {
+          "width": 18.265625,
+          "computed": "18.2656px"
+        },
+        "max-content": {
+          "width": 66.9609375,
+          "computed": "66.9609px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-38",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 40.609375,
+          "computed": "40.6094px"
+        },
+        "max-content": {
+          "width": 101.5234375,
+          "computed": "101.523px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-39",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.31px",
+      "values": {
+        "min-content": {
+          "width": 18.28125,
+          "computed": "18.2812px"
+        },
+        "max-content": {
+          "width": 67.0078125,
+          "computed": "67.0078px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-40",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 41.96875,
+          "computed": "41.9688px"
+        },
+        "max-content": {
+          "width": 104.9296875,
+          "computed": "104.93px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-41",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "20.99px",
+      "values": {
+        "min-content": {
+          "width": 18.890625,
+          "computed": "18.8906px"
+        },
+        "max-content": {
+          "width": 69.25,
+          "computed": "69.25px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-42",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 42.015625,
+          "computed": "42.0156px"
+        },
+        "max-content": {
+          "width": 105.0390625,
+          "computed": "105.039px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-43",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.01px",
+      "values": {
+        "min-content": {
+          "width": 18.9140625,
+          "computed": "18.9141px"
+        },
+        "max-content": {
+          "width": 69.328125,
+          "computed": "69.3281px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-44",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 42.25,
+          "computed": "42.25px"
+        },
+        "max-content": {
+          "width": 105.625,
+          "computed": "105.625px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-45",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "21.125px",
+      "values": {
+        "min-content": {
+          "width": 19.015625,
+          "computed": "19.0156px"
+        },
+        "max-content": {
+          "width": 69.71875,
+          "computed": "69.7188px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-46",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-47",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0px",
+      "values": {
+        "min-content": {
+          "width": 0,
+          "computed": "0px"
+        },
+        "max-content": {
+          "width": 0,
+          "computed": "0px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-48",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 1,
+          "computed": "1px"
+        },
+        "max-content": {
+          "width": 2.5,
+          "computed": "2.5px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-49",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "0.5px",
+      "values": {
+        "min-content": {
+          "width": 0.453125,
+          "computed": "0.453125px"
+        },
+        "max-content": {
+          "width": 1.65625,
+          "computed": "1.65625px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-50",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 15.984375,
+          "computed": "15.9844px"
+        },
+        "max-content": {
+          "width": 39.9609375,
+          "computed": "39.9609px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-51",
+      "dpr": 2,
+      "font": "\"Olo Inline ligature\"",
+      "size": "7.999px",
+      "values": {
+        "min-content": {
+          "width": 7.1953125,
+          "computed": "7.19531px"
+        },
+        "max-content": {
+          "width": 26.375,
+          "computed": "26.375px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-52",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-53",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50,
+          "computed": "50px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-54",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-55",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 80,
+          "computed": "80px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-56",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-57",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 30,
+          "computed": "30px"
+        },
+        "max-content": {
+          "width": 30,
+          "computed": "30px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-58",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 50,
+          "computed": "50px"
+        },
+        "max-content": {
+          "width": 50,
+          "computed": "50px"
+        }
+      }
+    },
+    {
+      "scale": 2,
+      "id": "case-59",
+      "dpr": 2,
+      "font": "\"Olo Inline plain\"",
+      "size": "20px",
+      "values": {
+        "min-content": {
+          "width": 20,
+          "computed": "20px"
+        },
+        "max-content": {
+          "width": 20,
+          "computed": "20px"
+        }
+      }
+    }
+  ]
+}
