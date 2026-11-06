@@ -6,6 +6,7 @@
 
 mod crop;
 mod pdfdoc;
+mod pdftext;
 mod pdfview;
 mod pdfwork;
 mod signature;
@@ -863,8 +864,22 @@ impl Doc {
                     .shift_key("z")
                     .enabled(v.can_redo())
                     .separator()
+                    .item("Copy", "copy")
+                    .key("c")
+                    .enabled(v.has_text_selection())
+                    .item("Select All", "select-all")
+                    .key("a")
                     .item("Delete", "delete")
-                    .enabled(v.has_selection()),
+                    .enabled(v.has_selection())
+                    .separator()
+                    .item("Find…", "find")
+                    .key("f")
+                    .item("Find Next", "find-next")
+                    .key("g")
+                    .enabled(v.finding())
+                    .item("Find Previous", "find-previous")
+                    .shift_key("g")
+                    .enabled(v.finding()),
             );
             menus.push(
                 Menu::new("View")
@@ -1069,6 +1084,11 @@ impl Doc {
             "undo" => v.undo(cx),
             "redo" => v.redo(cx),
             "delete" => v.delete_selection(cx),
+            "copy" => v.copy(cx),
+            "select-all" => v.select_all(cx),
+            "find" => v.open_find(window, cx),
+            "find-next" => v.find_step(false, cx),
+            "find-previous" => v.find_step(true, cx),
             "zoom-in" => v.zoom_step(true, cx),
             "zoom-out" => v.zoom_step(false, cx),
             "zoom-100" => v.set_zoom(1.0, None, cx),

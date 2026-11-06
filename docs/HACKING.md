@@ -6725,6 +6725,34 @@ panels. The document has the keyboard from the moment its window opens
   fields as `TextInput`, `CheckBox` (checked), `RadioButton` (its
   on-state as its value), `ComboBox` or `ListBox`; while one is typed in,
   as its editor.
+  Its text (`pdftext.rs`): read natively on the worker, once a page,
+  after the page is first rendered (renders first; Select All and Find
+  ask for the rest, `Request::AllText`, read a page at a time between
+  renders), by running hayro's interpreter with a `Device` of our own
+  that keeps each glyph's Unicode (ToUnicode, else its glyph name) and
+  box (`props.transform * glyph.transform()`, 1000 units to the em, the
+  em's -0.25 to 0.85) in the page's rendered points instead of painting;
+  OCR'd scans' invisible text counts, ligatures paste as letters. Glyphs
+  stay in the order the page draws them; between two, a space where the
+  gap along the baseline is over a tenth of an em (a justified line's
+  word space is a fifth; kerning far under a tenth) or a drawn space
+  was, a line break where the baseline moves over half an em (or back
+  more than two), a paragraph past 1.8. A line ending in a hyphen that
+  the next goes on from in lower case is one word, pasted whole
+  (`DIS-CLAIMED` keeps its hyphen). 1 to 2 ms a page (bzip2's manual).
+  With the Select tool, a drag over text selects it (where no field or
+  mark takes the press; an I-beam over the text's lines), a double-click
+  a word, a triple a line, ⇧-click extends; across pages too. Drawn over
+  the page's picture (`style::selection_over`, the kit's highlight,
+  lighter than behind a text field's text). Edit ▸ Copy (⌘C; a field
+  being typed in keeps its own), Select All (⌘A: copied once every page
+  is read), Find… (⌘F: a bar over the pages, as the tool bar is, with
+  how many it found and Previous, Next and Close; Return and ⇧Return;
+  each match marked, the one shown selected and scrolled into view),
+  Find Next / Previous (⌘G, ⇧⌘G), and a right-click's Copy, Select All
+  and Find…. Agents read each line in view as a `Label`. Measured on
+  release builds scrolling bzip2's manual at 60 frames a second: 457 to
+  479 µs a frame before, 459 to 492 after; idle, nothing.
 - `--look FILE` (a file panel's Space): a process of its own, put away
   by Space or Escape; `--over=HANDLE` opens it over that window (the
   panel's, exported: xdg-foreign).

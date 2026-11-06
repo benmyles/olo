@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Viewer: a PDF's text selected, copied and found
+
+*16:05* — A PDF's text is read natively (hayro's interpreter with a device of Olo's own that keeps each glyph's Unicode and box), once a page, on the worker. It's selected by dragging (a word with a double-click, a line with a triple), copied with ⌘C or a right-click, Select All copies the whole document, and Find (⌘F) marks every match, selecting the one shown in the middle of the view. Here the third of 90 'compression's in bzip2's manual, the next one marked.
+
+![Viewer: a PDF's text selected, copied and found](2026-11-05/160514-viewer-a-pdf-s-text-selected-copied-and-found.png)
+
 ### Preferences ▸ Network ▸ VPN, with WireGuard imported natively
 
 *15:42* — The VPNs saved (WireGuard, and NetworkManager's plugins' OpenVPN, IPsec…) are each connected and disconnected here, and removed after asking. A WireGuard file (wg-quick's .conf) is imported natively: keys checked, addresses by family, and its DNS asked alone while it's up so a full tunnel's names don't leak. Here “Office” was imported and connected. Also new: a hotspot under Wi-Fi, and IPv6 and MTU on a wired link (nm-fake standing in for NetworkManager).

@@ -57,6 +57,14 @@ pub fn shade(palette: &Palette, rgba: Rgba, tint: f32) -> Hsla {
 }
 
 /// Text that can't be used now.
+/// A text selection laid over what's already drawn (a PDF page's text
+/// is in its picture), not under it: the kit's highlight, lighter than a
+/// text field's (which goes behind its text), and fainter in a window
+/// that isn't the active one.
+pub fn selection_over(p: &Palette, active: bool) -> Hsla {
+    c(p.control_highlight).opacity(if active { 0.4 } else { 0.2 })
+}
+
 pub fn disabled_text(p: &Palette) -> Hsla {
     c(olo_theme::mix(p.panel_text, p.panel_background, 0.55))
 }

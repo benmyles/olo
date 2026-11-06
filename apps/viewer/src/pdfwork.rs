@@ -1,23 +1,30 @@
 //! The PDF worker: one thread per open PDF that owns the parsed document,
-//! renders pages at the zoom the window asks for, and saves. The window
-//! talks to it with [`Request`]s and hears back through [`Event`]s, so
-//! nothing slow ever runs on the UI thread.
+//! renders pages at the zoom the window asks for, reads their text, and
+//! saves. The window talks to it with [`Request`]s and hears back through
+//! [`Event`]s, so nothing slow ever runs on the UI thread. A page's text
+//! is read once, after it's first rendered (the rendering comes first),
+//! or when the window wants every page's (Select All, Find), a page at a
+//! time between renders.
 
 use std::{
+    collections::{HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{Arc, mpsc},
 };
 
 use hayro::{
     PixmapSettings, RenderCache, RenderSettings,
-    hayro_interpret::InterpreterSettings,
+    hayro_interpret::{InterpreterCache, InterpreterSettings},
     hayro_syntax::{LoadPdfError, Pdf},
     vello_cpu::color::palette::css::WHITE,
 };
 use lopdf::Document;
 use olo_ui::gpui::RenderImage;
 
-use crate::pdfdoc::{self, Model, PageGeom};
+use crate::{
+    pdfdoc::{self, Model, PageGeom},
+    pdftext::{self, PageText},
+};
 
 /// The largest page image we render, in pixels on its longer side.
 pub const MAX_PX: f32 = 6000.0;
@@ -41,6 +48,8 @@ pub enum Request {
     /// in; otherwise, when `to` becomes the window's file (`adopt`), the
     /// worker reopens from what it wrote.
     Save { model: Model, to: PathBuf, flatten: bool, adopt: bool },
+    /// Every page's text, those not read yet a page at a time.
+    AllText,
 }
 
 pub enum Event {
@@ -63,6 +72,11 @@ pub enum Event {
     },
     SaveFailed(String),
     Failed(String),
+    /// Page `page`'s text (once a page).
+    Text {
+        page: usize,
+        text: Arc<PageText>,
+    },
 }
 
 struct Doc {
@@ -142,13 +156,32 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
             };
             send(Event::Opened { geoms: geoms(&d.pdf), model: d.model.clone(), editable: d.doc.is_some() });
             let mut cache = RenderCache::new();
+            let mut text_cache = InterpreterCache::new();
             let settings = InterpreterSettings::default();
             let mut queue: Vec<Request> = Vec::new();
+            // Pages whose text is to be read (when nothing else is
+            // asked), and those read.
+            let mut want_text: VecDeque<usize> = VecDeque::new();
+            let mut read_text: HashSet<usize> = HashSet::new();
             loop {
                 if queue.is_empty() {
-                    match rx.recv() {
-                        Ok(r) => queue.push(r),
-                        Err(_) => return,
+                    // Nothing asked: a page's text, if one's wanted.
+                    if let Some(page) = want_text.pop_front() {
+                        if read_text.insert(page)
+                            && let Some(p) = d.pdf.pages().get(page)
+                        {
+                            send(Event::Text { page, text: Arc::new(pdftext::read(p, &text_cache)) });
+                        }
+                        match rx.try_recv() {
+                            Ok(r) => queue.push(r),
+                            Err(mpsc::TryRecvError::Disconnected) => return,
+                            Err(mpsc::TryRecvError::Empty) => continue,
+                        }
+                    } else {
+                        match rx.recv() {
+                            Ok(r) => queue.push(r),
+                            Err(_) => return,
+                        }
                     }
                 }
                 queue.extend(rx.try_iter());
@@ -159,6 +192,11 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                     None => queue.pop().expect("queue is not empty"),
                 };
                 match next {
+                    Request::AllText => {
+                        let n = d.pdf.pages().len();
+                        let more: Vec<usize> = (0..n).filter(|p| !read_text.contains(p) && !want_text.contains(p)).collect();
+                        want_text.extend(more);
+                    }
                     Request::Render { page, scale } => {
                         queue.retain(|r| !matches!(r, Request::Render { page: p, .. } if *p == page));
                         let pages = d.pdf.pages();
@@ -169,6 +207,11 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                         let (pw, ph) = (pix.width() as u32, pix.height() as u32);
                         let tiles = tiles(pix.data_as_u8_slice(), pw, ph);
                         send(Event::Page { page, scale, size: (pw, ph), tiles });
+                        // Its text next, once (before pages only Find wants).
+                        if !read_text.contains(&page) {
+                            want_text.retain(|p| *p != page);
+                            want_text.push_front(page);
+                        }
                     }
                     Request::Save { model, to, flatten, adopt } => {
                         let Some(doc) = &d.doc else {
@@ -192,6 +235,7 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                                 Ok(nd) => {
                                     d = nd;
                                     cache = RenderCache::new();
+                                    text_cache = InterpreterCache::new();
                                     Some(d.model.clone())
                                 }
                                 Err(e) => {
