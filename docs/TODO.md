@@ -17,6 +17,8 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
+## Done, waiting for Ben to try or confirm
+
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
@@ -24,8 +26,15 @@ Nothing: what's left is waiting for Ben or blocked.
   code, by their `autocomplete` tokens, names and labels), and Olo's
   context menu there lists Passwords' cards to fill them with, as it
   lists logins for a sign-in form.
-
-## Done, waiting for Ben to try or confirm
+  *Done* (2026-11-06): a card form's field (its `autocomplete` token,
+  else its label) gives "Autofill Card (Travel Visa •••• 1111)" and every
+  card under Passwords ▸ in Olo's menu; choosing one fills the number,
+  name, expiry (in the form's own shape, or its month and year selects)
+  and security code into the form the person was in, the same site's
+  frames and payment providers' (Stripe's and the like), never another
+  site's. The menu never gets a number or code; Passwords gives them
+  only for a card the person chose. Tested end to end in a test session
+  with the fake 1Password's card, over DevTools and through the menu.
 
 - **Switching to olo-secrets broke gh's login** (Ben, 2026-11-06,
   urgent): "i tried switching to olo-secrets and now it broke everything

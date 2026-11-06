@@ -1,6 +1,7 @@
 // Olo Passwords in Chrome: "Autofill with Passwords (the best login)"
 // and the page's other logins in a text field's context menu (each's
-// username, password or one-time code, or the whole login), in the
+// username, password or one-time code, or the whole login), and in a
+// card form's field "Autofill Card" and every credit card, in the
 // toolbar button's list, and an offer to save a login just used. The
 // best login is the one whose username the page shows, else the one
 // chosen there before in this Chrome profile, else the profile's own
@@ -115,6 +116,66 @@ async function logins(url, start = false) {
   return entry;
 }
 
+// ---- Credit cards ----
+
+// Passwords' cards (not kept for sites: one list), for a card form's
+// menu: {at, state, cards}, each card its title, name, brand, last four
+// digits and expiry, never its number or code.
+let cardsKnown = null;
+
+async function cards(url) {
+  if (cardsKnown && cardsKnown.state === "cards" && Date.now() - cardsKnown.at < KNOWN_FOR) return cardsKnown;
+  let entry;
+  try {
+    const r = await ask({ type: "cards", url });
+    if (r.type === "cards") entry = { state: "cards", cards: r.cards };
+    else if (r.type === "locked") entry = { state: "locked", cards: [] };
+    else if (r.type === "not_set_up") entry = { state: "not-set-up", cards: [] };
+    else entry = { state: "error", cards: [], message: r.message || r.type };
+  } catch (e) {
+    entry = { state: /isn.t running/.test(e.message) ? "not-running" : "error", cards: [], message: e.message };
+  }
+  cardsKnown = { at: Date.now(), ...entry };
+  return cardsKnown;
+}
+
+// How a card reads in the menu: "Travel Visa (•••• 1234, 08/2029)".
+function cardLabel(c) {
+  const parts = [c.last4 && `•••• ${c.last4}`, c.expiry].filter(Boolean);
+  return parts.length ? `${c.title} (${parts.join(", ")})` : c.title;
+}
+
+// The hosts of payment providers whose fields a shop puts in frames of
+// their own (Stripe's, Braintree's, Adyen's…): given the card's parts in
+// them too.
+const PAYMENT_HOSTS = /(^|\.)(stripe\.com|stripe\.network|braintreegateway\.com|braintree-api\.com|adyen\.com|adyenpayments\.com|checkout\.com|squareup\.com|squarecdn\.com|paypal\.com|recurly\.com|chargebee\.com|paddle\.com|shopifycs\.com|worldpay\.com|authorize\.net|cybersource\.com|mollie\.com|klarna\.com)$/;
+
+// Card `vault`/`id` into the card form the menu was for: the frame it
+// was opened in, and the tab's other frames that are the same site's or
+// a payment provider's (a shop's number, expiry and code are often each
+// in a provider's frame); never another site's frame.
+async function fillCard(tab, frameId, url, vault, id) {
+  const c = await ask({ type: "fill_card", url, vault, id }, true);
+  if (c.type !== "card_details") throw new Error(c.message || "Passwords didn't give the card.");
+  const card = { number: c.number, cardholder: c.cardholder, expiry_month: c.expiry_month, expiry_year: c.expiry_year, code: c.code };
+  const top = originOf(tab.url);
+  let frames = [];
+  try {
+    frames = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: () => location.origin });
+  } catch {}
+  const here = originOf(url);
+  const targets = frames.filter((f) => f.frameId === frameId || f.result === here || f.result === top || PAYMENT_HOSTS.test(hostOf(f.result)));
+  if (!targets.some((f) => f.frameId === frameId)) targets.push({ frameId, result: here });
+  // (The frame the menu was opened in last: its field keeps the focus.)
+  targets.sort((a, b) => (a.frameId === frameId) - (b.frameId === frameId));
+  let filled = 0;
+  for (const f of targets) {
+    const did = await send(tab.id, f.frameId, { type: "fill-card", origin: f.result, ...card });
+    filled += did?.filled?.length || 0;
+  }
+  if (!filled) throw new Error("No card fields to fill here.");
+}
+
 // ---- Which login: this profile's, the page's, the one chosen before ----
 
 // The Chrome profile this is (its own copy of the extension's storage,
@@ -221,9 +282,11 @@ function create(props) {
 // The menu for a field in a frame at `url` (of tab `tabId`, frame
 // `frameId`): "Autofill with Passwords (best)" and "Passwords ▸" with
 // every login. (Chrome puts an extension's two items under its name.)
-function buildMenu(url, tabId, frameId) {
+function buildMenu(url, tabId, frameId, card = false) {
   building = building.then(async () => {
     const entry = web(url) ? await logins(url) : null;
+    // A card form's field: Passwords' cards first.
+    const wallet = card && web(url) ? await cards(url) : null;
     let ranked = entry?.logins || [];
     if (entry?.state === "logins" && ranked.length > 1) {
       const [seen, chosen, p] = await Promise.all([seenOn(tabId, frameId, ranked), chosenFor(url), profileInfo()]);
@@ -236,7 +299,11 @@ function buildMenu(url, tabId, frameId) {
       const seen = await seenOn(tabId, frameId, keys.map((k) => ({ username: k.user_name })));
       keys = keys.map((k, i) => [seen.has((k.user_name || "").toLowerCase()) ? 1 : 0, i, k]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, , k]) => k);
     }
-    const key = url + JSON.stringify(entry && [entry.state, ranked.map((l) => [l.vault, l.id, l.username, l.otp])]) + JSON.stringify(keys.map((k) => [k.vault, k.id]));
+    const key =
+      url +
+      JSON.stringify(entry && [entry.state, ranked.map((l) => [l.vault, l.id, l.username, l.otp])]) +
+      JSON.stringify(keys.map((k) => [k.vault, k.id])) +
+      JSON.stringify(wallet && [wallet.state, wallet.cards.map((c) => [c.vault, c.id, c.title, c.last4, c.expiry])]);
     if (menuFor === key) return;
     menuFor = key;
     await chrome.contextMenus.removeAll();
@@ -248,8 +315,13 @@ function buildMenu(url, tabId, frameId) {
       const k = keys[0];
       await create({ id: itemId("passkey", origin, k.vault, k.id), title: `Sign In with Passkey (${who(k)})`, contexts: ["editable"] });
     }
+    const firstCard = wallet?.state === "cards" ? wallet.cards[0] : null;
+    if (firstCard) {
+      const short = [firstCard.title, firstCard.last4 && `•••• ${firstCard.last4}`].filter(Boolean).join(" ");
+      await create({ id: itemId("card", origin, firstCard.vault, firstCard.id), title: `Autofill Card (${short})`, contexts: ["editable"] });
+    }
     const best = ranked[0];
-    if (entry?.state === "logins" && best) {
+    if (!firstCard && entry?.state === "logins" && best) {
       const who = best.username || best.title;
       await create({ id: itemId("autofill", origin, best.vault, best.id), title: `Autofill with Passwords (${who})`, contexts: ["editable"] });
     }
@@ -258,6 +330,12 @@ function buildMenu(url, tabId, frameId) {
     // The other passkeys first.
     for (const k of keys.slice(1, MENU_LOGINS)) await add(itemId("passkey", origin, k.vault, k.id), `Sign In with Passkey (${who(k)})`);
     if (keys.length > 1) await create({ id: "passkey-sep", type: "separator", parentId: "passwords", contexts: ["editable"] });
+    // A card form's: each card, then the logins as ever.
+    if (wallet) {
+      if (wallet.state === "cards" && wallet.cards.length === 0) await add("no-cards", "No credit cards in Passwords", "passwords", false);
+      for (const c of (wallet.state === "cards" ? wallet.cards : []).slice(0, MENU_LOGINS)) await add(itemId("card", origin, c.vault, c.id), cardLabel(c));
+      if (wallet.state === "cards") await create({ id: "card-sep", type: "separator", parentId: "passwords", contexts: ["editable"] });
+    }
     if (!entry) {
       await add("none", "Not on this page", "passwords", false);
       return;
@@ -383,10 +461,14 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     } else if (kind === "unlock") {
       await ask({ type: "unlock" }, true);
       known.delete(origin);
+      cardsKnown = null;
       menuFor = null;
       await buildMenu(url, tab.id, info.frameId);
     } else if (kind === "passkey") {
       await signInWith(tab.id, info.frameId, vault, id);
+      menuFor = null;
+    } else if (kind === "card") {
+      await fillCard(tab, info.frameId, url, vault, id);
       menuFor = null;
     } else if (kind === "autofill" || kind === "login") {
       await autofill(tab, info.frameId, url, vault, id);
@@ -421,7 +503,7 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
   } else if (m.type === "passkey-gone" && fromPage) {
     giveUp(`${sender.tab.id}:${sender.frameId}:`);
   } else if (m.type === "focus" && fromPage) {
-    buildMenu(sender.url, sender.tab.id, sender.frameId);
+    buildMenu(sender.url, sender.tab.id, sender.frameId, !!m.card);
   } else if (m.type === "page" && fromPage && web(sender.url)) {
     // A page with fields: have its logins ready for the menu; and say
     // whether a sign-in begun before goes on here.

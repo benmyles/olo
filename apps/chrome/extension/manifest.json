@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Olo",
-  "version": "1.8.0",
-  "description": "Fills logins and one-time codes from Olo's Passwords, signs in with its passkeys, offers to save the logins and passkeys you make, shows agents what is on the page, and joins olo-slack's Slack to Olo.",
+  "version": "1.9.0",
+  "description": "Fills logins, one-time codes and credit cards from Olo's Passwords, signs in with its passkeys, offers to save the logins and passkeys you make, shows agents what is on the page, and joins olo-slack's Slack to Olo.",
   "minimum_chrome_version": "120",
   "permissions": ["contextMenus", "downloads", "nativeMessaging", "notifications", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],

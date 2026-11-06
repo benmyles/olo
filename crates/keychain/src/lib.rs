@@ -33,6 +33,15 @@ pub enum Request {
     Logins { url: String },
     /// One login's username and password, to fill into the page at `url`.
     Fill { url: String, vault: String, id: String },
+    /// The credit cards there are, to fill a card form on the page at
+    /// `url` with: what may be said of each (never its number or code).
+    /// Doesn't wait: `Locked` while locked.
+    Cards { url: String },
+    /// Card `vault`/`id`'s number, name, expiry and security code, to
+    /// fill into the page at `url`: the person chose it in Chrome's
+    /// context menu (a card isn't kept for a site, so any page can be
+    /// given one, but only that way).
+    FillCard { url: String, vault: String, id: String },
     /// Whether a login just used on `url` is already saved.
     Check { url: String, username: String, password: String },
     /// Save a login used on `url`: replacing `replace`'s password, or new.
@@ -179,10 +188,11 @@ impl Request {
     /// How long a reply can take.
     pub fn timeout(&self) -> Duration {
         match self {
-            Request::Logins { .. } | Request::Search { .. } | Request::Passkeys { .. } => Duration::from_secs(15),
+            Request::Logins { .. } | Request::Cards { .. } | Request::Search { .. } | Request::Passkeys { .. } => Duration::from_secs(15),
             Request::Check { .. } => Duration::from_secs(60),
             // These wait for you to unlock Passwords.
             Request::Fill { .. }
+            | Request::FillCard { .. }
             | Request::Save { .. }
             | Request::Unlock
             | Request::Show { .. }
@@ -216,6 +226,23 @@ pub struct Login {
     pub otp: bool,
 }
 
+/// A credit card, as a page's menu shows it: its title, the name on it,
+/// its brand, its number's last four digits and its expiry ("08/2029").
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Card {
+    pub vault: String,
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub cardholder: String,
+    #[serde(default)]
+    pub brand: String,
+    #[serde(default)]
+    pub last4: String,
+    #[serde(default)]
+    pub expiry: String,
+}
+
 /// An item `Search` found.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Found {
@@ -246,6 +273,21 @@ pub enum Response {
         username: String,
         password: String,
         otp: Option<String>,
+    },
+    /// For `Cards`.
+    Cards {
+        cards: Vec<Card>,
+    },
+    /// For `FillCard`: the card's number (digits only), the name on it,
+    /// its expiry (month "08", year "2029") and security code, and its
+    /// brand ("Visa"), as far as it has them.
+    CardDetails {
+        number: String,
+        cardholder: String,
+        expiry_month: String,
+        expiry_year: String,
+        code: String,
+        brand: String,
     },
     /// For `Check`.
     Known,
@@ -332,11 +374,18 @@ pub struct SshKey {
 
 impl Drop for Response {
     fn drop(&mut self) {
-        if let Response::Credentials { password, otp, .. } = self {
-            password.zeroize();
-            if let Some(otp) = otp {
-                otp.zeroize();
+        match self {
+            Response::Credentials { password, otp, .. } => {
+                password.zeroize();
+                if let Some(otp) = otp {
+                    otp.zeroize();
+                }
             }
+            Response::CardDetails { number, code, .. } => {
+                number.zeroize();
+                code.zeroize();
+            }
+            _ => {}
         }
     }
 }

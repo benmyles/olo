@@ -10546,6 +10546,41 @@ with a throwaway `--user-data-dir` (DevTools needs a non-default one:
 `--remote-debugging-port`), the fake 1Password and a localhost page; the
 fake's "Olo Test Site" login (`http://localhost`, jane) has a TOTP.
 
+**Credit cards** (keychain `Cards` and `FillCard`; `card_fields` in
+Passwords' `store.rs`; `cardKind`, `fillCard` in `content.js`). A card
+form's field (by its `autocomplete` token, `cc-number`, `cc-name`,
+`cc-given-name`, `cc-family-name`, `cc-exp`, `cc-exp-month`,
+`cc-exp-year`, `cc-csc`, else by what it says: "card number", "CVC",
+"expiry month", "name on card"…) tells the menu so as it gets the focus
+or the pointer: "Autofill Card (Travel Visa •••• 1111)" on top, and under
+Passwords ▸ every card ("Travel Visa (•••• 1111, 08/2029)"), then the
+logins as ever. `Cards` gives what may be said of each card (title,
+name, brand, last four digits, expiry; never the number or the code),
+doesn't wait, and is kept like a page's logins; it is every active
+Credit Card item, as a card isn't kept for a site. `FillCard` waits
+for an unlock and answers only for a card (the candidates are the one
+chosen, if it is one): the number (digits), name, month, year and code,
+from 1Password's built-in fields (`ccnum`, `cardholder`, `type`,
+`expiry`, `cvv`), else by their types and labels; wiped from the
+response once sent. So any page can be given a card, but only by the
+person choosing it in Chrome's menu, which a page can't trigger. The fill
+goes to the frame the menu was opened in and to the tab's frames that
+are the same site's or a payment provider's (Stripe, Braintree, Adyen,
+Checkout.com, Square, PayPal and others, whose fields shops put in
+frames of their own: `PAYMENT_HOSTS`), never another site's; each fills
+the card fields of the form the person was in (else its own), typed as
+a person would, selects chosen by value or text ("8", "08", "Aug",
+"August"; "29" or "2029"), an expiry field in its own shape (its
+placeholder's "MM / YY" or "MM/YYYY", else 4 or 6 long, else "MM/YY"),
+a name split where the form asks for given and family names; the frame
+the menu was opened in is filled last, so its field keeps the focus.
+Tested end to end in a test session: the fake 1Password's Travel Visa
+into a checkout page (one form by `autocomplete`, one by its labels with
+month and year selects, a same-site frame and another site's frame),
+through DevTools (`Runtime.evaluate` in the extension's worker: `cards`,
+`buildMenu`, `fillCard`) and through the real menu: only the form the
+person was in filled, the same-site frame too, the other site's never.
+
 **Passkeys** (`extension/passkeys.js`, `relay.js`; Passwords'
 `passkey.rs`; the keychain's `Passkeys`, `PasskeyCreate`, `PasskeySign`).
 Passwords is the page's passkey authenticator in Chrome. `passkeys.js`

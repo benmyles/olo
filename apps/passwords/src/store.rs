@@ -596,6 +596,45 @@ fn error(e: &Error) -> Response {
     Response::Error { message: describe(e) }
 }
 
+/// A credit card's fields, as a card form takes them.
+#[derive(Default)]
+struct CardFields {
+    /// Digits only.
+    number: String,
+    cardholder: String,
+    brand: String,
+    /// "08" and "2029".
+    month: String,
+    year: String,
+    code: String,
+}
+
+/// A card's fields: 1Password's built-in ones by their ids (`ccnum`,
+/// `cardholder`, `type`, `expiry`, `cvv`), else by their types and labels
+/// (an older card's, or one made by hand).
+fn card_fields(item: &Item) -> CardFields {
+    let by = |id: &str, kind: Option<ItemFieldType>, words: &[&str]| {
+        item.field(id)
+            .or_else(|| kind.and_then(|k| item.fields.iter().find(|f| f.field_type == k)))
+            .or_else(|| item.fields.iter().find(|f| words.iter().any(|w| f.title.to_lowercase().contains(w))))
+            .map(|f| f.value.trim().to_owned())
+            .filter(|v| !v.is_empty())
+    };
+    let number: String = by("ccnum", Some(ItemFieldType::CreditCardNumber), &["card number"]).unwrap_or_default().chars().filter(char::is_ascii_digit).collect();
+    let (month, year) = by("expiry", Some(ItemFieldType::MonthYear), &["expir", "valid thru", "valid until"])
+        .and_then(|v| onepassword::fields::month_year(&v))
+        .and_then(|my| my.split_once('/').map(|(m, y)| (m.to_owned(), y.to_owned())))
+        .unwrap_or_default();
+    CardFields {
+        number,
+        cardholder: by("cardholder", None, &["cardholder", "name on card", "card holder"]).unwrap_or_default(),
+        brand: by("type", Some(ItemFieldType::CreditCardType), &["brand", "card type"]).unwrap_or_default(),
+        month,
+        year,
+        code: by("cvv", None, &["verification", "cvv", "cvc", "security code"]).unwrap_or_default(),
+    }
+}
+
 /// The username and password of a login, by the built-in fields or else
 /// the first text and concealed ones (not a passkey's key, which
 /// 1Password keeps in a section of that name).
@@ -634,6 +673,41 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             let (user, password) = login_fields(&item);
             let otp = item.fields.iter().find(|f| f.field_type == ItemFieldType::Totp).and_then(|f| crate::otp_code(&f.value));
             Response::Credentials { username: user.map(|f| f.value.clone()).unwrap_or_default(), password: password.map(|f| f.value.clone()).unwrap_or_default(), otp }
+        }
+        Request::Cards { .. } => {
+            let mut cards: Vec<olo_keychain::Card> = candidates
+                .iter()
+                .filter_map(|(vault, id)| c.get(vault, id).ok())
+                .map(|item| {
+                    let f = card_fields(&item);
+                    olo_keychain::Card {
+                        vault: item.vault_id.clone(),
+                        id: item.id.clone(),
+                        title: item.title.clone(),
+                        cardholder: f.cardholder,
+                        brand: f.brand,
+                        last4: f.number[f.number.len().saturating_sub(4)..].to_owned(),
+                        expiry: if f.month.is_empty() { String::new() } else { format!("{}/{}", f.month, f.year) },
+                    }
+                })
+                .collect();
+            cards.sort_by_cached_key(|c| (c.title.to_lowercase(), c.id.clone()));
+            Response::Cards { cards }
+        }
+        Request::FillCard { vault, id, .. } => {
+            // (Only a card: the candidates are the one chosen, if it is.)
+            if !candidates.iter().any(|(v, i)| v == vault && i == id) {
+                return Response::Error { message: "That isn’t a credit card in Passwords.".into() };
+            }
+            let item = match c.get(vault, id) {
+                Ok(i) => i,
+                Err(e) => return error(&e),
+            };
+            let f = card_fields(&item);
+            if f.number.is_empty() {
+                return Response::Error { message: format!("“{}” has no card number.", item.title) };
+            }
+            Response::CardDetails { number: f.number, cardholder: f.cardholder, expiry_month: f.month, expiry_year: f.year, code: f.code, brand: f.brand }
         }
         Request::Check { username, password, .. } => {
             let mut changed = None;
@@ -882,6 +956,52 @@ mod tests {
         let Response::Logins { logins } = &response else { panic!("not logins") };
         let titles: Vec<&str> = logins.iter().map(|l| l.title.as_str()).collect();
         assert_eq!(titles, ["C accounts", "B root", "A mail"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A page's card menu gets each card's title, name, brand, last four
+    /// digits and expiry, never its number or code; filling gets those,
+    /// and only for a card.
+    #[test]
+    fn cards_for_a_card_form() {
+        let dir = std::env::temp_dir().join(format!("olo-store-cards-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut v = Vault::open_at(dir.join("passwords.vault"), Some(&dir.join("key"))).unwrap();
+        let vault = v.data.vaults[0].id.clone();
+        let mut p = ItemCreateParams::new(ItemCategory::CreditCard, vault.clone(), "Travel Visa");
+        p.fields = vec![
+            ItemField::new("cardholder", "cardholder name", ItemFieldType::Text, "Jane Doe"),
+            ItemField::new("type", "type", ItemFieldType::CreditCardType, "Visa"),
+            ItemField::new("ccnum", "number", ItemFieldType::CreditCardNumber, "4111 1111 1111 1234"),
+            ItemField::new("cvv", "verification number", ItemFieldType::Concealed, "321"),
+            ItemField::new("expiry", "expiry date", ItemFieldType::MonthYear, "08/2029"),
+        ];
+        let card = v.create(&p).unwrap().id;
+        let mut l = ItemCreateParams::new(ItemCategory::Login, vault.clone(), "Mail");
+        l.fields = vec![ItemField::new("username", "username", ItemFieldType::Text, "me")];
+        let login = v.create(&l).unwrap().id;
+        let cards = vec![(vault.clone(), card.clone())];
+        let r = super::keychain(&mut v, &Request::Cards { url: "https://shop.example/pay".into() }, &cards, &vault, &|_| {});
+        let Response::Cards { cards: listed } = &r else { panic!("not cards") };
+        assert_eq!(listed.len(), 1);
+        let c = &listed[0];
+        assert_eq!((c.title.as_str(), c.cardholder.as_str(), c.brand.as_str(), c.last4.as_str(), c.expiry.as_str()), ("Travel Visa", "Jane Doe", "Visa", "1234", "08/2029"));
+        assert!(!serde_json::to_string(&r).unwrap().contains("4111"), "never the number");
+        let mut fill = |id: &str, candidates: &[(String, String)]| {
+            super::keychain(&mut v, &Request::FillCard { url: "https://shop.example/pay".into(), vault: vault.clone(), id: id.into() }, candidates, &vault, &|_| {})
+        };
+        match &fill(&card, &cards) {
+            Response::CardDetails { number, cardholder, expiry_month, expiry_year, code, brand } => {
+                assert_eq!(
+                    (number.as_str(), cardholder.as_str(), expiry_month.as_str(), expiry_year.as_str(), code.as_str(), brand.as_str()),
+                    ("4111111111111234", "Jane Doe", "08", "2029", "321", "Visa")
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        // A login isn't a card, whatever the extension asks.
+        assert!(matches!(fill(&login, &cards), Response::Error { .. }));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
