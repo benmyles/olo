@@ -19,7 +19,8 @@ of Finished; a new one goes where its priority puts it.
   indicator in the tab too". So: the tab's context menu, on a tab whose
   shell runs Claude Code or Codex (Terminal knows: `agent_context`'s
   `own_agent`, the tab title hook), offers a check item (say "Keep It
-  Going"); on, Terminal watches the tab for 60 s with nothing at all
+  Going"); on, Terminal watches the tab for 120 s (Ben, after: "change
+  it from 60s to 120s without activity") with nothing at all
   happening (no output, no screen change, no spinner or timer ticking,
   no input typed: any change restarts the count) and then types
   "please continue" and Return into it, at most once an hour per tab
