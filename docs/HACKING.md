@@ -6387,7 +6387,17 @@ window from the surface): a finger's values × 10 / h^⅔, a notch's
 × 32 / h^⅔ (its values, not `value120`, are what GTK 3 reads).
 Measured with a PyGObject window of numbered lines that prints its
 adjustment: 94–97 px for 100 and 45–47 a notch at 300 and 700 px, 1×
-and 2× (the view a little shorter than the window). Chromium is recognised before
+and 2× (the view a little shorter than the window). A wheel's notch is
+scaled first by Preferences ▸ Touchpad & Mouse ▸ Mouse ▸ Wheel's
+scrolling speed (`Settings::wheel_speed`, 0.25 to 3, `wheel_at_speed`
+for libinput's notches and synthetic ones alike), its value and its
+120ths together, so every program keeps the same step at any speed:
+headless at 1× and 2× (a page reporting `scrollY` in its title, and
+StyledEdit's view compared shot to shot), a notch moves Chrome 48, 96
+and 24 CSS px and StyledEdit 48, 96 and 24 points at 1, 2 and 0.5.
+`{"type":"frames"}`'s `wheel` says the last notch as it came (value,
+120ths, the speed) and as it went (value, 120ths, to which kind of
+program): a person's mouse whose notches feel short is read there. Chromium is recognised before
 the kit's socket, since olo-chrome answers on one named after Chrome's
 pid for its page trees. Chromium also flings on its own when a finger
 scroll stops within 200 ms of its last move, however long the fingers

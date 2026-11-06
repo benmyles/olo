@@ -17,10 +17,41 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-Nothing: the two performance items Ben had tabled were taken up again
-(2026-11-06), measured, and counted done by him (see Done).
+- **Viewer: a video zoomed to fill, and full screen** (Ben, 2026-11-06):
+  "watching a video in viewer needs to support zooming, like an option
+  to zoom to fill (whilst keeping proportions) and a full screen option
+  (whilst keeping proportions)". A video in the Viewer shown fitting the
+  window (as now), or zoomed to fill it (its proportions kept, what
+  overflows cut off), and full screen (the same two ways), with menu
+  commands and keys, as the Viewer's pictures zoom.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
+  chrome scrolling does not seem to be the same speed as olo native
+  apps (it's slower) and it's most noticeable on the studio display at
+  2x where each scrollwheel push doesn't go very far at all". So: a
+  wheel notch (and a touchpad's travel) moves Chrome's page as far as
+  it moves a kit app's view at every scale. Found so far (2026-11-02,
+  headless, Chrome 156): a synthetic notch (axis 15, value120 120, as
+  libinput reports a plain wheel) moves Chrome 48 CSS px at 1× and at
+  2× (devicePixelRatio 2), and StyledEdit 48 px at both (3 lines,
+  `SCROLL_LINES`); Chrome takes value120 over the axis value
+  (wayland_event_source.cc) and olo-wlproxy passes both through. So the
+  difference is in what Ben's mouse (a Razer Viper V2 Pro) sends, or in
+  his Chrome (page zoom, a flag): next, log what app_server gets from
+  libinput for one of its notches (`amount`, `amount_v120`) and sends
+  on, with him turning it once in each app; then make Chrome's step and
+  the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
+  both). *Done of it* (2026-11-06, HACKING's "Scrolling"): a wheel
+  speed for every program alike (Preferences ▸ Touchpad & Mouse ▸
+  Mouse ▸ Wheel, `wheel_speed`, the 120ths Chrome reads scaled with the
+  values): headless at 1× and 2×, a notch moves Chrome and StyledEdit
+  48, 96 and 24 px at 1, 2 and 0.5; and the last notch as it came from
+  libinput and as it went on, by kind of program, in `{"type":"frames"}`
+  (`wheel`). *Left* (Ben): the Razer isn't plugged into the ThinkPad
+  (its touchpad and TrackPoint are), so with it back, one notch turned
+  in Chrome and in an Olo app, and `wheel` read for each.
 
 - **Face unlock: sudo and Passwords approved by a look** (Ben,
   2026-11-04): "support facial recognition as an alternative to the
@@ -1460,26 +1491,6 @@ people.
     another was heard first).
   - Deskbar: the AirPods' levels from their broadcast while they're not
     connected (the service has them now).
-
-- **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
-  chrome scrolling does not seem to be the same speed as olo native
-  apps (it's slower) and it's most noticeable on the studio display at
-  2x where each scrollwheel push doesn't go very far at all". So: a
-  wheel notch (and a touchpad's travel) moves Chrome's page as far as
-  it moves a kit app's view at every scale. Found so far (2026-11-02,
-  headless, Chrome 156): a synthetic notch (axis 15, value120 120, as
-  libinput reports a plain wheel) moves Chrome 48 CSS px at 1× and at
-  2× (devicePixelRatio 2), and StyledEdit 48 px at both (3 lines,
-  `SCROLL_LINES`); Chrome takes value120 over the axis value
-  (wayland_event_source.cc) and olo-wlproxy passes both through. So the
-  difference is in what Ben's mouse (a Razer Viper V2 Pro) sends, or in
-  his Chrome (page zoom, a flag): next, log what app_server gets from
-  libinput for one of its notches (`amount`, `amount_v120`) and sends
-  on, with him turning it once in each app; then make Chrome's step and
-  the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
-  both). *Re-checked* (2026-11-06): the Razer isn't plugged into the
-  ThinkPad (its input devices are its touchpad and TrackPoint), so the
-  notch to measure needs that mouse back and Ben turning it.
 
 - **The touchpad's latency on Ben's machine, and what next** (from the
   palm model in Activity, 2026-11-03): Activity ▸ Inputs ▸ Touchpad

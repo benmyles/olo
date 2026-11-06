@@ -925,6 +925,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             _ => (horizontal_amount, vertical_amount),
         };
+        let ((horizontal_amount, vertical_amount), (horizontal_amount_discrete, vertical_amount_discrete)) = match evt.source() {
+            AxisSource::Wheel | AxisSource::WheelTilt => self.wheel_at_speed((horizontal_amount, vertical_amount), (horizontal_amount_discrete, vertical_amount_discrete)),
+            _ => ((horizontal_amount, vertical_amount), (horizontal_amount_discrete, vertical_amount_discrete)),
+        };
 
         {
             let mut frame = AxisFrame::new(evt.time()).source(evt.source());
@@ -961,6 +965,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             pointer.axis(self, frame);
             pointer.frame(self);
         }
+    }
+
+    /// A wheel's notch (or tilt), libinput's or synthetic, at the speed
+    /// Preferences ▸ Touchpad & Mouse ▸ Wheel sets: its values and 120ths
+    /// (what Chrome goes by) scaled alike, so every program scrolls a
+    /// notch as far as Olo's apps do; noted as it came (`Reply::Frames`'
+    /// `wheel`, its sending noted in `focus.rs`).
+    fn wheel_at_speed(&mut self, (h, v): (f64, f64), (h120, v120): (Option<f64>, Option<f64>)) -> ((f64, f64), (Option<f64>, Option<f64>)) {
+        let k = self.settings.wheel_speed.clamp(0.25, 4.0);
+        let (value, d) = if v != 0.0 { (v, v120) } else { (h, h120) };
+        self.last_wheel = Some((olo_protocol::WheelNotch { value, v120: d.unwrap_or(0.0) as i32, speed: k, ..Default::default() }, std::time::Instant::now()));
+        let scale = |d: Option<f64>| d.map(|d| (d * k).round());
+        ((h * k, v * k), (scale(h120), scale(v120)))
     }
 
     /// Fingers back on the touchpad, a click or another scroll: a glide
@@ -1610,12 +1627,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 // As libinput reports a wheel: 15° and 120 a notch.
                 self.repoint();
                 self.stop_glide();
+                let ((h, v), (h120, v120)) = self.wheel_at_speed((dx as f64 * 15.0, dy as f64 * 15.0), (Some(dx as f64 * 120.0), Some(dy as f64 * 120.0)));
                 let mut frame = AxisFrame::new(time).source(AxisSource::Wheel);
                 if dx != 0 {
-                    frame = frame.value(Axis::Horizontal, dx as f64 * 15.0).v120(Axis::Horizontal, dx * 120);
+                    frame = frame.value(Axis::Horizontal, h).v120(Axis::Horizontal, h120.unwrap_or(0.0) as i32);
                 }
                 if dy != 0 {
-                    frame = frame.value(Axis::Vertical, dy as f64 * 15.0).v120(Axis::Vertical, dy * 120);
+                    frame = frame.value(Axis::Vertical, v).v120(Axis::Vertical, v120.unwrap_or(0.0) as i32);
                 }
                 pointer.axis(self, frame);
                 pointer.frame(self);
