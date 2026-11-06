@@ -3610,3 +3610,39 @@ acceptance remains **0/100**, **0/3000** combinations; corpus still needs actual
 rank/complexity selection and runnable independent website journeys. Next:
 images/replaced controls, inline decorations and tables, alongside the frame
 latency and broader performance work.
+
+
+Latest-main integration: pushed **3a9ceb5c**, merged main through **92364e1b**
+(per-thread compositor font systems and better burst timing reports). Workspace
+release build passes (**1.34s**), as do **252 release tests**, strict clippy,
+Browser live lint and a fresh worktree-desktop **15 link/break reviews / 36
+requests + 15 navigation reviews / 61 requests**, including re-exec restoration.
+Browser/web source and browser SHA-256 are unchanged by the merge
+(`3a2245d6b1e7e489214858dfa96e2ef54e86aba4c0fed4c5338d7e638f982194`), so
+frozen engine/feature measurements retain their scope. Native cost samples above
+used the earlier bdc8036a desktop; merged-native reviews/fuzz use the new server.
+
+Required performance fuzz, browser-specialized APPS, private two-display
+headless tsession/fake HOME, disk scratch, unchanged budgets: seed **4103**,
+**36 steps**, passes. Worst loop delay **13.2 ms**, ping **15.4 ms**, compositor
+frame **5.9 ms**, app frame **3.2 ms**; fd **112→73**, threads **12→13** with
+named lazy workers, RSS **122→128 MiB**. A focused run started before its browser
+mapped, skipped every resize/scroll action and wrongly printed "ok". It is
+explicitly **discarded as coverage**. Fixed the shared harness to fail when it
+measures no bursts; the regression fails against old main and passes with the
+fix (no GUI required). After waiting for a real mapped browser, seed **4104**,
+**eight resize/scroll steps**, measures both and passes: worst loop delay
+**4.6 ms**, ping **7.9 ms**, compositor frame **5.3 ms**, app frame **6.0 ms**,
+fd **94→86**, threads **13→13**, RSS **128→128 MiB**. Initial setup can release
+older kept buffers/windows, so decreasing fd counts are not a memory speedup.
+
+Evidence: `2026-11-06-paint-color-cache-main-integration.json` (raw fuzzer logs,
+discarded run, mapped-window evidence and regression outputs included);
+`tools/dev/test_perf_fuzz.py`, HACKING's coverage rule. Agent Screens remain the
+native interaction/visual test path; the stock fuzzer's separate two-display
+headless harness tests bursts and resources. Full desktop lint was not repeated;
+the prior ten findings outside Browser remain open. No personal session install/
+reload, secrets access or policy change. The browser journal stays at **595**
+unique images (all present); this performance change has no new intended visual
+output. Website acceptance stays **0/100**, goal active; next work is images and
+replaced inline layout, then further compatibility and latency work.

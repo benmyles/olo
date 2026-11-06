@@ -32,9 +32,10 @@ pub struct Timings {
     latest_beat: Duration,
     slowest: Option<(String, Duration)>,
     phases: BTreeMap<&'static str, PhaseTimings>,
-    /// The slowest part of what's being done now (`within`): which
-    /// request of a dispatch of clients' requests held the loop.
-    inner: Option<(String, Duration)>,
+    /// The parts of what's being done now (`within`), by kind: how long
+    /// each kind took in all and how many there were (which requests of
+    /// a dispatch of clients' requests held the loop).
+    inner: BTreeMap<String, (Duration, u32)>,
 }
 
 impl Timings {
@@ -84,29 +85,34 @@ impl Timings {
     }
 
     /// A part of something being done (a commit within clients'
-    /// requests), `what` it was, since `start`: the slowest names it
-    /// ([`Timings::handled_naming_parts`]).
+    /// requests), the kind `what` it was, since `start`: the kind that
+    /// took longest in all names it ([`Timings::handled_naming_parts`]).
     pub fn within(&mut self, what: impl FnOnce() -> String, start: Instant) {
         if !self.watching() {
             return;
         }
         let took = start.elapsed();
-        if self.inner.as_ref().is_none_or(|(_, t)| took > *t) {
-            self.inner = Some((what(), took));
-        }
+        let e = self.inner.entry(what()).or_default();
+        e.0 += took;
+        e.1 += 1;
     }
 
-    /// [`Timings::handled`], naming the slowest part noted `within` it
-    /// when that was most of it.
+    /// [`Timings::handled`], naming the kind of part noted `within` it
+    /// that took longest in all, when that was most of it ("clients'
+    /// requests: a new window ×7 (12.0 ms)").
     pub fn handled_naming_parts(&mut self, what: &str, start: Instant) {
-        let inner = self.inner.take();
+        let inner = std::mem::take(&mut self.inner);
         if !self.watching() {
             return;
         }
         let took = start.elapsed();
+        let most = inner.into_iter().max_by_key(|(_, (t, _))| *t);
         self.handled(
-            || match inner {
-                Some((part, t)) if t * 2 > took => format!("{what}: {part} ({:.1} ms)", t.as_secs_f64() * 1000.0),
+            || match most {
+                Some((part, (t, n))) if t * 2 > took => {
+                    let times = if n > 1 { format!(" ×{n}") } else { String::new() };
+                    format!("{what}: {part}{times} ({:.1} ms)", t.as_secs_f64() * 1000.0)
+                }
                 _ => what.to_owned(),
             },
             start,

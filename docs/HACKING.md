@@ -3481,7 +3481,30 @@ app_server frame takes longer than a 60 Hz frame to draw, every kit app
 draws each frame within 50 ms, on the GPU, and answers within 250 ms
 (`{"frames":true}`), and no file descriptors, threads or memory leak. It
 ends with the worst numbers per kind of burst. Run it after changing
-anything that runs per frame or per event.
+anything that runs per frame or per event. A run with no measured bursts fails:
+requested window actions can all be skipped if the window has not drawn yet.
+Wait for a mapped window before a focused run; `tools/dev/test_perf_fuzz.py`
+checks that an empty run cannot claim a pass. For the leak check it closes
+every window that wasn't there when it started (apps open some of their
+own), ends the program of one that won't close (a document typed into,
+asking to save), and counts threads by name: a worker app_server starts
+the first time it's needed (`tabs`, Smithay's shm pool dropping) is
+named, not failed, and a failure says which descriptors grew (dmabufs,
+sockets). Clients' requests that held the loop are named by the kind
+of part that took longest in all (`Timings::within`, summed by kind: "a
+new window ×5"), so a burst of small ones is found too. Note that on a
+shared machine a stall whose slowest named thing is small is the
+scheduler's (other programs had the CPU), not app_server's.
+
+app_server's own text (tab titles, the switcher, hints, captions) has a
+font system per thread that draws or measures (`text.rs`: made from one
+database of the fonts found once, the tab family's faces mapped and
+shared), so no thread waits on another's: the main loop measuring new
+tabs' titles used to wait on the tab worker drawing them, behind one
+locked cosmic-text (opening five windows at once: the loop held 7, 10
+and 12 ms in three runs, two waits of 2.3 and 2.7 ms on that lock in
+`strace`; per thread, 4.5, 5.0 and 5.5 ms, what's left being the
+frame that first draws them, and app_server's memory the same).
 
 `tools/dev/bench` is the speed benchmark, every app against the 120 Hz
 budget (rule 9). On release builds (`cargo build --release --workspace`,

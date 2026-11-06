@@ -41,6 +41,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
+        let t = std::time::Instant::now();
         // Do not send a configure here, the initial configure
         // of a xdg_surface has to be sent during the commit if
         // the surface is not already configured
@@ -66,6 +67,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             if state.clipboard_helper(surface) {
                 return;
             }
+            let t = std::time::Instant::now();
             // (Where it goes once it has content: `place_on_content`.)
             // Picture in picture is placed by itself.
             state.pip_claim(surface);
@@ -76,7 +78,9 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             state.auto_claim(surface);
             state.focus_claim(surface);
             handle_toplevel_commit(&mut state.space, surface);
+            state.timings.within(|| "a window's placing after a commit".into(), t);
         });
+        self.timings.within(|| "a new window".into(), t);
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
