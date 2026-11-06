@@ -47,6 +47,26 @@ something nobody here has is in "Blocked", with what it waits for.
   - Agent-native throughout (the kit's tree, `--json`), and the skill
     says how.
 
+- **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
+  2026-11-06): "the viewer app can't even play 4k video at 60fps
+  smoothly. idk if it's currently being hardware accelerated but it must
+  use hardware acceleration for all common formats including av1, vp9,
+  h264/5 etc. and it must be accelerated on cpu (simd), intel xe and
+  nvidia". Today every picture is decoded in software on the CPU
+  (`olo-preview`'s `video.rs`: OpenH264, rav1d, filmcraft-vp9,
+  rust_h265), converted YUV to RGB on the CPU and uploaded. To do: decode
+  on the GPU where there is one, NVIDIA's NVDEC (CUVID, loaded at run
+  time as NVENC already is for recording) and Intel Xe's VA-API (as
+  `olo_vaapi` already encodes AV1), for AV1, VP9, H.264 and HEVC (8- and
+  10-bit), picked per file and machine with the CPU as the fallback;
+  keep the pictures on the GPU (dmabuf or the decoder's surface imported
+  as a texture, YUV to RGB in a shader) rather than copying them back;
+  and make the CPU path itself fast (SIMD in the YUV conversion and
+  scaling, the decoders' own SIMD turned on, threads). Measured on 4K60
+  samples of each format on this machine's Intel GPU and its NVIDIA, and
+  CPU only: every frame shown on time (no drops over a minute), the
+  cost per frame, and seeking. Everything native (no ffmpeg or GStreamer).
+
 - **Olo's own login screen and boot splash** (Ben, 2026-11-01; not
   blocked: "neither of those are blocked on me", 2026-11-06). A display
   manager in GDM's place (a daemon owning the seat, PAM and logind's
