@@ -1,14 +1,17 @@
 //! Upgrading the pool without cutting anyone off. When a new olo-pool is
-//! installed, the running one stops taking connections (new ones wait in
-//! the kernel's queue, as if the pool were only slow to answer), lets the
-//! requests under way run to their end (streams too), closes its
-//! connections as they fall idle (clients open new ones for their next
-//! request, which wait in that queue), and once nothing is under way
-//! becomes the new version (the kit re-executes it) with its listening
-//! sockets handed over: the new process answers what waited, as if it had
-//! taken a moment. A tunnel (a host the pool doesn't look into) counts as
-//! under way while bytes cross it. Waiting has a limit
-//! (`MAX_DRAIN`), after which it goes ahead as before.
+//! installed, the app starts a copy of the new version beside the running
+//! one, handing it the listening sockets (`for_a_copy`): the copy answers
+//! every new request at once while this one, retired (`retire`), stops
+//! accepting, lets the requests under way run to their end (streams too),
+//! closes its connections as they fall idle, and then goes (olo-pool's
+//! `ui::hand_over`). Both alive at once, sign-ins are renewed under the
+//! store's lock and read again first (`overlapping`). If no copy can be
+//! started, the old way: new connections wait in the kernel's queue (as
+//! if the pool were only slow to answer) until nothing is under way, then
+//! the process becomes the new version (the kit re-executes it) with the
+//! sockets handed over (`hand_over`). A tunnel (a host the pool doesn't
+//! look into) counts as under way while bytes cross it. Waiting has a
+//! limit (`MAX_DRAIN`; `MAX_RETIRED` for a retired copy).
 
 use olo_sync::Mutex;
 use std::{
@@ -30,6 +33,8 @@ pub const LISTENERS_ENV: &str = "OLO_POOL_LISTENERS";
 const TUNNEL_IDLE: Duration = Duration::from_secs(10);
 /// The longest an upgrade waits for what is under way.
 const MAX_DRAIN: Duration = Duration::from_secs(10 * 60);
+/// The longest a copy that handed over finishes what it has.
+const MAX_RETIRED: Duration = Duration::from_secs(20 * 60);
 
 pub struct Drain {
     draining: AtomicBool,
@@ -42,6 +47,12 @@ pub struct Drain {
     stop: tokio::sync::watch::Sender<bool>,
     /// Copies of the listening sockets, by port, to hand over.
     listeners: Mutex<Vec<(u16, OwnedFd)>>,
+    /// This copy handed over to a new one (`retire`): it only finishes
+    /// what it has, saving nothing but a sign-in it had to renew.
+    retired: AtomicBool,
+    /// The copy this one took over from, while it may still be finishing
+    /// (pid and start time: `PREDECESSOR_ENV`).
+    predecessor: Mutex<Option<(i32, u64)>>,
 }
 
 impl Default for Drain {
@@ -55,8 +66,30 @@ impl Default for Drain {
             tunnel_byte: AtomicU64::new(0),
             stop: tokio::sync::watch::channel(false).0,
             listeners: Mutex::new(Vec::new()),
+            retired: AtomicBool::new(false),
+            predecessor: Mutex::new(predecessor_from_env()),
         }
     }
+}
+
+/// The environment variable naming the copy a new one took over from (its
+/// pid): it may still be finishing what it had.
+pub const PREDECESSOR_ENV: &str = "OLO_POOL_PREDECESSOR";
+
+/// When process `pid` started (clock ticks after boot), to know it again.
+fn started(pid: i32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()
+}
+
+/// The predecessor named in the environment (taken out of it, so the
+/// programs this one starts don't inherit it), if it's still running.
+fn predecessor_from_env() -> Option<(i32, u64)> {
+    let pid: i32 = std::env::var(PREDECESSOR_ENV).ok()?.parse().ok()?;
+    // SAFETY: read once, as the gateway is made at start-up, before the
+    // threads that read the environment.
+    unsafe { std::env::remove_var(PREDECESSOR_ENV) };
+    Some((pid, started(pid)?))
 }
 
 impl Drain {
@@ -73,6 +106,58 @@ impl Drain {
 
     pub fn draining(&self) -> bool {
         self.draining.load(Ordering::SeqCst)
+    }
+
+    /// Handed over to a new copy (started with the listening sockets): take
+    /// no more connections (the new copy takes them at once), finish what
+    /// is under way, and save nothing but a sign-in renewed meanwhile.
+    pub fn retire(&self) {
+        self.retired.store(true, Ordering::SeqCst);
+        self.begin();
+    }
+
+    pub fn retired(&self) -> bool {
+        self.retired.load(Ordering::SeqCst)
+    }
+
+    /// Whether another copy of the pool may be at work beside this one: the
+    /// one it handed over to (retired), or the one it took over from, still
+    /// finishing. Sign-ins are then renewed under the store's lock and read
+    /// again first, and saves keep the other's renewed ones.
+    pub fn overlapping(&self) -> bool {
+        if self.retired() {
+            return true;
+        }
+        let mut p = self.predecessor.lock().unwrap();
+        if let Some((pid, start)) = *p
+            && started(pid) != Some(start)
+        {
+            *p = None;
+        }
+        p.is_some()
+    }
+
+    /// The listening sockets, made inheritable, as `LISTENERS_ENV` names
+    /// them, for a new copy started now; [`Drain::sealed`] makes them
+    /// close-on-exec again once it has.
+    pub fn for_a_copy(&self) -> Option<String> {
+        let kept = self.listeners.lock().unwrap();
+        let mut named = Vec::new();
+        for (port, fd) in kept.iter() {
+            // SAFETY: fcntl on a descriptor we own.
+            if unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, 0) } == 0 {
+                named.push(format!("{port}={}", fd.as_raw_fd()));
+            }
+        }
+        (!named.is_empty()).then(|| named.join(","))
+    }
+
+    /// The listening sockets close-on-exec again (after [`Drain::for_a_copy`]).
+    pub fn sealed(&self) {
+        for (_, fd) in self.listeners.lock().unwrap().iter() {
+            // SAFETY: fcntl on a descriptor we own.
+            unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) };
+        }
     }
 
     /// The upgrade didn't happen (the new version wouldn't start): take
@@ -122,7 +207,10 @@ impl Drain {
     /// Whether becoming the new version would cut something short (and
     /// the wait isn't over).
     pub fn busy(&self) -> bool {
-        if self.began.lock().unwrap().is_some_and(|t| t.elapsed() > MAX_DRAIN) {
+        // (Handed over, nothing waits for it: longer, past the provider's
+        // own read timeout, so only a request that hung is cut.)
+        let limit = if self.retired() { MAX_RETIRED } else { MAX_DRAIN };
+        if self.began.lock().unwrap().is_some_and(|t| t.elapsed() > limit) {
             return false;
         }
         let (requests, tunnel) = self.under_way();
@@ -180,7 +268,7 @@ impl Drain {
 
     pub fn status(&self) -> Value {
         let (requests, tunnel) = self.under_way();
-        json!({ "draining": self.draining(), "requests": requests, "tunnel": tunnel })
+        json!({ "draining": self.draining(), "retired": self.retired(), "requests": requests, "tunnel": tunnel })
     }
 }
 

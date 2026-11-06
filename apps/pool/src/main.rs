@@ -16,8 +16,10 @@
 //! `--clients` (`--json`) and `--restart-codex-service` are the same for
 //! agents. A client turned off is paused, still pointed at the proxy,
 //! which passes its requests through (`--put-back` takes it off). A new
-//! olo-pool installed waits for what is under way, holding new
-//! connections for it (`olo_token_pool::drain`).
+//! olo-pool installed takes over at once in a copy of its own, while this
+//! one finishes what it has under way (`ui::hand_over`,
+//! `olo_token_pool::drain`), and the pid olo-session follows stays as
+//! the keeper (`keeper`).
 
 mod clients_window;
 mod ui;
@@ -207,8 +209,87 @@ fn clients_now(as_json: bool) -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
+/// What stays of the olo-pool olo-session started, once an upgrade has
+/// handed over to a copy of the new version (`ui::hand_over`): its pid,
+/// which olo-session follows, as a subreaper (the copies that serve are
+/// its children, a later copy given to it as the one before goes) that
+/// passes olo-session's signals on to them and ends as they do, with how
+/// the last ended (so olo-session starts it again as before if it
+/// crashes). An upgrade makes it the new version's keeper (in place:
+/// olo-session never sees an old program). Nothing else: about 8 MB
+/// resident, asleep in sigwaitinfo.
+fn keeper() -> std::process::ExitCode {
+    use std::os::unix::process::CommandExt as _;
+    // (Its pid waited for the copy before it handed over: not any more.)
+    olo_ui::restore::mark_waiting(false);
+    // SAFETY: prctl, sigprocmask and sigwaitinfo with valid arguments;
+    // waitpid and kill on our own children.
+    unsafe {
+        libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        for s in [libc::SIGCHLD, libc::SIGTERM, libc::SIGINT, libc::SIGHUP, libc::SIGURG] {
+            libc::sigaddset(&mut set, s);
+        }
+        libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+        // The copies that serve: our children running olo-pool (others
+        // given to us, a client's daemon, are only reaped).
+        let pools = || -> Vec<i32> {
+            let me = std::process::id();
+            let list = std::fs::read_to_string(format!("/proc/{me}/task/{me}/children")).unwrap_or_default();
+            list.split_whitespace()
+                .filter_map(|p| p.parse::<i32>().ok())
+                .filter(|p| std::fs::read_link(format!("/proc/{p}/exe")).is_ok_and(|e| e.file_name().is_some_and(|n| n.to_string_lossy().trim_end_matches(" (deleted)") == "olo-pool")))
+                .collect()
+        };
+        let mut last = 0;
+        loop {
+            // Each child that ended, reaped; the last copy's way of ending kept.
+            loop {
+                let mut status = 0;
+                let pid = libc::waitpid(-1, &mut status, libc::WNOHANG);
+                if pid <= 0 {
+                    break;
+                }
+                last = status;
+            }
+            if pools().is_empty() {
+                break;
+            }
+            let mut info: libc::siginfo_t = std::mem::zeroed();
+            match libc::sigwaitinfo(&set, &mut info) {
+                libc::SIGURG => {
+                    // A new version installed: its keeper, in place (the
+                    // mask, and what's pending, carry across).
+                    if let Ok(exe) = std::env::current_exe() {
+                        let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+                        let e = std::process::Command::new(exe).env(ui::KEEPER_ENV, "1").exec();
+                        eprintln!("olo-pool: the keeper couldn’t become the new version: {e}");
+                    }
+                }
+                s @ (libc::SIGTERM | libc::SIGINT | libc::SIGHUP) => {
+                    for p in pools() {
+                        libc::kill(p, s);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if libc::WIFEXITED(last) {
+            std::process::ExitCode::from(libc::WEXITSTATUS(last) as u8)
+        } else if libc::WIFSIGNALED(last) {
+            std::process::ExitCode::from((128 + libc::WTERMSIG(last)) as u8)
+        } else {
+            std::process::ExitCode::SUCCESS
+        }
+    }
+}
+
 fn main() -> std::process::ExitCode {
     olo_crash::install();
+    if std::env::var_os(ui::KEEPER_ENV).is_some() {
+        return keeper();
+    }
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     let args: Vec<String> = std::env::args().skip(1).collect();

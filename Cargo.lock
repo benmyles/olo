@@ -7509,11 +7509,13 @@ name = "olo-pool"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "libc",
  "olo-crash",
  "olo-token-pool",
  "olo-ui",
  "olo-xdg",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]

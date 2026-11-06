@@ -392,6 +392,16 @@ impl PoolApp {
         cx.notify();
     }
 
+    /// Every window closed (handed over to a new copy, which opens them).
+    fn close_windows(&mut self, cx: &mut Context<Self>) {
+        if let Some(w) = self.win.take() {
+            cx.close_window(w);
+        }
+        if let Some((w, _)) = self.clients_win.take() {
+            cx.close_window(w);
+        }
+    }
+
     /// A window closed by the person: what it showed goes (the gateway
     /// keeps serving).
     fn closed(&mut self, clients: bool) {
@@ -821,10 +831,17 @@ pub fn start(cx: &mut App, app: PoolApp, service: bool) -> Entity<PoolApp> {
         let a = saved.read(cx);
         Some(serde_json::json!({"open": a.is_open(), "clients": a.clients_open()}).to_string())
     });
-    // A new olo-pool installed: take no more connections (they wait for
-    // it) and let what is under way finish (`drain`).
+    // A new olo-pool installed: a copy of the new version is started with
+    // the listening sockets and takes every new connection at once, while
+    // this one finishes what it has under way and then goes (`hand_over`).
+    // If no copy can be started, the old way: take no more connections
+    // (they wait for it), let what is under way finish (`drain`) and
+    // become the new version with the sockets.
     let due = app.clone();
     olo_ui::on_upgrade_due(cx, move |cx| {
+        if hand_over(&due, cx) {
+            return;
+        }
         let shared = due.read(cx).shared.clone();
         shared.drain.begin();
         // Look again now and then (a tunnel falls idle with nothing to
@@ -848,10 +865,14 @@ pub fn start(cx: &mut App, app: PoolApp, service: bool) -> Entity<PoolApp> {
         });
     });
     // Requests or tunnels under way: the upgrade waits. Once not, the
-    // listening sockets are readied for the new version.
+    // listening sockets are readied for the new version. (Handed over to a
+    // copy: always, as this one goes by itself once it has finished.)
     let busy = app.clone();
     olo_ui::upgrade_waits_while(cx, move |cx| {
         let shared = &busy.read(cx).shared;
+        if shared.drain.retired() {
+            return true;
+        }
         let b = shared.drain.busy();
         if !b && shared.drain.draining() {
             shared.drain.hand_over();
@@ -859,6 +880,83 @@ pub fn start(cx: &mut App, app: PoolApp, service: bool) -> Entity<PoolApp> {
         b
     });
     app
+}
+
+/// The environment variable saying a copy runs under the keeper (the copy
+/// olo-session started, which stays to wait for it: `main`'s `keeper`).
+pub const KEPT_ENV: &str = "OLO_POOL_KEPT";
+/// The environment variable that makes `main` the keeper.
+pub const KEEPER_ENV: &str = "OLO_POOL_KEEPER";
+
+/// The new version installed: started as a copy of its own, given the
+/// listening sockets (the kernel hands each new connection to whichever
+/// accepts, and this one stops), the windows (closed here, opened there
+/// from the state handed over) and the app's launches; this one finishes
+/// the requests it has under way, streams too, saving nothing but a
+/// sign-in it had to renew, then goes: the copy olo-session started
+/// becomes the keeper, a later one exits (its successor goes to the
+/// keeper). Nobody waits and nothing is cut short. False if no copy could
+/// be started (the old way, then).
+fn hand_over(app: &Entity<PoolApp>, cx: &mut App) -> bool {
+    use std::os::unix::process::CommandExt as _;
+    let (shared, state) = {
+        let a = app.read(cx);
+        (a.shared.clone(), serde_json::json!({"open": a.is_open(), "clients": a.clients_open()}).to_string())
+    };
+    let Some(listeners) = shared.drain.for_a_copy() else { return false };
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.args(std::env::args_os().skip(1))
+        .env(olo_token_pool::drain::LISTENERS_ENV, listeners)
+        .env(olo_token_pool::drain::PREDECESSOR_ENV, std::process::id().to_string())
+        .env(olo_xdg::NEW_INSTANCE, "1")
+        .env(KEPT_ENV, "1");
+    olo_ui::restore::hand_over(&mut cmd, Some(&state));
+    // Launches go to the copy from now on (it listens as it starts).
+    olo_ui::instance::close();
+    let started = cmd.spawn();
+    shared.drain.sealed();
+    let child = match started {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("pool: couldn’t start the new version beside this one ({e}); upgrading the old way");
+            olo_ui::instance::listen(crate::APP_ID, olo_ui::proxy(cx));
+            return false;
+        }
+    };
+    tracing::info!(pid = child.id(), "pool: the new version takes every new request; finishing what this one has");
+    shared.drain.retire();
+    app.update(cx, |a, cx| a.close_windows(cx));
+    let weak = Arc::downgrade(&shared);
+    let kept = std::env::var_os(KEPT_ENV).is_some();
+    let _ = std::thread::Builder::new().name("pool-handed-over".into()).spawn(move || {
+        // (The kit says this one waits, `mark_waiting`, as it next asks
+        // whether it's busy: after that, so what's said is unsaid last.)
+        std::thread::sleep(Duration::from_millis(500));
+        loop {
+            match weak.upgrade() {
+                Some(s) if s.drain.busy() => {
+                    drop(s);
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+                _ => break,
+            }
+        }
+        olo_ui::restore::mark_waiting(false);
+        if kept {
+            tracing::info!("pool: finished; the new version has it all");
+            olo_ui::restore::mark_waiting(false);
+            std::process::exit(0);
+        }
+        // The copy olo-session started: its pid stays, as the keeper.
+        tracing::info!("pool: finished; staying as the keeper of the new version");
+        let e = std::process::Command::new(&exe).env(KEEPER_ENV, "1").env_remove(KEPT_ENV).exec();
+        tracing::warn!("pool: couldn’t become the keeper ({e}); ending");
+        std::process::exit(0);
+    });
+    drop(child);
+    true
 }
 
 /// The Clients window closed: what it showed goes.

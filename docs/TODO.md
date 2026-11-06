@@ -19,6 +19,25 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Token Pool upgrades seamlessly** (Ben, 2026-11-06): "make it so that
+  on an upgrade token pool app is seamless, i.e. it should serve new
+  requests in the new process but allow old requests to finish in their
+  existing process so that nothing errors". On an upgrade, the new Token
+  Pool takes every new connection and request from the moment it's up,
+  while the old one finishes what it's answering (streams included) and
+  then goes; no request sees an error or a refused connection.
+  *Done* (2026-11-06, HACKING's "Upgrades of the pool itself, without a
+  gap"): a copy of the new version starts with the listening sockets and
+  answers every new request at once; the old finishes its own (streams
+  too) saving nothing, a sign-in renewed by either only once (the store's
+  lock, read again first), then the pid olo-session follows stays as a
+  keeper of the new copies (no restart, no error). olo-session no longer
+  stops a program still finishing for an upgrade 90 s in (the kit's
+  waiting marker); the gateway's own API counts its requests as under way
+  too (a stream there used to be cut). Tested with a fake provider and end
+  to end with real processes: a 20 s stream finished whole while new
+  requests were answered in a second.
+
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's

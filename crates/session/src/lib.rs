@@ -840,7 +840,17 @@ impl Session {
             }
         }
         let Some(w) = &self.upgrades else { return };
-        let stale = w.stale(&skip, &self.display);
+        let mut stale = w.stale(&skip, &self.display);
+        // A program finishing what it has under way before it becomes the
+        // new version (olo_kit_base::restore::mark_waiting: Token Pool
+        // streaming an answer) is left to it.
+        stale.retain(|(pid, name)| {
+            let waits = runtime_dir().join("olo-upgrade-waits").join(pid.to_string()).exists();
+            if waits && stage == 1 {
+                log(format!("{name} (pid {pid}) is still the old version; left to finish what it has under way"));
+            }
+            !waits
+        });
         if stale.is_empty() {
             if stage == 0 {
                 log("every program is the new version");
