@@ -1,0 +1,600 @@
+{
+  "scope": "Main integration after initial intrinsic text milestone; authored query-container navigation only, no site acceptance",
+  "merged_main": "120693965a5af6b0ba7cc22ea99e56270ae501e6",
+  "merge_commit": "b27bc10f",
+  "workspace_release": "pass; 1m51s including build-directory/package-cache waits",
+  "tests": {
+    "browser_pass": 13,
+    "browser_ignored": 1,
+    "video_pass": 23,
+    "video_ignored": 8
+  },
+  "native_navigation": {
+    "scope": "Native navigation on an OWN Agent Screen; authored fixtures accept no sites.\nStart release olo-browser there, eval olo-screen env, then run NAME OUTPUT_DIR.\nChecks canonical redirects, query-container box padding, in-document identity/no I/O, history, keyboard focus\nand scroll restoration at all native modes/scales. HTTP server is test-only.\n",
+    "rows": [
+      {
+        "theme": "light",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 2,
+          "document": 2
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 3,
+          "document": 2
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 7,
+          "document": 4
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 10,
+          "document": 5
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 11,
+          "document": 5
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 15,
+          "document": 7
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 18,
+          "document": 8
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 19,
+          "document": 8
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 23,
+          "document": 10
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 26,
+          "document": 11
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 27,
+          "document": 11
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 31,
+          "document": 13
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "light",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 34,
+          "document": 14
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 35,
+          "document": 14
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 39,
+          "document": 16
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": false,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 42,
+          "document": 17
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 43,
+          "document": 17
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 47,
+          "document": 19
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 50,
+          "document": 20
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 51,
+          "document": 20
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 55,
+          "document": 22
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 58,
+          "document": 23
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 59,
+          "document": 23
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 63,
+          "document": 25
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 66,
+          "document": 26
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 67,
+          "document": 26
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 71,
+          "document": 28
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "dark",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 74,
+          "document": 29
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 75,
+          "document": 29
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 79,
+          "document": 31
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 82,
+          "document": 32
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 83,
+          "document": 32
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 87,
+          "document": 34
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.25,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 90,
+          "document": 35
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 91,
+          "document": 35
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 95,
+          "document": 37
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.25,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.5,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 98,
+          "document": 38
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 99,
+          "document": 38
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 103,
+          "document": 40
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.5,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 1.75,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 106,
+          "document": 41
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 107,
+          "document": 41
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 111,
+          "document": 43
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 1.75,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      },
+      {
+        "theme": "night",
+        "scale": 2,
+        "initial": {
+          "url": "http://127.0.0.1:35207/nav",
+          "navigation": 114,
+          "document": 44
+        },
+        "fragment": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 115,
+          "document": 44
+        },
+        "restored": {
+          "url": "http://127.0.0.1:35207/nav#section",
+          "navigation": 119,
+          "document": 46
+        },
+        "review": [
+          {
+            "title": "Browser",
+            "width": 1000,
+            "height": 700,
+            "scale": 2.0,
+            "dark": true,
+            "findings": []
+          }
+        ]
+      }
+    ],
+    "requests": [
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/redirect",
+      "/nav",
+      "/other",
+      "/nav",
+      "/nav"
+    ],
+    "reload": {
+      "before": {
+        "url": "http://127.0.0.1:35207/nav#section",
+        "navigation": 121,
+        "document": 46
+      },
+      "restored": {
+        "url": "http://127.0.0.1:35207/nav#section",
+        "navigation": 1,
+        "document": 1
+      },
+      "section_y": 145.20801,
+      "forward_then_back_without_requests": true,
+      "reload_and_history_checks_seconds": 1.107478858990362
+    },
+    "accepted_websites": 0
+  },
+  "browser_proof": {
+    "pid": 244738,
+    "path": "/home/ben/worktrees/olo/browser/target/release/olo-browser",
+    "sha256": "9baf69bd623483e53efc8d55de6f2cda857b6ebe8f92974f969e002d3eb0da3f",
+    "screen": "browser-stripe-native",
+    "windows": [
+      {
+        "id": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "pid": 244738,
+        "workspace": 0,
+        "minimized": false,
+        "focused": true,
+        "kept": false,
+        "groupable": true,
+        "output": "HEADLESS-1",
+        "frame": {
+          "x": 48,
+          "y": 40,
+          "width": 1010,
+          "height": 731
+        },
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "least": [
+          650,
+          511
+        ],
+        "tab_frame": {
+          "x": 48,
+          "y": 40,
+          "width": 100,
+          "height": 21
+        },
+        "stack": 0,
+        "surface": 32
+      }
+    ]
+  },
+  "visuals": "15 native light/dark/night scales1/1.25/1.5/1.75/2 reviews without findings; all15 unresampled top crops inspected; source screenshots retained in owned scratch. No forced-dark site/presentation latency claim.",
+  "screens": "Owned Browser quit, exit awaited, zero remaining windows, screen stopped; reference screen remains stopped; no personal install/reload",
+  "screenshot_sha256": {
+    "dark-1.25.png": "dd6db12f3d5a17d0c99e7b23eaadb3b936cb87316520d6e215201d6aca638c84",
+    "dark-1.5.png": "28bcd20645e7da5b612661f08f10a7d23eefadd49be6989bea92e5533396bb18",
+    "dark-1.75.png": "0cf17a599cc267c05e4f5d2cc232dcabee3821d32650d9a7b5fd31d7fe13c850",
+    "dark-1.png": "11b48ce28d843a39a0dbfa217368738bf6f650716687c0222223669e7bb1cb56",
+    "dark-2.png": "8ecfc1233febb3a0fb9e2256f41c6950d9b2a666cd54fe81198b8df5217c7f74",
+    "light-1.25.png": "3965f5229418ba6bca2e9dde17c234e66c8852323895250b0ff9f87dfd55bea2",
+    "light-1.5.png": "0ce435a5bcb02c722e56c2affa61497a227a35ce39369d44283612951620b2e6",
+    "light-1.75.png": "4ae5f5a2a804cebe4cb71ea9158175a6d37f65f6f3386594b749745f8e4ce1cc",
+    "light-1.png": "7097a8fedf9c9eb485ae2ebf5d0044c1c64760bfd3e4104e1bebc56b890baaae",
+    "light-2.png": "fe4527ccc912b628cf973157a7c706efe8273d1d1ea2861bac7613a53f73cdf2",
+    "night-1.25.png": "dd6db12f3d5a17d0c99e7b23eaadb3b936cb87316520d6e215201d6aca638c84",
+    "night-1.5.png": "28bcd20645e7da5b612661f08f10a7d23eefadd49be6989bea92e5533396bb18",
+    "night-1.75.png": "0cf17a599cc267c05e4f5d2cc232dcabee3821d32650d9a7b5fd31d7fe13c850",
+    "night-1.png": "11b48ce28d843a39a0dbfa217368738bf6f650716687c0222223669e7bb1cb56",
+    "night-2.png": "8ecfc1233febb3a0fb9e2256f41c6950d9b2a666cd54fe81198b8df5217c7f74"
+  },
+  "transient": "One connection reset while the owned session re-executes; existing bounded reconnect loop succeeds and restored URL/scroll/forward/back checks pass",
+  "acceptance": {
+    "stripe_configurations": 0,
+    "websites": 0,
+    "corpus_configurations": 0
+  }
+}

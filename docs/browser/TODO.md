@@ -389,6 +389,12 @@ this is a harness correction, not a browser speedup.
   context (no rustc observed at sample boundaries). Scene construction does not
   query the new state index; cause/attribution remains unresolved. Preserve the
   dataset and confirm/profile before performance acceptance.
+- [ ] Profile intrinsic-checkpoint ordinary-path cost: pipeline100/1000
+  809.94→814.49 /9000.35→8886.89µs; scene186.14→190.19 /3265.09→3496.42µs
+  with identical geometry/pixels. The new intrinsic operation is not called on
+  these paths. Scene~2.2%/~7.1% and small pipeline~0.6% regressions remain
+  nonpasses;60 compiler waits/1 accepted Cargo context are recorded, causality
+  and full isolation unestablished. Worker-control speedups do not resolve them.
 - [ ] Profile the remaining 1,000-element scene regression after image support:
   2388.630→2495.630 µs (4.5%), CPU0/seven alternating frozen processes with
   identical source/geometry/pixels and no compiler activity. Text-only scene

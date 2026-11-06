@@ -4356,3 +4356,25 @@ Fetched origin/main12069396 using gh-backed credentials; merge after this
 working checkpoint. **Stripe0/30, corpus0/100 and0/3000; goal active.** Next:
 original flex item construction/sizing/alignment consuming measured content,
 then retry the same actual Stripe URL. No other site is selected.
+
+### 2026-11-06 — Merge recording library/editor main after intrinsic text
+
+Pushed e5117df9, then merged origin/main12069396 asb27bc10f. Read the changed
+HACKING and relevant native video/preview interfaces: recording library/cards,
+Viewer editing and shared in-process video read/export/metadata changes. No web
+formatter change is imported. Release workspace passes in1m51s including cache/
+build-directory waits. Browser13 pass/1 ignored, video23 pass/8 ignored.
+
+Fresh PID/executable/hash-verified Browser in its owned session passes15 authored
+Cqi navigation reviews (light/dark/night at1,1.25,1.5,1.75,2), URL/history,
+scroll and owned session re-exec restoration. One expected connection reset is
+retried during re-exec; URL/section position and forward/back with no requests
+pass. All15 unresampled upper component crops inspected; authored blue/red text
+is not forced-dark website acceptance. The black area beside the tab in the
+window-only crop is transparent outside the window, not painted content. The
+Browser quit, process exit awaited, zero windows verified and screen stopped.
+No personal session install/reload. Evidence:stripe-intrinsic-main-sync.json.
+The ordinary-path cost nonpasses from the intrinsic checkpoint are now also
+explicit in TODO. **Stripe0/30, corpus0/100,0/3000; goal active.** Continue with
+flex item sizing/construction against independent Chrome geometry, then wire
+the measured content into the formatter and retry Stripe.
