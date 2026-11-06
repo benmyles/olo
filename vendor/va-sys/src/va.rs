@@ -200,6 +200,12 @@ pub const VA_STATUS_ERROR_UNSUPPORTED_MEMORY_TYPE: u32 = 36;
 pub const VA_STATUS_ERROR_NOT_ENOUGH_BUFFER: u32 = 37;
 pub const VA_STATUS_ERROR_TIMEDOUT: u32 = 38;
 pub const VA_STATUS_ERROR_UNKNOWN: u32 = 4294967295;
+pub const VA_FRAME_PICTURE: u32 = 0;
+pub const VA_FILTER_SCALING_DEFAULT: u32 = 0;
+pub const VA_FILTER_SCALING_FAST: u32 = 256;
+pub const VA_FILTER_SCALING_HQ: u32 = 512;
+pub const VA_FILTER_SCALING_NL_ANAMORPHIC: u32 = 768;
+pub const VA_FILTER_SCALING_MASK: u32 = 3840;
 pub const VA_PADDING_LOW: u32 = 4;
 pub const VA_PADDING_MEDIUM: u32 = 8;
 pub const VA_PADDING_HIGH: u32 = 16;
@@ -328,12 +334,40 @@ pub const VA_FOURCC_ARGB64: u32 = 877089345;
 pub const VA_FOURCC_ABGR64: u32 = 877085249;
 pub const VA_FOURCC_XYUV: u32 = 1448434008;
 pub const VA_FOURCC_Q416: u32 = 909194321;
+pub const VA_CHROMA_SITING_UNKNOWN: u32 = 0;
+pub const VA_CHROMA_SITING_VERTICAL_TOP: u32 = 1;
+pub const VA_CHROMA_SITING_VERTICAL_CENTER: u32 = 2;
+pub const VA_CHROMA_SITING_VERTICAL_BOTTOM: u32 = 3;
+pub const VA_CHROMA_SITING_HORIZONTAL_LEFT: u32 = 4;
+pub const VA_CHROMA_SITING_HORIZONTAL_CENTER: u32 = 8;
+pub const VA_SOURCE_RANGE_UNKNOWN: u32 = 0;
+pub const VA_SOURCE_RANGE_REDUCED: u32 = 1;
+pub const VA_SOURCE_RANGE_FULL: u32 = 2;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_KERNEL_DRM: u32 = 268435456;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME: u32 = 536870912;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2: u32 = 1073741824;
 pub const VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_3: u32 = 134217728;
 pub type VADisplay = *mut ::std::os::raw::c_void;
 pub type VAStatus = ::std::os::raw::c_int;
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VARectangle {
+    pub x: i16,
+    pub y: i16,
+    pub width: u16,
+    pub height: u16,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VARectangle"][::std::mem::size_of::<_VARectangle>() - 8usize];
+    ["Alignment of _VARectangle"][::std::mem::align_of::<_VARectangle>() - 2usize];
+    ["Offset of field: _VARectangle::x"][::std::mem::offset_of!(_VARectangle, x) - 0usize];
+    ["Offset of field: _VARectangle::y"][::std::mem::offset_of!(_VARectangle, y) - 2usize];
+    ["Offset of field: _VARectangle::width"][::std::mem::offset_of!(_VARectangle, width) - 4usize];
+    ["Offset of field: _VARectangle::height"]
+        [::std::mem::offset_of!(_VARectangle, height) - 6usize];
+};
+pub type VARectangle = _VARectangle;
 pub const VAProfileNone: VAProfile = -1;
 pub const VAProfileMPEG2Simple: VAProfile = 0;
 pub const VAProfileMPEG2Main: VAProfile = 1;
@@ -6261,6 +6295,216 @@ const _: () = {
         [::std::mem::offset_of!(_VAEncTileGroupBufferAV1, va_reserved) - 4usize];
 };
 pub type VAEncTileGroupBufferAV1 = _VAEncTileGroupBufferAV1;
+pub const VAProcColorStandardNone: _VAProcColorStandardType = 0;
+pub const VAProcColorStandardBT601: _VAProcColorStandardType = 1;
+pub const VAProcColorStandardBT709: _VAProcColorStandardType = 2;
+pub const VAProcColorStandardBT470M: _VAProcColorStandardType = 3;
+pub const VAProcColorStandardBT470BG: _VAProcColorStandardType = 4;
+pub const VAProcColorStandardSMPTE170M: _VAProcColorStandardType = 5;
+pub const VAProcColorStandardSMPTE240M: _VAProcColorStandardType = 6;
+pub const VAProcColorStandardGenericFilm: _VAProcColorStandardType = 7;
+pub const VAProcColorStandardSRGB: _VAProcColorStandardType = 8;
+pub const VAProcColorStandardSTRGB: _VAProcColorStandardType = 9;
+pub const VAProcColorStandardXVYCC601: _VAProcColorStandardType = 10;
+pub const VAProcColorStandardXVYCC709: _VAProcColorStandardType = 11;
+pub const VAProcColorStandardBT2020: _VAProcColorStandardType = 12;
+pub const VAProcColorStandardExplicit: _VAProcColorStandardType = 13;
+pub const VAProcColorStandardCount: _VAProcColorStandardType = 14;
+pub type _VAProcColorStandardType = ::std::os::raw::c_uint;
+pub use self::_VAProcColorStandardType as VAProcColorStandardType;
+pub const VAProcHighDynamicRangeMetadataNone: _VAProcHighDynamicRangeMetadataType = 0;
+pub const VAProcHighDynamicRangeMetadataHDR10: _VAProcHighDynamicRangeMetadataType = 1;
+pub const VAProcHighDynamicRangeMetadataTypeCount: _VAProcHighDynamicRangeMetadataType = 2;
+pub type _VAProcHighDynamicRangeMetadataType = ::std::os::raw::c_uint;
+pub use self::_VAProcHighDynamicRangeMetadataType as VAProcHighDynamicRangeMetadataType;
+pub const VAProcDefaultMode: _VAProcMode = 0;
+pub const VAProcPowerSavingMode: _VAProcMode = 1;
+pub const VAProcPerformanceMode: _VAProcMode = 2;
+pub type _VAProcMode = ::std::os::raw::c_uint;
+pub use self::_VAProcMode as VAProcMode;
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VABlendState {
+    pub flags: ::std::os::raw::c_uint,
+    pub global_alpha: f32,
+    pub min_luma: f32,
+    pub max_luma: f32,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VABlendState"][::std::mem::size_of::<_VABlendState>() - 16usize];
+    ["Alignment of _VABlendState"][::std::mem::align_of::<_VABlendState>() - 4usize];
+    ["Offset of field: _VABlendState::flags"]
+        [::std::mem::offset_of!(_VABlendState, flags) - 0usize];
+    ["Offset of field: _VABlendState::global_alpha"]
+        [::std::mem::offset_of!(_VABlendState, global_alpha) - 4usize];
+    ["Offset of field: _VABlendState::min_luma"]
+        [::std::mem::offset_of!(_VABlendState, min_luma) - 8usize];
+    ["Offset of field: _VABlendState::max_luma"]
+        [::std::mem::offset_of!(_VABlendState, max_luma) - 12usize];
+};
+pub type VABlendState = _VABlendState;
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct _VAProcColorProperties {
+    pub chroma_sample_location: u8,
+    pub color_range: u8,
+    pub colour_primaries: u8,
+    pub transfer_characteristics: u8,
+    pub matrix_coefficients: u8,
+    pub reserved: [u8; 3usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAProcColorProperties"][::std::mem::size_of::<_VAProcColorProperties>() - 8usize];
+    ["Alignment of _VAProcColorProperties"]
+        [::std::mem::align_of::<_VAProcColorProperties>() - 1usize];
+    ["Offset of field: _VAProcColorProperties::chroma_sample_location"]
+        [::std::mem::offset_of!(_VAProcColorProperties, chroma_sample_location) - 0usize];
+    ["Offset of field: _VAProcColorProperties::color_range"]
+        [::std::mem::offset_of!(_VAProcColorProperties, color_range) - 1usize];
+    ["Offset of field: _VAProcColorProperties::colour_primaries"]
+        [::std::mem::offset_of!(_VAProcColorProperties, colour_primaries) - 2usize];
+    ["Offset of field: _VAProcColorProperties::transfer_characteristics"]
+        [::std::mem::offset_of!(_VAProcColorProperties, transfer_characteristics) - 3usize];
+    ["Offset of field: _VAProcColorProperties::matrix_coefficients"]
+        [::std::mem::offset_of!(_VAProcColorProperties, matrix_coefficients) - 4usize];
+    ["Offset of field: _VAProcColorProperties::reserved"]
+        [::std::mem::offset_of!(_VAProcColorProperties, reserved) - 5usize];
+};
+pub type VAProcColorProperties = _VAProcColorProperties;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAHdrMetaData {
+    pub metadata_type: VAProcHighDynamicRangeMetadataType,
+    pub metadata: *mut ::std::os::raw::c_void,
+    pub metadata_size: u32,
+    pub reserved: [u32; 4usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAHdrMetaData"][::std::mem::size_of::<_VAHdrMetaData>() - 40usize];
+    ["Alignment of _VAHdrMetaData"][::std::mem::align_of::<_VAHdrMetaData>() - 8usize];
+    ["Offset of field: _VAHdrMetaData::metadata_type"]
+        [::std::mem::offset_of!(_VAHdrMetaData, metadata_type) - 0usize];
+    ["Offset of field: _VAHdrMetaData::metadata"]
+        [::std::mem::offset_of!(_VAHdrMetaData, metadata) - 8usize];
+    ["Offset of field: _VAHdrMetaData::metadata_size"]
+        [::std::mem::offset_of!(_VAHdrMetaData, metadata_size) - 16usize];
+    ["Offset of field: _VAHdrMetaData::reserved"]
+        [::std::mem::offset_of!(_VAHdrMetaData, reserved) - 20usize];
+};
+impl Default for _VAHdrMetaData {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAHdrMetaData = _VAHdrMetaData;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _VAProcPipelineParameterBuffer {
+    pub surface: VASurfaceID,
+    pub surface_region: *const VARectangle,
+    pub surface_color_standard: VAProcColorStandardType,
+    pub output_region: *const VARectangle,
+    pub output_background_color: u32,
+    pub output_color_standard: VAProcColorStandardType,
+    pub pipeline_flags: u32,
+    pub filter_flags: u32,
+    pub filters: *mut VABufferID,
+    pub num_filters: u32,
+    pub forward_references: *mut VASurfaceID,
+    pub num_forward_references: u32,
+    pub backward_references: *mut VASurfaceID,
+    pub num_backward_references: u32,
+    pub rotation_state: u32,
+    pub blend_state: *const VABlendState,
+    pub mirror_state: u32,
+    pub additional_outputs: *mut VASurfaceID,
+    pub num_additional_outputs: u32,
+    pub input_surface_flag: u32,
+    pub output_surface_flag: u32,
+    pub input_color_properties: VAProcColorProperties,
+    pub output_color_properties: VAProcColorProperties,
+    pub processing_mode: VAProcMode,
+    pub output_hdr_metadata: *mut VAHdrMetaData,
+    pub va_reserved: [u32; 16usize],
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of _VAProcPipelineParameterBuffer"]
+        [::std::mem::size_of::<_VAProcPipelineParameterBuffer>() - 224usize];
+    ["Alignment of _VAProcPipelineParameterBuffer"]
+        [::std::mem::align_of::<_VAProcPipelineParameterBuffer>() - 8usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::surface"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, surface) - 0usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::surface_region"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, surface_region) - 8usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::surface_color_standard"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, surface_color_standard) - 16usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::output_region"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, output_region) - 24usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::output_background_color"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, output_background_color) - 32usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::output_color_standard"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, output_color_standard) - 36usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::pipeline_flags"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, pipeline_flags) - 40usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::filter_flags"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, filter_flags) - 44usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::filters"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, filters) - 48usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::num_filters"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, num_filters) - 56usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::forward_references"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, forward_references) - 64usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::num_forward_references"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, num_forward_references) - 72usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::backward_references"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, backward_references) - 80usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::num_backward_references"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, num_backward_references) - 88usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::rotation_state"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, rotation_state) - 92usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::blend_state"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, blend_state) - 96usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::mirror_state"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, mirror_state) - 104usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::additional_outputs"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, additional_outputs) - 112usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::num_additional_outputs"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, num_additional_outputs) - 120usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::input_surface_flag"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, input_surface_flag) - 124usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::output_surface_flag"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, output_surface_flag) - 128usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::input_color_properties"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, input_color_properties) - 132usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::output_color_properties"][::std::mem::offset_of!(
+        _VAProcPipelineParameterBuffer,
+        output_color_properties
+    ) - 140usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::processing_mode"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, processing_mode) - 148usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::output_hdr_metadata"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, output_hdr_metadata) - 152usize];
+    ["Offset of field: _VAProcPipelineParameterBuffer::va_reserved"]
+        [::std::mem::offset_of!(_VAProcPipelineParameterBuffer, va_reserved) - 160usize];
+};
+impl Default for _VAProcPipelineParameterBuffer {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+pub type VAProcPipelineParameterBuffer = _VAProcPipelineParameterBuffer;
 #[repr(C)]
 #[derive(Default, Copy, Clone)]
 pub struct _VADRMPRIMESurfaceDescriptor {

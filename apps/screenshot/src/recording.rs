@@ -110,6 +110,15 @@
 //! `.part` until whole. One at a time on each display: what's going is
 //! in `$XDG_RUNTIME_DIR/olo-recording-<display>.json` (so an Agent
 //! Screen's and the person's don't meet).
+//!
+//! The whole display recorded on the GPU that draws it (VA-API's AV1 on
+//! the Intel GPU app_server draws with, as on battery or `--encoder
+//! vaapi`), its frames go from app_server to the encoder in the GPU's
+//! memory, never through the processor: captured into a few dmabufs in
+//! turn (`Capture::lend_frames`), each made NV12 by VA-API's video
+//! processor and encoded (`frames_on_gpu` in what it prints). Otherwise,
+//! or `OLO_RECORDING_COPY=1`, frames are copied out and converted on the
+//! processor.
 
 use std::{
     os::fd::{AsRawFd as _, FromRawFd as _},
@@ -230,9 +239,11 @@ fn default_path() -> PathBuf {
     dir.join(format!("Screen Recording {:04}-{:02}-{:02} at {:02}.{:02}.{:02}.mp4", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec))
 }
 
-/// A picture waiting for the encoder: its pixels and when it came.
+/// A picture waiting for the encoder: its pixels (or its dmabuf, lent
+/// by the capture: then no pixels) and when it came.
 struct Waiting {
     data: Vec<u8>,
+    lent: Option<olo_capture::Lent>,
     stride: usize,
     width: u32,
     height: u32,
@@ -251,6 +262,9 @@ pub struct Made {
     pub encoder: String,
     /// What it's coded as: "H.264", "HEVC" or "AV1".
     pub codec: &'static str,
+    /// Frames that went to the encoder in the GPU's memory, never copied
+    /// through the processor.
+    pub frames_on_gpu: usize,
     /// Why it stopped before it was told to (the encoder failed twice,
     /// the disk filled): what was recorded till then is kept.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -646,12 +660,19 @@ fn record_into(
     // Where the video ends (milliseconds of it), for its last frame.
     let end = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let part = path.with_extension("mp4.part");
-    let (ready_tx, ready) = std::sync::mpsc::channel::<Result<(), String>>();
+    // Frames lent to the encoder as they are, in the GPU's memory (see
+    // the top): the whole display, as it is, on the encoder's GPU. Till
+    // the encoder can't take one: then copied.
+    // (A test's failure, `OLO_RECORDING_FAIL_AT`, is a copied frame's.)
+    let whole = crop.is_none() && backdrop.is_none() && inset.is_none() && ["OLO_RECORDING_COPY", "OLO_RECORDING_FAIL_AT"].iter().all(|v| std::env::var_os(v).is_none());
+    let copy_only = Arc::new(AtomicBool::new(false));
+    // (The encoder's GPU, if it encodes pictures in its memory.)
+    let (ready_tx, ready) = std::sync::mpsc::channel::<Result<Option<u64>, String>>();
     let worker = {
-        let (slot, ended, end, part, sound_in, marks) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone(), marks.clone());
+        let (slot, ended, end, part, sound_in, marks, copy_only) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone(), marks.clone(), copy_only.clone());
         std::thread::Builder::new()
             .name("recording encoder".into())
-            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), inset, &ready_tx, &sound_in, &marks))
+            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), inset, &ready_tx, &sound_in, &marks, &copy_only))
             .map_err(|e| e.to_string())?
     };
     // The countdown meanwhile, a number a second (a stop ends it).
@@ -670,9 +691,13 @@ fn record_into(
     if countdown > 0 {
         say(0);
     }
-    if let Ok(Err(e)) = ready.recv() {
-        let _ = worker.join();
-        return Err(e);
+    match ready.recv() {
+        Ok(Err(e)) => {
+            let _ = worker.join();
+            return Err(e);
+        }
+        Ok(Ok(Some(gpu))) if whole && capture.render_device() == Some(gpu) => capture.lend_frames(Some(olo_video::vaapi::imports)),
+        _ => {}
     }
     let start = Instant::now();
     // Said where Deskbar and agents look: recording from now.
@@ -755,6 +780,18 @@ fn record_into(
                 Some(Ok(())) if PAUSED.load(Ordering::SeqCst) => {}
                 Some(Ok(())) => {
                     let Some((fw, fh)) = capture.frame_size() else { continue };
+                    let at = recorded(paused_for, paused_at);
+                    if copy_only.swap(false, Ordering::SeqCst) {
+                        capture.lend_frames(None);
+                    }
+                    // (Lent as it is when it covers the video: else, a window
+                    // that shrank, copied and shown on black.)
+                    if let Some(lent) = size.filter(|&(vw, vh)| fw >= vw && fh >= vh).and_then(|_| capture.lend()) {
+                        let (m, cv) = &*slot;
+                        *m.lock().unwrap_or_else(|e| e.into_inner()) = Some(Waiting { data: Vec::new(), lent: Some(lent), stride: 0, width: fw, height: fh, at });
+                        cv.notify_one();
+                        continue;
+                    }
                     let [x, y, w, h] = crop_within(crop, fw, fh);
                     let stride = w as usize * 4;
                     let data = if [x, y, w, h] == [0, 0, fw, fh] {
@@ -773,9 +810,8 @@ fn record_into(
                         }
                         data
                     };
-                    let at = recorded(paused_for, paused_at);
                     let (m, cv) = &*slot;
-                    *m.lock().unwrap_or_else(|e| e.into_inner()) = Some(Waiting { data, stride, width: w, height: h, at });
+                    *m.lock().unwrap_or_else(|e| e.into_inner()) = Some(Waiting { data, lent: None, stride, width: w, height: h, at });
                     cv.notify_one();
                 }
                 // (A size changed: the next request makes a new buffer.)
@@ -796,7 +832,7 @@ fn record_into(
     slot.1.notify_one();
     let made = worker.join().map_err(|_| "the encoder failed".to_string())?;
     result?;
-    let (frames, (width, height), encoder, codec, stopped_early) = made?;
+    let (frames, frames_on_gpu, (width, height), encoder, codec, stopped_early) = made?;
     // The file finished by the worker, then put where it goes.
     std::fs::rename(&part, path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(Made {
@@ -807,6 +843,7 @@ fn record_into(
         height,
         encoder: encoder.to_owned(),
         codec: codec.name(),
+        frames_on_gpu,
         stopped_early,
         sound: sounded,
         sound_note,
@@ -847,9 +884,10 @@ fn encode(
     size: Option<(u32, u32)>,
     look: Option<&crate::backdrop::Look>,
     mut inset: Option<crate::inset::Inset>,
-    ready: &std::sync::mpsc::Sender<Result<(), String>>,
+    ready: &std::sync::mpsc::Sender<Result<Option<u64>, String>>,
     sound: &Mutex<Option<SoundIn>>,
     marks: &Mutex<Vec<(u64, String)>>,
+    copy_only: &AtomicBool,
 ) -> Result<Encoded, String> {
     // The sound's access units so far, into the file beside the pictures
     // (its description given the file the first time).
@@ -899,9 +937,9 @@ fn encode(
             }
         }
     }
-    let _ = ready.send(Ok(()));
+    let _ = ready.send(Ok(video.as_ref().and_then(|(enc, _, _)| enc.prime_device())));
     let mut held: Option<(Vec<u8>, bool, Duration)> = None;
-    let mut frames = 0usize;
+    let (mut frames, mut on_gpu) = (0usize, 0usize);
     // Why it stopped before it was told to, if it did.
     let mut stopped: Option<String> = None;
     let fail_at: Option<(usize, bool)> = std::env::var("OLO_RECORDING_FAIL_AT").ok().and_then(|v| Some((v.trim_end_matches('!').parse().ok()?, v.ends_with('!'))));
@@ -918,39 +956,31 @@ fn encode(
                 g = cv.wait(g).unwrap_or_else(|e| e.into_inner());
             }
         };
-        let Some(w) = next else { break };
+        let Some(mut w) = next else { break };
         if video.is_none() {
             video = Some(open(w.width, w.height, &mut backdrop)?);
         }
         let (enc, mp4, canvas) = video.as_mut().unwrap();
-        let (vw, vh) = enc.size();
-        // The picture at the video's size: a window that grew is cut, one
-        // that shrank shown on black (or on its background, centred).
-        match backdrop.as_mut() {
-            Some(b) => {
-                let (anew, window) = b.compose(&w.data, w.stride, w.width, w.height, canvas);
-                // The camera on the background's corner.
-                if let Some(i) = inset.as_mut() {
-                    i.draw(canvas, vw as usize, window, anew);
-                }
-            }
-            None => fit(&w, canvas, vw, vh),
-        }
-        // An encoder that fails is opened again, once: its first picture a
-        // key frame, the file goes on (if its parameter sets are the same;
-        // else `add` says so). Failing again, what was recorded is kept:
-        // the recording stops there, the file finished.
-        // (`OLO_RECORDING_FAIL_AT=N`, for tests: picture N fails; `N!`,
-        // the encoder opened again fails too.)
-        let failing = fail_at.is_some_and(|(n, _)| n == frames);
-        let coded = (if failing { Err("failed on purpose (OLO_RECORDING_FAIL_AT)".to_owned()) } else { enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra) }).or_else(|e| {
-            eprintln!("olo-screenshot: the encoder failed ({e}); opening it again");
-            *enc = olo_video::Encoder::new(vw, vh, fps, choice, codec).map_err(|again| format!("{e}; opened again: {again}"))?;
-            if failing && fail_at.is_some_and(|(_, again)| again) {
-                return Err(format!("{e}; and again"));
-            }
-            enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra)
+        // A picture lent, encoded as it is (its top left, the video's
+        // size); one the encoder can't take dropped, the rest copied.
+        // (Given back at once: the encoder has made its own of it.)
+        let coded = w.lent.take().map(|lent| {
+            let picture =
+                olo_video::vaapi::Prime { key: lent.key, fd: lent.fd(), modifier: lent.modifier, offset: lent.offset, pitch: lent.pitch, size: lent.size, width: lent.width, height: lent.height };
+            enc.encode_prime(&picture)
         });
+        let coded = match coded {
+            Some(Ok(c)) => {
+                on_gpu += 1;
+                Ok(c)
+            }
+            Some(Err(e)) => {
+                eprintln!("olo-screenshot: the encoder took no frame from the GPU ({e}): copying them");
+                copy_only.store(true, Ordering::SeqCst);
+                continue;
+            }
+            None => encode_copied(enc, &w, &mut backdrop, &mut inset, canvas, fps, (choice, codec), fail_at.filter(|(n, _)| *n == frames)),
+        };
         let (bits, key) = match coded {
             Ok(c) => c,
             Err(e) => {
@@ -987,7 +1017,48 @@ fn encode(
     mp4.chapters(marks.lock().unwrap_or_else(|e| e.into_inner()).clone());
     let made = mp4.size();
     mp4.finish().map_err(|e| e.to_string())?;
-    Ok((frames, made, enc.name(), enc.codec(), stopped))
+    Ok((frames, on_gpu.min(frames), made, enc.name(), enc.codec(), stopped))
+}
+
+/// A picture copied out, at the video's size, encoded (`canvas`: room for
+/// it): a window that grew is cut, one that shrank shown on black (or on
+/// its background, centred). An encoder that fails is opened again,
+/// once: its first picture a key frame, the file goes on (if its
+/// parameter sets are the same; else `add` says so). Failing again, what
+/// was recorded is kept: the recording stops there, the file finished.
+/// (`OLO_RECORDING_FAIL_AT=N`, for tests: picture N fails; `N!`, the
+/// encoder opened again fails too: `failing`.)
+#[allow(clippy::too_many_arguments)]
+fn encode_copied(
+    enc: &mut olo_video::Encoder,
+    w: &Waiting,
+    backdrop: &mut Option<crate::backdrop::Backdrop>,
+    inset: &mut Option<crate::inset::Inset>,
+    canvas: &mut [u8],
+    fps: u32,
+    (choice, codec): (olo_video::Choice, olo_video::Codec),
+    failing: Option<(usize, bool)>,
+) -> Result<(Vec<u8>, bool), String> {
+    let (vw, vh) = enc.size();
+    match backdrop.as_mut() {
+        Some(b) => {
+            let (anew, window) = b.compose(&w.data, w.stride, w.width, w.height, canvas);
+            // The camera on the background's corner.
+            if let Some(i) = inset.as_mut() {
+                i.draw(canvas, vw as usize, window, anew);
+            }
+        }
+        None => fit(w, canvas, vw, vh),
+    }
+    let (failing, failing_again) = (failing.is_some(), failing.is_some_and(|(_, again)| again));
+    (if failing { Err("failed on purpose (OLO_RECORDING_FAIL_AT)".to_owned()) } else { enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra) }).or_else(|e| {
+        eprintln!("olo-screenshot: the encoder failed ({e}); opening it again");
+        *enc = olo_video::Encoder::new(vw, vh, fps, choice, codec).map_err(|again| format!("{e}; opened again: {again}"))?;
+        if failing && failing_again {
+            return Err(format!("{e}; and again"));
+        }
+        enc.encode(canvas, vw as usize * 4, olo_video::Order::Bgra)
+    })
 }
 
 /// The camera bubble's process (`bubble.rs`), while a recording shows
@@ -1035,7 +1106,7 @@ impl Drop for CameraBubble {
 
 /// What the encoder's worker made: frames, the video's size, which encoder
 /// and codec, and why it stopped early if it did.
-type Encoded = (usize, (u32, u32), &'static str, olo_video::Codec, Option<String>);
+type Encoded = (usize, usize, (u32, u32), &'static str, olo_video::Codec, Option<String>);
 
 /// The sound's description, and its access units as they come.
 type SoundIn = (olo_video::aac::Track, Arc<Mutex<Vec<Vec<u8>>>>);

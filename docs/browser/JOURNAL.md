@@ -3432,3 +3432,16 @@ Evidence: `2026-11-06-inline-box-{checks,native,links,pipeline-cost,ui-cost,keyb
 `tools/browser/measure-inline.py`, the frozen native scroll runner and the
 `--inline` link fixture. Earlier `2026-11-06-inline-checks.json` is retained
 unchanged; this milestone uses the distinct `inline-box` prefix.
+
+Latest-main follow-up: pushed **2008e6a9**, then merged main through
+**a83981aa**, including the native GPU-frame recording path and its format/
+fallback handling. Merged workspace release build passes (**56.62s**), as do
+**243 browser/web release tests**, strict browser/web clippy, thirteen
+kit/Preferences lint tests, Browser live lint and another **15 native inline
+mode/scale reviews / 36 requests**. Browser/web runtime files and the release
+browser's SHA-256 are unchanged by this merge, so the earlier frozen browser
+measurements retain their scope. The journal retains **593** unique entries;
+all images exist. Full desktop lint was not repeated for this recording-only
+merge; its previous ten findings outside Browser remain open. Evidence:
+`2026-11-06-inline-box-main-integration.json`. No personal session install or
+reload. Website acceptance stays **0/100**, and the full goal remains active.

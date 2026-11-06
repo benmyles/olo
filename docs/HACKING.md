@@ -6553,6 +6553,32 @@ Screens' Export Video uses too).
   260 KB at 45.5; a frame in about 8.5 ms, conversion and upload
   included, a key frame up to 25. `vaapi_frames_come_back` encodes eight
   frames and decodes them back (each within 38 dB of what was sent).
+- **Frames that never leave the GPU** (VA-API on the GPU app_server
+  draws with: the Intel GPU on the ThinkPad, as on battery or `--encoder
+  vaapi`): a display, or a window not on a background, is captured into
+  three dmabufs of the capture's own in turn (`Capture::lend_frames`,
+  `lend`: a frame lent out isn't drawn into again till its `Lent` is
+  dropped; none free, it comes into the capture's own buffer and is
+  copied), each imported once as a VA surface (DRM PRIME 2, kept by its
+  key) and made NV12 straight into the input surface by VA-API's video
+  processor (BT.709, full range in, limited out; `Av1::encode_prime`,
+  `olo_video::Encoder::encode_prime`), the buffer given back as soon as
+  that's done. Only in layouts VA-API reads (`olo_vaapi::imports`:
+  linear, and Intel's X, Y and 4 tiles without compression; libva can't
+  be asked, and Xe2's compressed 4, 0x0100000000000010, imports without
+  complaint and reads as noise). Used when the capture's GPU is the
+  encoder's (`Capture::render_device`, `Encoder::prime_device`); a frame
+  smaller than the video (a window that shrank) is copied, one the
+  encoder refuses dropped and the rest copied; `OLO_RECORDING_COPY=1`
+  copies every frame. What it prints says how many went this way
+  (`frames_on_gpu`). Measured (`tools/dev/cost`, release, a 2560 × 1600
+  headless display, a Terminal printing nonstop, 29 frames a second):
+  the recorder 2.3% of a core against 15.8% copying (the encoder's
+  thread 1.9% against 9.6%, the capture's 0.4% against 6.2%), app_server
+  4.1% either way. `vaapi_dmabuf_frames_come_back` encodes linear and
+  tiled dmabufs, each drawn in again after its import, and decodes them
+  back (54 dB). NVIDIA's encoder can't take them: app_server draws on
+  the Intel GPU, and CUDA imports no other GPU's memory.
 - **An encoder that fails mid-recording** is opened again once (its
   first picture a key frame), and the file goes on if the new one's
   parameter sets are the same (NVENC's and OpenH264's are, opened with

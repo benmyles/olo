@@ -6,12 +6,12 @@ template, `drm/va_drm.h` beside `va.h`), types only:
 
 ```rust
 bindgen::Builder::default()
-    .header("wrapper.h") // va.h, va_drm.h, va_drmcommon.h, va_enc_av1.h
+    .header("wrapper.h") // va.h, va_drm.h, va_drmcommon.h, va_enc_av1.h, va_vpp.h
     .clang_arg("-I<libva-2.24.0>")
     .ignore_functions()
-    .allowlist_type("VA(Display|Status|Profile|Entrypoint|ConfigAttrib|ConfigAttribType|ConfigID|ContextID|SurfaceID|BufferID|BufferType|ImageID|Image|ImageFormat|SurfaceAttrib|SurfaceAttribType|GenericValue|CodedBufferSegment|EncPackedHeaderParameterBuffer|EncPackedHeaderType|EncSequenceParameterBufferAV1|EncPictureParameterBufferAV1|EncTileGroupBufferAV1|ConfigAttribValEncAV1|ConfigAttribValEncAV1Ext1|ConfigAttribValEncAV1Ext2|EncMiscParameterBuffer|EncMiscParameterType|EncMiscParameterRateControl|EncMiscParameterFrameRate|DRMPRIMESurfaceDescriptor)")
-    .allowlist_var("VA_(STATUS|RT_FORMAT|FOURCC|RC|ENC_PACKED|SURFACE_ATTRIB|ATTRIB|INVALID|PROGRESSIVE|CODED_BUF|EXPORT|PADDING).*")
-    .allowlist_var("VAProfileAV1Profile0|VAEntrypointEncSlice|VAEntrypointEncSliceLP|VAConfigAttrib.*|VA.*BufferType|VAEncPackedHeader.*|VASurfaceAttrib.*|VAEncMiscParameterType.*")
+    .allowlist_type("VA(Display|Status|Profile|Entrypoint|ConfigAttrib|ConfigAttribType|ConfigID|ContextID|SurfaceID|BufferID|BufferType|ImageID|Image|ImageFormat|SurfaceAttrib|SurfaceAttribType|GenericValue|CodedBufferSegment|EncPackedHeaderParameterBuffer|EncPackedHeaderType|EncSequenceParameterBufferAV1|EncPictureParameterBufferAV1|EncTileGroupBufferAV1|ConfigAttribValEncAV1|ConfigAttribValEncAV1Ext1|ConfigAttribValEncAV1Ext2|EncMiscParameterBuffer|EncMiscParameterType|EncMiscParameterRateControl|EncMiscParameterFrameRate|DRMPRIMESurfaceDescriptor|ProcPipelineParameterBuffer|ProcColorStandardType|ProcColorProperties|Rectangle)")
+    .allowlist_var("VA_(STATUS|RT_FORMAT|FOURCC|RC|ENC_PACKED|SURFACE_ATTRIB|ATTRIB|INVALID|PROGRESSIVE|CODED_BUF|EXPORT|PADDING|SOURCE_RANGE|CHROMA_SITING|FRAME_PICTURE|FILTER_SCALING).*")
+    .allowlist_var("VAProfileAV1Profile0|VAProfileNone|VAEntrypointEncSlice|VAEntrypointEncSliceLP|VAEntrypointVideoProc|VAConfigAttrib.*|VA.*BufferType|VAEncPackedHeader.*|VASurfaceAttrib.*|VAEncMiscParameterType.*|VAProcColorStandard.*|VAGenericValueType.*")
     .derive_default(true)
     .derive_debug(false)
     .generate_comments(false)
