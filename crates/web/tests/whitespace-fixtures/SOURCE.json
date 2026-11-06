@@ -1,0 +1,45 @@
+{
+  "revision": "d7bb5bb848fcd304c10669288a211dbafd106d90",
+  "upstream": "https://github.com/web-platform-tests/wpt",
+  "files": {
+    "wpt/white-space-valid.html": {
+      "path": "css/css-text/parsing/white-space-valid.html",
+      "sha256": "cdd95df88b5d93364d73fa1deaa3d1f9f029eb6adbe97018f7a38a2f97c9dca7"
+    },
+    "wpt/white-space-invalid.html": {
+      "path": "css/css-text/parsing/white-space-invalid.html",
+      "sha256": "82fb19e02690862afb1f5fda202a2c63186d405a1e83179661f3bb8297c2edf5"
+    },
+    "wpt/white-space-collapse-valid.html": {
+      "path": "css/css-text/parsing/white-space-collapse-valid.html",
+      "sha256": "67f04dee81a65baed8baabc331d2782c315a73e5f2df6329512cb2ff52d5e6de"
+    },
+    "wpt/white-space-collapse-invalid.html": {
+      "path": "css/css-text/parsing/white-space-collapse-invalid.html",
+      "sha256": "5e76bf637d880532cb895d0db8606d112870d7608f3432528355549e9a4c5b4a"
+    },
+    "wpt/text-wrap-mode-valid.html": {
+      "path": "css/css-text/parsing/text-wrap-mode-valid.html",
+      "sha256": "4bf830bc844d9c4774c8695b3d94172151ceb044594616d2e5aae09584b87a74"
+    },
+    "wpt/text-wrap-mode-invalid.html": {
+      "path": "css/css-text/parsing/text-wrap-mode-invalid.html",
+      "sha256": "70868df1b455835876307fccbd710d63947f6599082970519993402d936ad7b6"
+    },
+    "LICENSE.md": {
+      "path": "LICENSE.md",
+      "sha256": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570"
+    },
+    "parsing-testcommon.js": {
+      "path": "css/support/parsing-testcommon.js",
+      "sha256": "ac482e1e1908e9b98f8f1c4b2c457ec77ae5ad2baa074205c4b0f7812f4024b5"
+    }
+  },
+  "local_files": {
+    "extract.py": "a6cbcedf9a079ca9ef484a37fb1391c1caa7f50bee485054385d3bf772ace6c6",
+    "derived.json": "604286fe032f254ccd7cbbc7858172458d2dafe21d3b6d4062baa8484e51b0e1",
+    "chrome-inputs.json": "2931e53bffd518a7723ea95f1af2b84093448af87031fe89e720ffff44c2d635",
+    "chrome-probe.html": "a6ff9ac77d7538b9de4054dabf777e8ae8f717046d49daff2b57809c77fcd8b3",
+    "README.md": "02db7eaf54362c36a6cb758ec7b82d43f2cd1caee76c5895d504cb5758515daf"
+  }
+}

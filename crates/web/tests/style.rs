@@ -171,6 +171,26 @@ fn text_spacing_normal_is_computed_zero_and_percentages_follow_the_child_font() 
     assert_eq!(scalar(&normal, P::LetterSpacing), 0.);
     assert_eq!(scalar(&normal, P::WordSpacing), 0.);
 }
+
+#[test]
+fn whitespace_inheritance_reset_substitution_and_preparation_binding() {
+    use olo_web::text::prepare::{Collapse, WhiteSpace};
+    let host = Snapshot::default();
+    let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let root = compute(&defaults, &host, "white-space:pre", None, None, Options::default());
+    assert_eq!(WhiteSpace::for_style(&root).unwrap(), WhiteSpace { collapse: Collapse::Preserve, wrap: false });
+    let child = compute(&defaults, &host, "", Some(&root), None, Options::default());
+    assert_eq!(WhiteSpace::for_style(&child).unwrap(), WhiteSpace::for_style(&root).unwrap());
+    for text in ["white-space:initial", "all:initial", "white-space:normal", "--ws:normal;white-space:var(--ws)"] {
+        let child = compute(&defaults, &host, text, Some(&root), None, Options::default());
+        assert_eq!(WhiteSpace::for_style(&child).unwrap(), WhiteSpace::default(), "{text}");
+    }
+    let child = compute(&defaults, &host, "white-space:pre-line;text-wrap-mode:nowrap", Some(&root), None, Options::default());
+    assert_eq!(WhiteSpace::for_style(&child).unwrap(), WhiteSpace { collapse: Collapse::PreserveBreaks, wrap: false });
+    // Invalid-at-computed-time shorthand unsets both inherited longhands.
+    let child = compute(&defaults, &host, "white-space:var(--missing)", Some(&root), None, Options::default());
+    assert_eq!(WhiteSpace::for_style(&child).unwrap(), WhiteSpace::for_style(&root).unwrap());
+}
 #[test]
 fn relative_weight_boundaries_follow_the_fonts_table() {
     let host = Snapshot::default();

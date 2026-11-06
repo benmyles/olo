@@ -1,0 +1,442 @@
+{
+  "counts": {
+    "different_projection": 12,
+    "identical_projection": 45,
+    "unsupported_by_reference": 8
+  },
+  "reference_user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  "results": [
+    {
+      "chrome_inner_text": "xa b c dx",
+      "chrome_width": 108,
+      "name": "normal-0",
+      "native_phase_one": "xa b c dx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa bx",
+      "chrome_width": 60,
+      "name": "normal-1",
+      "native_phase_one": "xa bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa ⁧ ⁩ bx",
+      "chrome_width": 84,
+      "name": "normal-2",
+      "native_phase_one": "xa⁧ ⁩bx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa ‮ b‬x",
+      "chrome_width": 72,
+      "name": "normal-3",
+      "native_phase_one": "xa ‮b‬x",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xé 中 文x",
+      "chrome_width": 100,
+      "name": "normal-4",
+      "native_phase_one": "xé 中 文x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa​bx",
+      "chrome_width": 48,
+      "name": "normal-5",
+      "native_phase_one": "xa​ bx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa​bx",
+      "chrome_width": 48,
+      "name": "normal-6",
+      "native_phase_one": "xa ​bx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa    bx",
+      "chrome_width": 96,
+      "name": "normal-7",
+      "native_phase_one": "xa    bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa b c dx",
+      "chrome_width": 108,
+      "name": "nowrap-0",
+      "native_phase_one": "xa b c dx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa bx",
+      "chrome_width": 60,
+      "name": "nowrap-1",
+      "native_phase_one": "xa bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa ⁧ ⁩ bx",
+      "chrome_width": 84,
+      "name": "nowrap-2",
+      "native_phase_one": "xa⁧ ⁩bx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa ‮ b‬x",
+      "chrome_width": 72,
+      "name": "nowrap-3",
+      "native_phase_one": "xa ‮b‬x",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xé 中 文x",
+      "chrome_width": 100,
+      "name": "nowrap-4",
+      "native_phase_one": "xé 中 文x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa​bx",
+      "chrome_width": 48,
+      "name": "nowrap-5",
+      "native_phase_one": "xa​ bx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa​bx",
+      "chrome_width": 48,
+      "name": "nowrap-6",
+      "native_phase_one": "xa ​bx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa    bx",
+      "chrome_width": 96,
+      "name": "nowrap-7",
+      "native_phase_one": "xa    bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa  b\t c\n  dx",
+      "chrome_width": 120,
+      "name": "pre-0",
+      "native_phase_one": "xa  b\t c\n  dx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\r\nbx",
+      "chrome_width": 24,
+      "name": "pre-1",
+      "native_phase_one": "xa \nbx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa ⁧ \n ⁩ bx",
+      "chrome_width": 48,
+      "name": "pre-2",
+      "native_phase_one": "xa ⁧ \n ⁩ bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\n‮\nb‬x",
+      "chrome_width": 24,
+      "name": "pre-3",
+      "native_phase_one": "xa\n‮\nb‬x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xé  中\n文x",
+      "chrome_width": 68,
+      "name": "pre-4",
+      "native_phase_one": "xé  中\n文x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa​\nbx",
+      "chrome_width": 24,
+      "name": "pre-5",
+      "native_phase_one": "xa​\nbx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\n​bx",
+      "chrome_width": 24,
+      "name": "pre-6",
+      "native_phase_one": "xa\n​bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa    bx",
+      "chrome_width": 96,
+      "name": "pre-7",
+      "native_phase_one": "xa    bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa  b\t c\n  dx",
+      "chrome_width": 120,
+      "name": "pre-wrap-0",
+      "native_phase_one": "xa  b\t c\n  dx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\r\nbx",
+      "chrome_width": 24,
+      "name": "pre-wrap-1",
+      "native_phase_one": "xa \nbx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa ⁧ \n ⁩ bx",
+      "chrome_width": 48,
+      "name": "pre-wrap-2",
+      "native_phase_one": "xa ⁧ \n ⁩ bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\n‮\nb‬x",
+      "chrome_width": 24,
+      "name": "pre-wrap-3",
+      "native_phase_one": "xa\n‮\nb‬x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xé  中\n文x",
+      "chrome_width": 68,
+      "name": "pre-wrap-4",
+      "native_phase_one": "xé  中\n文x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa​\nbx",
+      "chrome_width": 24,
+      "name": "pre-wrap-5",
+      "native_phase_one": "xa​\nbx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\n​bx",
+      "chrome_width": 24,
+      "name": "pre-wrap-6",
+      "native_phase_one": "xa\n​bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa    bx",
+      "chrome_width": 96,
+      "name": "pre-wrap-7",
+      "native_phase_one": "xa    bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa b c\ndx",
+      "chrome_width": 72,
+      "name": "pre-line-0",
+      "native_phase_one": "xa b c\ndx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\nbx",
+      "chrome_width": 24,
+      "name": "pre-line-1",
+      "native_phase_one": "xa\nbx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa ⁧\n⁩ bx",
+      "chrome_width": 36,
+      "name": "pre-line-2",
+      "native_phase_one": "xa⁧\n⁩bx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa\n‮\nb‬x",
+      "chrome_width": 24,
+      "name": "pre-line-3",
+      "native_phase_one": "xa\n‮\nb‬x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xé 中\n文x",
+      "chrome_width": 56,
+      "name": "pre-line-4",
+      "native_phase_one": "xé 中\n文x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa​\nbx",
+      "chrome_width": 24,
+      "name": "pre-line-5",
+      "native_phase_one": "xa​\nbx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\n​bx",
+      "chrome_width": 24,
+      "name": "pre-line-6",
+      "native_phase_one": "xa\n​bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa    bx",
+      "chrome_width": 96,
+      "name": "pre-line-7",
+      "native_phase_one": "xa    bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa  b\t c\n  dx",
+      "chrome_width": 120,
+      "name": "break-spaces-0",
+      "native_phase_one": "xa  b\t c\n  dx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\r\nbx",
+      "chrome_width": 24,
+      "name": "break-spaces-1",
+      "native_phase_one": "xa \nbx",
+      "outcome": "different_projection"
+    },
+    {
+      "chrome_inner_text": "xa ⁧ \n ⁩ bx",
+      "chrome_width": 48,
+      "name": "break-spaces-2",
+      "native_phase_one": "xa ⁧ \n ⁩ bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\n‮\nb‬x",
+      "chrome_width": 24,
+      "name": "break-spaces-3",
+      "native_phase_one": "xa\n‮\nb‬x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xé  中\n文x",
+      "chrome_width": 68,
+      "name": "break-spaces-4",
+      "native_phase_one": "xé  中\n文x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa​\nbx",
+      "chrome_width": 24,
+      "name": "break-spaces-5",
+      "native_phase_one": "xa​\nbx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa\n​bx",
+      "chrome_width": 24,
+      "name": "break-spaces-6",
+      "native_phase_one": "xa\n​bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "xa    bx",
+      "chrome_width": 96,
+      "name": "break-spaces-7",
+      "native_phase_one": "xa    bx",
+      "outcome": "identical_projection"
+    },
+    {
+      "name": "preserve-spaces wrap-0",
+      "outcome": "unsupported_by_reference"
+    },
+    {
+      "name": "preserve-spaces wrap-1",
+      "outcome": "unsupported_by_reference"
+    },
+    {
+      "name": "preserve-spaces wrap-2",
+      "outcome": "unsupported_by_reference"
+    },
+    {
+      "name": "preserve-spaces wrap-3",
+      "outcome": "unsupported_by_reference"
+    },
+    {
+      "name": "preserve-spaces wrap-4",
+      "outcome": "unsupported_by_reference"
+    },
+    {
+      "name": "preserve-spaces wrap-5",
+      "outcome": "unsupported_by_reference"
+    },
+    {
+      "name": "preserve-spaces wrap-6",
+      "outcome": "unsupported_by_reference"
+    },
+    {
+      "name": "preserve-spaces wrap-7",
+      "outcome": "unsupported_by_reference"
+    },
+    {
+      "chrome_inner_text": "x a b x",
+      "chrome_width": 84,
+      "name": "mixed-normal-normal",
+      "native_phase_one": "x a b x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "x a  \t b  x",
+      "chrome_width": 156,
+      "name": "mixed-normal-pre",
+      "native_phase_one": "x a  \t b  x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "x a b x",
+      "chrome_width": 84,
+      "name": "mixed-normal-pre-line",
+      "native_phase_one": "x a b x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "x  a \n  b x",
+      "chrome_width": 60,
+      "name": "mixed-pre-normal",
+      "native_phase_one": "x  a \n  b x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "x  a \n  \t b  x",
+      "chrome_width": 156,
+      "name": "mixed-pre-pre",
+      "native_phase_one": "x  a \n  \t b  x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "x  a \n  b x",
+      "chrome_width": 60,
+      "name": "mixed-pre-pre-line",
+      "native_phase_one": "x  a \n  b x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "x a\nb x",
+      "chrome_width": 36,
+      "name": "mixed-pre-line-normal",
+      "native_phase_one": "x a\nb x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "x a\n \t b  x",
+      "chrome_width": 156,
+      "name": "mixed-pre-line-pre",
+      "native_phase_one": "x a\n \t b  x",
+      "outcome": "identical_projection"
+    },
+    {
+      "chrome_inner_text": "x a\nb x",
+      "chrome_width": 36,
+      "name": "mixed-pre-line-pre-line",
+      "native_phase_one": "x a\nb x",
+      "outcome": "identical_projection"
+    }
+  ],
+  "scope": "Diagnostic projections, not equivalent pipeline stages or website/WPT/layout acceptance. CR plaintext preservation, bidi-control handling, phase II and UA segment-break policy need separate layout evidence."
+}

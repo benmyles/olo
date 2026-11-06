@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>Olo whitespace reference</title>
+<h1>Whitespace behavior reference</h1><p id="status">Running local reference cases…</p>
+<script>
+(async()=>{
+  const inputs=await (await fetch('chrome-inputs.json')).json(), rows=[];
+  for(const input of inputs){
+    const box=document.createElement('div');
+    box.style.cssText='font:20px monospace;width:max-content;direction:ltr';
+    const supported=input.spans.every(s=>CSS.supports('white-space',s.mode));
+    for(const part of input.spans){
+      const span=document.createElement('span');span.style.whiteSpace=part.mode;
+      span.textContent=part.text;box.appendChild(span);
+    }
+    document.body.appendChild(box);
+    rows.push({...input,supported,innerText:box.innerText,width:box.getBoundingClientRect().width,
+      computed:Array.from(box.children,s=>({collapse:getComputedStyle(s).whiteSpaceCollapse,wrap:getComputedStyle(s).textWrapMode}))});
+    box.remove();
+  }
+  const report={userAgent:navigator.userAgent,scope:'Local innerText/width observations; phase II, font/layout and unsupported CSS may differ. No full WPT or site acceptance.',rows};
+  const response=await fetch('/result',{method:'POST',body:JSON.stringify(report)});
+  if(!response.ok)throw Error('Saving reference failed');
+  document.getElementById('status').textContent=`Saved ${rows.length} cases (${rows.filter(r=>r.supported).length} supported) from ${navigator.userAgent}`;
+})().catch(e=>document.getElementById('status').textContent=String(e));
+</script>

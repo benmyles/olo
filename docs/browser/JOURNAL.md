@@ -2413,3 +2413,119 @@ CSS whitespace, styled inline source mapping/line breaking and original layout,
 then native drawing. Networking/V8, complete CSS/live invalidation, native shell,
 universal dark mode, structured browser control and Olo/password/passkey
 integration remain substantial open work.
+
+## 2026-11-05 — CSS whitespace preparation and compact source maps
+
+Read HACKING.md and the Be Book's BTextView/CanEndLine contract: retain explicit
+text offsets and separate wrapping decisions from text storage; its ASCII-era
+break rules are not a web line breaker. Consulted current primary CSS Text 3/4
+whitespace/DOM-CR/bidi-control/shorthand rules. Implemented original Rust
+`text::prepare`, with inherited collapse/wrap longhands and the interoperable
+white-space shorthand (legacy aliases, unordered combinations, defaults,
+CSS-wide resets, inheritance and pending substitution). Registry: **94
+longhands / 17 shorthands**, 93 reset by all. Discard/white-space-trim remain
+unsupported and rejected; no silent partial reset.
+
+The worker takes one shared source and an exact UTF-8 span partition. It keeps
+original source and span identity even for a wholly removed text node, collapses
+across inline span boundaries, treats DOM CR as a space, preserves non-CSS
+spaces/controls and makes bidi controls transparent to phase-I adjacency.
+Preserve modes retain tabs/breaks for downstream layout. Two resumable linear
+scans avoid unbounded lookahead/per-character arrays; quotas, cancellation,
+progress, fail-poisoned publication and worker-deliverable immutable output
+are explicit. Constructor validation, first-edit prefix copying and final Arc
+allocation are bounded by total limits but not subdivided into byte-budget
+steps; they also belong on the worker. Default caps: 8 MiB input, 4,096 spans,
+262,144 maps, 131,072 backward trim ranges. These are not total RSS/isolation
+or fallible-allocation guarantees.
+
+Unchanged output shares the original Arc. A stored map record is **12 B**:
+input/output starts plus packed span/kind; ends derive from the next record or
+string lengths. Queries binary-search byte coordinates and decode public values
+without allocation. Removed intervals stay inspectable for future selection,
+agent DOM mapping and wrapping policy; this is not caret hit testing. Portable
+wide printable-ASCII scans/copies and memchr reverse scans bypass scalar work
+when safe; scalar/24-byte map controls preserve the same facts. Prepared normal
+text now feeds the native shaper in an integration test, with glyph clusters
+mapped back to source spans. Preserved breaks/tabs still require layout.
+
+Seven new preparation groups cover modes, DOM CR, all Bidi_Control characters,
+non-CSS separators/control retention, mixed spans, empty/invalid partitions,
+quotas, cancellation, poisoned/incomplete publication, all map lookups and SIMD
+boundaries. **3,925 independent regex-phase references** run under two budgets
+and per-scalar text-node partitions. The generator never invokes Olo; expected
+strings come from separate normative-phase rewrites. **52 literal pinned WPT
+acceptance ports** pass, with unchanged HTML/helper/license and every local
+fixture/generator SHA checked. They are native declaration acceptance ports,
+not JS/CSSOM/layout/raster WPT results. Existing style tests also verify
+inheritance/reset/substitution and binding WhiteSpace to computed styles.
+
+Applied the olo-screens skill for an owned browser-style-check headless screen.
+Olo Chrome **157.0.0.0** recorded **65 local observations**: 57 supported and
+eight preserve-spaces cases unsupported by that build. Diagnostic comparison
+of native phase I with Chrome innerText gives **45 identical / 12 different /
+8 reference-unsupported**. These are different pipeline stages, not a website
+compatibility percentage. Three differences preserve CR in Chrome plaintext;
+four concern its ZWSP segment-break removal versus our explicit always-space
+UA policy; five concern transparent bidi controls. Kept raw innerText, computed
+settings and browser widths. No native width/raster comparison exists yet.
+`whitespace_probe` deliberately exits **1**, leaving differences/unsupported
+visible. The owned screen and loopback probe server are stopped; no personal
+session/browser/install/reload changed. No product UI drawing changed, so no
+native visual/reload acceptance is inferred.
+
+Release evidence: **measurements/2026-11-05-whitespace{.json,-measure.py}**,
+with checks/ELF evidence and separate chrome/projections reports. **57 frozen,
+CPU0, alternating processes**, three samples, no concurrent builds/tests/owned
+GUI or source mutations; all 78 source hashes match after measurement. Parent
+f111348a common examples were frozen before source edits. New same-semantics
+controls disable bulk processing or double encoded-map storage width.
+
+For ~36–58 KiB text, scalar → default prepare/drop medians (µs):
+unchanged **268.763 → 54.484**; collapsed **336.399 → 114.165**;
+multilingual **279.715 → 232.269**; pre **207.064 → 54.080**;
+1,000 spans **391.677 → 142.500**; long ASCII word **188.660 → 1.798**.
+Default cold calls in that order: **53.338 / 141.083 / 262.922 / 55.847 /
+205.545 / 2.286 µs**. Medians of process max 4,096-byte steps: **13.201 /
+105.681 / 79.325 / 16.579 / 69.905 / 3.465 µs**. Maxima include scheduler and
+allocation variation; they are not adversarial/UI frame acceptance.
+
+24-byte → 12-byte map control halves retained payload exactly: collapsed
+**192,024 → 96,012 B**, multilingual **168,024 → 84,012 B**, 1,000 spans
+**216,000 → 108,000 B**, unchanged single spans **24 → 12 B**, with unchanged
+source/text Arc sharing. Wide → compact prepare/drop for the three edited
+scenes: **164.029 → 114.165 / 275.463 → 232.269 / 250.655 → 142.500 µs**.
+Whole preparation process RSS: default **2,676–2,880 KiB**, scalar
+**2,560–2,812 KiB**, wide **3,060–3,096 KiB**; user CPU default **.31/.31/.30 s**,
+scalar **.87/.87/.87**, wide **.34/.31/.33**. Allocator/RSS variation does not
+replace the exact payload measurements or establish a full-browser limit.
+
+Parent/current common 10k style medians (ms): bare **14.776 → 14.891**, uniform
+**21.243 → 22.701**, varying **29.160 → 31.290**. Max worker slice medians (µs):
+**399 → 388 / 612 → 7,671 / 774 → 10,589**. Shared defaults **6,008 → 6,152 B**,
+with no per-element payload increase in these cases (tree totals +144 B).
+Raw width/margin-left/color/missing-height (ns): **10.344 → 11.127 / 10.608 →
+11.288 / 7.836 → 7.901 / 2.745 → 2.799**. These regressions/outliers remain
+profiling TODOs; no general speedup/performance acceptance claim.
+
+Cached ~4 KiB shaping paragraph parent/current medians (µs): Latin **250.840 →
+253.688**, Arabic **320.934 → 350.931**, Hebrew **323.655 → 320.192**, Devanagari
+**261.822 → 267.018**, Thai **148.949 → 148.796**. Whole shaping process user
+CPU is identical in paired runs **.44/.46/.44 s**, with involuntary switches
+**15/22/27 → 98/122/104**; this does not identify the cause of wall-clock
+outliers (Arabic max-slice median **216 → 1,224 µs**). Preserve raw evidence.
+ELF .text/.rodata for common shaping **1,681,232/513,148 → 1,681,520/513,276 B**;
+new prep **290,723/42,732 B**. Debug/file bytes remain separate from runtime
+payload. No network, JS, GPU, UI, website or Chrome speed claim.
+
+**188 default / 187 all-feature release tests pass**. Strict default/all-feature
+all-target release clippy, formatting, byte-identical fixture regeneration,
+source/reference hashes and diff checks pass. Full workspace release build:
+cargo **3.42 s**, wall **3.52 s**; existing GPUI warnings/proc-macro-error2
+future-compatibility notice remain. Owned scratch is removed after pushing.
+
+Goal remains active: **0/3,000 website combinations, 0/100 sites**. Next:
+phase-II whitespace/tab/wrap behavior, styled shaping/safe line breaking and
+original inline/block layout, then native painting. Networking/V8, full CSS,
+isolation, native shell, universal dark/night adaptation and structured
+browser/Olo/password/passkey integrations remain substantial work.

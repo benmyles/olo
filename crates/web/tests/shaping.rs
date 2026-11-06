@@ -38,6 +38,33 @@ fn catalog() -> Arc<Catalog> {
     }
     b.finish(None).unwrap()
 }
+
+#[test]
+fn prepared_css_text_shapes_and_maps_glyph_clusters_to_original_spans() {
+    use olo_web::text::prepare::{Job, Span, WhiteSpace};
+    let input: Arc<str> = Arc::from("office  \n \t café");
+    let spans = Arc::from([Span { range: 0..6, whitespace: WhiteSpace::default() }, Span { range: 6..input.len() as u32, whitespace: WhiteSpace::default() }]);
+    let mut job = Job::new(input, spans, Default::default(), None).unwrap();
+    while !job.step(3).unwrap().finished {}
+    let prepared = job.finish().unwrap();
+    assert_eq!(&**prepared.text(), "office café");
+    let scope = scope(catalog(), "Noto Sans", "en");
+    let mut engine = Engine::default();
+    let mut job = s::ParagraphJob::new(&mut engine, &scope, request("Noto Sans"), prepared.text().clone(), BaseDirection::Ltr, Default::default(), None).unwrap();
+    while !job.step(3).unwrap().finished {}
+    let paragraph = job.finish().unwrap();
+    for run in &paragraph.runs {
+        for glyph in &run.glyphs {
+            let m = prepared.mapping_at_output(glyph.cluster).unwrap();
+            assert!(!m.output.is_empty());
+            let original = m.input.start + (glyph.cluster - m.output.start);
+            assert!(prepared.source().is_char_boundary(original as usize));
+            assert_eq!(prepared.mapping_at_source(original).unwrap().span, m.span);
+        }
+    }
+    assert_eq!(paragraph.report.missing_clusters, 0);
+    // Still no automatic handling of preserved breaks/tabs in the shaper.
+}
 fn scope(c: Arc<Catalog>, family: &str, language: &str) -> Scope {
     FontSet::new(c, GenericPolicy::new(&[family]).unwrap(), MatchOptions::default()).unwrap().scope(language).unwrap()
 }

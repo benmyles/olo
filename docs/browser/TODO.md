@@ -146,13 +146,32 @@ item means implemented and verified; a partial implementation stays open.
   itemization/cmap fallback, retained source clusters and worker delivery.
   Match 24 native HarfBuzz 15 vectors plus 15 benchmark hashes; all 91,707
   BidiCharacterTest cases through L2 and 853 GraphemeBreakTest cases pass.
-- [ ] Complete text integration: CSS whitespace/styled spans/spacing, markup
+- [x] Initial CSS phase-I whitespace preparation over exact source/style-span
+  partitions; inherited collapse/wrap longhands and two-longhand shorthand;
+  cancellable worker scans, unchanged text sharing, 12-byte encoded maps and
+  binary byte lookups. 3,925 independent regex references and 52 pinned WPT
+  acceptance ports pass; no CSSOM/layout/website acceptance implied.
+- [ ] Complete text integration: phase-II whitespace trimming/tab stops/hanging,
+  soft-wrap opportunities, styled shaping/spacing, markup
   bidi contexts, script-extension/paired-punctuation itemization, script/GSUB
   suitability and multi-font mark fallback, vertical paragraph policy,
   line breaking, safe boundary reshaping, hit testing and rasterization. Initial
   shaping rejects unprocessed controls/oversized uniform spans. Font/shaper
   opaque cache accounting, adversarial CPU bounds and cancellation/isolation
   remain required before web fonts; source budgets are not total RSS limits.
+- [ ] Resolve whitespace reference differences with actual native line/raster
+  evidence: Chrome 157 local projections have 45 identical, 12 different and
+  eight reference-unsupported cases. Four differences need Chrome-compatible
+  ZWSP segment-break removal; five concern transparent bidi controls, three
+  CR plaintext retention. Phase-I strings and innerText are different stages;
+  no combined compatibility percentage or hidden passing exclusion.
+- [ ] Profile common-operation costs after whitespace registry expansion:
+  parent/current 10k uniform/varying style build 21.243→22.701 / 29.160→31.290
+  ms; max slice medians 612→7,671 / 774→10,589 µs. Raw width/margin-left
+  10.344→11.127 / 10.608→11.288 ns. Shaping CPU is unchanged in each paired
+  process (.44/.46/.44 s), with more involuntary switches after; this does not
+  establish the cause of individual wall-clock regressions. Preserve raw
+  evidence in measurements/2026-11-05-whitespace.json; no universal speedup.
 - [ ] Implement block/inline, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
@@ -204,7 +223,7 @@ HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostic
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.
 
-Next: CSS whitespace processing and styled inline text/line breaking, then
+Next: phase-II whitespace and styled inline text/line breaking, then
 original inline/block layout and native drawing. Initial native font/shaping
 work is verified at glyph/Unicode/library scope; no website acceptance follows.
 Web fonts/sanitization, complete CSS/live invalidation, networking/V8, the native

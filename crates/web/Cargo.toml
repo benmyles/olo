@@ -41,6 +41,10 @@ baseline-cascade-value-copy = []
 baseline-font-family-fat = []
 # Same text/Unicode facts without ASCII paragraph/grapheme/script fast paths.
 baseline-text-ascii = []
+# Same CSS whitespace semantics without bulk printable-ASCII scanning/copying.
+baseline-text-prepare = []
+# Same source map facts with 24-byte instead of 12-byte stored records.
+baseline-text-map-wide = []
 
 [dependencies]
 memchr = "2"

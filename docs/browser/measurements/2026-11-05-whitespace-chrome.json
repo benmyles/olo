@@ -1,0 +1,1248 @@
+{
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  "scope": "Local innerText/width observations; phase II, font/layout and unsupported CSS may differ. No full WPT or site acceptance.",
+  "rows": [
+    {
+      "name": "normal-0",
+      "spans": [
+        {
+          "text": "xa  b\t c\n  dx",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa b c dx",
+      "width": 108,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "normal-1",
+      "spans": [
+        {
+          "text": "xa\r\nbx",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa bx",
+      "width": 60,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "normal-2",
+      "spans": [
+        {
+          "text": "xa ⁧ \n ⁩ bx",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa ⁧ ⁩ bx",
+      "width": 84,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "normal-3",
+      "spans": [
+        {
+          "text": "xa\n‮\nb‬x",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa ‮ b‬x",
+      "width": 72,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "normal-4",
+      "spans": [
+        {
+          "text": "xé  中\n文x",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "xé 中 文x",
+      "width": 100,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "normal-5",
+      "spans": [
+        {
+          "text": "xa​\nbx",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa​bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "normal-6",
+      "spans": [
+        {
+          "text": "xa\n​bx",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa​bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "normal-7",
+      "spans": [
+        {
+          "text": "xa    bx",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa    bx",
+      "width": 96,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "nowrap-0",
+      "spans": [
+        {
+          "text": "xa  b\t c\n  dx",
+          "mode": "nowrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa b c dx",
+      "width": 108,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "nowrap-1",
+      "spans": [
+        {
+          "text": "xa\r\nbx",
+          "mode": "nowrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa bx",
+      "width": 60,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "nowrap-2",
+      "spans": [
+        {
+          "text": "xa ⁧ \n ⁩ bx",
+          "mode": "nowrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa ⁧ ⁩ bx",
+      "width": 84,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "nowrap-3",
+      "spans": [
+        {
+          "text": "xa\n‮\nb‬x",
+          "mode": "nowrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa ‮ b‬x",
+      "width": 72,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "nowrap-4",
+      "spans": [
+        {
+          "text": "xé  中\n文x",
+          "mode": "nowrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xé 中 文x",
+      "width": 100,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "nowrap-5",
+      "spans": [
+        {
+          "text": "xa​\nbx",
+          "mode": "nowrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa​bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "nowrap-6",
+      "spans": [
+        {
+          "text": "xa\n​bx",
+          "mode": "nowrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa​bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "nowrap-7",
+      "spans": [
+        {
+          "text": "xa    bx",
+          "mode": "nowrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa    bx",
+      "width": 96,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-0",
+      "spans": [
+        {
+          "text": "xa  b\t c\n  dx",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa  b\t c\n  dx",
+      "width": 120,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-1",
+      "spans": [
+        {
+          "text": "xa\r\nbx",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\r\nbx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-2",
+      "spans": [
+        {
+          "text": "xa ⁧ \n ⁩ bx",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa ⁧ \n ⁩ bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-3",
+      "spans": [
+        {
+          "text": "xa\n‮\nb‬x",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\n‮\nb‬x",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-4",
+      "spans": [
+        {
+          "text": "xé  中\n文x",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "xé  中\n文x",
+      "width": 68,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-5",
+      "spans": [
+        {
+          "text": "xa​\nbx",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa​\nbx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-6",
+      "spans": [
+        {
+          "text": "xa\n​bx",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\n​bx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-7",
+      "spans": [
+        {
+          "text": "xa    bx",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa    bx",
+      "width": 96,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-wrap-0",
+      "spans": [
+        {
+          "text": "xa  b\t c\n  dx",
+          "mode": "pre-wrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa  b\t c\n  dx",
+      "width": 120,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-wrap-1",
+      "spans": [
+        {
+          "text": "xa\r\nbx",
+          "mode": "pre-wrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\r\nbx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-wrap-2",
+      "spans": [
+        {
+          "text": "xa ⁧ \n ⁩ bx",
+          "mode": "pre-wrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa ⁧ \n ⁩ bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-wrap-3",
+      "spans": [
+        {
+          "text": "xa\n‮\nb‬x",
+          "mode": "pre-wrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\n‮\nb‬x",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-wrap-4",
+      "spans": [
+        {
+          "text": "xé  中\n文x",
+          "mode": "pre-wrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xé  中\n文x",
+      "width": 68,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-wrap-5",
+      "spans": [
+        {
+          "text": "xa​\nbx",
+          "mode": "pre-wrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa​\nbx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-wrap-6",
+      "spans": [
+        {
+          "text": "xa\n​bx",
+          "mode": "pre-wrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\n​bx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-wrap-7",
+      "spans": [
+        {
+          "text": "xa    bx",
+          "mode": "pre-wrap"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa    bx",
+      "width": 96,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-line-0",
+      "spans": [
+        {
+          "text": "xa  b\t c\n  dx",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa b c\ndx",
+      "width": 72,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-line-1",
+      "spans": [
+        {
+          "text": "xa\r\nbx",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\nbx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-line-2",
+      "spans": [
+        {
+          "text": "xa ⁧ \n ⁩ bx",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa ⁧\n⁩ bx",
+      "width": 36,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-line-3",
+      "spans": [
+        {
+          "text": "xa\n‮\nb‬x",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\n‮\nb‬x",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-line-4",
+      "spans": [
+        {
+          "text": "xé  中\n文x",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "xé 中\n文x",
+      "width": 56,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-line-5",
+      "spans": [
+        {
+          "text": "xa​\nbx",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa​\nbx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-line-6",
+      "spans": [
+        {
+          "text": "xa\n​bx",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\n​bx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "pre-line-7",
+      "spans": [
+        {
+          "text": "xa    bx",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa    bx",
+      "width": 96,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "break-spaces-0",
+      "spans": [
+        {
+          "text": "xa  b\t c\n  dx",
+          "mode": "break-spaces"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa  b\t c\n  dx",
+      "width": 120,
+      "computed": [
+        {
+          "collapse": "break-spaces",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "break-spaces-1",
+      "spans": [
+        {
+          "text": "xa\r\nbx",
+          "mode": "break-spaces"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\r\nbx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "break-spaces",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "break-spaces-2",
+      "spans": [
+        {
+          "text": "xa ⁧ \n ⁩ bx",
+          "mode": "break-spaces"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa ⁧ \n ⁩ bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "break-spaces",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "break-spaces-3",
+      "spans": [
+        {
+          "text": "xa\n‮\nb‬x",
+          "mode": "break-spaces"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\n‮\nb‬x",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "break-spaces",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "break-spaces-4",
+      "spans": [
+        {
+          "text": "xé  中\n文x",
+          "mode": "break-spaces"
+        }
+      ],
+      "supported": true,
+      "innerText": "xé  中\n文x",
+      "width": 68,
+      "computed": [
+        {
+          "collapse": "break-spaces",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "break-spaces-5",
+      "spans": [
+        {
+          "text": "xa​\nbx",
+          "mode": "break-spaces"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa​\nbx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "break-spaces",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "break-spaces-6",
+      "spans": [
+        {
+          "text": "xa\n​bx",
+          "mode": "break-spaces"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa\n​bx",
+      "width": 24,
+      "computed": [
+        {
+          "collapse": "break-spaces",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "break-spaces-7",
+      "spans": [
+        {
+          "text": "xa    bx",
+          "mode": "break-spaces"
+        }
+      ],
+      "supported": true,
+      "innerText": "xa    bx",
+      "width": 96,
+      "computed": [
+        {
+          "collapse": "break-spaces",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "preserve-spaces wrap-0",
+      "spans": [
+        {
+          "text": "xa  b\t c\n  dx",
+          "mode": "preserve-spaces wrap"
+        }
+      ],
+      "supported": false,
+      "innerText": "xa b c dx",
+      "width": 108,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "preserve-spaces wrap-1",
+      "spans": [
+        {
+          "text": "xa\r\nbx",
+          "mode": "preserve-spaces wrap"
+        }
+      ],
+      "supported": false,
+      "innerText": "xa bx",
+      "width": 60,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "preserve-spaces wrap-2",
+      "spans": [
+        {
+          "text": "xa ⁧ \n ⁩ bx",
+          "mode": "preserve-spaces wrap"
+        }
+      ],
+      "supported": false,
+      "innerText": "xa ⁧ ⁩ bx",
+      "width": 84,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "preserve-spaces wrap-3",
+      "spans": [
+        {
+          "text": "xa\n‮\nb‬x",
+          "mode": "preserve-spaces wrap"
+        }
+      ],
+      "supported": false,
+      "innerText": "xa ‮ b‬x",
+      "width": 72,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "preserve-spaces wrap-4",
+      "spans": [
+        {
+          "text": "xé  中\n文x",
+          "mode": "preserve-spaces wrap"
+        }
+      ],
+      "supported": false,
+      "innerText": "xé 中 文x",
+      "width": 100,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "preserve-spaces wrap-5",
+      "spans": [
+        {
+          "text": "xa​\nbx",
+          "mode": "preserve-spaces wrap"
+        }
+      ],
+      "supported": false,
+      "innerText": "xa​bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "preserve-spaces wrap-6",
+      "spans": [
+        {
+          "text": "xa\n​bx",
+          "mode": "preserve-spaces wrap"
+        }
+      ],
+      "supported": false,
+      "innerText": "xa​bx",
+      "width": 48,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "preserve-spaces wrap-7",
+      "spans": [
+        {
+          "text": "xa    bx",
+          "mode": "preserve-spaces wrap"
+        }
+      ],
+      "supported": false,
+      "innerText": "xa    bx",
+      "width": 96,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-normal-normal",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "normal"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "x a b x",
+      "width": 84,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        },
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-normal-pre",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "normal"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "x a  \t b  x",
+      "width": 156,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        },
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-normal-pre-line",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "normal"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "x a b x",
+      "width": 84,
+      "computed": [
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        },
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-pre-normal",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "pre"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "x  a \n  b x",
+      "width": 60,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        },
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-pre-pre",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "pre"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "x  a \n  \t b  x",
+      "width": 156,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        },
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-pre-pre-line",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "pre"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "x  a \n  b x",
+      "width": 60,
+      "computed": [
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        },
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-pre-line-normal",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "pre-line"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "normal"
+        }
+      ],
+      "supported": true,
+      "innerText": "x a\nb x",
+      "width": 36,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        },
+        {
+          "collapse": "collapse",
+          "wrap": "wrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-pre-line-pre",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "pre-line"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "pre"
+        }
+      ],
+      "supported": true,
+      "innerText": "x a\n \t b  x",
+      "width": 156,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        },
+        {
+          "collapse": "preserve",
+          "wrap": "nowrap"
+        }
+      ]
+    },
+    {
+      "name": "mixed-pre-line-pre-line",
+      "spans": [
+        {
+          "text": "x  a \n ",
+          "mode": "pre-line"
+        },
+        {
+          "text": " \t b  x",
+          "mode": "pre-line"
+        }
+      ],
+      "supported": true,
+      "innerText": "x a\nb x",
+      "width": 36,
+      "computed": [
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        },
+        {
+          "collapse": "preserve-breaks",
+          "wrap": "wrap"
+        }
+      ]
+    }
+  ]
+}

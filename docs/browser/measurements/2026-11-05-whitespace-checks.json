@@ -1,0 +1,44 @@
+{
+  "default-tests": {
+    "success": true,
+    "passed_tests": 188,
+    "test_groups": 20,
+    "completion": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+  },
+  "all-feature-tests": {
+    "success": true,
+    "passed_tests": 187,
+    "test_groups": 20,
+    "completion": "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+  },
+  "clippy": {
+    "success": true,
+    "passed_tests": null,
+    "test_groups": null,
+    "completion": "    Finished `release` profile [optimized + debuginfo] target(s) in 0.44s"
+  },
+  "all-feature-clippy": {
+    "success": true,
+    "passed_tests": null,
+    "test_groups": null,
+    "completion": "    Finished `release` profile [optimized + debuginfo] target(s) in 3.21s"
+  },
+  "workspace": {
+    "success": true,
+    "passed_tests": null,
+    "test_groups": null,
+    "completion": "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+  },
+  "workspace_time": "\tCommand being timed: \"cargo build --release --workspace\"\n\tUser time (seconds): 12.00\n\tSystem time (seconds): 0.53\n\tPercent of CPU this job got: 355%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:03.52\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 652532\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 30\n\tMinor (reclaiming a frame) page faults: 297603\n\tVoluntary context switches: 1725\n\tInvoluntary context switches: 1398\n\tSwaps: 0\n\tFile system inputs: 51832\n\tFile system outputs: 73544\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n",
+  "projection_exit": 1,
+  "projection_counts": {
+    "different_projection": 12,
+    "identical_projection": 45,
+    "unsupported_by_reference": 8
+  },
+  "source_hashes_unchanged_after_measure": true,
+  "measurement_processes": 57,
+  "source_hashes": 78,
+  "owned_screen": "browser-style-check stopped; local probe server stopped; no personal session install/reload/upgrade",
+  "scope": "Worker/library code only. No native browser UI/layout/raster/website acceptance."
+}

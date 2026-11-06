@@ -1,5 +1,6 @@
 //! Worker text processing: streaming byte decoding and native glyph shaping.
 //! No I/O, polling or UI work. UTF-8 borrows validated runs.
+pub mod prepare;
 pub mod shaping;
 pub(crate) mod unicode;
 use encoding_rs::{CoderResult, Encoding, UTF_8};

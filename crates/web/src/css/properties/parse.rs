@@ -60,6 +60,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             let mut parsed = SmallVec::<[Value; 4]>::new();
             match s.expansion() {
                 Expansion::WideOnly => Err(Error::Invalid),
+                Expansion::WhiteSpace => white_space(&parts),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {
                         return Err(Error::Invalid);
@@ -104,6 +105,43 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
             }
         }
     }
+}
+// CSS Text 4's interoperable two-longhand shorthand. white-space-trim and
+// discard are not implemented; their syntax must fail, never silently reset.
+fn white_space(parts: &[Component<'_>]) -> Result<Assignments> {
+    use Keyword::{BreakSpaces, Collapse, Nowrap, Preserve, PreserveBreaks, PreserveSpaces, Wrap};
+    let legacy = if parts.len() == 1 && parts[0].kind() == Kind::Ident {
+        let name = parts[0].text().unwrap();
+        [("normal", (Collapse, Wrap)), ("pre", (Preserve, Nowrap)), ("pre-wrap", (Preserve, Wrap)), ("pre-line", (PreserveBreaks, Wrap))]
+            .into_iter()
+            .find(|(s, _)| name.eq_ignore_ascii_case(s))
+            .map(|(_, pair)| pair)
+    } else {
+        None
+    };
+    let (collapse, wrap) = if let Some(pair) = legacy {
+        pair
+    } else {
+        if parts.len() > 2 {
+            return Err(Error::Invalid);
+        }
+        let (mut collapse, mut wrap) = (None, None);
+        for &part in parts {
+            if let Some(k) = keyword(part, &[Collapse, Preserve, PreserveBreaks, PreserveSpaces, BreakSpaces]) {
+                if collapse.replace(k).is_some() {
+                    return Err(Error::Invalid);
+                }
+            } else if let Some(k) = keyword(part, &[Wrap, Nowrap]) {
+                if wrap.replace(k).is_some() {
+                    return Err(Error::Invalid);
+                }
+            } else {
+                return Err(Error::Invalid);
+            }
+        }
+        (collapse.unwrap_or(Collapse), wrap.unwrap_or(Wrap))
+    };
+    Ok(smallvec::smallvec![Assignment { property: Property::WhiteSpaceCollapse, value: Value::Keyword(collapse) }, Assignment { property: Property::TextWrapMode, value: Value::Keyword(wrap) }])
 }
 fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     let grammar = property.grammar();

@@ -1031,8 +1031,8 @@ are in `measurements/2026-11-05-logical*.json`; journal records the outcomes.
 
 ## Frozen initial computed styles
 
-`css::style` computes immutable values for the current **92 longhands and 16
-shorthands**, stored under **72 canonical physical/unpaired longhands**. This
+`css::style` computes immutable values for the current **94 longhands and 17
+shorthands**, stored under **74 canonical physical/unpaired longhands**. This
 is a bounded worker stage, not complete CSS or a rendering engine. `Defaults`
 compiles typed initial spellings and their computed baseline once per immutable
 `Host::revision`, shared across styles. Initial values are not an HTML UA
@@ -1169,7 +1169,7 @@ Normative rules consulted 2026-11-05: [CSS Cascade 5 defaulting](https://drafts.
 
 ## Font longhands and face requests
 
-The supported registry now has **92 longhands** (91 reset by all), including
+The supported registry now has **94 longhands** (93 reset by all), including
 `font-family`, `font-style` and `font-width`. `Name::parse` canonicalizes the
 legacy name `font-stretch` to FontWidth, sharing one declaration/cascade identity
 and source order. This is an alias, not a second competing computed value.
@@ -1505,8 +1505,9 @@ worker. The constructor's bounded bidi/grapheme preparation is timed separately.
 
 Whitespace/paragraph controls and vertical paragraph itemization are explicit
 Unsupported inputs; the low-level run primitive can shape vertical text.
-CSS whitespace processing, styled inline spans, spacing, line wrapping, safe
-boundary reshaping, hit testing, painting and incremental invalidation remain.
+CSS whitespace preparation is now available separately (below); styled inline
+shaping, spacing, line wrapping, safe boundary reshaping, hit testing, painting
+and incremental invalidation remain.
 A long same-font/script span that exceeds the run cap reports Limit; it is never
 cut blindly where a ligature could cross graphemes. These restrictions are
 prerequisites still to resolve in layout, not website compatibility passes.
@@ -1520,7 +1521,7 @@ mark-offset discrepancy disappeared with the matching native 15 oracle. The
 Hebrew file also defaults to weight 100/legacy “Thin”; explicit CSS-normal
 reference requests correctly use 400 and typographic aliases.
 
-Thirteen regression groups cover raw/reference/paragraph glyphs, variations,
+Fourteen regression groups cover raw/reference/paragraph glyphs, variations,
 features, UTF-8 ranges, TTC sharing, mixed scripts, strict/relaxed/missing
 fallback, line-level ordering, bounded caches and source lifetime, quota/cancel/
 failure recovery, style context, empty text and worker delivery. Tests and
@@ -1548,3 +1549,66 @@ Primary references: [HarfRust](https://github.com/harfbuzz/harfrust),
 [Unicode 18 UAX #9](https://www.unicode.org/reports/tr9/tr9-52.html),
 [UAX #29](https://www.unicode.org/reports/tr29/tr29-49.html),
 [CSS text shaping](https://drafts.csswg.org/css-text-3/#shaping).
+
+## CSS whitespace preparation
+
+`text::prepare` implements phase I over DOM text in a single inline formatting
+context, before bidi/shaping. Typed inherited `white-space-collapse` and
+`text-wrap-mode` longhands support the two-longhand `white-space` shorthand,
+legacy aliases, arbitrary ordering, defaults, CSS-wide resets and pending
+substitution. Discard and white-space-trim remain unsupported. The registry has
+94 longhands and 17 shorthands; this does not imply used-value/layout support.
+
+`WhiteSpace::for_style` binds the prepared text settings to frozen computed
+styles. Hosts supply one Arc source and an exact partition of nonempty UTF-8
+spans, retaining each span's DOM node/local offset and font/style identity.
+Span boundaries are transparent to collapsing; atomic/replaced inlines must
+split contexts instead of being dropped. LF is a segment break, DOM CR is a
+space, and NBSP/other separators/controls are not accidentally collapsed.
+Bidi_Control characters remain in output but are transparent to phase-I
+adjacency. Preserve modes keep tabs/line feeds for downstream layout. The
+initial UA segment-break policy converts collapsible breaks to spaces; Chrome's
+zero-width-space removal policy is an explicit remaining compatibility task.
+
+Worker `Job::step(byte_budget)` resumes two linear scans, reports byte visits
+and prepared bytes, checks cancellation and poisons publication on failure.
+Defaults cap input at 8 MiB, 4,096 spans, 262,144 mappings and 131,072 trim
+ranges. No per-character array or unbounded whitespace lookahead is needed.
+Bulk memchr reverse searches and portable wide printable-ASCII scans/copies
+keep ordinary text cheap. A scalar control preserves all semantics. Constructor
+validation, first-edit prefix copying and final immutable allocation have
+bounded total input sizes, but are not subdivided into byte-budget steps;
+run construction/finish on workers too. These are storage/work quotas, not
+a sandbox, fallible allocator or total RSS guarantee.
+
+The immutable `Prepared` owns original/prepared text, spans and an encoded
+source map including zero-output intervals for removed text. Unchanged text
+shares its original Arc. Each stored record is 12 bytes: input/output starts
+plus a packed span/kind; ends follow from the next record or string lengths.
+`mappings()` decodes value records without allocating; source/output byte
+queries binary-search starts. A 24-byte storage control has identical facts.
+Glyph UTF-8 clusters can map back through this stage to the host's DOM spans;
+this is not yet caret/grapheme hit testing or the structured browser API.
+
+Independent evidence: seven preparation regression groups, 3,925 separate
+regex-phase reference strings at multiple budgets and scalar-node partitions,
+52 literal pinned WPT declaration acceptance assertions, and prepared-text →
+native shaping/cluster-map integration. Original resources and local generator/
+outputs are hashed in `tests/whitespace-fixtures/SOURCE.json`. No upstream JS,
+CSSOM serialization, line layout, pixels or website pass is inferred.
+
+An owned Olo Chrome 157 screen recorded 65 local observations. The diagnostic
+projection comparison has 45 identical strings, 12 different strings and eight
+reference-unsupported preserve-spaces cases, retained in measurements rather
+than hidden. Phase-I text and innerText are different pipeline stages: three
+differences retain CR in Chrome's plaintext, four concern its ZWSP break policy,
+five concern transparent bidi controls. Native width/raster evidence is still
+needed; the diagnostic executable exits 1 for differences/unsupported cases.
+
+Phase II trimming, tab stops/hanging/wrapping, styled shaping and safe line
+boundary reshaping remain next, followed by actual inline/block layout and
+painting. The shaper still rejects preserved tabs/breaks until layout handles
+them. No usable browser or website acceptance follows from this milestone.
+
+References: [CSS Text 3 whitespace processing](https://www.w3.org/TR/css-text-3/#white-space-processing),
+[CSS Text 4 shorthand](https://drafts.csswg.org/css-text-4/#white-space-property).

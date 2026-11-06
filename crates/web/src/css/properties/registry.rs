@@ -22,6 +22,7 @@ pub(super) enum Grammar {
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
     WideOnly,
+    WhiteSpace,
     Quad,
     Repeat,
     Unordered,
@@ -51,6 +52,7 @@ keyword_registry! {
     BoundingBox => "bounding-box",
     BreakAll => "break-all",
     BreakWord => "break-word",
+    BreakSpaces => "break-spaces",
     Center => "center",
     Clip => "clip",
     Collapse => "collapse",
@@ -98,6 +100,9 @@ keyword_registry! {
     Nowrap => "nowrap",
     Outset => "outset",
     Painted => "painted",
+    Preserve => "preserve",
+    PreserveBreaks => "preserve-breaks",
+    PreserveSpaces => "preserve-spaces",
     Relative => "relative",
     Ridge => "ridge",
     Right => "right",
@@ -240,9 +245,11 @@ property_registry! {
     TextAlignLast, "text-align-last", Grammar::Keywords(&[Keyword::Auto,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify]), "auto", true;
     TextDecorationColor, "text-decoration-color", Grammar::Color(&[]), "currentcolor", false;
     TextOrientation, "text-orientation", Grammar::Keywords(&[Keyword::Mixed,Keyword::Upright,Keyword::Sideways]), "mixed", true;
+    TextWrapMode, "text-wrap-mode", Grammar::Keywords(&[Keyword::Wrap,Keyword::Nowrap]), "wrap", true;
     Top, "top", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
     VerticalAlign, "vertical-align", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Baseline,Keyword::Sub,Keyword::Super,Keyword::TextTop,Keyword::TextBottom,Keyword::Middle,Keyword::Top,Keyword::Bottom]), "baseline", false;
     Visibility, "visibility", Grammar::Keywords(&[Keyword::Visible,Keyword::Hidden,Keyword::Collapse]), "visible", true;
+    WhiteSpaceCollapse, "white-space-collapse", Grammar::Keywords(&[Keyword::Collapse,Keyword::Preserve,Keyword::PreserveBreaks,Keyword::PreserveSpaces,Keyword::BreakSpaces]), "collapse", true;
     Width, "width", Grammar::Size(SizeKind::Preferred), "auto", false;
     WordBreak, "word-break", Grammar::Keywords(&[Keyword::Normal,Keyword::BreakAll,Keyword::KeepAll,Keyword::AutoPhrase,Keyword::BreakWord]), "normal", true;
     WordSpacing, "word-spacing", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Normal]), "normal", true;
@@ -264,7 +271,7 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,Top,VerticalAlign,Visibility,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
+    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;
@@ -280,6 +287,7 @@ shorthand_registry! {
     Padding, "padding", [PaddingTop,PaddingRight,PaddingBottom,PaddingLeft], Quad;
     PaddingBlock, "padding-block", [PaddingBlockStart,PaddingBlockEnd], Repeat;
     PaddingInline, "padding-inline", [PaddingInlineStart,PaddingInlineEnd], Repeat;
+    WhiteSpace, "white-space", [WhiteSpaceCollapse,TextWrapMode], WhiteSpace;
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Name {
