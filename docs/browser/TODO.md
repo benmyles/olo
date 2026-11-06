@@ -141,7 +141,19 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Complete color substitution, relative colors/mixing/interpolation,
   gamut mapping/profiles, CSSOM, author color-scheme and Olo palette/style/
   rendering integration. Typed color support is not all-site dark mode.
-- [ ] Implement block/inline, text shaping/bidi, flex/grid/table layout,
+- [x] Initial native font-unit glyph shaping, current Unicode 18 bidi properties
+  and original extended-grapheme segmentation, uniform-request paragraph
+  itemization/cmap fallback, retained source clusters and worker delivery.
+  Match 24 native HarfBuzz 15 vectors plus 15 benchmark hashes; all 91,707
+  BidiCharacterTest cases through L2 and 853 GraphemeBreakTest cases pass.
+- [ ] Complete text integration: CSS whitespace/styled spans/spacing, markup
+  bidi contexts, script-extension/paired-punctuation itemization, script/GSUB
+  suitability and multi-font mark fallback, vertical paragraph policy,
+  line breaking, safe boundary reshaping, hit testing and rasterization. Initial
+  shaping rejects unprocessed controls/oversized uniform spans. Font/shaper
+  opaque cache accounting, adversarial CPU bounds and cancellation/isolation
+  remain required before web fonts; source budgets are not total RSS limits.
+- [ ] Implement block/inline, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
   SVG, canvas, fonts, video and audio; measure each on release builds.
@@ -192,7 +204,8 @@ HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostic
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.
 
-Next: shaping/bidi and original inline/block layout. Initial native font
-catalogs/matching/metrics and bounded job-scoped request sharing are validated
-prerequisites. Whole-font sanitization, web fonts, automatic generic policy,
-full font APIs and rendering remain open; website acceptance is still zero.
+Next: CSS whitespace processing and styled inline text/line breaking, then
+original inline/block layout and native drawing. Initial native font/shaping
+work is verified at glyph/Unicode/library scope; no website acceptance follows.
+Web fonts/sanitization, complete CSS/live invalidation, networking/V8, the native
+shell, universal dark mode and agent/Olo/password/passkey integration remain.

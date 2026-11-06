@@ -1,5 +1,7 @@
-//! Bounded, incremental byte decoding for workers. No I/O, polling or UI
-//! work. UTF-8 borrows validated runs; legacy codecs execute in process.
+//! Worker text processing: streaming byte decoding and native glyph shaping.
+//! No I/O, polling or UI work. UTF-8 borrows validated runs.
+pub mod shaping;
+pub(crate) mod unicode;
 use encoding_rs::{CoderResult, Encoding, UTF_8};
 pub use encoding_rs::{Encoding as CharacterEncoding, UTF_8 as UTF8};
 use std::sync::atomic::{AtomicBool, Ordering};

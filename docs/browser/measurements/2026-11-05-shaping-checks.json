@@ -1,0 +1,52 @@
+{
+  "scope": "Native glyph/Unicode/unwrapped paragraph prerequisite; no CSS layout, rasterization or website acceptance.",
+  "checks": {
+    "tests_default": {
+      "command": "cargo test --release -p olo-web",
+      "passed": 179,
+      "failed": 0,
+      "log_sha256": "97580b58fb59df70bbd076476a69b0b5cdf082d4ca8849278fc2f418b20d4138"
+    },
+    "tests_all": {
+      "command": "cargo test --release -p olo-web --all-features",
+      "passed": 178,
+      "failed": 0,
+      "log_sha256": "659f04088e4f7cea384619d2c3274f2508477c291cf9d73095a81ee59ffc665b"
+    },
+    "clippy_default": {
+      "command": "cargo clippy --release -p olo-web --all-targets -- -D warnings",
+      "finished": true,
+      "log_sha256": "ee57745b188e72acb46d6f8b12cc3f7fb2d688501eb763c6f58f5d05fc203995"
+    },
+    "clippy_all": {
+      "command": "cargo clippy --release -p olo-web --all-targets --all-features -- -D warnings",
+      "finished": true,
+      "log_sha256": "56e6ebb5695c38f9c37e6e79a73795bd6fa6cd9dabcc9bf2fd0e41e7872df38d"
+    },
+    "workspace": {
+      "command": "cargo build --release --workspace",
+      "finished": true,
+      "log_sha256": "61312ee387f949045959a021d90619c749502a27e59c0154dd234d2afd113611",
+      "cargo_seconds": 10.96,
+      "wall_seconds": 11.06
+    }
+  },
+  "independent_gates": {
+    "harfbuzz_version": "15.0.0",
+    "authored_glyph_vectors": 24,
+    "benchmark_glyph_hashes": 15,
+    "bidi_character_cases": 91707,
+    "bidi_scope": "Paragraph base, line levels after L1 and visual ordering through L2; corpus excludes P1/L3/L4.",
+    "extended_grapheme_cases": 853,
+    "unicode_version": "18.0.0",
+    "shaping_regression_groups": 13
+  },
+  "notes": [
+    "All input/font/generator hashes match SOURCE.json; independent native references and Unicode facts regenerate byte-identically after package formatting.",
+    "Only new dependencies are HarfRust 0.15.0/read-fonts 0.46.0; unicode-bidi already existed in the lockfile. No personal session install/upgrade/reload.",
+    "HarfRust/read-fonts and source cache counters do not provide hard whole-process memory/cancellation bounds; stronger font isolation remains before web fonts.",
+    "Workspace retains existing GPUI warnings/proc-macro-error2 notice.",
+    "No owned GUI or screenshots; common workload outliers/CPU/scheduler/RSS counters retained.",
+    "Whitespace checks stay enabled for code; local fixture attributes preserve original trailing spaces in SHA-pinned upstream Unicode/license files."
+  ]
+}

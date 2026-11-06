@@ -39,6 +39,8 @@ baseline-style-dense = []
 baseline-cascade-value-copy = []
 # Shared family list with a fat standard Arc instead of a thin pointer.
 baseline-font-family-fat = []
+# Same text/Unicode facts without ASCII paragraph/grapheme/script fast paths.
+baseline-text-ascii = []
 
 [dependencies]
 memchr = "2"
@@ -48,6 +50,8 @@ smallvec = "1"
 wide = "1.7"
 triomphe = { version = "0.1.17", default-features = false, features = ["std"] }
 ttf-parser = "0.25.1"
+harfrust = "0.15.0"
+unicode-bidi = {version="0.3.18",default-features=false,features=["std"]}
 
 [dev-dependencies]
 serde_json.workspace = true

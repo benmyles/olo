@@ -29,6 +29,11 @@ impl Bytes {
 pub(super) struct Source {
     pub bytes: Bytes,
 }
+impl AsRef<[u8]> for Source {
+    fn as_ref(&self) -> &[u8] {
+        self.bytes.data()
+    }
+}
 /// Installed-face metadata. Names include localized typographic/legacy family
 /// aliases; subfamily/full/PostScript names are not mistaken for families.
 pub struct Face {

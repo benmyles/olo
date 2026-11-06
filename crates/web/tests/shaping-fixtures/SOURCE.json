@@ -1,0 +1,101 @@
+{
+  "repository": "https://github.com/google/fonts",
+  "commit": "24ddc1f324cac5d9f5aedca126d298f56e3f1640",
+  "scope": "Unmodified full Open Font License fonts for independent complex-script shaping; license per family.",
+  "files": {
+    "crates/web/tests/shaping-fixtures/fonts/notosansarabic/NotoSansArabic[wdth,wght].ttf": {
+      "sha256": "63111b5b2e074dd48cc67692e0a2726d86ee94c1c37fe8598257b7b4e87e869e",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/24ddc1f324cac5d9f5aedca126d298f56e3f1640/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf",
+      "upstream_path": "ofl/notosansarabic/NotoSansArabic[wdth,wght].ttf"
+    },
+    "crates/web/tests/shaping-fixtures/fonts/notosansarabic/OFL.txt": {
+      "sha256": "07fc70bfeb985cc1a87a8587d0a0c80bab11c86c9dc3fd95b6f0cb332f983e96",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/24ddc1f324cac5d9f5aedca126d298f56e3f1640/ofl/notosansarabic/OFL.txt",
+      "upstream_path": "ofl/notosansarabic/OFL.txt"
+    },
+    "crates/web/tests/shaping-fixtures/fonts/notosanshebrew/NotoSansHebrew[wdth,wght].ttf": {
+      "sha256": "7ef36a2c3593758cdb622e1bdef4f84523e92fbc3ccc667438dd80ff54c2de88",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/24ddc1f324cac5d9f5aedca126d298f56e3f1640/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf",
+      "upstream_path": "ofl/notosanshebrew/NotoSansHebrew[wdth,wght].ttf"
+    },
+    "crates/web/tests/shaping-fixtures/fonts/notosanshebrew/OFL.txt": {
+      "sha256": "9b9fe028b5ba74d231659a1bbaf0ed09b11e759d1ca6a070999e16d151616b47",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/24ddc1f324cac5d9f5aedca126d298f56e3f1640/ofl/notosanshebrew/OFL.txt",
+      "upstream_path": "ofl/notosanshebrew/OFL.txt"
+    },
+    "crates/web/tests/shaping-fixtures/fonts/notosansdevanagari/NotoSansDevanagari[wdth,wght].ttf": {
+      "sha256": "14ec4af41f27482216d1c2229f417ff9b1425e1babb014e57d1d40d03229853e",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/24ddc1f324cac5d9f5aedca126d298f56e3f1640/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf",
+      "upstream_path": "ofl/notosansdevanagari/NotoSansDevanagari[wdth,wght].ttf"
+    },
+    "crates/web/tests/shaping-fixtures/fonts/notosansdevanagari/OFL.txt": {
+      "sha256": "a216f6f8d85c7228093e0ee5e258d9d377e6671f68acb4db1930b29583d0f331",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/24ddc1f324cac5d9f5aedca126d298f56e3f1640/ofl/notosansdevanagari/OFL.txt",
+      "upstream_path": "ofl/notosansdevanagari/OFL.txt"
+    },
+    "crates/web/tests/shaping-fixtures/fonts/notosansthai/NotoSansThai[wdth,wght].ttf": {
+      "sha256": "5a1c559bb539583c8a1fd99d1c5b9491e5e14478c9cd2bd0970d5c3096cc9ef8",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/24ddc1f324cac5d9f5aedca126d298f56e3f1640/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf",
+      "upstream_path": "ofl/notosansthai/NotoSansThai[wdth,wght].ttf"
+    },
+    "crates/web/tests/shaping-fixtures/fonts/notosansthai/OFL.txt": {
+      "sha256": "2e98fd23a52d253db8612cd5942c8f2ff4111b21d2367050fdca91d8ccc374a0",
+      "source_url": "https://raw.githubusercontent.com/google/fonts/24ddc1f324cac5d9f5aedca126d298f56e3f1640/ofl/notosansthai/OFL.txt",
+      "upstream_path": "ofl/notosansthai/OFL.txt"
+    },
+    "crates/web/tests/shaping-fixtures/ucd/DerivedCoreProperties.txt": {
+      "sha256": "09c928886a178fcafd93c29e4bd59073a058e5a100b716d425cb563ab50f68c9",
+      "source_url": "https://www.unicode.org/Public/18.0.0/ucd/DerivedCoreProperties.txt"
+    },
+    "crates/web/tests/shaping-fixtures/ucd/DerivedBidiClass.txt": {
+      "sha256": "d9e23222522551348ea1ccfbb4f62efbf98982afb95840f8959c08ed992c5607",
+      "source_url": "https://www.unicode.org/Public/18.0.0/ucd/extracted/DerivedBidiClass.txt"
+    },
+    "crates/web/tests/shaping-fixtures/ucd/BidiBrackets.txt": {
+      "sha256": "4b3b62e4a14b84ee752808c810c602534921c09a4a1bf78cfbee566d66c125b3",
+      "source_url": "https://www.unicode.org/Public/18.0.0/ucd/BidiBrackets.txt"
+    },
+    "crates/web/tests/shaping-fixtures/ucd/BidiCharacterTest.txt": {
+      "sha256": "045b24d2c8ab066951bd32fe8c6b4de34647f72b5b1c7df0265f24ab53573e01",
+      "source_url": "https://www.unicode.org/Public/18.0.0/ucd/BidiCharacterTest.txt"
+    },
+    "crates/web/tests/shaping-fixtures/ucd/GraphemeBreakProperty.txt": {
+      "sha256": "0839dcb79e4ac639ecd538b1abf7c9d22e3f9dd265b7e182d33627aa4d75b45a",
+      "source_url": "https://www.unicode.org/Public/18.0.0/ucd/auxiliary/GraphemeBreakProperty.txt"
+    },
+    "crates/web/tests/shaping-fixtures/ucd/GraphemeBreakTest.txt": {
+      "sha256": "b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31",
+      "source_url": "https://www.unicode.org/Public/18.0.0/ucd/auxiliary/GraphemeBreakTest.txt"
+    },
+    "crates/web/tests/shaping-fixtures/ucd/emoji-data.txt": {
+      "sha256": "80d00f8e616a0ef27fd6b8de3b758c06383b5d917e2977709578e68baf733bf1",
+      "source_url": "https://www.unicode.org/Public/18.0.0/ucd/emoji/emoji-data.txt"
+    },
+    "crates/web/tests/shaping-fixtures/ucd/UNICODE-LICENSE.txt": {
+      "sha256": "e7a93b009565cfce55919a381437ac4db883e9da2126fa28b91d12732bc53d96"
+    },
+    "crates/web/tests/shaping-fixtures/generate.py": {
+      "sha256": "2982ed6b8e8648e3f6a3fe60a2bceaede107623ccc0d644d75e7d27cf812efa9"
+    },
+    "crates/web/tests/shaping-fixtures/native_harfbuzz.py": {
+      "sha256": "5491052593ea197edfc64872bcc52d87e4fa50f740d7bdc52f868026423bd0a4"
+    },
+    "crates/web/tests/shaping-fixtures/harfbuzz.json": {
+      "sha256": "9d0250bd6cfe39e97e9ead55c77db171ad5c9e65f2e7dc204c6016029eec9bd4"
+    },
+    "tools/browser/generate-shaping-unicode.py": {
+      "sha256": "fc54698028646c2a0bb6eefb9849004165d70ba0f057f2f54e690b8f65badf67"
+    }
+  },
+  "unicode": {
+    "version": "18.0.0",
+    "retrieved": "2026-11-05",
+    "scope": "Unchanged normative data/tests and original generated facts. Test counts do not imply CSS layout or full Unicode conformance beyond their stated rules."
+  },
+  "oracles": {
+    "harfbuzz": "15.0.0",
+    "older_harfbuzz": "14.2.1",
+    "uharfbuzz": "0.55.0",
+    "fonttools": "4.60.1"
+  }
+}

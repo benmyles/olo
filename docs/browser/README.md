@@ -9,8 +9,9 @@ available while this one is developed. Nothing here changes defaults.
 CSS syntax, selectors, typed numeric calculations, core typed declarations, frozen stylesheet/cascade snapshots with logical-property projection, custom-property substitution,
 contextual colors/conversion, font family/style/width face requests, native shared-source
 OpenType loading, original face matching and bounded font metric caches
-and bounded initial document computed-style jobs with selected Font sharing
-are implemented. No browser shell, font shaping/rasterization/web-font loading, UA stylesheet,
+and bounded initial document computed-style jobs with selected Font sharing,
+plus native glyph shaping with original Unicode 18 grapheme/paragraph orchestration,
+are implemented. No browser shell, text rasterization/web-font loading, UA stylesheet,
 complete property coverage/live invalidation, layout or
 JavaScript execution yet; no demonstrated website compatibility.** The 99% target is an acceptance criterion,
 not a current capability. Passing 100 selected sites alone cannot establish

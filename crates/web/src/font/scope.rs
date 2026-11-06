@@ -217,6 +217,11 @@ impl Scope {
                 _ => s.glyph_id(scalar)?.is_some_and(|g| g != 0),
             })
         };
+        self.choose(r, scalar, coverage, supported, cancelled)
+    }
+    fn choose(&self, r: &FontRequest, scalar: char, coverage: bool, supported: impl Fn(&Selection) -> Result<bool>, cancelled: Option<&AtomicBool>) -> Result<Option<Selection>> {
+        matching::validate(r)?;
+        let catalog = &self.set.catalog;
         for family in r.families.as_slice() {
             check(cancelled)?;
             match family {
@@ -285,6 +290,47 @@ impl Scope {
     }
     pub fn first_available(&self, r: &FontRequest, cancelled: Option<&AtomicBool>) -> Result<Selection> {
         self.selection(r, ' ', false, cancelled)?.ok_or(Error::Missing)
+    }
+    /// Whole-grapheme cmap coverage for the text worker, with strict UVS first
+    /// and an explicit relaxed retry at the caller. Not full script/GSUB
+    /// suitability: a font may map scalars and still lack required shaping.
+    pub(crate) fn cluster_selection(&self, r: &FontRequest, text: &str, strict_variations: bool, cancelled: Option<&AtomicBool>) -> Result<Option<Selection>> {
+        use crate::text::unicode::{ignorable, variation_selector};
+        let mut scalar = ' ';
+        for c in text.chars() {
+            check(cancelled)?;
+            if !ignorable(c) {
+                scalar = c;
+                break;
+            }
+        }
+        let work = Cell::new(0usize);
+        self.choose(
+            r,
+            scalar,
+            true,
+            |s| {
+                let face = s.parsed()?;
+                let mut previous = None;
+                for c in text.chars() {
+                    check(cancelled)?;
+                    work.set(work.get().saturating_add(1));
+                    if work.get() > self.set.catalog.limits.work {
+                        return Err(Error::Limit);
+                    }
+                    if variation_selector(c) {
+                        if strict_variations && previous.is_some_and(|base| face.glyph_variation_index(base, c).is_none_or(|g| g.0 == 0)) {
+                            return Ok(false);
+                        }
+                    } else if !ignorable(c) && face.glyph_index(c).is_none_or(|g| g.0 == 0) {
+                        return Ok(false);
+                    }
+                    previous = Some(c);
+                }
+                Ok(true)
+            },
+            cancelled,
+        )
     }
     /// Single-codepoint cmap fallback, not shaping/cluster suitability. The
     /// shaper must perform script/cluster/variation-selector matching separately.

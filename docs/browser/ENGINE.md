@@ -3,7 +3,8 @@
 The engine crate is `olo-web`. It parses supported static HTML into its
 own compact document storage, constructs generic CSS syntax and compiles/matches
 selectors against a stable borrowed tree, compiles/resolves typed colors and
-computes frozen styles over the supported property registry. It has no
+computes frozen styles over the supported property registry, selects native fonts
+and prepares retained glyph runs with original Unicode text orchestration. It has no
 network, UA stylesheet, complete style coverage/live invalidation, layout, JavaScript execution, browser shell or
 demonstrated website compatibility.
 
@@ -1432,3 +1433,118 @@ real-Noto benchmarks. The native metric cache control in `font_native_bench`
 still controls only that cache; default style jobs now also use Font interning.
 Raw observations, binary/source hashes, CPU/scheduler/RSS counters and replay
 commands are `measurements/2026-11-05-font-pool{.json,-measure.py}`.
+
+## Native text shaping and retained source runs
+
+`text::shaping` connects native font selections to glyphs on a worker. Original
+source/font/cache orchestration, Unicode grapheme segmentation and paragraph
+itemization surround **HarfRust 0.15.0**, a pure Rust OpenType shaper using
+read-fonts 0.46.0. The original engine crate still forbids unsafe code. The
+older workspace RustyBuzz is archived; its maintainers recommend HarfRust.
+This adds no browser engine, system process, font service, UI or rasterizer.
+
+`Engine::shape_run` takes an unmodified native `Selection`, shared UTF-8 source,
+byte range and explicit direction/script/language/features/context. It retains
+absolute UTF-8 clusters and glyph IDs, advances, offsets and unsafe-to-break
+flags in font units. `Run::advance(size)` scales font units to CSS pixels;
+positive font y is upward. This is not a claim about final CSS layout rounding,
+hinting, device metrics, spacing or font synthesis drawing. Features are explicit
+OpenType inputs here; CSS feature/variant longhands are still incomplete.
+
+The font adapter leases the existing Source through Arc/AsRef, without copying
+its Vec or shared bytes. Parsed base fonts share across variation instances.
+Worker caches key face/coordinates/synthesis and complete plan properties,
+including language and feature ranges. Defaults cap base faces at 64, instances
+and plans at 256 each, and conservative referenced source bytes at 32 MiB (TTC
+faces may overcount). Saturation stops insertion; cache-disabled execution has
+the same output. `clear` drops cache/source leases and the reusable buffer;
+completed Runs keep their fonts alive. Source counters exclude opaque model/
+shaper caches, allocator controls and process RSS.
+
+Input defaults cap one shaping run at 16 KiB, output at 32,768 glyphs and features
+at 64. Input ranges/context/variation finiteness and cancellation are checked;
+opaque shaping is checked on return, and allocation/work failure discards its
+output. The dependency has its own font-preprocessing and shaping allowances,
+but these are **not** a hard total-memory or immediate-interruption boundary.
+Stronger font sanitization/isolation and opaque cache accounting remain required
+before web fonts. Only trusted explicit font sources are used by these tests.
+
+`Analysis` owns paragraph embedding data from unicode-bidi's safe UAX #9
+algorithm with our generated **Unicode 18.0.0** class/bracket properties. The
+older bundled property table is disabled for this dependency. Unassigned
+ranges follow normative `@missing` defaults; canonical bracket equivalence is
+preserved. Paragraph levels precede L1; `visual_runs(line)` applies L1/L2 after
+line breaking, copying only that line's data. Shaping handles marks/mirroring;
+CSS markup embeddings, isolates and complete inline integration remain work.
+
+The original constant-state `graphemes` iterator implements the current extended
+rules with pinned grapheme, Indic-conjunct and extended-pictographic properties.
+It handles Hangul arithmetically, RI parity, emoji ZWJ sequences and Unicode 18's
+changed GB9c. The prior Unicode 17 segmentation crate missed ten current fixture
+cases; no older segmentation runtime remains in this module. Printable ASCII
+LTR/auto paragraphs, ASCII properties and scripts have focused fast paths;
+`baseline-text-ascii` checks/measures equivalent full-Unicode execution.
+
+`ParagraphJob` prepares one uniform-font-request, unwrapped paragraph. It resolves
+bidi levels and graphemes, adopts common/inherited scripts within paragraph/level
+segments, and chooses whole-grapheme cmap coverage. UVS selection retries
+strictly then relaxes with explicit provenance; missing clusters and glyph-zero
+counts remain visible. Primary coverage scans use a parsed charmap, and bounded
+fallback memoization avoids reparsing for repeated graphemes. Font equivalence
+uses full keys when Arc identity differs, so disabling caches cannot fragment
+Arabic joining. This is not full Script_Extensions/paired-punctuation
+itemization, GSUB suitability or multi-font mark fallback.
+
+Default paragraph caps include 64 KiB text, 65,536 clusters, 4,096 bytes per
+cluster, 4,096 runs, 131,072 glyphs and a 1,024-entry/1 MiB charged fallback
+memo. `step(cluster_budget)` exposes progress/completed runs; failure poisons
+publication. `for_style` checks the native Scope against the selected style's
+font context. Empty paragraphs allocate no shaper/font cache. Finished glyph
+data are Send+Sync for delivery to UI code; job construction/steps stay on the
+worker. The constructor's bounded bidi/grapheme preparation is timed separately.
+
+Whitespace/paragraph controls and vertical paragraph itemization are explicit
+Unsupported inputs; the low-level run primitive can shape vertical text.
+CSS whitespace processing, styled inline spans, spacing, line wrapping, safe
+boundary reshaping, hit testing, painting and incremental invalidation remain.
+A long same-font/script span that exceeds the run cap reports Limit; it is never
+cut blindly where a ligature could cross graphemes. These restrictions are
+prerequisites still to resolve in layout, not website compatibility passes.
+
+Independent evidence is in `tests/shaping-fixtures`: four unmodified SHA-pinned
+OFL fonts; native **HarfBuzz 15.0.0** C API vectors for 24 cases plus 15 longer
+benchmark hashes; Unicode's entire **91,707-case BidiCharacterTest through L2**
+and **853-case extended GraphemeBreakTest**. BidiCharacterTest excludes P1/L3/L4
+by its own header. Older 14.2.1 vectors are retained separately: a Hebrew
+mark-offset discrepancy disappeared with the matching native 15 oracle. The
+Hebrew file also defaults to weight 100/legacy “Thin”; explicit CSS-normal
+reference requests correctly use 400 and typographic aliases.
+
+Thirteen regression groups cover raw/reference/paragraph glyphs, variations,
+features, UTF-8 ranges, TTC sharing, mixed scripts, strict/relaxed/missing
+fallback, line-level ordering, bounded caches and source lifetime, quota/cancel/
+failure recovery, style context, empty text and worker delivery. Tests and
+benchmarks compare glyph hashes outside timings; no screenshots or website
+rendering evidence is implied.
+
+```sh
+cargo test --release -p olo-web --test shaping
+cargo test --release -p olo-web --test shaping --all-features
+cargo run --release -p olo-web --example shaping_bench -- 50
+cargo run --release -p olo-web --example shaping_bench --features baseline-text-ascii -- 50
+```
+
+Raw release measurements and replay live in
+`measurements/2026-11-05-shaping{.json,-measure.py}`. They separate font-unit
+shape/drop from full paragraph prepare/step/drop, cold calls, constructor cost,
+maximum 128-grapheme slices, source/glyph payload and whole-process RSS. Parent
+e89c5dea had no shaping implementation; common before/after comparisons use
+its unchanged style/font/cascade workloads. No navigation, GPU, UI/Chrome speed
+or website acceptance is measured here.
+
+Primary references: [HarfRust](https://github.com/harfbuzz/harfrust),
+[HarfBuzz 15](https://github.com/harfbuzz/harfbuzz/releases/tag/15.0.0),
+[clusters](https://harfbuzz.github.io/working-with-harfbuzz-clusters.html),
+[Unicode 18 UAX #9](https://www.unicode.org/reports/tr9/tr9-52.html),
+[UAX #29](https://www.unicode.org/reports/tr29/tr29-49.html),
+[CSS text shaping](https://drafts.csswg.org/css-text-3/#shaping).

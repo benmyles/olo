@@ -138,3 +138,16 @@ Existing Noto data used by references stays under its SIL OFL in `data/fonts`.
 Unicode 18.0.0 default case-fold facts are generated from the unchanged normative
 CaseFolding.txt in `tests/font-native-fixtures/ucd`, with Unicode License V3
 included there. SOURCE.json records the data hashes and retrieval provenance.
+
+
+Native glyph shaping uses HarfRust 0.15.0 (MIT), read-fonts 0.46.0
+(MIT/Apache-2.0), and unicode-bidi 0.3.18 (MIT/Apache-2.0), with our pinned
+Unicode 18 property data replacing the older bundled bidi table. Original
+forward grapheme segmentation and source/font/cache orchestration are Olo code.
+Unicode properties and unchanged official tests in tests/shaping-fixtures/ucd
+follow the included Unicode License V3. The four unmodified Noto fonts under
+shaping-fixtures/fonts retain each family's OFL license and upstream provenance
+in SOURCE.json. Native HarfBuzz 15 C API and uharfbuzz 0.55.0 (bundled 14.2.1)
+are independent test-data oracles only; their libraries are not embedded into
+this engine. Glyph data generation never executes Olo. Font-unit vectors and
+Unicode checks are not layout/rasterization/CSS/website conformance claims.

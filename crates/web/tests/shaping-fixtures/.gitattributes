@@ -1,0 +1,4 @@
+# Preserve verbatim SHA-pinned upstream fonts' licenses and Unicode inputs.
+# Their original comments/license text contain trailing spaces.
+fonts/*/OFL.txt -whitespace
+ucd/*.txt -whitespace

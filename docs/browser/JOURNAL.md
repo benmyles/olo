@@ -2304,3 +2304,112 @@ selection and independently checked output. Font sanitization/web fonts,
 automatic generic policy, complete CSS/live invalidation, browser shell,
 networking, V8, universal dark mode and Olo/agent/password/passkey integration
 remain substantial open work.
+
+## 2026-11-05 — native glyph runs and Unicode paragraph preparation
+
+Previous request-sharing milestone e89c5dea is pushed. Added original source/
+font/cache orchestration around HarfRust 0.15.0, using its maintained pure-Rust
+OpenType implementation (read-fonts 0.46.0). Primary sources showed RustyBuzz
+archived and recommending HarfRust. No browser engine/system font process is
+embedded. The engine still forbids unsafe code. Native sources are leased into
+read-fonts through Arc/AsRef without a second byte allocation; parsed bases
+share across variation instances and retained glyph runs survive cache/catalog
+release. Defaults bound cached base faces/instances/plans at 64/256/256 and
+conservative source bytes at 32 MiB; opaque model caches/RSS are separate.
+
+Run primitives preserve glyph IDs, font-unit positions, unsafe-break flags and
+absolute UTF-8 clusters, with explicit script/direction/language/features/context.
+Original uniform-request paragraph jobs add bidi/grapheme/script itemization,
+whole-grapheme cmap fallback, UVS retry/provenance and progress/cancellation.
+Primary coverage uses a retained parsed charmap; bounded fallback memoization
+avoids repeated parsing. Font-key equality, not only Arc identity, joins runs
+when caches are disabled/full. Tests caught that integration error before
+publication. Failure poisons completed-run access/finish; finished data are
+Send+Sync for the future worker→UI path. Empty paragraphs allocate no shaper cache.
+
+Pinned Unicode 18 class/bracket/ignorable/grapheme/Indic/emoji facts replace the
+bidi dependency's older bundled data. Original constant-state forward grapheme
+segmentation passes all **853 official cases**. The prior Unicode 17 library
+missed ten cases: Unicode 18 changed GB9c to Linker Extend* × Consonant.
+Bidi properties include unassigned @missing defaults and canonical bracket
+normalization. All **91,707 BidiCharacterTest cases** pass through L2. One
+initial adapter discrepancy was comparing paragraph levels before L1 with
+reference line levels after L1; comparison now uses the correct line phase.
+The corpus's own header excludes P1/L3/L4; no wider conformance follows.
+
+Four unmodified OFL Noto script fonts are pinned at google/fonts commit
+24ddc1f324cac5d9f5aedca126d298f56e3f1640, plus existing Latin/optical/TTC data.
+The independent generator never imports/runs Olo. Native HarfBuzz **15.0.0**
+C API matches all **24 authored glyph vectors and 15 longer packed hashes**,
+including positions/flags/variations/features/UTF-8 subranges/TTC indices.
+Uharfbuzz 0.55.0 bundles older **14.2.1**; those vectors remain separate. A
+one-unit Hebrew anchor difference disappeared with the matching native 15
+reference. The Hebrew file defaults to weight 100 and a legacy “Thin” name;
+explicit CSS-normal references use 400, and alias checks use all family names.
+These were reference-input/adapter corrections, not copied engine expectations.
+Font bytes and all references/properties regenerate/hash exactly.
+
+Defaults cap runs at 16 KiB input/32,768 glyphs, paragraph text at 64 KiB and
+fallback memo at 1,024 entries/1 MiB charges. Unprocessed whitespace/paragraph
+controls, vertical paragraph policy and oversized uniform spans are explicit
+non-passes. Never cut blindly through a ligature at a size cap. CSS whitespace,
+styled inline spans, script-extension/paired-punctuation itemization, full
+script/GSUB eligibility, multi-font marks, spacing, line wrapping/reshaping and
+rasterization remain. Source/payload bounds are not hard total-memory limits;
+opaque font/shaper preprocessing/allocation/cancellation need isolation and
+sanitization before web fonts. No UI, polling, network or V8 is added.
+
+Release evidence: measurements/2026-11-05-shaping{.json,-measure.py}. Three
+alternating CPU0 processes preserve all means, cold calls, max constructors/
+128-grapheme slices, source/binary hashes and CPU/scheduler/RSS counters.
+Same-binary source/font/plan cache-off → on for ~4 KiB:
+Latin raw shape/drop **133.020 → 114.752 µs**, paragraph **260.677 → 243.952 µs**;
+Arabic **200.920 → 187.990 / 328.401 → 310.048 µs**;
+Hebrew **175.406 → 166.902 / 325.855 → 314.037 µs**;
+Devanagari **673.726 → 190.985 / 741.107 → 258.125 µs**;
+Thai **71.021 → 62.492 / 155.291 → 144.657 µs**.
+Cached first paragraph medians **321/349/341/753/160 µs**, max constructor
+medians **54/98/106/50/56 µs**, max worker slice medians **163/202/185/207/67 µs**
+in that script order. Those are normal trusted-font library workloads, not
+adversarial latency or browser/UI frame acceptance.
+
+Same-facts full-Unicode control (baseline-text-ascii) → focused ASCII fast
+paths: 1,800-byte ASCII analysis **5.555 → 1.667 µs**, grapheme scan **27.899 →
+7.479 µs**. Cached 4 KiB Latin paragraph **308.830 → 243.952 µs**. Mixed scan
+**47.558 → 37.287 µs**, emoji scan **24.610 → 16.996 µs**; other text operations
+are mixed and remain raw. Retained dense glyph records are **28 B**: 4 KiB
+Latin/Arabic/Hebrew/Devanagari/Thai payload **92,820 / 62,468 / 62,496 /
+30,464 / 41,580 B**. Whole shaping benchmark RSS **8,772–9,008 KiB** with .43 s
+process user CPU per run; control **8,648–8,744 KiB**, .44/.44/.45 s. No memory
+or speed claim about a full page, rasterizer, GPU or Chrome.
+
+Parent common-workload 10k bare/uniform/varying style build medians **14.044 →
+14.331 / 20.263 → 22.782 / 27.446 → 29.381 ms**; max slice medians **366 →
+411 / 605 → 7,555 / 732 → 10,229 µs**. Supplied-font 10k **31.200 → 31.609 ms**.
+Native Noto job 10k metric cache off **23.356 → 23.287 ms**, on **22.799 →
+25.925 ms**; full process CPU remains close (.58/.58/.56 → .57/.57/.58 s),
+with different involuntary-switch counts. These counters do not establish the
+cause of individual wall-clock outliers. Preserve variability and profiling
+TODOs, not a general latency/speedup claim. Raw width/margin/color/missing
+**10.658 → 10.244 / 11.121 → 10.164 / 7.188 → 7.506 / 2.791 → 2.714 ns**;
+indexed 1k/2k/4k cascade **.2725 → .2778 / .5420 → .5542 / 1.0906 → 1.0983 ms**.
+
+The native-font benchmark file grows **11,640,784 → 22,492,920 B** with debug
+information. ELF evidence in shaping-elf.txt separates this: .text **1,123,296 →
+1,118,960 B**, .rodata **260,376 → 260,248 B**, .debug_info **3,355,568 →
+7,345,261 B**. Whole-process native-font RSS medians **17,236 → 17,272 KiB**.
+The actual shaping example .text/.rodata are **1,681,232 / 513,148 B**. Debug
+file size is not mapped runtime payload; no stripped-browser size claim.
+
+All **179 default / 178 all-feature release tests** pass, with 13 new shaping
+regression groups, plus strict default/all-feature all-target release clippy,
+formatting, source/reference hash/regeneration and diff checks. Workspace build:
+cargo **10.96 s**, wall **11.06 s**; existing GPUI warnings/proc-macro-error2
+notice remain. No owned GUI or personal session reload/install. Scratch is
+removed after pushing this checkpoint.
+
+Full goal stays active, **0/3,000 website combinations, 0/100 sites**. Next:
+CSS whitespace, styled inline source mapping/line breaking and original layout,
+then native drawing. Networking/V8, complete CSS/live invalidation, native shell,
+universal dark mode, structured browser control and Olo/password/passkey
+integration remain substantial open work.

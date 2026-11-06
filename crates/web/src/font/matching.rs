@@ -42,6 +42,10 @@ pub struct Selection {
     pub(super) index: u32,
 }
 impl Selection {
+    pub(crate) fn shaping_base(&self) -> Result<harfrust::Font> {
+        let lease: Arc<dyn AsRef<[u8]> + Send + Sync> = self.source.clone();
+        harfrust::Font::new(harfrust::font::Blob::Shared(lease), self.index).ok_or(Error::Invalid)
+    }
     pub fn data(&self) -> &[u8] {
         self.source.bytes.data()
     }
