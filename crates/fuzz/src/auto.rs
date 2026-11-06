@@ -317,8 +317,10 @@ fn check_mid_drag(f: &mut Fuzz, what: &str, watch: MidDrag) -> Step {
     }
     let Some((_, t, over, apart, tiles)) = worst else { return Ok(()) };
     let list = |m: &BTreeMap<u64, R>| m.iter().map(|(i, r)| format!("{i} {r}")).collect::<Vec<_>>().join("; ");
+    // (Which apps they are: one drawing its own size is found by it.)
+    let apps = f.windows().map(|w| tiles.keys().filter_map(|i| w.get(i).map(|x| format!("{i} {}", x.app_id))).collect::<Vec<_>>().join(", ")).unwrap_or_default();
     f.fail(&format!(
-        "{what}: mid-drag, {bad} of {n} looks had tiles out of step (worst at {:.0} ms: {}{})\n  {}\n  as it began: {}",
+        "{what}: mid-drag, {bad} of {n} looks had tiles out of step (worst at {:.0} ms: {}{})\n  {}\n  as it began: {}\n  apps: {apps}",
         t * 1000.0,
         if over.is_empty() { String::new() } else { format!("{over:?} overlapping") },
         if apart.is_empty() { String::new() } else { format!(" {:?} apart by more than the gap", apart.iter().map(|(a, b, d)| (a, b, format!("{d:+} px"))).collect::<Vec<_>>()) },

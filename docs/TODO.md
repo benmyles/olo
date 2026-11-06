@@ -222,9 +222,19 @@ something nobody here has is in "Blocked", with what it waits for.
   narrower than asked (9 asked 680, drew 679; 10 asked 212, drew 211).
   At the fuzzer's 1.75× an odd logical width is no whole number of
   device pixels and each app rounds its own down, so two neighbours
-  together are 2 px off where the check allows 1. To look at: asking
-  tiles for sizes whole in device pixels at the display's scale (or
-  the client's rounding), against "Fractional scaling" in HACKING.
+  together are 2 px off where the check allows 1.
+  *Looked at* (2026-11-06; the fuzzer's report now names the tiles'
+  apps): 9 is a StyledEdit, 10 a Terminal, both GPUI. Not the layout's
+  rounding (`divide` gives both sides of a split the same edge) and not
+  GPUI at rest: at 1.75× a floating StyledEdit placed at 678–685 and
+  600–603 wide draws each exactly. Mid-drag it draws a pixel short
+  (680 asked, 679 drawn), and Terminal 10, whose edge the drag doesn't
+  touch, moved from 1332 to 1333: its split's ratio taken again from a
+  drawn frame (`take_ratios`/`fraction_of`), so the short pixel moves a
+  neighbour. *Next*: find where a resize by hand (xdg `resizing`, the
+  swapchain grown to its room, `update_drawable_size_within`) loses the
+  pixel at a fractional scale, and keep ratios from the sizes asked,
+  not drawn.
 
 ## Not started (highest priority first)
 
