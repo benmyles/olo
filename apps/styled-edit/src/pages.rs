@@ -233,6 +233,8 @@ fn place_words(page: &mut Page, l: &Laid, r: usize, text: &str, styles: &[Style]
                 }
             }
             editor::Kind::Space | editor::Kind::Tab => flush(&mut word, page),
+            // (A Markdown mark off the caret's line: not printed.)
+            editor::Kind::Hidden => {}
             editor::Kind::Text => match &mut word {
                 Some((_, t, span, end)) if *span == u.span => {
                     t.push_str(chars);

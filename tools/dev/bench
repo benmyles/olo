@@ -113,6 +113,10 @@ APPS = [
     App("tracker", ["olo-tracker", os.path.join(HOME, "Big")], settle=3.0),
     App("tracker-pictures", ["olo-tracker", os.path.join(HOME, "Pictures")], settle=4.0),
     App("styled-edit", ["olo-styled-edit", os.path.join(HOME, "Documents", "long.txt")]),
+    # Source code, coloured as it opens and as it's typed in (100,000 lines).
+    App("styled-edit-code", ["olo-styled-edit", os.path.join(HOME, "Documents", "long.rs")], type_text="let benchmark = 123;"),
+    # Markdown as it looks: headings, lists, code blocks, marks hidden.
+    App("styled-edit-md", ["olo-styled-edit", os.path.join(HOME, "Documents", "long.md")], type_text="**benchmark** 123"),
     App("terminal", ["olo-terminal", "-e", "sh", "-c", "seq 1 60000; exec sh"], type_text="echo benchmark", settle=3.0),
     App("viewer", ["olo-viewer", os.path.join(HOME, "Pictures", "big.png")], settle=2.5),
     App("notifications", ["olo-notifications", "--bus", f"unix:path=/tmp/olo-dev/{NAME}/bus"]),
@@ -263,7 +267,28 @@ class Session:
 
 # ---- fixtures ----
 
+def source_fixtures():
+    """A 100,000-line Rust file and a long Markdown document, from Olo's
+    own sources (made when missing, in a home made before them too)."""
+    docs = os.path.join(HOME, "Documents")
+    os.makedirs(docs, exist_ok=True)
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    rs = os.path.join(docs, "long.rs")
+    if not os.path.exists(rs):
+        one = open(os.path.join(repo, "crates", "ui", "src", "editor", "mod.rs")).read()
+        lines = one.count("\n")
+        with open(rs, "w") as f:
+            for _ in range(100000 // lines + 1):
+                f.write(one)
+    md = os.path.join(docs, "long.md")
+    if not os.path.exists(md):
+        one = open(os.path.join(repo, "docs", "HACKING.md")).read()
+        with open(md, "w") as f:
+            f.write(one * 3)
+
+
 def fixtures():
+    source_fixtures()
     if os.path.exists(os.path.join(HOME, ".bench-ready")):
         return
     rng = random.Random(1)

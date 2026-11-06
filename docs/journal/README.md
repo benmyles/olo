@@ -5,11 +5,47 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### StyledEdit: Markdown pictures
+
+*02:25* — ![alt](file) shows as the picture it names (a file beside the document), off the caret's line.
+
+![StyledEdit: Markdown pictures](2026-11-06/022520-stylededit-markdown-pictures.png)
+
+### StyledEdit: Markdown tables as grids
+
+*02:25* — A Markdown table shows as a ruled grid (the editor's table rows, its cells the text between the pipes, columns as wide as their longest cell, the header shaded, the |---| line hidden off the caret), typed in cell by cell: Tab to the next, Return adds a row.
+
+![StyledEdit: Markdown tables as grids](2026-11-06/022519-stylededit-markdown-tables-as-grids.png)
+
 ### Browser: first native static page
 
 *02:16* — Original Rust DOM/style/flow/paint pipeline in a native kit window, with worker rendering, retained tiles and structured visible text. Light mode at 1.5x on an isolated Agent Screen; live light/dark/night reviews also run at 1x, 1.25x, 1.5x, 1.75x and 2x. Static local HTML only: networking, JavaScript, complete layout and website acceptance remain open.
 
 ![Browser: first native static page](2026-11-06/021656-browser-first-native-static-page.png)
+
+### StyledEdit: source code coloured by syntax
+
+*01:49* — A source file (by its name, extension or #! line) opens in the kit's code view: tree-sitter grammars for 43 languages, parsed on a worker, colours from the palette (dark mode here), line numbers in a gutter.
+
+![StyledEdit: source code coloured by syntax](2026-11-06/014923-stylededit-source-code-coloured-by-syntax.png)
+
+### StyledEdit: Markdown's source, ⌘/
+
+*01:49* — Document ▸ Show Source (⌘/) shows the same text as a code editor: the monospaced face, line numbers, headings, links, code and marks coloured; the caret and view kept across the switch.
+
+![StyledEdit: Markdown's source, ⌘/](2026-11-06/014922-stylededit-markdown-s-source.png)
+
+### StyledEdit: Markdown's marks show on the caret's line
+
+*01:49* — On the line being edited, the marks show dimmed, as typed (*emphasis*, **strong**, ~~struck~~, backticks, [link](address)); elsewhere they're hidden.
+
+![StyledEdit: Markdown's marks show on the caret's line](2026-11-06/014922-stylededit-markdown-s-marks-show-on-the-caret-s-.png)
+
+### StyledEdit: Markdown as it looks
+
+*01:49* — A .md file opens as a Markdown document edited as it looks (Typora's way): headings, emphasis, inline code on its ground, links, bullets, numbers and task boxes hanging in their indents, a quotation's bar, a code block coloured by its fence's language, front matter; the marks that make them hidden off the caret's line.
+
+![StyledEdit: Markdown as it looks](2026-11-06/014920-stylededit-markdown-as-it-looks.png)
 
 ### Terminal: Keep It Going for a coding agent that stopped
 

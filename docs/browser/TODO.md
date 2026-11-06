@@ -289,3 +289,9 @@ scrolling and incremental box reuse. Initial native font/shaping
 work is verified at glyph/Unicode/library scope; no website acceptance follows.
 Web fonts/sanitization, complete CSS/live invalidation, networking/V8, the native
 complete shell, universal dark mode and agent/Olo/password/passkey integration remain.
+
+Latest-main integration (4a680075): Browser's 15 reviews and live lint pass,
+but the full 1280×800 desktop lint reports ten findings outside Browser:
+Disk Usage crowding (six), Passwords setup overflow (three), Integrations
+footer/scroll-control grouping (one). Keep these visible for native integration
+acceptance; raw reports are in 2026-11-06-paint-main-integration.json.

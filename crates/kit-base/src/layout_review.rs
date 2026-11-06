@@ -295,7 +295,7 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
     controls(parts, screen, &mut out);
     texts_over(parts, screen, &mut out);
     overflow(parts, ppp, &mut out);
-    crowded(parts, ppp, &mut out);
+    crowded(parts, screen, ppp, &mut out);
     window_edges(parts, screen, &mut out);
     crowded_lines(parts, ppp, &mut out);
     control_edges(parts, ppp, &mut out);
@@ -486,11 +486,17 @@ fn items(p: &Parts) -> Vec<(Rect, String, bool, f32)> {
 
 /// Two things (text, controls) side by side or one over the other with
 /// next to no room between them (a point or two).
-fn crowded(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
     let all = items(p);
     let touching = SAME.max(1.0 / ppp);
+    // (A view across the window, a document's or a list's, sets its own
+    // insets: under a menu bar it's flush, as BeOS has it.)
+    let across = |r: &Rect| r.width() >= 0.8 * screen.width();
     for (i, (ra, na, ta, ba)) in all.iter().enumerate() {
         for (rb, nb, tb, bb) in &all[i + 1..] {
+            if (!ta && across(ra)) || (!tb && across(rb)) {
+                continue;
+            }
             // (Two on one grid of its own are spaced by it: a tray's icons.)
             let grid = grid_of(p, ra);
             if ra.expand(SAME).contains_rect(*rb) || rb.expand(SAME).contains_rect(*ra) || grid != grid_of(p, rb) || grid.is_some() {
@@ -530,7 +536,20 @@ fn window_edges(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
             };
             // (A view across the window, a document's or a list's, sets
             // its own insets too.)
-            if bars.iter().any(|b| on_edge(b) && b.expand(SAME).contains_rect(r)) || grid_of(p, &r).is_some() || r.width() >= 0.8 * screen.width() {
+            // (So do a scroll view's bars, on the edge of a view along the
+            // window's: a document's, as BeOS has it.)
+            let in_scroll = p.scrolls.iter().any(|s| {
+                s.expand(SAME).contains_rect(r)
+                    && s.width() >= 0.8 * screen.width()
+                    && (on_edge(s)
+                        || match side {
+                            "left" => s.min.x - screen.min.x < EDGE_ROOM,
+                            "right" => screen.max.x - s.max.x < EDGE_ROOM,
+                            "top" => s.min.y - screen.min.y < EDGE_ROOM,
+                            _ => screen.max.y - s.max.y < EDGE_ROOM,
+                        })
+            });
+            if bars.iter().any(|b| on_edge(b) && b.expand(SAME).contains_rect(r)) || grid_of(p, &r).is_some() || r.width() >= 0.8 * screen.width() || in_scroll {
                 continue;
             }
             if d > SAME && d < EDGE_ROOM {

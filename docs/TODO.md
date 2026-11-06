@@ -13,37 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **StyledEdit: Markdown edited as it looks (and as source), code with
-  highlighting** (Ben, 2026-11-05, lower priority): "when opening a
-  markdown file StyledEdit should natively support the Markdown and be
-  more like Typora WYSIWYG editing, but also have an option to switch
-  back and forth between WYSIWYG mode and source mode and in source mode
-  it should be like a code editor with syntax highlighting and fixed
-  width font. also make it support code/source mode for all major
-  programming/scripting languages with syntax highlighting and fixed
-  width font." Now: Markdown comes in through Import… (`convert.rs`,
-  `from_markdown`) and goes out as Markdown, as a styled document, and
-  the editor has no highlighting. To do: a `.md` opened is a Markdown
-  document, edited as Typora does (headings, emphasis, lists, quotes,
-  links, pictures, tables, code blocks and inline code shown as they
-  look; the marks of the line being edited shown as typed) and saved as
-  Markdown again, keeping what the person wrote (their list markers,
-  emphasis characters, line breaks, front matter, HTML); a View toggle
-  (and a key, ⌘/ say) between that and Source, which shows the Markdown
-  itself in a code editor: the fixed-width font, syntax highlighting,
-  line numbers, the place kept across the switch. Source mode for every
-  major language as well (Rust, C, C++, Go, Python, JavaScript and
-  TypeScript, shell, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML,
-  CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, …), a file opened
-  by its type going straight to it: highlighting from a Rust grammar
-  library (tree-sitter's grammars, in process), colours from the
-  palette in light, dark and night, incremental as it's typed (a file
-  of 100,000 lines opens and scrolls at once: measured). In the kit
-  (the code editor is one any app could use: Terminal's, Viewer's text),
-  documented in HACKING.
-
-## Not started (highest priority first)
-
 - **auto-fuzz: two tiles overlap as a Terminal opens** (found
   2026-11-04, there before that day's changes too): `tools/dev/auto-fuzz
   NAME --steps 80 --seed 7` on a `--session --shell` session at 3024×1890,
@@ -217,6 +186,8 @@ something nobody here has is in "Blocked", with what it waits for.
   group asked for the group's size at its first commit (as `auto_claim`
   asks a tile's), so it never draws the saved size at all.
 
+## Not started (highest priority first)
+
 - **An app_server restart modesets every display** (seen 2026-11-01
   in the kernel log at each upgrade: apple-dcp `set_digital_out_mode`
   for each of the three displays, "Already set to timingID" yet done
@@ -315,6 +286,49 @@ any other item; making fast things faster waits here.
   for performance work.
 
 ## Done, waiting for Ben to try or confirm
+
+- **StyledEdit: Markdown edited as it looks (and as source), code with
+  highlighting** (Ben, 2026-11-05, lower priority): "when opening a
+  markdown file StyledEdit should natively support the Markdown and be
+  more like Typora WYSIWYG editing, but also have an option to switch
+  back and forth between WYSIWYG mode and source mode and in source mode
+  it should be like a code editor with syntax highlighting and fixed
+  width font. also make it support code/source mode for all major
+  programming/scripting languages with syntax highlighting and fixed
+  width font." *Done* (2026-11-06): a `.md` opens as
+  a Markdown document edited as it looks, Typora's way, its text the
+  file's own Markdown (so it's saved as written: list markers, emphasis
+  characters, line breaks, front matter, HTML): headings; emphasis,
+  strong, struck; `code` on its ground; links; pictures (a file beside
+  it, shown as the picture); bullets, numbers and task boxes hanging in
+  their indents; quotations with their bar; code blocks shaded,
+  labelled and coloured by their fence's language; tables as ruled
+  grids typed in cell by cell (Tab to the next, Return adds a row);
+  rules; front matter. The marks are hidden but on the lines the
+  selection is on, where they show dimmed, as typed. Return goes on
+  with a list (the next number, a task unchecked) or a quotation and
+  ends it on an empty item; Font ▸ Bold, Italic, Strikeout, Code (⌘E),
+  Link (⌘K) and Paragraph ▸ Body, Heading 1–6, Quote and the lists put
+  the marks in. Document ▸ Show Source (⌘/): the same text as a code
+  editor (monospaced, coloured, line numbers), caret, selection and
+  view kept. Source code in 43 languages (`crates/syntax`: tree-sitter
+  grammars in process, highlight queries mapped to the palette's token
+  classes), a file going straight to it by its name, extension or `#!`
+  line; Document ▸ Language to choose; Return keeps the indent, Tab
+  types the file's own. All parsing on workers (a big Markdown
+  document's and big code's once typing pauses), colours following
+  edits meanwhile. In the kit: `olo_ui::code`, and the editor's line
+  numbers, hidden spans, span grounds, paragraph shades, bars and
+  rules, `Row::cells` and `Document::types` (HACKING: "Source code and
+  Markdown"). Measured (release, 120 Hz, bench's new
+  `styled-edit-code`, 100,000 lines of Rust, and `styled-edit-md`,
+  2.2 MB): launch 76–80 ms, scrolling p99 1.1–1.8 ms, typing p50
+  1.7–2.5 ms, max 3.4–5.2 ms at 1× and 2×; plain StyledEdit as before.
+  Checked in light and dark at 1×, 1.5× and 2× (review clean),
+  through a reload.
+  *Left* (Ben): try it on his own Markdown and code. Not done: a
+  table column's own alignment (`:---:`) isn't shown; pictures on the
+  web aren't fetched; a link isn't opened by a click.
 
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable

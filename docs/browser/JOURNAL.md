@@ -2963,3 +2963,36 @@ application registration, universal dark/night and Olo/password/passkey
 integration remain required. **Goal active: 0/100 websites and 0/3,000
 website combinations accepted.** Next: fix the independent pixel failures
 and build actual document interaction, then the network/runtime path.
+
+Latest-main follow-up: the native milestone is **08f9c085** and was pushed.
+The next fetch found **4a680075**, StyledEdit's Markdown/source syntax work,
+including changes in the shared kit. Merged it, retaining all seven new
+journal records from both branches and regenerating the HTML/README. Removed
+one trailing blank line in the upstream Dockerfile query to keep the diff
+check clean. No web runtime source changed; the preceding library measurements
+remain scoped to 08f9c085, with the workspace manifest/lock updated by main.
+
+The merged workspace release builds pass (initial **2m20s**, after the query
+whitespace cleanup **2m10s**). All **216 default** web release tests still
+pass, with the known ignored pixel-gap test. The shared kit/Preferences layout
+suite passes **12 tests**, and the Browser passes all **15 live scale/theme
+reviews** and its 1280×800 live lint again. A broader full-desktop live lint
+was repeated after the build finished: it reports **10 findings outside
+Browser** (Disk Usage six crowding, Passwords three overflowing setup controls,
+Integrations one footer/scroll-control grouping). Those app sources were not
+changed by this browser milestone; this is not a passing full-desktop lint.
+The raw findings are retained in `2026-11-06-paint-main-integration.json`.
+
+A fresh merged native 400-row sample still records **0% CPU, zero wakeups and
+zero frames** over three idle seconds, RSS **81,152 KiB**. This has different
+cache/lifecycle history from the earlier 90,900-KiB sample, so it is not a
+controlled memory improvement. Drag/flick/wheel median intervals
+**8.34/8.32/8.33 ms**, first movement **28.6/28.8/9.0 ms**, slowest client
+draws **.62/.70/.44 ms**, with no hitches in this run. Keep the earlier hitch
+and the persistent touchpad latency open. Full compatibility remains **0/100
+sites / 0/3,000 combinations**; the goal is active.
+
+Merged follow-up validation also passes all **215 all-feature** web release
+tests (one known pixel-gap test ignored), the browser release regression test
+and strict targeted browser clippy. The full-desktop lint's ten other-app
+findings remain recorded and unresolved; no passing result is implied.

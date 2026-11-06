@@ -395,6 +395,7 @@ socket.
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
 | `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Its decoding needs no toolkit (pictures are `Bitmap`s, premultiplied RGBA; token classes are `olo_theme::Syntax`, coloured by `Palette::syntax`)); its views (`ui::PreviewView`, `ui::rich::RichView`, `ui::table::TableView`) are behind its `gpui` feature (the Viewer's and Quick Look's). Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument, RTF and PowerPoint text) are blocks (`doc::Block`) set as a page by `rich.rs`: Word, OpenDocument text and RTF are read by `olo-richtext` (`doc::rich`: headings, lists numbered as they count, quotations, neighbouring code lines as one block, tables as tables; empty paragraphs are spacing, left out), slides by `doc.rs`'s own zip and XML; Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), resampled exactly to their device size. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_xdg::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Text and formatted documents' text is selected as anywhere in Olo (a drag; a word with a double-click, a line with a triple; ⇧ extends; an I-beam over it), drawn behind the text in the kit's selection (`style::selection_behind`, the text fields' too): the text preview's places are a line and a byte, hit by each line shaped as drawn (any characters, not only monospaced ASCII), a whole line's selection taking its line break; a document's are a block, one of its texts, a line and a byte (`WrappedLine::closest_index_for_position`, painted row by row from `position_for_index`, just behind each text so a code block's ground stays under it). `PreviewView::copy` gives what's selected (a document's partial selection: paragraphs apart, a list's items a line apart, a table's cells by tabs and its rows by lines; Select All: every block's own text, laid out yet or not), and `open_find` the kit's find bar (`widgets::find_bar`, Viewer's PDFs' too): a text's matches by line, a document's over what's laid out (found again as more is, "…" until it all is), each marked, the one shown selected and centred. With nothing selected or found the views do nothing more a frame (TODO.md in the rich view scrolling at 60 frames a second: 484 to 535 µs a frame before, 499 to 522 after; the text view's listeners cost about 25 µs a frame). Used by Tracker's Quick Look (`PreviewView::new(item, generation, false, cx)`, images capped at 3200 px) and the Viewer (zoomable: full resolution up to the GPU texture limit, zoom and pan through its `ImageView`). Video (`video.rs`, H.264 in mp4 or Matroska, AV1 and VP9 in Matroska/WebM or mp4, HEVC in mp4 (`hvc1` and `hev1`: `media::mp4_hevc` walks the boxes to its `hvcC` and `colr`, which the mp4 crate skips) or Matroska (`V_MPEGH/ISO/HEVC`, the record in its CodecPrivate, its `Colour`), with `media.playable` set; the mp4 crate doesn't know AV1's `av01` sample entry, so `media::mp4_av1` walks the boxes to it for the track and its `av1C` sequence header, sent before each key frame): a worker demuxes and decodes (OpenH264, rav1d through `olo_images::av1::Decoder`, filmcraft-vp9 through `olo_images::vp9::Decoder`, or rust_h265 through `olo_images::hevc::Decoder`, whose pictures are `av1::Frame`s too: HEVC's from its decoder configuration record's parameter sets, on four threads in display order, its matrix and range the container's, else BT.709 from 720 lines and BT.601 under) up to six frames ahead, giving each picture the earliest outstanding presentation time (VP9's carry their sample's own, and times left behind by samples that showed nothing are dropped) (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it, all but the one still showing at the target (a still screen in a screen recording is one picture, seconds long: seeking into it showed the next change; `seeks_into_a_long_picture`): the last before it is held (made) unless its sample's duration (an MP4's, a Matroska block's own) says it ended first, and queued at the target's time when the next starts after it; past the last picture's end, that one is decoded again (`Lead`). Holding every picture cost a 4K H.264 seek a sixth more (`seek_cost`: 386 ms against 329; with durations, 317); a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound), vp9.webm (libvpx with `-auto-alt-ref 1 -lag-in-frames 25`, so hidden frames in superframes), av1.mp4 (`av1_in_mp4`: 4 s of testsrc2 through libsvtav1, a key frame a second), vp9.mp4 and vp9-10bit.webm (`vp9_plays`: profile 0 in mp4, profile 2 in WebM; every picture, posters, facts), hevc.mp4, hvc1.mp4, hevc.mkv and hevc-10bit.mp4 (`hevc_plays`: 1080p HEVC with B-frames as `hev1`, `hvc1` and Matroska, remuxed by `ffmpeg -c copy`, and JCT-VC's Main 10 WPP_D in an mp4; every picture, seeks, posters, facts) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1), vp9-1080.webm (1080p VP9), gop.mp4 and av1.mp4 to decode at well over 30 frames a second (72 on the M2 Max, 195 now; VP9 120; av1.mp4 600; `OLO_ONLY=a,b` picks samples; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen) for `PreviewView::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. The Viewer's crop overlay (`crop.rs`: drag a frame, move it or its edges) sits where `ImageView::picture_bounds` says the picture is, `set_still` stopping pan and zoom while it is up. The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
 | `crates/richtext` | `olo-richtext`: formatted text documents in and out, natively (zip and quick-xml): Word (`.docx`: styles, numbering, hyperlinks' relationships), OpenDocument text (`.odt`: automatic and named styles, nested lists, `text:s` for runs of spaces) and RTF (`rtf.rs`: a reader of groups and control words — font and colour tables, the style sheet's names for kinds or else `\outlinelevel`, lists from the list table or Word 95's `\pn`, links from `HYPERLINK` fields, tables from `\intbl` paragraphs, `\cell` and `\row` (`\trhdr` a header), any Windows code page by `\ansicpg` or a font's `\fcharset`, `\u` with its fallbacks skipped, surrogate pairs; pictures, headers, footers, notes, hidden text and unknown `\*` destinations left out — and a writer of plain ASCII with a style sheet, a list table per numbered list and every paragraph's look spelled out, as RTF readers take a paragraph's look from its own words, not its style; the reader takes each kind's look off again). A `Document` of `Paragraph`s (kind: body, title, heading 1–3, quote, code; a list, bulleted or numbered, and its level; an indent; alignment; or a `Table` in the flow: rows of cells of paragraphs, the first row maybe a header, and the columns' widths if they have their own (`widths`, shares of the table after `tidy`: Word's `w:gridCol`s, OpenDocument's column styles, RTF's first row's `\cellx` edges), written ruled across the page in each format) of `Span`s (bold, italic, underline, struck out, size, colour, font, monospace, link), indents beyond the levels in points (`left`, `first`, `right`; read as whole levels and the rest) and tab stops (`Tab`: left, centre, right, decimal), and the document's font. `read`/`write` go by the file's extension; `Document::tidy` runs same-styled spans together and makes a line break a new paragraph (in cells too), and gives every row a cell for each column and every cell a paragraph. Light on purpose (StyledEdit links it; `preview` is far heavier), and round-trip tested; its files open in LibreOffice as they look in StyledEdit (`OLO_RICHTEXT_OUT=dir cargo test -p olo-richtext writes_samples` writes a sample of each; `OLO_RICHTEXT_READ=file cargo test -p olo-richtext reads_named_file -- --nocapture` prints how another program's file reads). |
+| `crates/syntax` | `olo-syntax`: source code coloured by syntax, in process: tree-sitter's grammars for 43 languages (Rust, C, C++, Go, Python, JavaScript, TypeScript and TSX, shell and fish, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML, CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, CMake, Scala, Haskell, Zig, Elixir, Erlang, Nix, R, Julia, OCaml, Dart, Objective-C, Protocol Buffers, PowerShell, INI, diffs), each compiled in, with its highlight query (its crate's, or `queries/`: Kotlin's is Olo's own) whose captures map to the palette's token classes (`class_of`: `function.method.call` a function, `variable` plain inside a string). `LANGUAGES`; `detect(path, first_line)` (a whole name like `Makefile`, the extension, a `#!` line's interpreter, `env -S` and versions too); `by_name` (an id, alias or extension: what a Markdown fence says). A `Highlighter` keeps one text's tree: `edit(&Edit)` per change (`Edit::new` with the lines it's on, or `Edit::in_text` counting them), `job(text)` the parse to run on a worker (one out at a time; a language's query compiles in its first, up to half a second for Swift's), `done(parsed)` takes the tree (edits made meanwhile applied to it; what changed: `Changed`), `classes(text, range)` the query over just those bytes (inner captures and a node's first pattern win). 100,000 lines of Rust: parsed in a second, a keystroke's reparse 16 ms (both on the worker), a screenful coloured in 0.35 ms. The kit's `code` module puts it in the editor. |
 | `crates/print` | `olo-print`: printing, natively. `Page`s of `Item`s (text at a baseline with its font, size, colour, width and lines; rectangles; lines; pictures, a PNG, JPEG, GIF or WebP file's bytes in a box), in points from the top left, made into a PDF by `pdf` (krilla: fonts found by fontdb, Olo's own for text naming none, embedded and subset, text stays text; a character the font lacks drawn from a face that has it, `ttf-parser` telling; bold from a variable font's default instance stroked as well as filled, as browsers print it). `ipp`: CUPS spoken to over IPP on `/run/cups/cups.sock` (else `localhost:631`; `OLO_CUPS_SOCKET` for a test's stand-in, as `talks_to_cups` has): `printers()` (name, description, state, paper), `default_printer()`, `print(printer, pdf, &Job)` (copies, paper, pages, sides). `panel::PrintPanel`: the Print window (printer or PDF File, paper, copies, pages; the printers asked for on a worker); `Paper`, `PAPERS` and `local_paper()` (US Letter where it is used, else A4). |
 | `apps/<name>` | One crate per application, binary named `olo-<name>`. Picked up by the workspace glob. |
 | `vendor/` | Patched copies of dependencies (`[patch.crates-io]`), each explained in `vendor/README.md`; drop them when upstream has the fix. |
@@ -1252,7 +1253,10 @@ it loads), tinted when selected.
 
 A paragraph can be a table's row (`Paragraph::row`, an `editor::Row`:
 each column's share of the width, and whether it is a header): its text
-is its cells, a tab between each (`editor::cells`), each laid out in its
+is its cells, a tab between each (`editor::cells`), or where its
+document says they are (`Row::cells`: a Markdown row's, between its
+pipes, the pipes in no cell; Tab goes cell to cell, and the document
+adds a row on Return, `Document::types`), each laid out in its
 column, `CELL_INSET` in from the rules, rows meeting with no space
 between; a table is rows one after another. Hit-testing, the caret, ↑/↓
 (into the cell under the same x in the row above or below), Home/End,
@@ -1278,6 +1282,29 @@ selection puts the caret where it was, so the app's menu can be about
 that word. Agents read it as a `TextInput` with the whole text
 (read-only when it isn't editable).
 
+A span can be `hidden` (no room, not drawn, the caret going past it as
+if it weren't there: a Markdown mark off the caret's line; a row of
+nothing but hidden text is nothing high) and have a `background` (filled
+behind its text, a little wider than it and as high as its face: inline
+code). A hidden span with a `picture` is its picture at its first
+character, whatever that is (`![alt](file)` shown as the picture). A
+paragraph can have a `shade` (filled from its indent to the text's edge,
+top to bottom with its space above and below, so paragraphs one after
+another make one box: a code block's ground), a `bar` down its left in
+the room `left` leaves (a quotation's), a `rule` across its middle (a
+Markdown `---`), and be `verbatim` (code: not checked for spelling).
+Shades and bars of paragraphs one after another, alike, are painted as
+one fill, under everything (a code block's ground is one box, whatever
+its lines' heights at a scale).
+`Options::line_numbers` (a size) numbers each paragraph down a gutter
+at the left in the monospaced face, the caret's brighter, each on its
+paragraph's first baseline; the gutter is as wide as the most digits
+and the text starts after it (the right margin as it was), and it stays
+put when the text scrolls sideways. `Document::types` says what Return
+and Tab type, if not what they would (the bytes replaced, the text, and
+where the caret goes in it): a Markdown list's next marker, code's
+indent.
+
 Spelling (`olo_kit_base::spell`): the system's Hunspell dictionaries
 (`/usr/share/hunspell`, `~/.local/share/hunspell`) in the language of
 `LANG` (else another of that language, else `en_US`), read by spellbook
@@ -1294,6 +1321,69 @@ The editor checks a paragraph that changed on a worker and, when the
 words come, draws its host's view again (`App::notify`), not the window:
 a window refresh draws every cached view afresh too (StyledEdit's tool
 bars, on every key's second frame).
+
+### Source code (`olo_ui::code`) and Markdown (StyledEdit)
+
+Code is shown and edited in the same editor: `code::Code` keeps a
+text's `olo_syntax::Highlighter` (crates/syntax) and makes each line's
+spans, the monospaced face at its size, coloured from the palette's
+token classes in light, dark and night (`Palette::syntax`). The app
+gives every change to `Code::edit` (StyledEdit's `Doc` keeps them with
+the lines they're on: `Doc::keep_edits`, `take_edits`) and calls
+`code::parse(cx, code, text, find)` when it draws: the parse runs on the
+background executor, one at a time (again when the text changed
+meanwhile), and the view draws again when the colours come. Until the
+first is back the text is plain; after an edit, colours stay on their
+characters (the old tree, edited) until the new one. A line's spans are
+made once, when it first shows, and kept until the text or the tree
+changes (only the lines a parse changed are made again). Nothing runs
+while idle; nothing parses on the UI thread.
+
+StyledEdit opens a file by its kind (`Mode`): code (`code::detect`: its
+name, extension or `#!` line) in the code view with line numbers
+(Document ▸ Line Numbers), Return keeping the line's indent and Tab
+typing the file's own (a tab, or two or four spaces, as its lines are
+indented; ⇧Tab takes one away); Markdown (`.md` and kin) as it looks
+or as its source (Document ▸ Show Source, ⌘/); anything else, or a
+file with styles of its own, as a styled document. Document ▸ Language
+shows plain text as any of them. Code and Markdown are saved as their
+text alone, so what's saved is what was written.
+
+Markdown (styled-edit markdown.rs): the text in the editor is the
+file's own Markdown, parsed again as it changes (pulldown-cmark, each
+event with its place) into each line's block (heading, list item with
+its depth, quotation, code block and fence, table row, front matter,
+HTML, rule, a line in no block such as a link's definition) and each
+byte's styles and whether it is content or a mark. As it looks, a
+paragraph is set as its block is: headings larger and bold with room
+above, a list item's bullet (•, ◦, ▪ by depth), number or task box
+(☐ ☑) hanging in its indent, a quotation's bar and grey text, a code
+block's shaded ground with its fence's language as a small label (code
+coloured by that language: `olo_ui::code`, parsed on the spot as it's
+small, kept while unchanged), a rule for `---`; inline emphasis,
+strong, struck, `code` on its ground, links in the link colour; and
+the marks that make them hidden, except on the lines the selection is
+on, where they show dimmed, as typed (`Look::set_reveal`). A table is
+a ruled grid (the editor's rows, `Row::cells` its cells between the
+pipes, columns as wide as their longest cell, its `|---|` line hidden
+off the caret): typed in cell by cell, Tab to the next, Return a new
+row. HTML and link definitions show as typed in the monospaced face. Pictures (`![alt](file)`, a file beside the document) show as
+the picture off the caret's line. As source: the same text in the
+monospaced face, headings, links, code and marks each coloured, with
+line numbers; the place (caret, selection, view) is the same across
+the switch, as the text is. Up to 256 KB a document is parsed again at
+each change (about 9 ms a megabyte); a bigger one on a worker
+(`markdown::parse`, once typing pauses for `code::PAUSE`), its lines
+following each edit meanwhile (`Look::shift`: a typed byte styled as
+the one before it), and only the lines the parse sets otherwise are
+laid out again. Source code over `code::BIG` is parsed once typing
+pauses too, and an undo step of text alone (code, Markdown) doesn't
+copy every paragraph's settings. Return on a list item types the next one's
+marker (a number one more, a task unchecked), in an empty one ends the
+list; in a quotation, `> ` again. Font ▸ Bold, Italic, Strikeout, Code
+(⌘E) and Link (⌘K) put the marks around the selection (or take them
+away); Paragraph makes the selection's lines body text, a heading 1–6,
+a quotation or a bulleted, numbered or task list, by their marks.
 
 ### Look and feel rules
 
@@ -2239,6 +2329,9 @@ event reaches it.
 - `menu::shortcut_command(window, cx, keystroke)`: the menu bar command
   a keystroke chooses, for a view that takes the keys itself and lets
   one through (Agent Screens' ⌘K while controlling).
+- `code` (source code in the editor; see "Source code" above): `Code`
+  (`spans`, `edit`, `reset`, `job`/`done`) and `code::parse`; re-exports
+  `olo_syntax`'s `detect`, `by_name`, `Language`, `Edit`, `Class`.
 - `editor` (StyledEdit's text; see "The text editor" above): styled
   text in paragraphs, laid out by `editor::layout` (shaped once by
   GPUI's text system, placed in rows: wrapping at spaces and hyphens,
@@ -2246,9 +2339,10 @@ event reaches it.
   justification, pictures as characters, emoji). The app keeps an
   `Editor` and its text behind the `Document` trait (`text`, `spans`
   each paragraph's styles, `paragraph` its format: indents, spacing,
-  alignment, a list's marker, a table's row, pictures; `replace`,
-  `copied`/`paste` for styles on the clipboard, `key` for Return, Tab
-  and Backspace it has its own meaning for, as a list's or a table's)
+  alignment, a list's marker, a table's row, pictures, a shade, bar or
+  rule; `replace`, `copied`/`paste` for styles on the clipboard, `key`
+  for Return, Tab and Backspace it has its own meaning for, as a list's
+  or a table's, `types` for what Return and Tab type instead)
   and is its `EditorHost` (`editor(key, cx, f)` hands both over;
   `edited`, `context_menu`, `text_moved`). `editor::view(host, key,
   &editor, options, window)` is the element: a `ScrollView` that

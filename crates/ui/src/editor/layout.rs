@@ -32,14 +32,21 @@ pub struct Span {
     pub strike: bool,
     /// A picture's character ([`PICTURE`](super::PICTURE)) in this span is
     /// as wide and high as this, in points; the editor draws the picture
-    /// there.
+    /// there. In a hidden span, the span's first character is the
+    /// picture, whatever it is (Markdown's `![alt](file)` shown as the
+    /// picture it names).
     pub picture: Option<(f32, f32)>,
+    /// Takes no room and isn't drawn (a Markdown mark off the caret's
+    /// line): the caret goes past it as if it weren't there.
+    pub hidden: bool,
+    /// Filled behind its text (inline code).
+    pub background: Option<Hsla>,
 }
 
 impl Span {
     /// Plain text in `font` at `size`.
     pub fn new(len: usize, font: Font, size: f32) -> Span {
-        Span { len, font, size, color: None, underline: false, strike: false, picture: None }
+        Span { len, font, size, color: None, underline: false, strike: false, picture: None, hidden: false, background: None }
     }
 }
 
@@ -160,6 +167,8 @@ pub enum Kind {
     Space,
     Tab,
     Picture,
+    /// In a hidden span ([`Span::hidden`]): no room, not drawn.
+    Hidden,
 }
 
 /// A character (or a cluster of them shaped as one, a ligature's) placed.
@@ -199,6 +208,7 @@ pub struct Ink {
     pub metrics: Metrics,
     /// A picture's width and height (its span's).
     pub picture: Option<(f32, f32)>,
+    pub background: Option<Hsla>,
 }
 
 /// One row of a paragraph.
@@ -258,11 +268,13 @@ pub fn lay_out(shaper: &dyn Shaper, text: &str, spans: &[Span], p: &Params) -> L
 /// sets it in one).
 pub fn shape(shaper: &dyn Shaper, text: &str, spans: &[Span]) -> Laid {
     let first_size = spans.first().map_or(style::PLAIN_SIZE, |s| s.size);
-    let mut inks: Vec<Ink> =
-        spans.iter().map(|s| Ink { color: s.color, underline: s.underline, strike: s.strike, size: s.size, metrics: shaper.metrics(&s.font, s.size), picture: s.picture }).collect();
+    let mut inks: Vec<Ink> = spans
+        .iter()
+        .map(|s| Ink { color: s.color, underline: s.underline, strike: s.strike, size: s.size, metrics: shaper.metrics(&s.font, s.size), picture: s.picture, background: s.background })
+        .collect();
     if inks.is_empty() {
         let font = style::ui_font(gpui::FontWeight::NORMAL);
-        inks.push(Ink { color: None, underline: false, strike: false, size: first_size, metrics: shaper.metrics(&font, first_size), picture: None });
+        inks.push(Ink { color: None, underline: false, strike: false, size: first_size, metrics: shaper.metrics(&font, first_size), picture: None, background: None });
     }
     let runs: Vec<TextRun> = spans
         .iter()
@@ -308,15 +320,19 @@ pub fn shape(shaper: &dyn Shaper, text: &str, spans: &[Span]) -> Laid {
             }
             let ch = text[byte..].chars().next().unwrap_or(' ');
             let span = span_of(byte);
-            let picture = spans.get(span).and_then(|s| s.picture).filter(|_| ch == super::PICTURE);
+            let hidden = spans.get(span).is_some_and(|s| s.hidden);
+            // (Hidden, its first character is its picture.)
+            let picture = spans.get(span).and_then(|s| s.picture).filter(|_| ch == super::PICTURE || (hidden && starts.get(span) == Some(&byte)));
             let kind = match ch {
-                '\t' => Kind::Tab,
                 _ if picture.is_some() => Kind::Picture,
+                _ if hidden => Kind::Hidden,
+                '\t' => Kind::Tab,
                 c if c.is_whitespace() && c != '\u{a0}' => Kind::Space,
                 _ => Kind::Text,
             };
             let adv = match picture {
                 Some((w, _)) => w,
+                None if hidden => 0.0,
                 None => (next_x - x0).max(0.0),
             };
             units.push(Unit { byte, end, glyphs: g0..glyphs.len() as u32, x: 0.0, adv, span: span.min(u16::MAX as usize) as u16, kind });
@@ -433,9 +449,18 @@ impl Laid {
         let base = self.inks[0].metrics;
         for row in &mut rows {
             let (mut ascent, mut descent) = (0.0f32, 0.0f32);
-            for u in &self.units[row.units.clone()] {
+            let us = &self.units[row.units.clone()];
+            // All hidden (a mark on a line of its own): no height at all.
+            if !us.is_empty() && us.iter().all(|u| u.kind == Kind::Hidden) {
+                row.top = y;
+                row.ascent = 0.0;
+                row.height = 0.0;
+                continue;
+            }
+            for u in us {
                 match u.kind {
                     Kind::Picture => ascent = ascent.max(self.picture_height(u)),
+                    Kind::Hidden => {}
                     _ => {
                         let m = self.inks[u.span as usize].metrics;
                         ascent = ascent.max(m.ascent);
@@ -590,6 +615,37 @@ impl Laid {
         out
     }
 
+    /// What's filled behind its text ([`Span::background`]): each
+    /// stretch's rectangle (in the box, a little wider than its text and
+    /// as high as its face) and colour.
+    pub fn backgrounds(&self) -> Vec<((f32, f32, f32, f32), Hsla)> {
+        let mut out = Vec::new();
+        if self.inks.iter().all(|i| i.background.is_none()) {
+            return out;
+        }
+        for row in &self.rows {
+            let us = &self.units[row.units.clone()];
+            let mut k = 0;
+            while k < us.len() {
+                let ink = self.inks[us[k].span as usize];
+                let Some(bg) = ink.background.filter(|_| us[k].kind != Kind::Hidden) else {
+                    k += 1;
+                    continue;
+                };
+                let mut j = k + 1;
+                while j < us.len() && us[j].kind != Kind::Hidden && self.inks[us[j].span as usize].background == Some(bg) {
+                    j += 1;
+                }
+                let pad = (ink.size * 0.18).round().max(1.0);
+                let base = row.top + row.ascent;
+                let (x0, x1) = (us[k].x - pad, us[j - 1].x + us[j - 1].adv + pad);
+                out.push(((x0, base - ink.metrics.ascent - 1.0, x1, base + ink.metrics.descent + 1.0), bg));
+                k = j;
+            }
+        }
+        out
+    }
+
     /// Its pictures: each one's byte and rectangle (in the box).
     pub fn pictures(&self) -> impl Iterator<Item = (usize, (f32, f32, f32, f32))> + '_ {
         self.rows.iter().flat_map(move |row| {
@@ -617,7 +673,7 @@ impl Laid {
             }
             let base = snap(oy + row.top + row.ascent, s);
             let us = &self.units[row.units.clone()];
-            let drawn = |u: &&Unit| !matches!(u.kind, Kind::Tab | Kind::Picture | Kind::Space);
+            let drawn = |u: &&Unit| !matches!(u.kind, Kind::Tab | Kind::Picture | Kind::Space | Kind::Hidden);
             // The row's glyphs in one go, from where they were found last
             // time; emoji (colour sprites) each.
             window.paint_glyph_run(&mut painted[r], point(px(ox), px(base)), stamp, |glyph| {
@@ -637,7 +693,7 @@ impl Laid {
             let mut k = 0;
             while k < us.len() {
                 let ink = self.inks[us[k].span as usize];
-                if !(ink.underline || ink.strike) || us[k].kind == Kind::Picture {
+                if !(ink.underline || ink.strike) || matches!(us[k].kind, Kind::Picture | Kind::Hidden) {
                     k += 1;
                     continue;
                 }
