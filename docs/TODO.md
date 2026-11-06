@@ -342,7 +342,13 @@ of Finished; a new one goes where its priority puts it.
   outright, two failed at step 54 for one look of 193 (a StyledEdit
   opened before the restart showing only then, mid-drag, joining tile
   1's group and drawn at 290 px while its neighbour was where the drag
-  began: the newcomer case above, still racing).
+  began: the newcomer case above, still racing). *Tried* (2026-11-05):
+  letting a newcomer that hasn't drawn its asked size wait 600 ms rather
+  than `FRONTING`'s 100 before it's its group's front; it broke focus (a
+  window opening into a group wasn't the front when the keyboard was
+  given, so none had it: seed 16 failed at step 4 every run), so it was
+  taken back. The fix wants the keyboard to follow such a window once
+  it's fronted, or the newcomer's wait to apply only mid-drag.
 
 - **The power mode sets the GPUs too** (Ben, 2026-11-04): "when
   changing the power mode in power prefs (and right clicking the battery
