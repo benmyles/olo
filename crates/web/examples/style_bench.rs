@@ -105,7 +105,7 @@ fn main() {
                 }
             }
             let three_queries_ns = start.elapsed().as_secs_f64() * 1e9 / (rounds * 100 * n) as f64;
-            cases.push(json!({"scene":scene,"elements":n,"styled_nodes":memory.styles,"defaults_us":defaults_us,"first_build_ms":first_build_ms,"first_max_step_us":first_max_step_us,"build_drop_ms":build_drop_ms,"max_step_us":max_step_us,"three_queries_ns":three_queries_ns,"style_headers_bytes":memory.styles_bytes,"shared_defaults_bytes":memory.defaults_bytes,"override_bytes":memory.overrides_bytes,"font_bytes":memory.fonts_bytes,"custom_bytes":memory.customs_bytes,"numeric_bytes":memory.numeric_bytes,"accounted_style_payload_bytes":memory.accounted_reserved_bytes,"tree_container_bytes":container_bytes,"accounted_style_tree_bytes":memory.accounted_reserved_bytes+container_bytes}));
+            cases.push(json!({"scene":scene,"elements":n,"styled_nodes":memory.styles,"defaults_us":defaults_us,"first_build_ms":first_build_ms,"first_max_step_us":first_max_step_us,"build_drop_ms":build_drop_ms,"max_step_us":max_step_us,"three_queries_ns":three_queries_ns,"style_headers_bytes":memory.styles_bytes,"shared_defaults_bytes":memory.defaults_bytes,"override_bytes":memory.overrides_bytes,"font_bytes":memory.fonts_bytes,"families_bytes":memory.families_bytes,"custom_bytes":memory.customs_bytes,"numeric_bytes":memory.numeric_bytes,"accounted_style_payload_bytes":memory.accounted_reserved_bytes,"tree_container_bytes":container_bytes,"accounted_style_tree_bytes":memory.accounted_reserved_bytes+container_bytes}));
         }
     }
     println!(

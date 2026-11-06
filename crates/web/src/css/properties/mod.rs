@@ -1,10 +1,12 @@
 //! Typed property declarations, before cascade and layout. Worker-only APIs.
 mod display;
+mod font;
 mod numeric;
 mod parse;
 mod registry;
 use super::{Component, Components, Kind, Statement, StatementKind, color, math, variables};
 pub use display::{Display, Inner, Internal, Outer};
+pub use font::{Families, Family, GenericFamily};
 pub use numeric::{Numeric, NumericKind, Range};
 pub use registry::{Keyword, Name, Property, Shorthand};
 use smallvec::SmallVec;
@@ -81,8 +83,10 @@ pub enum Value {
     Color(color::Value),
     Display(Display),
     FitContent(Numeric),
+    Families(Families),
     Pending(Arc<Pending>),
 }
+
 impl Value {
     pub fn dependencies(&self) -> Dependencies {
         match self {
@@ -97,6 +101,7 @@ impl Value {
     pub fn reserved_bytes(&self) -> usize {
         match self {
             Self::Numeric(v) | Self::FitContent(v) => v.expression().memory().accounted_reserved_bytes,
+            Self::Families(f) => f.reserved_bytes(),
             Self::Color(v) => v.expression_reserved_bytes(),
             Self::Pending(v) => size_of::<Pending>() + 2 * size_of::<usize>() + v.tokens.arena_reserved_bytes(),
             _ => 0,

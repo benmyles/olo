@@ -10,6 +10,7 @@ pub struct Memory {
     pub defaults_bytes: usize,
     pub overrides_bytes: usize,
     pub fonts_bytes: usize,
+    pub families_bytes: usize,
     pub customs_bytes: usize,
     pub numeric_bytes: usize,
     pub accounted_reserved_bytes: usize,
@@ -35,9 +36,25 @@ impl Account {
     fn font(&mut self, font: &Arc<Font>) {
         if self.seen.insert(Arc::as_ptr(font) as usize) {
             self.memory.fonts_bytes += size_of::<Font>() + 2 * size_of::<usize>();
+            self.families(&font.request.families);
+        }
+    }
+    fn families(&mut self, families: &Families) {
+        if self.seen.insert(families.identity()) {
+            self.memory.families_bytes += 2 * size_of::<usize>() + size_of_val(families.as_slice());
+            for family in families.as_slice() {
+                if let Family::Named(name) = family
+                    && self.seen.insert(Arc::as_ptr(name) as *const u8 as usize)
+                {
+                    self.memory.families_bytes += name.len() + 2 * size_of::<usize>();
+                }
+            }
         }
     }
     fn numeric(&mut self, value: &Value) {
+        if let Value::Families(f) = value {
+            self.families(f);
+        }
         if let Value::Numeric(n) | Value::FitContent(n) = value
             && let math::Value::Expression(program) = n.expression()
             && self.seen.insert(Arc::as_ptr(program) as usize)
@@ -50,7 +67,13 @@ impl Account {
         self.memory.styles_bytes += size_of::<Style>();
         if self.seen.insert(Arc::as_ptr(&style.defaults) as usize) {
             self.memory.defaults_bytes += size_of::<Defaults>() + 2 * size_of::<usize>() + style.defaults.values.len() * size_of::<Entry>() + style.defaults.specified.len() * size_of::<p::Value>();
-            self.memory.defaults_bytes += style.defaults.specified.iter().map(p::Value::reserved_bytes).sum::<usize>();
+            for value in &style.defaults.specified {
+                if let p::Value::Families(f) = value {
+                    self.families(f);
+                } else {
+                    self.memory.defaults_bytes += value.reserved_bytes();
+                }
+            }
             for entry in &style.defaults.values {
                 self.numeric(&entry.value);
             }
@@ -76,7 +99,12 @@ impl Account {
                 }
             }
         }
-        self.memory.accounted_reserved_bytes =
-            self.memory.styles_bytes + self.memory.defaults_bytes + self.memory.overrides_bytes + self.memory.fonts_bytes + self.memory.customs_bytes + self.memory.numeric_bytes;
+        self.memory.accounted_reserved_bytes = self.memory.styles_bytes
+            + self.memory.defaults_bytes
+            + self.memory.overrides_bytes
+            + self.memory.fonts_bytes
+            + self.memory.families_bytes
+            + self.memory.customs_bytes
+            + self.memory.numeric_bytes;
     }
 }

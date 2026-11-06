@@ -1,0 +1,205 @@
+{
+  "scope": "23 local font CSSOM cases at 1x on owned Wayland Agent Screen, 17 selected semantic observations for native comparison and six explicit reference-feature gaps. No font loading/matching/shaping/layout/rasterization or website evidence.",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+  "support": {
+    "fontWidth": false,
+    "left": false,
+    "right": false,
+    "generic": false
+  },
+  "probe_sha256": "9f6b42cfcaa9d8f7aa1abd9e269136c558790367e0d5c4a1a1fdd3e37c12d94c",
+  "counts": {
+    "selected": 17,
+    "reference_feature_gaps": 6
+  },
+  "rows": [
+    {
+      "name": "family-list",
+      "css": "font-family:New/**/Century Schoolbook, \"serif\", sans-serif",
+      "values": {
+        "font-family": "\"New Century Schoolbook\", \"serif\", sans-serif"
+      }
+    },
+    {
+      "name": "family-system-names",
+      "css": "font-family:caption, message-box, status-bar",
+      "values": {
+        "font-family": "caption, message-box, status-bar"
+      }
+    },
+    {
+      "name": "family-escape",
+      "css": "font-family:generic\\(kai\\), \"a,b\", \\31 st",
+      "values": {
+        "font-family": "\"generic(kai)\", \"a,b\", \"1st\""
+      }
+    },
+    {
+      "name": "style-oblique",
+      "css": "font-style:oblique",
+      "values": {
+        "font-style": "oblique"
+      }
+    },
+    {
+      "name": "style-oblique 0deg",
+      "css": "font-style:oblique 0deg",
+      "values": {
+        "font-style": "normal"
+      }
+    },
+    {
+      "name": "style-oblique 14deg",
+      "css": "font-style:oblique 14deg",
+      "values": {
+        "font-style": "oblique 14deg"
+      }
+    },
+    {
+      "name": "style-oblique 10grad",
+      "css": "font-style:oblique 10grad",
+      "values": {
+        "font-style": "oblique 9deg"
+      }
+    },
+    {
+      "name": "style-oblique calc(100deg)",
+      "css": "font-style:oblique calc(100deg)",
+      "values": {
+        "font-style": "oblique 90deg"
+      }
+    },
+    {
+      "name": "style-oblique calc(-100deg)",
+      "css": "font-style:oblique calc(-100deg)",
+      "values": {
+        "font-style": "oblique -90deg"
+      }
+    },
+    {
+      "name": "style-oblique calc(10deg - 10deg)",
+      "css": "font-style:oblique calc(10deg - 10deg)",
+      "values": {
+        "font-style": "normal"
+      }
+    },
+    {
+      "name": "style-italic",
+      "css": "font-style:italic",
+      "values": {
+        "font-style": "italic"
+      }
+    },
+    {
+      "name": "width-alias-order",
+      "css": "font-stretch:200%;font-width:75%;font-stretch:125%",
+      "values": {
+        "font-stretch": "125%"
+      },
+      "uncompared_values": {
+        "font-width": ""
+      },
+      "scope": "Only final legacy font-stretch=125% is compared. Reference ignores the intervening font-width declaration; this is not Chrome evidence for alias identity."
+    },
+    {
+      "name": "legacy-width-ultra-condensed",
+      "css": "font-stretch:ultra-condensed",
+      "values": {
+        "font-stretch": "50%"
+      }
+    },
+    {
+      "name": "legacy-width-semi-expanded",
+      "css": "font-stretch:semi-expanded",
+      "values": {
+        "font-stretch": "112.5%"
+      }
+    },
+    {
+      "name": "legacy-width-234.5%",
+      "css": "font-stretch:234.5%",
+      "values": {
+        "font-stretch": "234.5%"
+      }
+    },
+    {
+      "name": "legacy-width-calc(-100%)",
+      "css": "font-stretch:calc(-100%)",
+      "values": {
+        "font-stretch": "0%"
+      }
+    },
+    {
+      "name": "legacy-width-calc(50% + 12.5%)",
+      "css": "font-stretch:calc(50% + 12.5%)",
+      "values": {
+        "font-stretch": "62.5%"
+      }
+    }
+  ],
+  "reference_feature_gaps": [
+    {
+      "name": "family-case",
+      "css": "font-family:FangSong, UI-Serif, \"UI-Serif\"",
+      "values": {
+        "font-family": "FangSong, UI-Serif, UI-Serif"
+      },
+      "reason": "Reference preserves UI-Serif case and collapses quoted/unquoted output, suggesting named-family handling; native current-spec generic identity differs. Kept as a gap, not counted passed."
+    },
+    {
+      "name": "width-ultra-condensed",
+      "css": "font-width:ultra-condensed",
+      "values": {
+        "font-width": "",
+        "font-stretch": "100%"
+      },
+      "reason": "Reference does not support the font-width property; those declarations are ignored. Native current-spec font-width is tested independently."
+    },
+    {
+      "name": "width-semi-expanded",
+      "css": "font-width:semi-expanded",
+      "values": {
+        "font-width": "",
+        "font-stretch": "100%"
+      },
+      "reason": "Reference does not support the font-width property; those declarations are ignored. Native current-spec font-width is tested independently."
+    },
+    {
+      "name": "width-234.5%",
+      "css": "font-width:234.5%",
+      "values": {
+        "font-width": "",
+        "font-stretch": "100%"
+      },
+      "reason": "Reference does not support the font-width property; those declarations are ignored. Native current-spec font-width is tested independently."
+    },
+    {
+      "name": "width-calc(-100%)",
+      "css": "font-width:calc(-100%)",
+      "values": {
+        "font-width": "",
+        "font-stretch": "100%"
+      },
+      "reason": "Reference does not support the font-width property; those declarations are ignored. Native current-spec font-width is tested independently."
+    },
+    {
+      "name": "width-calc(50% + 12.5%)",
+      "css": "font-width:calc(50% + 12.5%)",
+      "values": {
+        "font-width": "",
+        "font-stretch": "100%"
+      },
+      "reason": "Reference does not support the font-width property; those declarations are ignored. Native current-spec font-width is tested independently."
+    }
+  ],
+  "screen": {
+    "name": "browser-style-check",
+    "width": 1280,
+    "height": 800,
+    "scale": 1,
+    "wayland": true
+  },
+  "launch": "olo-screen run browser-style-check olo-chrome --user-data-dir=/var/tmp/olo-browser-research/fonts/chrome-profile http://127.0.0.1:18864/probe.html",
+  "chrome_install_directory": "157.0.8103.38",
+  "chrome_binary_sha256": "fa67e06a5bcd0525739996fb8e3ecff449039e6165c15ea7968d3935e59e829e"
+}

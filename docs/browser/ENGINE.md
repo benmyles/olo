@@ -1030,8 +1030,8 @@ are in `measurements/2026-11-05-logical*.json`; journal records the outcomes.
 
 ## Frozen initial computed styles
 
-`css::style` computes immutable values for the current **89 longhands and 16
-shorthands**, stored under **69 canonical physical/unpaired longhands**. This
+`css::style` computes immutable values for the current **92 longhands and 16
+shorthands**, stored under **72 canonical physical/unpaired longhands**. This
 is a bounded worker stage, not complete CSS or a rendering engine. `Defaults`
 compiles typed initial spellings and their computed baseline once per immutable
 `Host::revision`, shared across styles. Initial values are not an HTML UA
@@ -1040,7 +1040,8 @@ selection still need that layer.
 
 `Host` supplies a coherent scheme/system palette, device scale including zoom,
 UA font-size keyword policy and already-selected `FontMetrics` for a
-`FontRequest { size, weight, axes }`. Optional viewport/container/tree callbacks
+`FontRequest { size, weight, width, slant, families, axes }`, borrowed by the
+callback. Optional viewport/container/tree callbacks
 are bound to the subject element; unavailable contexts return errors. No
 guessed font or viewport is substituted. The host must change its revision when
 any of these inputs change. This API does not select fonts, shape text, load
@@ -1164,3 +1165,115 @@ Normative rules consulted 2026-11-05: [CSS Cascade 5 defaulting](https://drafts.
 [CSS Backgrounds 3 border width](https://drafts.csswg.org/css-backgrounds-3/#border-width),
 [CSS Text 4 spacing](https://drafts.csswg.org/css-text-4/#letter-spacing-property) and
 [CSS Text 3 alignment](https://drafts.csswg.org/css-text-3/#text-align-property).
+
+## Font longhands and face requests
+
+The supported registry now has **92 longhands** (91 reset by all), including
+`font-family`, `font-style` and `font-width`. `Name::parse` canonicalizes the
+legacy name `font-stretch` to FontWidth, sharing one declaration/cascade identity
+and source order. This is an alias, not a second competing computed value.
+The font shorthand, font-face/descriptors, variation/features/synthesis policy,
+language/script fallback, actual font loading/matching and shaping remain open.
+
+`properties::Families` owns one immutable shared array of ordered `Family` values:
+Named decoded strings or GenericFamily enums. Quoted generic words stay Named;
+unquoted identifier sequences join with single spaces, preserving decoded case
+and characters for later matching. Full fallback lists and long multiword names
+are not capped by quad-value scratch. CSS-wide/default and generic keywords
+cannot occur inside unquoted names. Named system-font words such as caption are
+ordinary family names in this property, not a system-font shorthand request.
+Whitespace, comments, escaped names, quoted commas and implicit string closure
+at EOF pass through the original Syntax tokenizer. Compilation bounds/cancel
+checks apply before copying names; no Syntax/source document is retained.
+
+Current Font 4 generic keywords and generic(fangsong/kai/khmer-mul/nastaliq)
+are represented explicitly. These identify a requested generic; they do not
+select an installed face or promise glyph coverage. Names are preserved, not
+casefolded by the parser; actual CSS font-name matching still needs that stage.
+Quoted and unquoted named forms can represent the same computed family.
+
+Font style retains normal/italic/left/right/bare-oblique keywords or an explicit
+angle. Literal angles convert units for the [-90,90] degree grammar check;
+calculations clamp at computation using the existing numeric boundary, including
+IEEE special handling. Explicit zero angle computes to normal; bare oblique
+retains its computed keyword but requests a 14-degree slope. Font width keywords
+map to 50/62.5/75/87.5/100/112.5/125/150/200 percent. Calculated percentages freeze
+before face selection (negative calculations clamp to zero); the computed value
+retains percentage type, not a layout percentage or a 0–1 opacity ratio.
+
+Family/style/width prerequisites resolve before the subject font callback.
+Font-relative numeric inputs in font-affecting properties use the parent's font
+and line metrics, not the new subject's metrics. Other properties use the
+subject's resulting metrics. Inherited computed angles/widths do not reevaluate
+parent expressions. `FontRequest { size, weight, width, slant, families, axes }`
+owns the shared family list, uses width=100 for normal and carries a FontSlant
+selection value. `Host::font(&FontRequest)` receives this borrowed request;
+unchanged full requests reuse the existing Font Arc. Equal used slants can
+share a Font while retaining different computed syntax (bare vs explicit 14deg).
+The request specifies face selection, never geometrically stretches a font.
+
+Styles still have 80-byte headers; Font payload plus Arc controls is now 120 B
+instead of 88 B (128 B with the fat-handle control). A thin family-list handle
+uses triomphe's safe shared-ownership API; no third-party CSS or font engine is
+embedded. Its strong count and stored length occupy the same two-word allocation
+header counted for the standard fat Arc control. Lists/names share with the compiled declaration, Defaults,
+fonts and computed arrays. `Memory::families_bytes` deduplicates them across all
+these owners. The measurement excludes allocator/hash controls and borrowed
+DOM/rules; it is distinct from process RSS. No new threads/I/O/polling/SIMD/GPU
+path is introduced by these scalar grammars and dependency rules.
+
+Independent native ports pin nine original WPT pages and two helpers in
+`tests/font-fixtures`: **93/149 pass; 56 unsupported**, no unexpected
+mismatch/error/panic. The 140 literal assertion inputs plus nine browser drivers
+retain the denominator. Grammar ports check acceptance only. Ten family
+computed assertions run the production initial document job with independent
+canonical semantic references. All 47 original style/width computed assertions
+require missing container-type context (style also links Ahem) and remain
+unsupported, even for constant inputs. Tests do not supply real selected fonts
+or execute CSSOM/JS/shaping/layout/rasterization. See the fixture README and
+coverage artifact for exact scope.
+
+Owned Wayland Chrome 157.0.0.0 probes record 23 local cases at 1×: all **17
+selected supported observations match** native semantic values; **six explicit
+reference-feature gaps are retained separately**. This reference ignores
+font-width, so five such input cases cannot validate native current-spec width.
+Its UI-Serif serialization preserves case and collapses quoted/unquoted output,
+suggesting named-family handling; that differs from the current-spec generic
+and is retained as a gap. It also reports no support for left/right style or the
+generic() function. Legacy font-stretch observations validate width numeric
+behavior independently. Those gaps are not passes and not website results.
+Probe sources, observed values, binary identity and exclusions are recorded in
+`measurements/2026-11-05-font-chrome.{json,html}`. No screenshot/visual review or
+font selection claim follows from these structured CSSOM probes.
+
+```sh
+cargo test --release -p olo-web --test fonts
+/usr/bin/python3 crates/web/tests/font-fixtures/extract.py
+cargo run --release -p olo-web --example font_eval -- /var/tmp/font-report.json
+# Exits 1 while any inventoried assertion/driver remains unsupported.
+cargo run --release -p olo-web --example font_bench -- 10
+```
+
+The font benchmark uses fixed supplied metrics and independently generated
+request/scalar expectations, not installed face metrics. Its new-feature costs
+are not speedups over a prior browser. The common before/after style/raw probes,
+retained payload, RSS, cold calls and maximum observed worker steps are in
+`measurements/2026-11-05-font.json` with the replay runner. Adding enum variants
+initially crossed the compiler's derived-clone inlining threshold; the raw
+query regression and focused controls are retained in that evidence. Normal
+builds retain derived value cloning, with direct known-type numeric/color copies
+at the cascade boundary. `baseline-cascade-value-copy` selects the general outer
+enum clone there; `baseline-font-family-fat` uses a fat standard Arc family
+handle. All-feature tests cover both controls. Whole-clone forced inlining was
+not retained: it traded numeric costs against slower colors. Raw owned-query
+costs versus the parent remain profiling work; no settled performance acceptance
+or universal speedup is claimed. These are ownership/code-generation choices,
+not a new cascade semantic algorithm.
+
+Primary rules: [CSS Fonts 4 families](https://drafts.csswg.org/css-fonts-4/#font-family-prop),
+[style](https://drafts.csswg.org/css-fonts-4/#font-style-prop),
+[width and alias](https://drafts.csswg.org/css-fonts-4/#font-width-prop) and
+[CSS Values 4 font-relative contexts](https://drafts.csswg.org/css-values-4/#font-relative-lengths),
+consulted 2026-11-05. Native loading/matching, UA styling, layout, painting,
+networking, V8, native shell/agent control/Olo integrations and all website
+journeys remain required by the full goal.

@@ -1,0 +1,36 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "d7bb5bb848fcd304c10669288a211dbafd106d90",
+  "resource_directory": "css/css-fonts/parsing (helpers css/support)",
+  "files": {
+    ".gitattributes": "c6a6c303cfda51673d39df3addb42834783bf6f675b033f963d7eff77600d8c0",
+    "LICENSE.md": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570",
+    "README.md": "e9f88f13fd7aff6e370e60c34220077d09b1476d9dd38b0f951cb07e2583a348",
+    "derived.json": "45b7429351a17f2e4a3b6db19178c49fd4bfd6be10be72c0fced00a703825a08",
+    "extract.py": "0b950e2d58482e0950ea723d5aa437eb7ec84664a30bd2f60810b7ebd2a05f98",
+    "wpt/computed-testcommon.js": "20bd767e8a8bd9e4857a29aecfd52cad305ed4af1cf73a5064916a8a1d38ab01",
+    "wpt/font-family-computed.html": "528f9033f10f89cc09edbf574f477c9d3d3e309c6cad91a0b10636509213022e",
+    "wpt/font-family-invalid.html": "897b5a73ebef28f41a618065315d71cfdc89ea73cbf69d68c11dcfaca54687e8",
+    "wpt/font-family-valid.html": "c4d20d24cc7b68648b9049bc8e6483b396a38c171415c412339812735f6d24b2",
+    "wpt/font-style-computed.html": "a023dd9ded71ff98b084531145e72276a1ed4988a78ba0a07b451575f7ba053a",
+    "wpt/font-style-invalid.html": "ef192c415f83d3794fb6d132cb4ad36e4faa6efdecb4fe7322b2834fc7e2fc23",
+    "wpt/font-style-valid.html": "d6b25fd86c05d52997a14263bb3cbac45c42c70f06bc3c388776e8f9f3376a06",
+    "wpt/font-width-computed.html": "5e80ce823cdc7b0e41fe68c9bc1281371e58f2d44f95ef77f361e74e0a75182b",
+    "wpt/font-width-invalid.html": "450ae4b20fcb9f33d4a92e26bf0f96a8f2f020b16b1eae497222f80a8982586c",
+    "wpt/font-width-valid.html": "48b29ab3b1e88cb3cb1776eaf7c864c4580934d3cf009c12ef3d8773ad384d47",
+    "wpt/parsing-testcommon.js": "ac482e1e1908e9b98f8f1c4b2c457ec77ae5ad2baa074205c4b0f7812f4024b5"
+  },
+  "original_paths": {
+    "wpt/computed-testcommon.js": "css/support/computed-testcommon.js",
+    "wpt/font-family-computed.html": "css/css-fonts/parsing/font-family-computed.html",
+    "wpt/font-family-invalid.html": "css/css-fonts/parsing/font-family-invalid.html",
+    "wpt/font-family-valid.html": "css/css-fonts/parsing/font-family-valid.html",
+    "wpt/font-style-computed.html": "css/css-fonts/parsing/font-style-computed.html",
+    "wpt/font-style-invalid.html": "css/css-fonts/parsing/font-style-invalid.html",
+    "wpt/font-style-valid.html": "css/css-fonts/parsing/font-style-valid.html",
+    "wpt/font-width-computed.html": "css/css-fonts/parsing/font-width-computed.html",
+    "wpt/font-width-invalid.html": "css/css-fonts/parsing/font-width-invalid.html",
+    "wpt/font-width-valid.html": "css/css-fonts/parsing/font-width-valid.html",
+    "wpt/parsing-testcommon.js": "css/support/parsing-testcommon.js"
+  }
+}

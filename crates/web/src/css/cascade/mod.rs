@@ -359,6 +359,11 @@ impl Resolver<'_> {
                     at = if pair.is_some() { self.cascade.rollback_pair(i, *wide, range.clone(), other.clone())? } else { self.cascade.rollback(i, *wide)? };
                 }
                 p::Value::Wide(wide) => return Ok(O::finish(self.cascade.defaulted(declared, *wide), declared)),
+                // Clone the already-known inner type directly. Growing the
+                // property registry otherwise pushes the general Value clone
+                // out of line on common numeric/color cascade queries.
+                p::Value::Numeric(n) if !cfg!(feature = "baseline-cascade-value-copy") => return Ok(O::finish(Defaulted::Specified(p::Value::Numeric(n.clone())), declared)),
+                p::Value::Color(c) if !cfg!(feature = "baseline-cascade-value-copy") => return Ok(O::finish(Defaulted::Specified(p::Value::Color(c.clone())), declared)),
                 _ => return Ok(O::finish(Defaulted::Specified(value.clone()), declared)),
             }
         }

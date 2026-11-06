@@ -37,7 +37,7 @@ impl Host for Snapshot {
         };
         Ok(color::Color::new(color::Space::Srgb, [if white { 1. } else { 0. }; 3], 1., 0))
     }
-    fn font(&self, request: FontRequest) -> style::Result<FontMetrics> {
+    fn font(&self, request: &FontRequest) -> style::Result<FontMetrics> {
         Ok(FontMetrics { id: 7, ex: request.size * 0.5, cap: request.size * 0.75, ch: request.size * 0.5, ic: request.size, normal_line_height: request.size * 1.25 })
     }
     fn font_size(&self, keyword: K, parent: f64) -> style::Result<f64> {

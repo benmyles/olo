@@ -7835,6 +7835,7 @@ dependencies = [
  "sha2 0.10.9",
  "simdutf8",
  "smallvec",
+ "triomphe",
  "wide",
 ]
 

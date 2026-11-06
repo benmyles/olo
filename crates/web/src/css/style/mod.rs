@@ -9,7 +9,7 @@ use super::{Syntax, cascade, color, math, properties as p, variables};
 pub use cascade::{Axes, Direction, TextOrientation, WritingMode};
 pub use job::{Job, JobLimits, JobOptions, Progress, Report, StyleTree};
 pub use memory::Memory;
-pub use p::{Display, Inner, Internal, Keyword, Outer, Property};
+pub use p::{Display, Families, Family, GenericFamily, Inner, Internal, Keyword, Outer, Property};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -113,9 +113,21 @@ pub struct FontMetrics {
     pub normal_line_height: f64,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FontSlant {
+    Normal,
+    Italic,
+    Left,
+    Right,
+    Oblique(f64),
+}
+#[derive(Clone, Debug, PartialEq)]
 pub struct FontRequest {
     pub size: f64,
     pub weight: f64,
+    /// Percentage; this is a face-selection request, never geometric stretching.
+    pub width: f64,
+    pub slant: FontSlant,
+    pub families: Families,
     pub axes: Axes,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -125,10 +137,16 @@ pub struct Font {
 }
 impl Font {
     fn new(host: &impl Host, request: FontRequest) -> Result<Self> {
-        if !request.size.is_finite() || request.size.is_sign_negative() || !(1. ..=1000.).contains(&request.weight) {
+        if !request.size.is_finite()
+            || request.size.is_sign_negative()
+            || !(1. ..=1000.).contains(&request.weight)
+            || !request.width.is_finite()
+            || request.width.is_sign_negative()
+            || matches!(request.slant, FontSlant::Oblique(angle) if !(-90. ..=90.).contains(&angle))
+        {
             return Err(Error::ContextUnavailable);
         }
-        let metrics = host.font(request)?;
+        let metrics = host.font(&request)?;
         if [request.size, request.weight, metrics.ex, metrics.cap, metrics.ch, metrics.ic, metrics.normal_line_height].into_iter().any(|v| !v.is_finite() || v.is_sign_negative()) {
             return Err(Error::ContextUnavailable);
         }
@@ -141,7 +159,7 @@ pub trait Host {
     fn revision(&self) -> u64;
     fn scheme(&self) -> color::Scheme;
     fn system_color(&self, color: color::SystemColor, scheme: color::Scheme) -> color::Result<color::Color>;
-    fn font(&self, request: FontRequest) -> Result<FontMetrics>;
+    fn font(&self, request: &FontRequest) -> Result<FontMetrics>;
     fn font_size(&self, keyword: Keyword, parent_size: f64) -> Result<f64>;
     /// Device pixels per CSS pixel, including page zoom. The revision changes
     /// with this scale; computed border widths must be snapped for it.
@@ -163,7 +181,7 @@ impl<H: Host + ?Sized> Host for &H {
     fn system_color(&self, c: color::SystemColor, s: color::Scheme) -> color::Result<color::Color> {
         (**self).system_color(c, s)
     }
-    fn font(&self, r: FontRequest) -> Result<FontMetrics> {
+    fn font(&self, r: &FontRequest) -> Result<FontMetrics> {
         (**self).font(r)
     }
     fn font_size(&self, k: Keyword, parent: f64) -> Result<f64> {
@@ -186,6 +204,9 @@ pub enum Value {
     Color(color::Computed),
     Display(Display),
     FitContent(p::Numeric),
+    Families(Families),
+    /// Explicit nonzero oblique angle in degrees; bare oblique is a keyword.
+    Oblique(f64),
 }
 impl Value {
     fn same(&self, other: &Self) -> bool {
@@ -194,6 +215,8 @@ impl Value {
             (Self::Numeric(a), Self::Numeric(b)) | (Self::FitContent(a), Self::FitContent(b)) => a.same(b),
             (Self::Color(a), Self::Color(b)) => a.same(b),
             (Self::Display(a), Self::Display(b)) => a == b,
+            (Self::Families(a), Self::Families(b)) => a == b,
+            (Self::Oblique(a), Self::Oblique(b)) => a.to_bits() == b.to_bits(),
             _ => false,
         }
     }
@@ -203,6 +226,7 @@ impl Value {
     fn reserved_bytes(&self) -> usize {
         match self {
             Self::Numeric(n) | Self::FitContent(n) => n.expression().memory().accounted_reserved_bytes,
+            Self::Families(f) => f.reserved_bytes(),
             _ => 0,
         }
     }
@@ -252,7 +276,8 @@ impl Defaults {
             specified.push(values.remove(0).value);
         }
         let size = host.font_size(Keyword::Medium, 0.)?;
-        let initial_font = Arc::new(Font::new(host, FontRequest { size, weight: 400., axes: Axes::default() })?);
+        let p::Value::Families(families) = &specified[Property::FontFamily as usize] else { return Err(Error::Invalid) };
+        let initial_font = Arc::new(Font::new(host, FontRequest { size, weight: 400., width: 100., slant: FontSlant::Normal, families: families.clone(), axes: Axes::default() })?);
         let mut defaults = Self {
             specified: specified.into_boxed_slice(),
             values: Box::new([]),

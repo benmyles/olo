@@ -1,0 +1,515 @@
+{
+  "scope": "Pinned literal font-family/style/width parsing and computed semantic assertions. Native declarations/document style jobs; no JS/CSSOM serializer, actual font selection/shaping, layout or rendering. Unsupported original contexts stay non-passes.",
+  "total": 149,
+  "counts": {
+    "passed": 93,
+    "unsupported": 56
+  },
+  "files": {
+    "font-family-computed.html": {
+      "passed": 10,
+      "unsupported": 1
+    },
+    "font-family-invalid.html": {
+      "passed": 14,
+      "unsupported": 1
+    },
+    "font-family-valid.html": {
+      "passed": 12,
+      "unsupported": 1
+    },
+    "font-style-computed.html": {
+      "unsupported": 18
+    },
+    "font-style-invalid.html": {
+      "passed": 2,
+      "unsupported": 1
+    },
+    "font-style-valid.html": {
+      "passed": 17,
+      "unsupported": 1
+    },
+    "font-width-computed.html": {
+      "unsupported": 31
+    },
+    "font-width-invalid.html": {
+      "passed": 8,
+      "unsupported": 1
+    },
+    "font-width-valid.html": {
+      "passed": 30,
+      "unsupported": 1
+    }
+  },
+  "unsupported": [
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 27,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "normal"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 28,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "italic"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 29,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 31,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique 0deg"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 32,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique calc(10deg - 10deg)"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 34,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique 10deg"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 35,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique -10deg"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 36,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique 14deg"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 37,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique -14deg"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 38,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique -90deg"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 39,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique 90deg"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 40,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique 10grad"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 41,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique calc(90deg)"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 42,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique calc(100deg)"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 43,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique calc(-100deg)"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 44,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique calc(30deg * 2)"
+    },
+    {
+      "file": "font-style-computed.html",
+      "kind": "test_computed_value",
+      "line": 45,
+      "outcome": "unsupported",
+      "property": "font-style",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "oblique calc(30deg + (sign(20cqw - 10px) * 5deg))"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 24,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "ultra-condensed"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 24,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "ultra-condensed"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 25,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "extra-condensed"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 25,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "extra-condensed"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 26,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "condensed"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 26,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "condensed"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 27,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "semi-condensed"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 27,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "semi-condensed"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 28,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "normal"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 28,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "normal"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 29,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "semi-expanded"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 29,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "semi-expanded"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 30,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "expanded"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 30,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "expanded"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 31,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "extra-expanded"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 31,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "extra-expanded"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 32,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "ultra-expanded"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 32,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "ultra-expanded"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 34,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "234.5%"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 34,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "234.5%"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 35,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100%)"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 35,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100%)"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 36,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(0%)"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 36,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(0%)"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 37,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(-100%)"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 37,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(-100%)"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 38,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100% + 100%)"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 38,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100% + 100%)"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 39,
+      "outcome": "unsupported",
+      "property": "font-width",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100% + (sign(20cqw - 10px) * 5%))"
+    },
+    {
+      "file": "font-width-computed.html",
+      "kind": "test_computed_value",
+      "line": 39,
+      "outcome": "unsupported",
+      "property": "font-stretch",
+      "reason": "stylesheet context: Property(UnknownProperty)",
+      "specified": "calc(100% + (sign(20cqw - 10px) * 5%))"
+    },
+    {
+      "file": "font-family-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-family-invalid.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-family-valid.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-style-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-style-invalid.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-style-valid.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-width-computed.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-width-invalid.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-width-valid.html",
+      "outcome": "unsupported",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    }
+  ],
+  "report_sha256": "ebbc0991fc10938cc42b1cbcb7cbe1ff84bd1b4aba8dbc4e02c05dc0586f3bc0"
+}

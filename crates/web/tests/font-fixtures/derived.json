@@ -1,0 +1,1537 @@
+{
+  "scope": "Pinned literal font-family/style/width parsing and computed semantic assertions. Native declarations/document style jobs; no JS/CSSOM serializer, actual font selection/shaping, layout or rendering. Unsupported original contexts stay non-passes.",
+  "cases": [
+    {
+      "file": "font-family-computed.html",
+      "line": 15,
+      "offset": 490,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "serif",
+      "expected": "serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 16,
+      "offset": 535,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "sans-serif",
+      "expected": "sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 17,
+      "offset": 585,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "cursive",
+      "expected": "cursive",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 18,
+      "offset": 632,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "fantasy",
+      "expected": "fantasy",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 19,
+      "offset": 679,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "monospace",
+      "expected": "monospace",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 20,
+      "offset": 728,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "serif, sans-serif, cursive, fantasy, monospace",
+      "expected": "serif, sans-serif, cursive, fantasy, monospace",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 22,
+      "offset": 815,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "Helvetica, Verdana, sans-serif",
+      "expected": "Helvetica, Verdana, sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 23,
+      "offset": 885,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "\"New Century Schoolbook\", serif",
+      "expected": "New Century Schoolbook, serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 24,
+      "offset": 989,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "\"21st Century\", fantasy",
+      "expected": "\"21st Century\", fantasy",
+      "styles": []
+    },
+    {
+      "file": "font-family-computed.html",
+      "line": 26,
+      "offset": 1053,
+      "kind": "test_computed_value",
+      "property": "font-family",
+      "specified": "\"inherit\", \"serif\"",
+      "expected": "\"inherit\", \"serif\"",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 14,
+      "offset": 511,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "cursive serif",
+      "expected": "cursive serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 16,
+      "offset": 564,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "Red/Black, sans-serif",
+      "expected": "Red/Black, sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 17,
+      "offset": 624,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "\"Lucida\" Grande, sans-serif",
+      "expected": "\"Lucida\" Grande, sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 18,
+      "offset": 690,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "Ahem!, sans-serif",
+      "expected": "Ahem!, sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 19,
+      "offset": 746,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "test@foo, sans-serif",
+      "expected": "test@foo, sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 20,
+      "offset": 805,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "#POUND, sans-serif",
+      "expected": "#POUND, sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 21,
+      "offset": 862,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "Hawaii 5-0, sans-serif",
+      "expected": "Hawaii 5-0, sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 24,
+      "offset": 994,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "FirstName, Initial, LastName",
+      "expected": "FirstName, Initial, LastName",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 25,
+      "offset": 1061,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "FirstName, inherit, LastName",
+      "expected": "FirstName, inherit, LastName",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 26,
+      "offset": 1128,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "FirstName, LastName, unset",
+      "expected": "FirstName, LastName, unset",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 27,
+      "offset": 1193,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "default, FirstName, LastName",
+      "expected": "default, FirstName, LastName",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 28,
+      "offset": 1260,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "FirstName, LastName, revert",
+      "expected": "FirstName, LastName, revert",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 29,
+      "offset": 1326,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "FirstName, LastName, revert-layer",
+      "expected": "FirstName, LastName, revert-layer",
+      "styles": []
+    },
+    {
+      "file": "font-family-invalid.html",
+      "line": 30,
+      "offset": 1398,
+      "kind": "test_invalid_value",
+      "property": "font-family",
+      "specified": "FirstName, LastName, revert-rule",
+      "expected": "FirstName, LastName, revert-rule",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 14,
+      "offset": 509,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "Serif",
+      "expected": "serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 15,
+      "offset": 560,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "Sans-Serif",
+      "expected": "sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 16,
+      "offset": 621,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "Cursive",
+      "expected": "cursive",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 17,
+      "offset": 676,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "Fantasy",
+      "expected": "fantasy",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 18,
+      "offset": 731,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "Monospace",
+      "expected": "monospace",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 19,
+      "offset": 790,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "System-UI",
+      "expected": "system-ui",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 20,
+      "offset": 849,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "serif, sans-serif, cursive, fantasy, monospace, system-ui",
+      "expected": "serif, sans-serif, cursive, fantasy, monospace, system-ui",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 22,
+      "offset": 944,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "Helvetica, Verdana, sans-serif",
+      "expected": "Helvetica, Verdana, sans-serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 23,
+      "offset": 1011,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "\"New Century Schoolbook\", serif",
+      "expected": "New Century Schoolbook, serif",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 24,
+      "offset": 1112,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "'21st Century', fantasy",
+      "expected": "\"21st Century\", fantasy",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 26,
+      "offset": 1200,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "\"inherit\", \"serif\"",
+      "expected": "\"inherit\", \"serif\"",
+      "styles": []
+    },
+    {
+      "file": "font-family-valid.html",
+      "line": 28,
+      "offset": 1256,
+      "kind": "test_valid_value",
+      "property": "font-family",
+      "specified": "\"Serif\"",
+      "expected": "\"Serif\"",
+      "styles": []
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 27,
+      "offset": 707,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "normal",
+      "expected": "normal",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 28,
+      "offset": 752,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "italic",
+      "expected": "italic",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 29,
+      "offset": 797,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique",
+      "expected": "oblique",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 31,
+      "offset": 844,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique 0deg",
+      "expected": "normal",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 32,
+      "offset": 905,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique calc(10deg - 10deg)",
+      "expected": "normal",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 34,
+      "offset": 982,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique 10deg",
+      "expected": "oblique 10deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 35,
+      "offset": 1034,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique -10deg",
+      "expected": "oblique -10deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 36,
+      "offset": 1087,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique 14deg",
+      "expected": "oblique 14deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 37,
+      "offset": 1139,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique -14deg",
+      "expected": "oblique -14deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 38,
+      "offset": 1192,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique -90deg",
+      "expected": "oblique -90deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 39,
+      "offset": 1245,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique 90deg",
+      "expected": "oblique 90deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 40,
+      "offset": 1297,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique 10grad",
+      "expected": "oblique 9deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 41,
+      "offset": 1366,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique calc(90deg)",
+      "expected": "oblique 90deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 42,
+      "offset": 1441,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique calc(100deg)",
+      "expected": "oblique 90deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 43,
+      "offset": 1517,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique calc(-100deg)",
+      "expected": "oblique -90deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 44,
+      "offset": 1595,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique calc(30deg * 2)",
+      "expected": "oblique 60deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-computed.html",
+      "line": 45,
+      "offset": 1674,
+      "kind": "test_computed_value",
+      "property": "font-style",
+      "specified": "oblique calc(30deg + (sign(20cqw - 10px) * 5deg))",
+      "expected": "oblique 25deg",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n  #target {\n    font-family: Ahem;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-style-invalid.html",
+      "line": 14,
+      "offset": 495,
+      "kind": "test_invalid_value",
+      "property": "font-style",
+      "specified": "auto",
+      "expected": "auto",
+      "styles": []
+    },
+    {
+      "file": "font-style-invalid.html",
+      "line": 15,
+      "offset": 537,
+      "kind": "test_invalid_value",
+      "property": "font-style",
+      "specified": "italic oblique",
+      "expected": "italic oblique",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 14,
+      "offset": 517,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "normal",
+      "expected": "normal",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 15,
+      "offset": 559,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "italic",
+      "expected": "italic",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 16,
+      "offset": 601,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique",
+      "expected": "oblique",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 18,
+      "offset": 645,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique 0deg",
+      "expected": "normal",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 19,
+      "offset": 703,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique calc(10deg - 10deg)",
+      "expected": "oblique calc(0deg)",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 21,
+      "offset": 789,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique 10deg",
+      "expected": "oblique 10deg",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 22,
+      "offset": 838,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique -10deg",
+      "expected": "oblique -10deg",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 23,
+      "offset": 888,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique 14deg",
+      "expected": "oblique 14deg",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 24,
+      "offset": 937,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique -14deg",
+      "expected": "oblique -14deg",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 25,
+      "offset": 987,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique -90deg",
+      "expected": "oblique -90deg",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 26,
+      "offset": 1037,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique 90deg",
+      "expected": "oblique 90deg",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 27,
+      "offset": 1086,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique 10grad",
+      "expected": "oblique 10grad",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 28,
+      "offset": 1136,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique calc(90deg)",
+      "expected": "oblique calc(90deg)",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 29,
+      "offset": 1191,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique calc(100deg)",
+      "expected": "oblique calc(100deg)",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 30,
+      "offset": 1247,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique calc(-100deg)",
+      "expected": "oblique calc(-100deg)",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 31,
+      "offset": 1304,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique calc(30deg * 2)",
+      "expected": "oblique calc(60deg)",
+      "styles": []
+    },
+    {
+      "file": "font-style-valid.html",
+      "line": 32,
+      "offset": 1386,
+      "kind": "test_valid_value",
+      "property": "font-style",
+      "specified": "oblique calc(30deg + (sign(2cqw - 10px) * 5deg))",
+      "expected": "oblique calc(30deg + (5deg * sign(2cqw - 10px)))",
+      "styles": []
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 24,
+      "offset": 661,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "ultra-condensed",
+      "expected": "50%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 24,
+      "offset": 661,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "ultra-condensed",
+      "expected": "50%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 25,
+      "offset": 720,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "extra-condensed",
+      "expected": "62.5%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 25,
+      "offset": 720,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "extra-condensed",
+      "expected": "62.5%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 26,
+      "offset": 781,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "condensed",
+      "expected": "75%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 26,
+      "offset": 781,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "condensed",
+      "expected": "75%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 27,
+      "offset": 834,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "semi-condensed",
+      "expected": "87.5%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 27,
+      "offset": 834,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "semi-condensed",
+      "expected": "87.5%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 28,
+      "offset": 894,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "normal",
+      "expected": "100%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 28,
+      "offset": 894,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "normal",
+      "expected": "100%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 29,
+      "offset": 945,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "semi-expanded",
+      "expected": "112.5%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 29,
+      "offset": 945,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "semi-expanded",
+      "expected": "112.5%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 30,
+      "offset": 1005,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "expanded",
+      "expected": "125%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 30,
+      "offset": 1005,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "expanded",
+      "expected": "125%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 31,
+      "offset": 1058,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "extra-expanded",
+      "expected": "150%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 31,
+      "offset": 1058,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "extra-expanded",
+      "expected": "150%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 32,
+      "offset": 1117,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "ultra-expanded",
+      "expected": "200%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 32,
+      "offset": 1117,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "ultra-expanded",
+      "expected": "200%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 34,
+      "offset": 1177,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "234.5%",
+      "expected": "234.5%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 34,
+      "offset": 1177,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "234.5%",
+      "expected": "234.5%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 35,
+      "offset": 1220,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "calc(100%)",
+      "expected": "100%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 35,
+      "offset": 1220,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "calc(100%)",
+      "expected": "100%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 36,
+      "offset": 1275,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "calc(0%)",
+      "expected": "0%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 36,
+      "offset": 1275,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "calc(0%)",
+      "expected": "0%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 37,
+      "offset": 1326,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "calc(-100%)",
+      "expected": "0%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 37,
+      "offset": 1326,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "calc(-100%)",
+      "expected": "0%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 38,
+      "offset": 1380,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "calc(100% + 100%)",
+      "expected": "200%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 38,
+      "offset": 1380,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "calc(100% + 100%)",
+      "expected": "200%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 39,
+      "offset": 1442,
+      "kind": "test_computed_value",
+      "property": "font-width",
+      "specified": "calc(100% + (sign(20cqw - 10px) * 5%))",
+      "expected": "95%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-computed.html",
+      "line": 39,
+      "offset": 1442,
+      "kind": "test_computed_value",
+      "property": "font-stretch",
+      "specified": "calc(100% + (sign(20cqw - 10px) * 5%))",
+      "expected": "95%",
+      "styles": [
+        "\n  #container {\n    container-type: inline-size;\n    width: 10px;\n  }\n"
+      ]
+    },
+    {
+      "file": "font-width-invalid.html",
+      "line": 16,
+      "offset": 747,
+      "kind": "test_invalid_value",
+      "property": "font-width",
+      "specified": "auto",
+      "expected": "auto",
+      "styles": []
+    },
+    {
+      "file": "font-width-invalid.html",
+      "line": 16,
+      "offset": 747,
+      "kind": "test_invalid_value",
+      "property": "font-stretch",
+      "specified": "auto",
+      "expected": "auto",
+      "styles": []
+    },
+    {
+      "file": "font-width-invalid.html",
+      "line": 17,
+      "offset": 789,
+      "kind": "test_invalid_value",
+      "property": "font-width",
+      "specified": "normal, ultra-condensed",
+      "expected": "normal, ultra-condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-invalid.html",
+      "line": 17,
+      "offset": 789,
+      "kind": "test_invalid_value",
+      "property": "font-stretch",
+      "specified": "normal, ultra-condensed",
+      "expected": "normal, ultra-condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-invalid.html",
+      "line": 18,
+      "offset": 850,
+      "kind": "test_invalid_value",
+      "property": "font-width",
+      "specified": "condensed expanded",
+      "expected": "condensed expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-invalid.html",
+      "line": 18,
+      "offset": 850,
+      "kind": "test_invalid_value",
+      "property": "font-stretch",
+      "specified": "condensed expanded",
+      "expected": "condensed expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-invalid.html",
+      "line": 19,
+      "offset": 906,
+      "kind": "test_invalid_value",
+      "property": "font-width",
+      "specified": "-50%",
+      "expected": "-50%",
+      "styles": []
+    },
+    {
+      "file": "font-width-invalid.html",
+      "line": 19,
+      "offset": 906,
+      "kind": "test_invalid_value",
+      "property": "font-stretch",
+      "specified": "-50%",
+      "expected": "-50%",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 15,
+      "offset": 681,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "normal",
+      "expected": "normal",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 15,
+      "offset": 681,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "normal",
+      "expected": "normal",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 16,
+      "offset": 723,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "ultra-condensed",
+      "expected": "ultra-condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 16,
+      "offset": 723,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "ultra-condensed",
+      "expected": "ultra-condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 17,
+      "offset": 774,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "extra-condensed",
+      "expected": "extra-condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 17,
+      "offset": 774,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "extra-condensed",
+      "expected": "extra-condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 18,
+      "offset": 825,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "condensed",
+      "expected": "condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 18,
+      "offset": 825,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "condensed",
+      "expected": "condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 19,
+      "offset": 870,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "semi-condensed",
+      "expected": "semi-condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 19,
+      "offset": 870,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "semi-condensed",
+      "expected": "semi-condensed",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 20,
+      "offset": 920,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "semi-expanded",
+      "expected": "semi-expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 20,
+      "offset": 920,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "semi-expanded",
+      "expected": "semi-expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 21,
+      "offset": 969,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "expanded",
+      "expected": "expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 21,
+      "offset": 969,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "expanded",
+      "expected": "expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 22,
+      "offset": 1013,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "extra-expanded",
+      "expected": "extra-expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 22,
+      "offset": 1013,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "extra-expanded",
+      "expected": "extra-expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 23,
+      "offset": 1063,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "ultra-expanded",
+      "expected": "ultra-expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 23,
+      "offset": 1063,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "ultra-expanded",
+      "expected": "ultra-expanded",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 25,
+      "offset": 1114,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "234.5%",
+      "expected": "234.5%",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 25,
+      "offset": 1114,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "234.5%",
+      "expected": "234.5%",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 26,
+      "offset": 1156,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "calc(100%)",
+      "expected": "calc(100%)",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 26,
+      "offset": 1156,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "calc(100%)",
+      "expected": "calc(100%)",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 27,
+      "offset": 1202,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "calc(0%)",
+      "expected": "calc(0%)",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 27,
+      "offset": 1202,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "calc(0%)",
+      "expected": "calc(0%)",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 28,
+      "offset": 1246,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "calc(-100%)",
+      "expected": "calc(-100%)",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 28,
+      "offset": 1246,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "calc(-100%)",
+      "expected": "calc(-100%)",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 29,
+      "offset": 1293,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "calc(100% + 100%)",
+      "expected": "calc(200%)",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 29,
+      "offset": 1293,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "calc(100% + 100%)",
+      "expected": "calc(200%)",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 30,
+      "offset": 1360,
+      "kind": "test_valid_value",
+      "property": "font-width",
+      "specified": "calc(100% + (sign(20cqw - 10px) * 5%))",
+      "expected": "calc(100% + (5% * sign(20cqw - 10px)))",
+      "styles": []
+    },
+    {
+      "file": "font-width-valid.html",
+      "line": 30,
+      "offset": 1360,
+      "kind": "test_valid_value",
+      "property": "font-stretch",
+      "specified": "calc(100% + (sign(20cqw - 10px) * 5%))",
+      "expected": "calc(100% + (5% * sign(20cqw - 10px)))",
+      "styles": []
+    }
+  ],
+  "unported": [
+    {
+      "file": "font-family-computed.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-family-invalid.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-family-valid.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-style-computed.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-style-invalid.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-style-valid.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-width-computed.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-width-invalid.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    },
+    {
+      "file": "font-width-valid.html",
+      "reason": "JavaScript/CSSOM serialization and round-trip browser driver"
+    }
+  ]
+}

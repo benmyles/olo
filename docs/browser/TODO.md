@@ -56,7 +56,7 @@ item means implemented and verified; a partial implementation stays open.
   namespace contexts are implemented below; full context behavior remains open.
 - [ ] Implement CSS property grammars, cascade, media queries and real
   element/style invalidation.
-- [x] Core typed declaration compilation: 89 longhands and 16 shorthands (including
+- [x] Core typed declaration compilation: 92 longhands and 16 shorthands (including
   all over implemented resettable properties),
   dimensional/range rules, structured display values, shared pending shorthand
   substitution and invalid-at-computed-value unset; independent native ports
@@ -77,18 +77,30 @@ item means implemented and verified; a partial implementation stays open.
   paired cascades after computed axes; preserve inheritance source across axes,
   shared pending substitution, physical precedence for all and paired rollback.
   Native logical ports: 5,726/5,757 pass; 31 CSSOM drivers remain unsupported.
-- [x] Initial computed-style worker jobs over the supported 89 longhands:
+- [x] Initial computed-style worker jobs over the supported 92 longhands:
   shared Defaults, parent-before-child connected light-tree traversal, frozen
   font/viewport/tree arithmetic with deferred layout percentages, inherited
   currentcolor/custom tokens, coupled overflow/border/display transforms,
   sparse and adjacent shared values, diagnostics, cancellation/quotas and
   document/style-epoch rejection. 243/341 pinned native assertions/drivers pass;
   98 unsupported. All 22 selected local Chrome CSSOM observations match.
+- [x] Font-family/style/width longhand parsing and computed face requests:
+  named/generic fallback identity, legacy font-stretch alias, bounded oblique
+  angles and percentage widths before subject metrics. 93/149 pinned native
+  assertions/drivers pass; 56 unsupported. Match 17 selected local Chrome
+  observations; six reference-feature gaps remain explicit.
+- [ ] Native font loading, CSS face matching/cache and fallback, actual metrics,
+  variable axes/synthesis, web fonts, font shorthand/remaining descriptors,
+  shaping/bidi and language/script-sensitive generic selection.
 - [ ] Complete logical border/corner properties and remaining property groups;
   UA styles/presentational hints, flattened/shadow inheritance, conditional
   contexts, font-family/selection and layout/used-value hosts.
 - [ ] Profile temporary per-element style vectors, nonadjacent sharing and
   real mixed pages; initial full passes are not live incremental invalidation.
+- [ ] Scope font matching by language/script/subject context before sharing
+  selected fonts globally. Intern repeated nonadjacent selected requests: the
+  generated 10k font case currently retains 10,001 Font objects for repeating
+  requests. Fixed supplied metrics are not real font-selection evidence.
 - [ ] Complete property registry/grammars (fonts/families, backgrounds/images,
   border-image/radius, grid/alignment, transforms, animations/transitions,
   aliases/descriptors), CSSOM, computed/used-value contexts and style hosts.
@@ -143,6 +155,12 @@ item means implemented and verified; a partial implementation stays open.
 - [ ] Profile ownership preflight costs, the template-milestone fostered-row
   regression and fragment-milestone foreign dispatch costs (raw release
   comparisons in JOURNAL.md); performance acceptance is still open.
+- [ ] Profile owned cascade value copies after font property expansion. Final
+  raw width 8.964 → 11.153 ns (+24.4%) and margin 8.450 → 11.168 ns (+32.2%)
+  vs f1513b47, with nonoverlapping ranges. Known-type copies improve over the
+  general-clone control (15.347 / 15.152 ns); full performance acceptance is
+  open. Consider borrowed values for the actual style pipeline rather than
+  repeatedly copying frozen typed values; see 2026-11-05-font.json.
 - [ ] Release performance comparisons, memory/idle/latency/scroll/GPU;
   numbers and raw evidence in journal and commit messages.
 - [ ] Full workspace release build; layout lint; headless reviews and visual

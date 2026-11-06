@@ -119,8 +119,12 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
         return Ok(value.clone());
     };
     Ok(match value {
+        p::Value::Numeric(n) if property == Property::FontStyle => {
+            let angle = n.resolve(&numeric, &mut Default::default(), limits.math, cancelled).map_err(Error::property)?;
+            if angle == 0. { Value::Keyword(Keyword::Normal) } else { Value::Oblique(angle) }
+        }
         p::Value::Numeric(n) => {
-            let computed = n.computed(&numeric, property != Property::LineHeight, limits.math, cancelled).map_err(Error::property)?;
+            let computed = n.computed(&numeric, !matches!(property, Property::LineHeight | Property::FontWidth), limits.math, cancelled).map_err(Error::property)?;
             if border_width(property) {
                 scalar(snap_border(computed.expression().constant().ok_or(Error::Invalid)?.value, numeric.host.device_scale())?, math::Dimension::Length, p::Range::Nonnegative)
             } else {
@@ -130,6 +134,7 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
         p::Value::FitContent(n) => Value::FitContent(n.computed(&numeric, true, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Color(color) => Value::Color(color.computed(&context::Color { numeric }, limits.color, cancelled).map_err(Error::color)?),
         p::Value::Display(display) => Value::Display(display),
+        p::Value::Families(families) => Value::Families(families),
         p::Value::Keyword(k @ (Keyword::Thin | Keyword::Medium | Keyword::Thick))
             if matches!(property, Property::BorderTopWidth | Property::BorderRightWidth | Property::BorderBottomWidth | Property::BorderLeftWidth) =>
         {
@@ -242,6 +247,13 @@ pub(super) fn values(
     }
     let mut resolver = cascade.resolver();
     let axes = resolver.axes(parent.map(|p| p.axes), options.allow_animation_tainted).map_err(Error::cascade)?;
+    let mut declared = [false; Property::ALL.len()];
+    if !cfg!(feature = "baseline-style-dense") {
+        for property in cascade.declared_properties() {
+            declared[axes.physical(property) as usize] = true;
+        }
+    }
+    let use_baseline = !defaults.values.is_empty() && !cfg!(feature = "baseline-style-dense");
     let parent_font = parent.map_or(defaults.initial_font.as_ref(), |p| p.font.as_ref());
     let mut dependencies = Dependencies { layout_parent: options.layout_parent.is_some(), ..Default::default() };
     let fs = source(defaults, &mut resolver, Property::FontSize, axes, parent, options, &mut dependencies)?;
@@ -250,7 +262,39 @@ pub(super) fn values(
     let fw = source(defaults, &mut resolver, Property::FontWeight, axes, parent, options, &mut dependencies)?;
     let numeric = context::numeric(host, Property::FontWeight, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes);
     let weight = font_weight(fw, &numeric, parent_font.request.weight, limits, cancelled)?;
-    let request = FontRequest { size, weight, axes };
+    let mut font_value = |property| -> Result<Entry> {
+        if use_baseline && !declared[property as usize] {
+            let value = if let Some(parent) = parent {
+                dependencies.inherited = true;
+                parent.value(property)
+            } else {
+                defaults.value(property)
+            };
+            return Ok(Entry { property, value: value.clone() });
+        }
+        let value = source(defaults, &mut resolver, property, axes, parent, options, &mut dependencies)?;
+        let value = ordinary(
+            value,
+            property,
+            context::numeric(host, property, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes),
+            parent,
+            limits,
+            cancelled,
+        )?;
+        Ok(Entry { property, value })
+    };
+    let font_values = [font_value(Property::FontFamily)?, font_value(Property::FontStyle)?, font_value(Property::FontWidth)?];
+    let Value::Families(families) = &font_values[0].value else { return Err(Error::Invalid) };
+    let slant = match font_values[1].value {
+        Value::Keyword(Keyword::Normal) => FontSlant::Normal,
+        Value::Keyword(Keyword::Italic) => FontSlant::Italic,
+        Value::Keyword(Keyword::Left) => FontSlant::Left,
+        Value::Keyword(Keyword::Right) => FontSlant::Right,
+        Value::Keyword(Keyword::Oblique) => FontSlant::Oblique(14.),
+        Value::Oblique(angle) => FontSlant::Oblique(angle),
+        _ => return Err(Error::Invalid),
+    };
+    let request = FontRequest { size, weight, width: font_values[2].value.scalar().ok_or(Error::Invalid)?, slant, families: families.clone(), axes };
     let font = if parent.is_some_and(|p| p.font.request == request) {
         parent.unwrap().font.clone()
     } else if defaults.initial_font.request == request {
@@ -270,13 +314,6 @@ pub(super) fn values(
         }
         _ => return Err(Error::Invalid),
     };
-    let mut declared = [false; Property::ALL.len()];
-    if !cfg!(feature = "baseline-style-dense") {
-        for property in cascade.declared_properties() {
-            declared[axes.physical(property) as usize] = true;
-        }
-    }
-    let use_baseline = !defaults.values.is_empty() && !cfg!(feature = "baseline-style-dense");
     let mut values = Vec::with_capacity(Property::ALL.len());
     let mut work = 0usize;
     for &property in Property::ALL {
@@ -292,6 +329,9 @@ pub(super) fn values(
             Property::FontSize => scalar(size, math::Dimension::Length, p::Range::Nonnegative),
             Property::FontWeight => scalar(weight, math::Dimension::Number, p::Range::FontWeight),
             Property::LineHeight => line.clone(),
+            Property::FontFamily => font_values[0].value.clone(),
+            Property::FontStyle => font_values[1].value.clone(),
+            Property::FontWidth => font_values[2].value.clone(),
             _ if use_baseline && !declared[property as usize] => {
                 if property.inherited()
                     && let Some(parent) = parent

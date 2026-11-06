@@ -61,7 +61,7 @@ pub(super) fn numeric<'a, H: Host>(
     line_height: f64,
     axes: Axes,
 ) -> Numeric<'a, H> {
-    let affecting = matches!(property, Property::FontSize | Property::FontWeight);
+    let affecting = matches!(property, Property::FontSize | Property::FontWeight | Property::FontWidth | Property::FontStyle);
     let parent_font = parent.map_or(defaults.initial_font.as_ref(), |p| p.font.as_ref());
     Numeric {
         host,
@@ -75,6 +75,7 @@ pub(super) fn numeric<'a, H: Host>(
         percentage: match property {
             Property::FontSize => Some(parent_font.request.size / 100.),
             Property::LineHeight => Some(font.request.size / 100.),
+            Property::FontWidth => Some(1.),
             _ => None,
         },
     }

@@ -17,6 +17,17 @@ pub(super) fn preflight(values: Components<'_>, limits: Limits, cancelled: Optio
 pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Assignments> {
     check(cancelled)?;
     preflight(values.clone(), limits, cancelled)?;
+    if name == Name::Longhand(Property::FontFamily) {
+        let mut parts = values.clone().filter(|c| c.kind() != Kind::Whitespace);
+        if let Some(c) = parts.next()
+            && parts.next().is_none()
+            && c.kind() == Kind::Ident
+            && let Some(wide) = wide(c.text().unwrap())
+        {
+            return Ok(name.wide(wide));
+        }
+        return font::Families::parse(values, cancelled).map(|f| smallvec::smallvec![Assignment { property: Property::FontFamily, value: Value::Families(f) }]);
+    }
     let mut parts = SmallVec::<[Component<'_>; 4]>::new();
     for c in values.clone().filter(|c| c.kind() != Kind::Whitespace) {
         if parts.len() == 4 {
@@ -97,6 +108,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
 fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     let grammar = property.grammar();
     match grammar {
+        Grammar::FontStyle => font::style(parts, limits, cancelled),
         Grammar::Keywords(_) if property == Property::TextAlign && parts.len() == 1 && parts[0].kind() == Kind::Ident && parts[0].text().unwrap().eq_ignore_ascii_case("-webkit-match-parent") => {
             Ok(Value::Keyword(Keyword::MatchParent))
         }
@@ -121,6 +133,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
 fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     check(cancelled)?;
     match grammar {
+        Grammar::FontWidth => font::width(c, limits, cancelled),
         Grammar::Overflow => {
             if c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case("overlay") {
                 return Ok(Value::Keyword(Keyword::Auto));
@@ -169,8 +182,21 @@ fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Opti
             unsupported_function(c)?;
             Numeric::compile(c, NumericKind::LengthPercentage, Range::Nonnegative, limits, cancelled).map(Value::Numeric)
         }
-        Grammar::Display => Err(Error::Invalid),
+        Grammar::Display | Grammar::FontFamily | Grammar::FontStyle => Err(Error::Invalid),
     }
+}
+fn wide(s: &str) -> Option<variables::Wide> {
+    [
+        ("initial", variables::Wide::Initial),
+        ("inherit", variables::Wide::Inherit),
+        ("unset", variables::Wide::Unset),
+        ("revert", variables::Wide::Revert),
+        ("revert-layer", variables::Wide::RevertLayer),
+        ("revert-rule", variables::Wide::RevertRule),
+    ]
+    .into_iter()
+    .find(|(name, _)| s.eq_ignore_ascii_case(name))
+    .map(|(_, wide)| wide)
 }
 fn keyword(c: Component<'_>, allowed: &[Keyword]) -> Option<Keyword> {
     (c.kind() == Kind::Ident).then(|| allowed.iter().copied().find(|k| c.text().unwrap().eq_ignore_ascii_case(k.as_str()))).flatten()

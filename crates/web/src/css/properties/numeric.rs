@@ -7,6 +7,8 @@ pub enum NumericKind {
     NumberPercentage,
     Integer,
     LineHeight,
+    Angle,
+    Percentage,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Range {
@@ -14,6 +16,7 @@ pub enum Range {
     Nonnegative,
     Unit,
     FontWeight,
+    FontAngle,
 }
 impl Range {
     fn bounds(self) -> (f64, f64) {
@@ -22,6 +25,7 @@ impl Range {
             Self::Nonnegative => (0., f64::MAX),
             Self::Unit => (0., 1.),
             Self::FontWeight => (1., 1000.),
+            Self::FontAngle => (-90., 90.),
         }
     }
 }
@@ -76,7 +80,7 @@ impl Numeric {
     pub(super) fn compile(c: Component<'_>, kind: NumericKind, range: Range, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Self> {
         use math::Dimension as D;
         let length = matches!(kind, NumericKind::Length | NumericKind::LengthPercentage | NumericKind::LineHeight);
-        let percentage = matches!(kind, NumericKind::LengthPercentage | NumericKind::LineHeight | NumericKind::NumberPercentage);
+        let percentage = matches!(kind, NumericKind::LengthPercentage | NumericKind::LineHeight | NumericKind::NumberPercentage | NumericKind::Percentage);
         let options = math::Options { allow_percentage: percentage, percentage_hint: (length && percentage).then_some(D::Length) };
         let expression = if matches!(c.kind(), Kind::Integer | Kind::Number) && c.number().unwrap().value == 0. && matches!(kind, NumericKind::Length | NumericKind::LengthPercentage) {
             math::Value::Constant(math::Quantity { value: 0., ty: math::NumericType::dimension(D::Length) })
@@ -89,6 +93,8 @@ impl Numeric {
             NumericKind::Number | NumericKind::Integer => ty == Some(D::Number),
             NumericKind::NumberPercentage => matches!(ty, Some(D::Number | D::Percentage)),
             NumericKind::LineHeight => matches!(ty, Some(D::Length | D::Number)),
+            NumericKind::Angle => ty == Some(D::Angle),
+            NumericKind::Percentage => ty == Some(D::Percentage),
         };
         if !valid {
             return Err(Error::Invalid);
@@ -102,6 +108,9 @@ impl Numeric {
             if percentage_number {
                 value /= 100.;
             }
+            if range == Range::FontAngle {
+                value = expression.resolve_raw(&math::NoContext, limits.math(), cancelled).map_err(math_error)?.value;
+            }
             // Unbounded grammar ranges also accept finite-token overflow.
             // Censor IEEE specials only when computing the property value.
             let invalid = value.is_nan()
@@ -109,6 +118,7 @@ impl Numeric {
                     Range::All | Range::Unit => false,
                     Range::Nonnegative => value < 0.,
                     Range::FontWeight => !(1. ..=1000.).contains(&value),
+                    Range::FontAngle => !(-90. ..=90.).contains(&value),
                 };
             if invalid {
                 return Err(Error::Invalid);

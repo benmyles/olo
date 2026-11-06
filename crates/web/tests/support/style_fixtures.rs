@@ -145,7 +145,58 @@ fn numeric(style: &Style, property: p::Property, expected: &str) -> Result<()> {
         close(n.expression().constant().ok_or_else(|| mismatch("non-constant computed length/number"))?.value, expected.strip_suffix("px").unwrap_or(expected).parse().map_err(error)?)
     }
 }
-fn compare(style: &Style, property: &str, expected: &str) -> Result<()> {
+pub fn compare(style: &Style, property: &str, expected: &str) -> Result<()> {
+    if property == "font-family" {
+        let Value::Families(families) = style.value(p::Property::FontFamily) else { return Err(error("family value type")) };
+        // Independently split canonical reference strings, respecting quoted
+        // commas. Escaped reference syntax is outside this adapter's scope.
+        if expected.contains('\\') {
+            return Err(unsupported("escaped family reference"));
+        }
+        let (mut names, mut start, mut quote) = (Vec::new(), 0, None);
+        for (i, c) in expected.char_indices() {
+            if quote == Some(c) {
+                quote = None;
+            } else if quote.is_none() {
+                if matches!(c, '\'' | '"') {
+                    quote = Some(c);
+                } else if c == ',' {
+                    names.push(expected[start..i].trim());
+                    start = i + 1;
+                }
+            }
+        }
+        if quote.is_some() {
+            return Err(unsupported("unclosed family reference"));
+        }
+        names.push(expected[start..].trim());
+        if names.len() != families.as_slice().len() {
+            return Err(mismatch("family count"));
+        }
+        for (actual, reference) in families.as_slice().iter().zip(names) {
+            let quoted = reference.starts_with(['\'', '"']);
+            let named = quoted || !["serif", "sans-serif", "cursive", "fantasy", "monospace", "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "math"].contains(&reference);
+            let reference = if quoted { &reference[1..reference.len() - 1] } else { reference };
+            match actual {
+                p::Family::Named(name) if named && name.as_ref() == reference => {}
+                p::Family::Generic(generic) if !named && generic.as_str() == reference => {}
+                _ => return Err(mismatch("family identity/reference")),
+            }
+        }
+        return Ok(());
+    }
+    if property == "font-style" && expected.starts_with("oblique ") {
+        let Value::Oblique(angle) = style.value(p::Property::FontStyle) else { return Err(mismatch("explicit oblique angle")) };
+        return close(*angle, expected.strip_prefix("oblique ").unwrap().strip_suffix("deg").ok_or_else(|| unsupported("noncanonical angle reference"))?.parse().map_err(error)?);
+    }
+    if matches!(property, "font-width" | "font-stretch") {
+        let Value::Numeric(n) = style.value(p::Property::FontWidth) else { return Err(mismatch("font width type")) };
+        let q = n.expression().constant().ok_or_else(|| mismatch("unresolved font width"))?;
+        if q.ty.kind() != Some(math::Dimension::Percentage) {
+            return Err(mismatch("font width dimension"));
+        }
+        return close(q.value, expected.strip_suffix('%').ok_or_else(|| unsupported("font width reference"))?.parse().map_err(error)?);
+    }
     if property == "display" {
         let Value::Display(display) = style.value(p::Property::Display) else { return Err(error("display value type")) };
         return if display_matches(*display, expected) { Ok(()) } else { Err(mismatch(format!("display {display:?}, expected {expected}"))) };
@@ -178,6 +229,16 @@ fn compare(style: &Style, property: &str, expected: &str) -> Result<()> {
     numeric(style, property, expected)
 }
 fn evaluate_case(dir: &Path, case: &Json) -> Result<()> {
+    if matches!(case["kind"].as_str(), Some("test_valid_value" | "test_invalid_value")) {
+        let syntax = Syntax::parse(Arc::from(case["specified"].as_str().unwrap()), Default::default(), None).map_err(error)?;
+        let declaration = p::Declaration::parse(case["property"].as_str().unwrap(), syntax.components(), false, Default::default(), None);
+        return match (case["kind"].as_str().unwrap(), declaration) {
+            ("test_valid_value", Ok(p::Declaration::Known { .. })) | ("test_invalid_value", Err(p::Error::Invalid)) => Ok(()),
+            (_, Err(p::Error::Unsupported(_) | p::Error::UnknownProperty)) => Err(unsupported("declaration grammar")),
+            (_, Err(e)) => Err(error(e)),
+            _ => Err(mismatch("declaration acceptance")),
+        };
+    }
     let source = std::fs::read_to_string(dir.join("wpt").join(case["file"].as_str().unwrap())).map_err(error)?;
     let mut parsed = html::parse(Arc::from(source), Default::default(), None).map_err(error)?;
     let target = named(&parsed.document, "target")?;

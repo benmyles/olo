@@ -2009,3 +2009,129 @@ integration or website journey is implemented by this milestone. Website
 evidence remains **0/3,000 combinations, 0/100 sites**. Next: UA/presentational
 styles, actual font selection, missing contexts/properties and live style
 invalidation, then layout/rendering and the remaining full-browser acceptance.
+
+## 2026-11-05 — font longhands and coherent face requests
+
+Implemented original font-family/style/width longhands, bringing the registry
+to **92 longhands, 91 all-resettable, 16 shorthands, 72 canonical computed
+entries**. Font-stretch is a legacy name alias for the same declaration/property,
+not a separate cascade candidate. Family lists preserve decoded named/generic
+identity, case, fallback ordering, escaped/quoted names, multiword joining and
+current script-specific generic() requests. Reserved unquoted names, malformed
+lists and font angle/width ranges fail explicitly; lists are bounded by the
+existing scanner/work limits, not quad-value scratch.
+
+Compute font-affecting numeric expressions using parent metrics before selecting
+the subject font. Inherited family/angle/width values are frozen. Font width
+retains percentage type, with keyword mapping and computed clamping, not a layout
+basis or geometric stretching. Explicit angle zero becomes normal; bare oblique
+retains computed syntax but requests 14 degrees. Host::font borrows the full
+FontRequest { size, weight, width, slant, families, axes }. Parent/default full
+requests reuse Font Arcs; matching bare/explicit used slopes can share a font
+without coalescing computed values. No font files are loaded by this stage.
+
+Family lists use an immutable thin shared handle through triomphe's safe Rust
+API (already a workspace dependency), not another CSS/font engine. Named strings
+share their own Arcs. The handle is 8 B vs 16 B for the standard-Arc control;
+strong count + stored length occupy a two-word allocation header. Font payload
+plus Arc controls is **120 B**, vs **128 B** with a fat family handle and **88 B**
+before the new request inputs. Style headers stay 80 B; typed Value stays 32 B,
+Assignment 40 B and Declaration 64 B. Memory accounting deduplicates families
+across defaults, requests and computed arrays, including allocation headers.
+No threads, I/O, timers, polling, UI work or new SIMD/GPU path added.
+
+Independent native ports pin nine unchanged WPT font pages and two helpers,
+with original paths, BSD notice and all-byte manifest: **93/149 pass, 56
+unsupported, no unexpected mismatch/error/panic**. There are 140 literal inputs
+plus nine unported browser drivers. Grammar inputs check acceptance only;
+ten family computed inputs run the production document job. All 47 style/width
+computed assertions requiring missing container-type context remain unsupported,
+including constants; style also imports Ahem. No CSSOM serializer/JS, actual
+font selection/shaping/layout/rasterization or website evidence. Existing
+style 243/341, logical 5,726/5,757, cascade 128/136 and property 821/1,109 counts
+remain unchanged; each evaluator exits 1 while non-passes remain.
+
+Used the olo-screens skill on the owned browser-style-check Wayland screen,
+with only olo-chrome, a fresh /var/tmp profile and localhost diagnostic page.
+Captured 23 local font CSSOM cases at scale 1. All **17 selected supported
+observations match** native semantic values; **six reference-feature gaps**
+remain separately inventoried. This Chrome 157.0.0.0 supports font-stretch but
+ignores font-width, and lacks left/right style and generic(). Its UI-Serif
+serialization suggests named-family handling rather than the current-spec
+generic. These gaps are not passes. The mixed alias-order row compares only
+the final legacy value; its unsupported empty font-width result is retained,
+not evidence for Chrome alias identity. Sources, reference binary hash and
+observations retained in font-chrome artifacts. Screen stopped, server stopped,
+owned Chrome profile removed; no personal session/display driven. Structured
+CSSOM comparisons only, no screenshots/visual checks or all-scale rendering
+claim. No visible product UI change to journal with tools/journal.py.
+
+Release measurements: Intel Core Ultra 7 356H, Linux 7.2.15, rustc 1.99.1,
+CPU0, three alternating process runs vs f1513b47; no concurrent builds/tests or
+GUI. Ten build/drop rounds per style process, retained three-property lookups,
+first calls and maximum observed 128-node steps. Fixed supplied metrics, no
+actual face matching/selection, layout, JS/network/UI or Chrome timing. Generated
+scalar/request expectations verified outside timing. Payload includes shared
+allocation headers/tree capacities, excluding allocator/hash controls and
+borrowed DOM/rules; process RSS is reported separately. Exact raw runs,
+source/binary/toolchain identities, isolated controls and runner are in
+measurements/2026-11-05-font.json and 2026-11-05-font-measure.py.
+
+10,000 generated item elements plus four document elements, medians:
+
+| Scene | Parent build/drop | New build/drop | Parent / new counted style-tree bytes | Parent / new RSS KiB |
+| --- | ---: | ---: | ---: | ---: |
+| Bare | 15.184 ms | 15.608 ms | 1,775,464 / 1,775,744 | 7,744 / 7,748 |
+| Uniform | 21.787 ms | 22.046 ms | 1,775,904 / 1,776,216 | 8,044 / 8,112 |
+| Varying inline widths | 29.992 ms | 29.936 ms | 4,735,608 / 4,735,920 | 13,920 / 13,904 |
+
+Build/drop changes are +2.8%, +1.2%, -0.2%; no universal speedup. Cold build
+medians 17.845→15.481 / 21.522→22.848 / 27.953→29.697 ms. Retained three-query
+medians 10.136→11.211 / 16.675→17.151 / 20.224→19.200 ns. Largest observed common
+style step 11.443 ms parent, 3.265 ms new; outliers retained, no hard latency
+or UI-frame guarantee. Jobs run only on workers.
+
+New-feature generated varying font requests: build/drop medians 3.289 ms for
+1k and 35.092 ms for 10k. Counted style/tree payload 451,578 / 5,122,458 B;
+family allocation payload 106 B shared across the whole job. Fat-handle control
+retains 459,586 / 5,202,466 B, a saving of **8,008 / 80,008 B** with the thin
+handle; build medians 3.338 / 35.607 ms. Whole font-process RSS median
+15,144 vs 15,332 KiB. Largest observed font step 8.708 ms native / 10.651 ms
+fat control. New feature has no claimed before speedup. The current 10k case
+retains 10,001 Font objects for repeating requests; nonadjacent interning and
+language/script/subject matching context remain work, not hidden by the count.
+Six new declaration compile/drop medians range 0.055–0.681 µs; raw cold calls
+are retained separately. No actual selected-font performance claim.
+
+The first draft's expanded enum caused general typed cloning to move out of
+line. Forced whole-clone inlining traded numeric costs against slower colors,
+so was not retained; neither a redundant specified oblique numeric wrapper nor
+hand-written Clone was retained. Normal code clones known numeric/color inner
+types directly at the cascade boundary, with same-semantics general-copy and
+fat-family controls. Final raw width/margin/color/missing medians parent→new:
+**8.964→11.153 / 8.450→11.168 / 7.922→7.601 / 3.038→3.067 ns**. General-copy
+control is 15.347 / 15.152 / 9.025 / 3.032 ns, showing the focused optimization's
+benefit within the new stage. Width/margin still regress 24.4%/32.2% vs parent,
+with nonoverlapping ranges (8.534–9.019 vs 10.699–11.928; 8.098–9.412 vs
+11.031–11.796). Keep profiling on TODO; no settled acceptance. Snapshot payload
+remains 416 B. Indexed 1k/2k/4k match/resolve medians 0.2854→0.2972 /
+0.5861→0.5980 / 1.1252→1.1994 ms. Other common-operation results are mixed,
+including selector timings, and remain in raw evidence. Exploratory unpublished
+draft runs/hashes are retained explicitly as non-checkoutable investigation;
+final controls are reproducible with documented Cargo features. Hardware
+sampling was unavailable for these processes; no system settings changed.
+
+All **140 default release tests and 139 all-feature release tests** pass,
+including six new font groups: identity/grammar, parent vs subject contexts,
+bounds/alias order/used slope sharing, ownership/quotas/cancel, independent WPT
+and selected Chrome observations/gaps. Strict default/all-feature release
+all-target clippy, formatting, fixture re-extraction/hash and diff checks pass.
+Full workspace release build passes: cargo **36.53 s**, wall **36.77 s**;
+existing GPUI warnings/proc-macro-error2 future-compatibility notice remain.
+
+Full browser goal remains active, **0/3,000 website combinations, 0/100 sites**.
+Next: actual native font loading/matching and coherent subject/font context,
+UA/presentational defaults, remaining properties/conditions and live invalidation,
+then shaping/layout/rendering and the rest of the browser. No shell, V8,
+networking, all-site dark mode, agent control or Olo/password/passkey integration
+is supplied by this prerequisite milestone.

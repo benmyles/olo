@@ -121,3 +121,11 @@ under the included BSD license. The original literal-only extractor and native
 adapter run Olo's document style job against selected semantic assertions.
 Unimplemented contexts and browser drivers remain explicit non-passes. No
 upstream JS, CSSOM serializer, layout or rasterization executes in these ports.
+
+The nine font longhand pages and two helpers in `tests/font-fixtures/wpt` are
+unchanged WPT data at the pinned revision in SOURCE.json, under the included
+BSD license. SOURCE.json maps their original paths. Native literal grammar
+ports check acceptance; selected computed ports run the original document
+style job with supplied metrics. Missing original contexts and browser drivers
+remain non-passes. No font files, JS, CSSOM serializer, face matching, shaping,
+layout or rasterization is executed by these assertions.

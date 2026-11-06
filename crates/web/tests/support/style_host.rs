@@ -19,7 +19,7 @@ impl Host for FixtureHost {
             _ => Err(color::Error::ContextUnavailable),
         }
     }
-    fn font(&self, r: FontRequest) -> style::Result<FontMetrics> {
+    fn font(&self, r: &FontRequest) -> style::Result<FontMetrics> {
         Ok(FontMetrics { id: 1, ex: r.size * 0.5, cap: r.size * 0.75, ch: r.size * 0.5, ic: r.size, normal_line_height: r.size * 1.25 })
     }
     fn font_size(&self, k: p::Keyword, _: f64) -> style::Result<f64> {

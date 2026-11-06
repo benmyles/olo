@@ -77,6 +77,7 @@ fn compare(value: &Value, expected: &Json, property: &str) -> Check {
             let actual = [v[0], v[1], v[2], c.alpha()];
             if actual.into_iter().zip(reference).all(|(a, b)| (a - b).abs() < 1e-5) { Ok(()) } else { Err(mismatch(format!("color {actual:?}, expected {reference:?}"))) }
         }
+        Value::Families(_) => Err(unsupported("font computed host/CSSOM reference driver")),
         Value::Display(_) => Err(unsupported("display computed/CSSOM reference driver")),
         Value::FitContent(_) => Err(unsupported("intrinsic size computation host")),
         Value::Pending(_) => Err(unsupported("substitution element host")),

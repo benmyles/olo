@@ -9,6 +9,9 @@ pub(super) enum SizeKind {
 }
 #[derive(Clone, Copy)]
 pub(super) enum Grammar {
+    FontFamily,
+    FontStyle,
+    FontWidth,
     Overflow,
     Keywords(&'static [Keyword]),
     Numeric(NumericKind, Range, &'static [Keyword]),
@@ -71,6 +74,7 @@ keyword_registry! {
     Inline => "inline",
     InlineEnd => "inline-end",
     InlineStart => "inline-start",
+    Italic => "italic",
     Inset => "inset",
     Isolate => "isolate",
     Justify => "justify",
@@ -90,6 +94,7 @@ keyword_registry! {
     MinContent => "min-content",
     None => "none",
     Normal => "normal",
+    Oblique => "oblique",
     Nowrap => "nowrap",
     Outset => "outset",
     Painted => "painted",
@@ -179,8 +184,11 @@ property_registry! {
     FlexShrink, "flex-shrink", Grammar::Numeric(NumericKind::Number, Range::Nonnegative, &[]), "1", false;
     FlexWrap, "flex-wrap", Grammar::Keywords(&[Keyword::Nowrap,Keyword::Wrap,Keyword::WrapReverse]), "nowrap", false;
     Float, "float", Grammar::Keywords(&[Keyword::None,Keyword::Left,Keyword::Right,Keyword::InlineStart,Keyword::InlineEnd]), "none", false;
+    FontFamily, "font-family", Grammar::FontFamily, "serif", true;
     FontSize, "font-size", Grammar::Numeric(NumericKind::LengthPercentage, Range::Nonnegative, &[Keyword::XxSmall,Keyword::XSmall,Keyword::Small,Keyword::Medium,Keyword::Large,Keyword::XLarge,Keyword::XxLarge,Keyword::XxxLarge,Keyword::Larger,Keyword::Smaller,Keyword::Math]), "medium", true;
+    FontStyle, "font-style", Grammar::FontStyle, "normal", true;
     FontWeight, "font-weight", Grammar::Numeric(NumericKind::Number, Range::FontWeight, &[Keyword::Normal,Keyword::Bold,Keyword::Bolder,Keyword::Lighter]), "normal", true;
+    FontWidth, "font-width", Grammar::FontWidth, "normal", true;
     Height, "height", Grammar::Size(SizeKind::Preferred), "auto", false;
     InlineSize, "inline-size", Grammar::Size(SizeKind::Preferred), "auto", false;
     InsetBlockEnd, "inset-block-end", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
@@ -256,7 +264,7 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontSize,FontWeight,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,Top,VerticalAlign,Visibility,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
+    All, "all", [BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,Color,ColumnGap,Display,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,Top,VerticalAlign,Visibility,Width,WordBreak,WordSpacing,WritingMode,ZIndex], WideOnly;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
     BorderWidth, "border-width", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth], Quad;
@@ -280,6 +288,9 @@ pub enum Name {
 }
 impl Name {
     pub fn parse(name: &str) -> Option<Self> {
+        if name.eq_ignore_ascii_case("font-stretch") {
+            return Some(Self::Longhand(Property::FontWidth));
+        }
         if let Ok(i) = Property::ALL.binary_search_by(|p| ascii_cmp(p.as_str(), name)) {
             return Some(Self::Longhand(Property::ALL[i]));
         }

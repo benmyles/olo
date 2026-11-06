@@ -35,6 +35,10 @@ baseline-math-sums = []
 baseline-cascade-index = []
 # Same computed values with full per-element resolution/storage, no sparse sharing.
 baseline-style-dense = []
+# Same cascade values using the general outer enum clone for every candidate.
+baseline-cascade-value-copy = []
+# Shared family list with a fat standard Arc instead of a thin pointer.
+baseline-font-family-fat = []
 
 [dependencies]
 memchr = "2"
@@ -42,6 +46,7 @@ encoding_rs = "0.8"
 simdutf8 = "0.1"
 smallvec = "1"
 wide = "1.7"
+triomphe = { version = "0.1.17", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 serde_json.workspace = true
