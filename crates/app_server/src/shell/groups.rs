@@ -497,11 +497,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     /// What `w` groups by, if anything. In Focus mode (`modes`) an app's
-    /// windows are always grouped.
+    /// windows are grouped whether or not the app groups them elsewhere,
+    /// but a window taken out of its group (`Alone`) stays out: Focus
+    /// shows it on its own, the app's others not its tabs (Ben,
+    /// 2026-11-06: "in focus mode an ungrouped window for the same app
+    /// should get its own focus without the other window tabs").
     pub fn group_key(&self, w: &WindowElement) -> Option<GroupKey> {
         let grouping = w.meta().grouping.borrow().clone();
         match grouping {
-            Grouping::Auto | Grouping::Alone if self.in_focus_mode(w) && !w.app_id().is_empty() => Some(GroupKey::App(w.app_id())),
+            Grouping::Auto if self.in_focus_mode(w) && !w.app_id().is_empty() => Some(GroupKey::App(w.app_id())),
             Grouping::Auto => {
                 let app = w.app_id();
                 self.groups_app(&app).then_some(GroupKey::App(app))

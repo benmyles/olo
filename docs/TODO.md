@@ -17,15 +17,6 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-- **Focus mode: Remove from Group** (Ben, 2026-11-06, with a screenshot
-  of three Chrome windows as tabs): "remove from group doesn't seem to
-  work at least here i can't remove the chrome window from the chrome
-  group. clarification: it works in standard mode but in focus mode it
-  doesn't work -- in focus mode an ungrouped window for the same app
-  should get its own focus without the other window tabs for that app".
-  In Focus mode, a window taken out of its app's group is focused on its
-  own, the app's other windows no longer its tabs.
-
 - **Deskbar's tray icons: either click shows their menu** (Ben,
   2026-11-06): "in the deskbar, left clicking or right clicking an icon
   should show the context menu for that icon (if there is one -- if not
@@ -1673,6 +1664,21 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Focus mode: Remove from Group**~~ (Ben, 2026-11-06, with a screenshot
+  of three Chrome windows as tabs): "remove from group doesn't seem to
+  work at least here i can't remove the chrome window from the chrome
+  group. clarification: it works in standard mode but in focus mode it
+  doesn't work -- in focus mode an ungrouped window for the same app
+  should get its own focus without the other window tabs for that app".
+  In Focus mode, a window taken out of its app's group is focused on its
+  own, the app's other windows no longer its tabs.
+  *Done* (2026-11-06): Focus grouped an app's windows by app even when
+  one had been taken out (`group_key` took `Alone` as `Auto` there), so
+  it went straight back in. A window taken out now stays out in Focus
+  and shows on its own. Tried headless: two Terminal windows, tabs of
+  one group in Focus; Remove from Group on one, then each shown alone
+  (its own tab only, the other covered).
 
 - ~~**Deskbar: Super-click launches a second instance**~~ (Ben, 2026-11-06,
   prioritised): "when opening an app in the deskbar menu if i hold down

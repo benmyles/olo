@@ -5027,7 +5027,11 @@ that shows. Every one of them is zoomed (`zoom_window`, so leaving Focus
 puts each back where it was; `focus_tick`), a new one opens zoomed
 (`focus_claim`, at its first commit, and stays so while it is placed:
 `focus_tick` leaves a window that isn't placed yet alone), and one moved
-or sized by hand zooms again where it is let go. A group zooms as one
+or sized by hand zooms again where it is let go. An app's windows are
+grouped there (`group_key`), whether or not the app groups them
+elsewhere, but one taken out of its group (Remove from Group: `Alone`)
+stays out and shows on its own, the app's others not its tabs. A group
+zooms as one
 (its front window's arrangement is its others', `share_arrangement`):
 leaving Focus (`leave_focus`, for that display's windows only: another
 may still be in Focus) puts back every window of a group Focus zoomed,
