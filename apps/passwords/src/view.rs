@@ -9,12 +9,12 @@ use chrono::{DateTime, Local, Utc};
 use olo_ui::{
     Menu, agent,
     gpui::{
-        AnyElement, App, Bounds, Context, Corner, CursorStyle, Div, Entity, FontStyle, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
+        AnyElement, App, Bounds, Context, Corner, CursorStyle, Div, Entity, Font, FontStyle, FontWeight, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
         MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled as _, Subscription,
         TextRun, Window, canvas, div, point, px, relative, size,
     },
     icons, menu, metrics as m, part,
-    search::{self, FilterBar, Query},
+    search::{self, FilterBar, Needle, Query},
     style::{self, c},
     theme,
     widgets::{
@@ -569,7 +569,10 @@ pub fn items(app: &mut Passwords, window: &mut Window, cx: &mut Context<Password
         }
     });
     let query = Rc::new(Query::parse(&app.search, &search::keys(&facets)));
-    let subtitles: Rc<Vec<String>> = Rc::new(visible.iter().map(|i| app.subtitle(i)).collect());
+    // Under each title, where the search found it when that's inside
+    // it (a section, a field), else its username or site.
+    let found = app.found();
+    let subtitles: Rc<Vec<String>> = Rc::new(visible.iter().zip(found.iter()).map(|(i, f)| f.clone().unwrap_or_else(|| app.subtitle(i))).collect());
     let mark = search::mark_color(&p);
     let empty = if app.loading {
         "Loading…"
@@ -646,6 +649,9 @@ pub fn detail(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwor
         if std::mem::take(&mut app.focus_title) {
             form.title.read(cx).focus(window);
         }
+        if let Some(i) = app.focus_field.take() {
+            form.focus_field(editor, i, window, cx);
+        }
         let vaults: Vec<_> = app.vaults.iter().map(|v| onepassword::VaultOverview { title: app.vault_name(v), ..v.clone() }).collect();
         let width = f32::from(window.viewport_size().width) - SOURCES_WIDTH - LIST_WIDTH - 4.0 * m::SPACING - 2.0 * edge(window) - 2.0 * m::WINDOW_INSET;
         let content = edit::view(&me, editor, form, &vaults, width, cx);
@@ -684,23 +690,17 @@ pub fn detail(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwor
     let edit_button = (!archived && !crate::on_screen()).then(|| Button::new("Edit").min_width(64.0).on_click(move |_, cx| edit_me.update(cx, |a, cx| a.edit_selected(cx))));
     let mut col = div().w_full().flex().flex_col().child(header(&item.title, item.category, &vault, edit_button));
     if archived {
-        let text: SharedString = "This item is in the Archive.".into();
-        col = col.child(
-            canvas(
-                |_, _, _| {},
-                move |b, _, window, cx| {
-                    let p = theme::palette(cx);
-                    let mut font = style::ui_font(FontWeight::NORMAL);
-                    font.style = FontStyle::Italic;
-                    let r = style::label(window, cx, b.left() + px(m::WINDOW_INSET), b.center().y, style::Align::Left, text.clone(), style::PLAIN_SIZE, font, dim(&p));
-                    agent::record(window, cx, agent::Node::label(text.clone(), r));
-                },
-            )
-            .w_full()
-            .h(px(28.0))
-            .flex_shrink_0(),
-        );
+        col = col.child(italic_note("This item is in the Archive."));
     }
+    // What the search looks for, marked; and with `section:` or
+    // `field:`, only the sections and fields it asks for.
+    let facets = app.facets_rc();
+    let query = Rc::new(Query::parse(&app.search, &search::keys(&facets)));
+    let ask = Asked::of(&query);
+    if ask.narrows() {
+        col = col.child(italic_note("Only the sections and fields the search asks for."));
+    }
+    let mark = (!query.is_empty()).then(|| query.clone());
     // Built-in fields first, then each section's.
     let mut groups: Vec<(Option<String>, Vec<&ItemField>)> = vec![(None, Vec::new())];
     for f in &item.fields {
@@ -711,38 +711,41 @@ pub fn detail(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwor
         }
     }
     for (section, fields) in &groups {
+        let title = section.as_ref().and_then(|s| item.sections.iter().find(|x| &x.id == s)).map(|s| s.title.clone());
+        let fields: Vec<&ItemField> = fields.iter().copied().filter(|f| ask.shows(title.as_deref().unwrap_or_default(), &f.title)).collect();
         if fields.is_empty() {
             continue;
         }
-        if let Some(title) = section.as_ref().and_then(|s| item.sections.iter().find(|x| &x.id == s)).map(|s| s.title.clone()) {
-            col = col.child(section_heading(title));
+        if let Some(title) = title {
+            col = col.child(section_heading(title, mark.clone()));
         }
-        let passkey = (section.as_deref() == Some(crate::passkey::SECTION)).then(|| crate::passkey::shown(fields));
+        let passkey = (section.as_deref() == Some(crate::passkey::SECTION)).then(|| crate::passkey::shown(&fields));
         let fields: Vec<&ItemField> = match &passkey {
             Some(shown) => shown.iter().collect(),
-            None => fields.clone(),
+            None => fields,
         };
         for f in fields {
             if f.value.is_empty() && f.field_type != ItemFieldType::Totp {
                 continue;
             }
-            col = col.child(field_row(app, &me, &id, f, f.id.clone(), app.revealed(&f.id), cx));
+            col = col.child(field_row(app, &me, &id, f, f.id.clone(), app.revealed(&f.id), mark.clone(), cx));
         }
     }
-    if !item.websites.is_empty() {
-        col = col.child(section_heading("Websites".into()));
+    if !item.websites.is_empty() && !ask.narrows() {
+        col = col.child(section_heading("Websites".into(), None));
         for w in &item.websites {
             let f = ItemField::new("", &w.label, ItemFieldType::Url, &w.url);
-            col = col.child(field_row(app, &me, &id, &f, format!("url:{}", w.url), true, cx));
+            col = col.child(field_row(app, &me, &id, &f, format!("url:{}", w.url), true, mark.clone(), cx));
         }
     }
-    if !item.notes.is_empty() {
+    if !item.notes.is_empty() && !ask.narrows() {
         let ink = c(p.document_text);
-        col = col.child(section_heading("Notes".into())).child(div().px(px(m::WINDOW_INSET)).pt(px(m::TIGHT)).pb(px(m::SPACING)).child(StringView::new(item.notes.clone()).wrap(true).color(ink)));
+        col =
+            col.child(section_heading("Notes".into(), None)).child(div().px(px(m::WINDOW_INSET)).pt(px(m::TIGHT)).pb(px(m::SPACING)).child(StringView::new(item.notes.clone()).wrap(true).color(ink)));
     }
-    if !item.tags.is_empty() {
+    if !item.tags.is_empty() && !ask.narrows() {
         let tags: SharedString = item.tags.join(", ").into();
-        col = col.child(section_heading("Tags".into())).child(
+        col = col.child(section_heading("Tags".into(), None)).child(
             canvas(
                 |_, _, _| {},
                 move |b, _, window, cx| {
@@ -794,6 +797,53 @@ pub fn detail(app: &mut Passwords, window: &mut Window, cx: &mut Context<Passwor
     col = col.child(div().h(px(m::SPACING)).flex_shrink_0()).child(dates);
     let view = ScrollView::new("passwords-detail", &app.detail_scroll).border(false).auto_hide(true).child(col);
     well(window, p.document_background, view).into_any_element()
+}
+
+/// A line of dim italics across the item pane, under its header.
+fn italic_note(text: &'static str) -> AnyElement {
+    let text: SharedString = text.into();
+    canvas(
+        |_, _, _| {},
+        move |b, _, window, cx| {
+            let p = theme::palette(cx);
+            let mut font = style::ui_font(FontWeight::NORMAL);
+            font.style = FontStyle::Italic;
+            let room = b.size.width - px(2.0 * m::WINDOW_INSET);
+            let r = style::label_fit(window, cx, b.left() + px(m::WINDOW_INSET), b.center().y, style::Align::Left, text.clone(), style::PLAIN_SIZE, font, dim(&p), room);
+            agent::record(window, cx, agent::Node::label(text.clone(), r));
+        },
+    )
+    .w_full()
+    .h(px(28.0))
+    .flex_shrink_0()
+    .into_any_element()
+}
+
+/// The sections and fields a search asks for by name (`section:`,
+/// `field:`, and those it leaves out with `-section:`, `-field:`).
+struct Asked<'a> {
+    sections: Vec<&'a Needle>,
+    fields: Vec<&'a Needle>,
+    not_sections: Vec<&'a Needle>,
+    not_fields: Vec<&'a Needle>,
+}
+
+impl<'a> Asked<'a> {
+    fn of(q: &'a Query) -> Asked<'a> {
+        Asked { sections: q.values("section"), fields: q.values("field"), not_sections: q.left_out("section"), not_fields: q.left_out("field") }
+    }
+
+    /// Whether it leaves anything of an item out.
+    fn narrows(&self) -> bool {
+        !(self.sections.is_empty() && self.fields.is_empty() && self.not_sections.is_empty() && self.not_fields.is_empty())
+    }
+
+    /// Whether a field labelled `label`, in section `section` (titled; or
+    /// none: ""), shows.
+    fn shows(&self, section: &str, label: &str) -> bool {
+        let any = |list: &[&Needle], name: &str| list.iter().any(|n| crate::names(n, name));
+        (self.sections.is_empty() || any(&self.sections, section)) && (self.fields.is_empty() || any(&self.fields, label)) && !any(&self.not_sections, section) && !any(&self.not_fields, label)
+    }
 }
 
 /// How wide the item pane's content is.
@@ -860,23 +910,15 @@ fn header(title: &str, category: ItemCategory, vault: &str, edit: Option<Button>
     out.into_any_element()
 }
 
-fn section_heading(title: String) -> AnyElement {
+/// A section's title over its fields, what `mark` looks for marked.
+fn section_heading(title: String, mark: Option<Rc<Query>>) -> AnyElement {
     let title: SharedString = title.into();
     canvas(
         |_, _, _| {},
         move |b, _, window, cx| {
             let p = theme::palette(cx);
-            let r = style::label(
-                window,
-                cx,
-                b.left() + px(m::WINDOW_INSET),
-                b.bottom() - px(9.0),
-                style::Align::Left,
-                title.clone(),
-                style::PLAIN_SIZE,
-                style::ui_font(FontWeight::BOLD),
-                c(p.document_text),
-            );
+            let runs = marked(&title, mark.as_deref(), style::ui_font(FontWeight::BOLD), c(p.document_text), &p);
+            let r = style::label_runs(window, cx, b.left() + px(m::WINDOW_INSET), b.bottom() - px(9.0), style::Align::Left, title.clone(), style::PLAIN_SIZE, &runs);
             agent::record(window, cx, agent::Node { role: "Heading", name: Some(title.clone()), bounds: r, enabled: true, ..Default::default() });
         },
     )
@@ -884,6 +926,14 @@ fn section_heading(title: String) -> AnyElement {
     .h(px(30.0))
     .flex_shrink_0()
     .into_any_element()
+}
+
+/// `text` in `font` and `color`, what `mark` looks for marked.
+fn marked(text: &str, mark: Option<&Query>, font: Font, color: Hsla, p: &olo_theme::Palette) -> Vec<TextRun> {
+    match mark {
+        Some(q) => search::highlight(text, q, &font, color, search::mark_color(p)),
+        None => vec![TextRun { len: text.len(), font, color, background_color: None, underline: None, strikethrough: None, size: None }],
+    }
 }
 
 /// How a field's value reads.
@@ -925,7 +975,7 @@ fn shown(f: &ItemField, revealed: bool) -> (String, bool) {
 /// click copies it (a link's value opens it); dragged, it goes out as its
 /// value (onto another app's field). `key` is the field's id (`url:…` for
 /// a website).
-fn field_row(app: &Passwords, me: &Me, item: &str, f: &ItemField, key: String, revealed: bool, cx: &App) -> AnyElement {
+fn field_row(app: &Passwords, me: &Me, item: &str, f: &ItemField, key: String, revealed: bool, mark: Option<Rc<Query>>, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
     let hovered = app.hover_field.as_deref() == Some(key.as_str());
     let label: SharedString = if f.title.is_empty() { edit::kind_label(f.field_type).to_lowercase() } else { f.title.clone() }.into();
@@ -951,10 +1001,14 @@ fn field_row(app: &Passwords, me: &Me, item: &str, f: &ItemField, key: String, r
                 window.paint_quad(olo_ui::gpui::fill(lit, style::shade(&p, p.document_background, 1.04)).corner_radii(px(2.0)));
             }
             let x = b.left() + px(m::WINDOW_INSET);
-            let l = style::label(window, cx, x, b.top() + px(13.0), style::Align::Left, label.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), dim(&p));
+            // What the search looks for, marked (not in a secret, which
+            // it doesn't look in).
+            let runs = marked(&label, mark.as_deref(), style::ui_font(FontWeight::NORMAL), dim(&p), &p);
+            let l = style::label_runs(window, cx, x, b.top() + px(13.0), style::Align::Left, label.clone(), style::SMALL_SIZE, &runs);
             let font = if mono { style::mono_font(FontWeight::NORMAL) } else { style::ui_font(FontWeight::NORMAL) };
             let room = (b.right() - x - px(m::WINDOW_INSET + buttons_w)).max(px(0.0));
-            let v = style::label_fit(window, cx, x, b.top() + px(31.0), style::Align::Left, value.clone(), style::PLAIN_SIZE, font, color, room);
+            let runs = marked(&value, mark.as_deref().filter(|_| !secret), font, color, &p);
+            let v = style::label_runs_fit(window, cx, x, b.top() + px(31.0), style::Align::Left, value.clone(), style::PLAIN_SIZE, &runs, room);
             paint_value_at.set(Some(v));
             agent::record(window, cx, agent::Node { role: "Label", name: Some(label.clone()), value: Some(value.clone()), bounds: l.union(&v), enabled: true, clickable: true, ..Default::default() });
             // A little pie of the code's time left, a ring round it.

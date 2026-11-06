@@ -7,7 +7,9 @@
 
 use olo_ui::{
     Menu,
-    gpui::{AnyElement, App, Context, Corner, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, SharedString, Styled as _, Subscription, canvas, div, px},
+    gpui::{
+        AnyElement, App, Context, Corner, Entity, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, SharedString, Styled as _, Subscription, Window, canvas, div, px,
+    },
     menu, metrics as m, style, theme,
     widgets::{Button, MenuField, StringView, TextControl, TextField, TextFieldEvent, button_row, heading, text_field},
 };
@@ -283,8 +285,30 @@ impl Editor {
         }
     }
 
-    /// A field of `kind` added, in the section custom fields go in.
-    pub fn add_field(&mut self, kind: ItemFieldType) {
+    /// The fields as the form shows them: the built-in ones and those of
+    /// untitled sections first (`None`), then each titled section in
+    /// turn, one with no fields yet too (so it can be added to); each
+    /// with its fields' indices.
+    pub fn groups(&self) -> Vec<(Option<String>, Vec<usize>)> {
+        let mut groups: Vec<(Option<String>, Vec<usize>)> = vec![(None, Vec::new())];
+        for s in self.sections.iter().filter(|s| !s.title.is_empty()) {
+            if !groups.iter().any(|(k, _)| k.as_deref() == Some(s.id.as_str())) {
+                groups.push((Some(s.id.clone()), Vec::new()));
+            }
+        }
+        for (i, f) in self.fields.iter().enumerate() {
+            let key = f.section.as_ref().filter(|id| groups.iter().any(|(k, _)| k.as_ref() == Some(*id)));
+            if let Some((_, list)) = groups.iter_mut().find(|(k, _)| k.as_ref() == key) {
+                list.push(i);
+            }
+        }
+        groups
+    }
+
+    /// A field of `kind` added at the end of `section`'s (a titled
+    /// section's id; `None`: the first group, in the untitled section
+    /// custom fields go in); where it went.
+    pub fn add_field(&mut self, kind: ItemFieldType, section: Option<&str>) -> usize {
         let label = match kind {
             ItemFieldType::Totp => "one-time password",
             ItemFieldType::Concealed => "password",
@@ -295,14 +319,19 @@ impl Editor {
             ItemFieldType::Address => "address",
             _ => "",
         };
-        // Custom fields go in a section of their own, as 1Password's apps put them.
-        let section = self.custom_section();
-        self.fields.push(EditField { id: new_id(), section, label: label.into(), kind, value: String::new(), address: AddressFieldDetails::default(), reveal: true });
+        let at = self.groups().into_iter().find(|(k, _)| k.as_deref() == section).and_then(|(_, list)| list.last().copied()).map_or(self.fields.len(), |i| i + 1);
+        // Custom fields go in a section, as 1Password's apps put them.
+        let section = match section {
+            Some(id) => Some(id.to_owned()),
+            None => self.custom_section(),
+        };
+        self.fields.insert(at, EditField { id: new_id(), section, label: label.into(), kind, value: String::new(), address: AddressFieldDetails::default(), reveal: true });
+        at
     }
 
-    /// The section custom fields go in (made when first needed).
+    /// The untitled section custom fields go in (made when first needed).
     fn custom_section(&mut self) -> Option<String> {
-        if let Some(s) = self.sections.iter().find(|s| s.title.is_empty() || s.id == "add more") {
+        if let Some(s) = self.sections.iter().find(|s| s.title.is_empty()) {
             return Some(s.id.clone());
         }
         let id = new_id();
@@ -328,6 +357,15 @@ pub struct EditForm {
 type Set = Box<dyn Fn(&mut Editor, String)>;
 
 impl EditForm {
+    /// Focuses field `i` of `e`: its label while it has none, else its
+    /// value.
+    pub fn focus_field(&self, e: &Editor, i: usize, window: &mut Window, cx: &App) {
+        let named = e.fields.get(i).is_some_and(|f| !f.label.is_empty());
+        if let Some(f) = if named { self.values.get(i) } else { self.labels.get(i) } {
+            f.read(cx).focus(window);
+        }
+    }
+
     pub fn new(e: &Editor, cx: &mut Context<Passwords>) -> EditForm {
         let mut subs = Vec::new();
         let mut field = |cx: &mut Context<Passwords>, name: &str, hint: &str, text: &str, secret: bool, set: Set| {
@@ -457,8 +495,8 @@ impl EditForm {
     }
 }
 
-/// The form: the title, each field (its label and value, a secret's
-/// Show and New, −), Add Field…, the websites, notes and tags, why it
+/// The form: the title, each section's fields (their labels and values,
+/// a secret's Show and New, −) and its own Add Field…, the websites, notes and tags, why it
 /// can't be saved, and Cancel and Save; `width` wide.
 pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[VaultOverview], width: f32, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
@@ -479,74 +517,76 @@ pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[Vault
         }));
     }
     let row = || div().flex().flex_row().items_center().gap(px(m::TIGHT)).h(px(m::CONTROL_HEIGHT + 4.0)).flex_shrink_0();
-    let mut last_section: Option<Option<String>> = None;
-    for (i, f) in e.fields.iter().enumerate() {
-        if last_section.as_ref() != Some(&f.section) {
-            if let Some(title) = f.section.as_ref().and_then(|s| e.sections.iter().find(|x| &x.id == s)).map(|s| s.title.clone())
-                && !title.is_empty()
-            {
-                col = col.child(div().h(px(m::TIGHT))).child(heading(title));
+    // Each section's fields under its heading, then its own Add Field….
+    for (g, (section, list)) in e.groups().into_iter().enumerate() {
+        if let Some(title) = section.as_ref().and_then(|s| e.sections.iter().find(|x| &x.id == s)).map(|s| s.title.clone()) {
+            col = col.child(div().h(px(m::TIGHT))).child(heading(title));
+        }
+        for i in list {
+            let f = &e.fields[i];
+            // A secret's Show and New beside it, or under it when they would
+            // leave too little of the value column to type in.
+            let mut secret_buttons: Vec<Button> = Vec::new();
+            if f.kind == ItemFieldType::Concealed {
+                let (to, id) = (me.clone(), f.id.clone());
+                secret_buttons.push(Button::new("New").id(format!("edit-new-{i}")).min_width(56.0).on_click(move |_, cx| {
+                    let id = id.clone();
+                    to.update(cx, |a, cx| a.generate_for(id, cx))
+                }));
             }
-            last_section = Some(f.section.clone());
-        }
-        // A secret's Show and New beside it, or under it when they would
-        // leave too little of the value column to type in.
-        let mut secret_buttons: Vec<Button> = Vec::new();
-        if f.kind == ItemFieldType::Concealed {
-            let (to, id) = (me.clone(), f.id.clone());
-            secret_buttons.push(Button::new("New").id(format!("edit-new-{i}")).min_width(56.0).on_click(move |_, cx| {
-                let id = id.clone();
-                to.update(cx, |a, cx| a.generate_for(id, cx))
-            }));
-        }
-        if concealed(f.kind) {
+            if concealed(f.kind) {
+                let to = me.clone();
+                secret_buttons
+                    .push(Button::new(if f.reveal { "Hide" } else { "Show" }).id(format!("edit-show-{i}")).min_width(56.0).on_click(move |_, cx| to.update(cx, |a, cx| a.toggle_edit_reveal(i, cx))));
+            }
+            let buttons = secret_buttons.len() as f32 * (56.0 + m::TIGHT);
+            let below = buttons > 0.0 && width - label_w - minus - 2.0 * m::TIGHT - buttons < 96.0;
             let to = me.clone();
-            secret_buttons
-                .push(Button::new(if f.reveal { "Hide" } else { "Show" }).id(format!("edit-show-{i}")).min_width(56.0).on_click(move |_, cx| to.update(cx, |a, cx| a.toggle_edit_reveal(i, cx))));
-        }
-        let buttons = secret_buttons.len() as f32 * (56.0 + m::TIGHT);
-        let below = buttons > 0.0 && width - label_w - minus - 2.0 * m::TIGHT - buttons < 96.0;
-        let to = me.clone();
-        let remove = Button::new("−").id(format!("edit-remove-{i}")).min_width(minus).on_click(move |_, cx| to.update(cx, |a, cx| a.remove_edit_field(i, cx)));
-        let label = div().w(px(label_w)).flex_shrink_0().child(TextControl::new(form.labels[i].clone()));
-        let value = div().flex_1().min_w_0().child(TextControl::new(form.values[i].clone()));
-        let mut line = row().child(label).child(value);
-        let mut under = None;
-        if below {
-            under = Some(row().justify_end().children(secret_buttons).child(div().w(px(minus))));
-        } else {
-            line = line.children(secret_buttons);
-        }
-        col = col.child(line.child(remove)).children(under);
-        if !form.parts[i].is_empty() {
-            // The rest of the address under its street, on the label and
-            // value columns: the city under the label and the rest across
-            // the value, or two by two if the value is narrow.
-            let value_w = width - label_w - 2.0 * m::TIGHT - minus;
-            let per_row = if (value_w - 2.0 * m::TIGHT) / 3.0 >= 72.0 { 4 } else { 2 };
-            for chunk in form.parts[i].chunks(per_row) {
-                let mut r = row();
-                for (k, part) in chunk.iter().enumerate() {
-                    r = r.child(if k == 0 { div().w(px(label_w)).flex_shrink_0() } else { div().flex_1().min_w_0() }.child(TextControl::new(part.clone())));
+            let remove = Button::new("−").id(format!("edit-remove-{i}")).min_width(minus).on_click(move |_, cx| to.update(cx, |a, cx| a.remove_edit_field(i, cx)));
+            let label = div().w(px(label_w)).flex_shrink_0().child(TextControl::new(form.labels[i].clone()));
+            let value = div().flex_1().min_w_0().child(TextControl::new(form.values[i].clone()));
+            let mut line = row().child(label).child(value);
+            let mut under = None;
+            if below {
+                under = Some(row().justify_end().children(secret_buttons).child(div().w(px(minus))));
+            } else {
+                line = line.children(secret_buttons);
+            }
+            col = col.child(line.child(remove)).children(under);
+            if !form.parts[i].is_empty() {
+                // The rest of the address under its street, on the label and
+                // value columns: the city under the label and the rest across
+                // the value, or two by two if the value is narrow.
+                let value_w = width - label_w - 2.0 * m::TIGHT - minus;
+                let per_row = if (value_w - 2.0 * m::TIGHT) / 3.0 >= 72.0 { 4 } else { 2 };
+                for chunk in form.parts[i].chunks(per_row) {
+                    let mut r = row();
+                    for (k, part) in chunk.iter().enumerate() {
+                        r = r.child(if k == 0 { div().w(px(label_w)).flex_shrink_0() } else { div().flex_1().min_w_0() }.child(TextControl::new(part.clone())));
+                    }
+                    col = col.child(r.child(div().w(px(minus)).flex_shrink_0()));
                 }
-                col = col.child(r.child(div().w(px(minus)).flex_shrink_0()));
             }
         }
+        // (A passkey's fields are its own.)
+        if section.as_deref() == Some(crate::passkey::SECTION) {
+            continue;
+        }
+        let to = me.clone();
+        col = col.child(div().flex().child(Button::new("Add Field…").id(format!("edit-add-field-{g}")).on_click_at(move |b, window, cx| {
+            let mut m = Menu::new("Add Field");
+            for kind in ADDABLE {
+                m = m.item(kind_label(kind), format!("field:{}", kind.as_str()));
+            }
+            let (to, section) = (to.clone(), section.clone());
+            menu::popup(window, cx, m, b, Corner::BottomLeft, move |cmd, _, cx| {
+                if let Some(kind) = cmd.strip_prefix("field:").and_then(|k| ItemFieldType::ALL.iter().find(|t| t.as_str() == k)) {
+                    let kind = *kind;
+                    to.update(cx, |a, cx| a.add_edit_field(kind, section.as_deref(), cx));
+                }
+            });
+        })));
     }
-    let to = me.clone();
-    col = col.child(div().flex().child(Button::new("Add Field…").on_click_at(move |b, window, cx| {
-        let mut m = Menu::new("Add Field");
-        for kind in ADDABLE {
-            m = m.item(kind_label(kind), format!("field:{}", kind.as_str()));
-        }
-        let to = to.clone();
-        menu::popup(window, cx, m, b, Corner::BottomLeft, move |cmd, _, cx| {
-            if let Some(kind) = cmd.strip_prefix("field:").and_then(|k| ItemFieldType::ALL.iter().find(|t| t.as_str() == k)) {
-                let kind = *kind;
-                to.update(cx, |a, cx| a.add_edit_field(kind, cx));
-            }
-        });
-    })));
 
     if e.category == ItemCategory::Login || !e.websites.is_empty() {
         col = col.child(div().h(px(m::TIGHT))).child(heading("Websites"));
@@ -595,4 +635,51 @@ pub fn view(me: &Entity<Passwords>, e: &Editor, form: &EditForm, vaults: &[Vault
         })
         .child(col)
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A login with a titled section between its built-in fields and an
+    /// untitled one, and an empty titled section.
+    fn editor() -> Editor {
+        let mut e = Editor::new_item(ItemCategory::Login, 0, None);
+        e.sections = vec![ItemSection { id: "bank".into(), title: "Bank".into() }, ItemSection { id: "more".into(), title: String::new() }, ItemSection { id: "empty".into(), title: "Later".into() }];
+        let mut f = |id: &str, section: &str| EditField { section: Some(section.into()), ..field(id, id, ItemFieldType::Text) };
+        e.fields.push(f("iban", "bank"));
+        e.fields.push(f("extra", "more"));
+        e.fields.push(f("bic", "bank"));
+        e
+    }
+
+    #[test]
+    fn untitled_sections_show_with_the_built_in_fields() {
+        let e = editor();
+        let ids = |list: &[usize]| list.iter().map(|&i| e.fields[i].id.clone()).collect::<Vec<_>>();
+        let groups = e.groups();
+        assert_eq!(groups.iter().map(|(k, _)| k.as_deref()).collect::<Vec<_>>(), [None, Some("bank"), Some("empty")]);
+        assert_eq!(ids(&groups[0].1), ["username", "password", "extra"]);
+        assert_eq!(ids(&groups[1].1), ["iban", "bic"]);
+        assert!(groups[2].1.is_empty());
+    }
+
+    #[test]
+    fn a_field_goes_at_the_end_of_its_own_section() {
+        let mut e = editor();
+        let at = e.add_field(ItemFieldType::Phone, Some("bank"));
+        assert_eq!((e.fields[at].section.as_deref(), at), (Some("bank"), 5));
+        assert_eq!(e.groups()[1].1.last(), Some(&at));
+        // The first group's go in its untitled section, after its fields.
+        let at = e.add_field(ItemFieldType::Email, None);
+        assert_eq!((e.fields[at].section.as_deref(), e.fields[at].label.as_str()), (Some("more"), "email"));
+        assert_eq!(e.groups()[0].1.last(), Some(&at));
+        // A section with none yet takes one; a new item makes its untitled section.
+        let at = e.add_field(ItemFieldType::Text, Some("empty"));
+        assert_eq!(e.groups()[2].1, [at]);
+        let mut fresh = Editor::new_item(ItemCategory::Login, 0, None);
+        let at = fresh.add_field(ItemFieldType::Text, None);
+        assert_eq!((fresh.sections.len(), fresh.fields[at].section.as_ref()), (1, Some(&fresh.sections[0].id)));
+        assert_eq!(at, 2);
+    }
 }

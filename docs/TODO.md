@@ -17,16 +17,6 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-- **Passwords: Add Field in each section, and search inside items**
-  (Ben, 2026-11-06): "in passwords each section needs its own add field
-  button, right now there's only one at the very bottom of all
-  sections. also, i need to be able to search/filter sections and their
-  items not just the top level vault item entries". Editing an item,
-  each section has its own Add Field (the new field goes in that
-  section); and search finds sections and fields (their labels, and
-  values that aren't secret) as well as items, showing where in an item
-  it matched.
-
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
@@ -36,6 +26,21 @@ Nothing: what's left is waiting for Ben or blocked.
   lists logins for a sign-in form.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Passwords: Add Field in each section, and search inside items**
+  (Ben, 2026-11-06): "in passwords each section needs its own add field
+  button, right now there's only one at the very bottom of all
+  sections. also, i need to be able to search/filter sections and their
+  items not just the top level vault item entries". Done: editing an
+  item, each section ends with its own Add Field… (the field goes at the
+  end of that section and is focused; an empty titled section shows so
+  it can be filled). Search finds sections and fields (titles, labels,
+  and values that aren't secret): the list's second line says where
+  ("Admin Console › region: eu-west"), the item pane marks it, and
+  `section:` / `field:` filters (suggested with counts) narrow the list
+  and the item pane to just those sections and fields. Tried headless
+  with the fake 1Password's server item (now with 1Password's Admin
+  Console and Hosting Provider sections) at 1×, 1.5× and 2×.
 
 - **Credit cards' expiry dates synced wrong from 1Password** (Ben,
   2026-11-06): "credit card expiry dates aren't being properly synced

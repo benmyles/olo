@@ -10952,18 +10952,35 @@ place.
 
 **Searching**: the toolbar's `SearchField` and a `FilterBar` over the
 list (Tag, Has) share one query (`olo_ui::search`). Words find an item
-by its title, username, websites, tags, kind, and the text of its fields
-that aren't secret and its notes; with words, the best come first
-(title 4, username and site 3, tags 2, the rest 1), else by title; what
-was found is marked in each row, whose second line is the username (else
-the site). Filters: `type:` (login, secure-note…), `vault:`, `tag:`,
-`site:`, `user:`, and `has:` otp, password, website, files, reused (its
-password is another item's too), weak (under 12 characters, or of one
-kind). The vault worker sends a `Searchable` for every item with the
-list (`store::index`, again after each change): the username, the
-non-secret fields' names and values and the notes, and flags; never a
-password, code, card number or key, and of a password only whether it
-is weak or reused. So searching finds usernames of items never opened.
+by its title, username, websites, tags, kind, its sections' titles, its
+fields' labels (a secret's too), the values of those that aren't secret,
+and its notes; with words, the best come first (title 4, username and
+site 3, tags 2, the rest 1), else by title; what was found is marked in
+each row, whose second line is the username (else the site), or, when
+the search found it inside the item, where: "Admin Console › region:
+eu-west" (the field with most of the words; `found_in`, worked out with
+the list, once per change). The item pane marks it too (section titles,
+labels, and values that aren't secret). Filters: `type:` (login,
+secure-note…), `vault:`, `tag:`, `site:`, `user:`, `has:` otp, password,
+website, files, reused (its password is another item's too), weak (under
+12 characters, or of one kind), and `section:` and `field:` (by title or
+label, suggested with how many items have each), which narrow the item
+pane as well to just those sections and fields (`-section:` and `-field:`
+leave them out), saying so under its header. The vault worker sends a
+`Searchable` for every item with the list (`store::index`, again after
+each change): the username, each field as `FieldText` (its section's
+title, its label, its value unless secret), that and the notes as text,
+and flags; never a password, code, card number or key, and of a
+password only whether it is weak or reused. So searching finds usernames
+of items never opened.
+
+**Editing**: the editor shows the fields as the item pane does: the
+built-in ones and untitled sections' first, then each titled section
+under its heading (one with no fields yet too); each group ends with its
+own Add Field…, whose field goes at the end of that section (the first
+group's in the untitled section custom fields go in, made when first
+needed; `Editor::groups`, `add_field`) and is focused: its label if it
+has none yet, else its value. A passkey's section has none.
 
 `crates/onepassword` (package `olo-onepassword`) is a Rust 1Password SDK
 modelled on the Go one: the same `Client` (`Secrets`, `Items`, `Vaults`,
