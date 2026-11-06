@@ -23,6 +23,22 @@ Blocked).
 
 ## Done, waiting for Ben to try or confirm
 
+- **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
+  2026-11-03): an export from this Mac (sealed,
+  with passwords and sign-ins), imported on the ThinkPad (x86, another
+  user name if it has one, other displays): every pane and app looked
+  at, Passwords opened, the Wi-Fi networks there (NetworkManager asks
+  polkit for their passwords and to save them: Olo's agent's prompts
+  seen), the pool's accounts turned on once the Mac's are off.
+  *Re-checked* (2026-11-06, read-only, on the ThinkPad P1 Gen 9 this
+  session runs on): a backup was imported here on 2026-11-04 at 14:24
+  (the automatic "Before import" backup is in `state/olo/backups`); the
+  Mac's Wi-Fi networks are in NetworkManager (Home used 2026-11-05),
+  Passwords' vault is there, and the Token Pool's store is written to
+  (its arrival marker gone: it has run since). *Left* (Ben): what only
+  he can see: each pane and app as he left it, Passwords opening, and
+  the pool's accounts on once the Mac's are off.
+
 - **Other programs feel like Olo's own: every integration point**
   (Ben, 2026-10-29): "is there a way where we can make chrome (and any
   gtk / qt apps) better integrate with olo, e.g. replacing their file
@@ -1538,14 +1554,6 @@ people.
   - Deskbar: the AirPods' levels from their broadcast while they're not
     connected (the service has them now).
 
-- **Backup tried on the ThinkPad** (what's left of Ben's backup audit,
-  2026-11-03; waiting on the machine): an export from this Mac (sealed,
-  with passwords and sign-ins), imported on the ThinkPad (x86, another
-  user name if it has one, other displays): every pane and app looked
-  at, Passwords opened, the Wi-Fi networks there (NetworkManager asks
-  polkit for their passwords and to save them: Olo's agent's prompts
-  seen), the pool's accounts turned on once the Mac's are off.
-
 - **Chrome scrolls slower than Olo's apps** (Ben, 2026-11-02): "in
   chrome scrolling does not seem to be the same speed as olo native
   apps (it's slower) and it's most noticeable on the studio display at
@@ -1562,7 +1570,9 @@ people.
   libinput for one of its notches (`amount`, `amount_v120`) and sends
   on, with him turning it once in each app; then make Chrome's step and
   the kit's one (Preferences ▸ Touchpad & Mouse's scrolling speed for
-  both).
+  both). *Re-checked* (2026-11-06): the Razer isn't plugged into the
+  ThinkPad (its input devices are its touchpad and TrackPoint), so the
+  notch to measure needs that mouse back and Ben turning it.
 
 - **The touchpad's latency on Ben's machine, and what next** (from the
   palm model in Activity, 2026-11-03): Activity ▸ Inputs ▸ Touchpad
