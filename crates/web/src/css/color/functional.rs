@@ -76,7 +76,7 @@ pub(super) fn math_error(error: math::Error) -> Error {
         math::Error::Invalid => Error::Invalid,
         math::Error::Unsupported(reason) => Error::Unsupported(reason),
         math::Error::RequiresSubstitution => Error::RequiresSubstitution,
-        math::Error::ContextUnavailable => Error::ContextUnavailable,
+        math::Error::ContextUnavailable | math::Error::UnitContextUnavailable(_) => Error::ContextUnavailable,
         math::Error::Limit | math::Error::TypeLimit => Error::Limit,
         math::Error::DepthLimit => Error::DepthLimit,
         math::Error::Cancelled => Error::Cancelled,

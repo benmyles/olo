@@ -141,6 +141,7 @@ pub enum Error {
     Unsupported(&'static str),
     RequiresSubstitution,
     ContextUnavailable,
+    UnitContextUnavailable(RelativeUnit),
     Limit,
     TypeLimit,
     DepthLimit,

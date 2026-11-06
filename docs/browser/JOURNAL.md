@@ -4155,3 +4155,28 @@ improvements. Evidence:2026-11-06-stripe-environment-{checks,cost,cost-initial}.
 
 **Stripe0/30; corpus0/100,0/3000.** Goal remains active. Next:identify the missing
 CSS context precisely, implement the required semantics, then retry Stripe.
+
+### 2026-11-06 — Name Stripe's missing query-container unit
+
+Environment milestone08bea308 is pushed. A structured numeric-unit diagnostic
+on the native host confirms the next live failure:
+**CSS style Numeric(UnitContextUnavailable(Cqi))**. Only the unavailable-unit
+error construction changes; successful unit calculations and idle/frame paths
+are unchanged. Browser13 pass/1 ignored, math/property/style37 pass, strict
+all-target clippy and workspace release build pass. The first compile correctly
+required the new error to be handled by color's existing generic context-error
+mapping; that failed build is not accepted coverage. Final source/checks are
+stable. The owned live window's PID/executable hash and full diagnostic are
+recorded, then it was quit and its screen stopped. Stripe is still0/30, no
+useful content. Origin/main remainsc753797c, already merged.
+
+CSS Conditional5 (2026-11-02 draft) requires nearest eligible ancestor selection
+per relevant axis, with small-viewport fallback only when none is eligible:
+https://drafts.csswg.org/css-conditional-5/#container-lengths . The actual Stripe
+HTML has carousel elements and retained CSS uses cqi on their widths. The current
+engine computes all styles before layout; next implement container-dependent
+box-length resolution with query-container geometry. Earlier font-dependent
+contexts remain explicit errors until their computation path is implemented.
+This diagnostic is not container-unit support, pixels or performance acceptance.
+Evidence:2026-11-06-stripe-container-diagnostic.json. Prior performance nonpasses
+remain open; goal active and corpus0/100,0/3000.

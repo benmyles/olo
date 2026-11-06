@@ -1,0 +1,103 @@
+{
+  "scope": "Error-path diagnostic only; no container-unit resolution or website acceptance. Original precise math unit is carried by the native host. Color parse error mapping retains its existing generic context diagnostic.",
+  "native": {
+    "pid": 49816,
+    "binary_sha256": "c423bbfa457f6501435bead50a1b41f6b82bb40b425aaee6ff02d8eea63c33ad",
+    "windows": [
+      {
+        "id": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "pid": 49816,
+        "workspace": 0,
+        "minimized": false,
+        "focused": true,
+        "kept": false,
+        "groupable": true,
+        "output": "HEADLESS-1",
+        "frame": {
+          "x": 48,
+          "y": 40,
+          "width": 1010,
+          "height": 731
+        },
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "least": [
+          650,
+          511
+        ],
+        "tab_frame": {
+          "x": 48,
+          "y": 40,
+          "width": 100,
+          "height": 21
+        },
+        "stack": 0,
+        "surface": 37
+      }
+    ],
+    "result": {
+      "found": {
+        "window": 1,
+        "role": "Label",
+        "name": "CSS style Numeric(UnitContextUnavailable(Cqi))",
+        "x": 69.0,
+        "y": 733.5,
+        "width": 968.0,
+        "height": 16.5,
+        "center": [
+          553.0,
+          742.0
+        ]
+      }
+    }
+  },
+  "checks": {
+    "context-browser-tests": {
+      "passed": 13,
+      "sha256": "3492ad6e7f1df9e9acf0b303c2a2966533b9416e5d937775e6bacfa339fda019",
+      "tail": [
+        "test network::tests::compressed_bodies_are_decoded_and_the_decoded_size_is_bounded ... ok",
+        "",
+        "test result: ok. 13 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        ""
+      ]
+    },
+    "context-web-tests": {
+      "passed": 37,
+      "sha256": "8ea6769011300d9c5a2d3d6f03d64c422aaea2edae206d8689a35c70be557488",
+      "tail": [
+        "test independent_pinned_computed_style_ports ... ok",
+        "",
+        "test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        ""
+      ]
+    },
+    "context-clippy": {
+      "passed": 0,
+      "sha256": "0098067d28144a7a81a70e1eb3ee25d45b34828f59e60e095d14a312891ea061",
+      "tail": [
+        "    Checking olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)",
+        "    Finished `dev` profile [optimized + debuginfo] target(s) in 3.38s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    }
+  },
+  "accepted_configurations": 0,
+  "reference": "https://drafts.csswg.org/css-conditional-5/#container-lengths",
+  "workspace": {
+    "log_sha256": "ab84111da0511c21e2cb5bb135cd217b78a344a98188cf69f068e1534c660fa9",
+    "tail": [
+      "   Compiling olo-browser v0.1.0 (/home/ben/worktrees/olo/browser/apps/browser)",
+      "    Finished `release` profile [optimized + debuginfo] target(s) in 8.57s",
+      "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+      "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+    ]
+  }
+}

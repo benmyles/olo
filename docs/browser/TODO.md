@@ -10,8 +10,8 @@ revalidate the merged workspace and push the integration with browser work.
 Finish its real pages/journeys and all30 configurations before choosing another
 site. Component work now follows observed Stripe blockers. Startup is still a
 nonpass: CSS disabled state and environment substitution are implemented;
-the actual live page now stops at CSS style ContextUnavailable. Identify that
-context precisely and implement the required engine support next.
+the actual live page now stops at Numeric(UnitContextUnavailable(Cqi)).
+Implement query-container inline-size selection and resolution with layout next.
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.

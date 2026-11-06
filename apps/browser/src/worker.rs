@@ -509,7 +509,7 @@ impl Host for PageHost {
             }
             Vmin | Svmin | Lvmin | Dvmin => w.min(h),
             Vmax | Svmax | Lvmax | Dvmax => w.max(h),
-            _ => return Err(math::Error::ContextUnavailable),
+            _ => return Err(math::Error::UnitContextUnavailable(unit)),
         };
         self.viewport_used.set(true);
         Ok(value / 100.)

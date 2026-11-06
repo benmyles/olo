@@ -46,9 +46,9 @@ segment values remain undefined. This is not every possible UA environment.
 
 The live page now advances to **CSS style ContextUnavailable**. Preserving font
 loader error detail leaves that diagnostic unchanged; no font-loader failure
-was observed in that retry. Container-relative units in retained CSS are a
-candidate, not yet the demonstrated cause. Identify the missing context before
-changing its semantics. There is still no useful native Stripe content.
+was observed in that retry. A further real retry with a named numeric-unit diagnostic confirms
+**Numeric(UnitContextUnavailable(Cqi))**. The next required work is query-container
+inline-size selection and resolution against layout geometry. There is still no useful native Stripe content.
 Do not suppress selector/value failures or replace the site with authored HTML.
 
 ## Work queue
