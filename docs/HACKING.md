@@ -594,7 +594,18 @@ fn main() {
   any file manager that had it; Tracker's `filemanager.rs`): ShowItems,
   ShowFolders and ShowItemProperties are each a `--reveal`, so Chrome's
   Show in folder, Electron's `shell.showItemInFolder` and GTK's and Qt's
-  open their file in Tracker.
+  open their file in Tracker. While no Tracker has the name (as Olo
+  restarts after an upgrade), D-Bus starts the system's activation file's
+  program for it (GNOME's Files on Fedora, which then keeps the name till
+  Tracker waits it out): Olo Doctor offers "Always Use Tracker"
+  (`checks::file_manager`), the user's own activation file
+  (`~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`,
+  which wins over the system's) starting `olo-tracker --file-manager`
+  (Tracker serving the name without the desktop or a window of its own,
+  staying to answer; passed to a Tracker running already it changes
+  nothing), and the session bus told to read it at once
+  (`Step::SessionBusReload`). It's the user's, so it applies in another
+  desktop's session on this account too (Ben chose it so, 2026-11-05).
   A window's yellow tab offers it too, for a window that says what it
   shows (`agent::set_path(window, cx, path)`: StyledEdit's document, the Viewer's file,
   Terminal's working folder; Tracker's own windows don't need it).

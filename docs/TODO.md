@@ -1447,9 +1447,12 @@ of Finished; a new one goes where its priority puts it.
   (the next Tracker takes over at once): checked with a stand-in owner
   that doesn't allow it taken (Tracker logs that it waits, takes the
   name the moment the other lets go, and Chrome's Show in folder opens
-  Downloads). *Left*: Ben's try after the upgrade; and whether an Olo
-  session should keep D-Bus from starting Nautilus at all (a user
-  activation file for FileManager1 would reach a GNOME session too).
+  Downloads). *Left*: Ben's try after the upgrade. Whether to keep
+  D-Bus from starting Nautilus at all (Ben, 2026-11-05: yes, and "doctor
+  should offer to install the change that makes it always use tracker"):
+  *done*, Olo Doctor's "Always Use Tracker" (HACKING's Tracker), its
+  file and Tracker's `--file-manager` tried on a private dbus-daemon and
+  a headless session's bus.
 
 - **olo-slack: Slack, Olo-fied, as olo-chrome is Chrome** (Ben,
   2026-11-04): "build olo-slack that is like olo-chrome but an olo-fied

@@ -544,7 +544,7 @@ impl Tracker {
                     }
                     opened = true;
                 }
-                "--desktop" => {}
+                "--desktop" | FILE_MANAGER_ARG => {}
                 // Another window, always (not one brought forward): home.
                 "--new-window" => {
                     self.new_folder_window(fs::home(), self.default_view, (560, 380), |_| {}, cx);
@@ -561,7 +561,7 @@ impl Tracker {
                 }
             }
         }
-        if !opened && !args.iter().any(|a| a == "--desktop") {
+        if !opened && !args.iter().any(|a| a == "--desktop" || a == FILE_MANAGER_ARG) {
             self.open_folder(&fs::home(), cx);
         }
     }
@@ -1479,6 +1479,15 @@ fn copy_clip(clip: olo_kit_base::clipboard::Clip, cx: &mut App) {
     cx.write_to_clipboard(gpui::ClipboardItem::from_entries(entries));
 }
 
+/// Started by D-Bus to be the file manager other programs ask
+/// (`filemanager`): serving `org.freedesktop.FileManager1` without the
+/// desktop and without opening a window of its own (Olo Doctor's "Always
+/// Use Tracker" names it in the user's activation file for the name, so
+/// D-Bus starts Tracker, never another file manager, when no Tracker has
+/// it: as Olo restarts after an upgrade, or outside an Olo session).
+/// Passed to a Tracker running already, it changes nothing.
+pub const FILE_MANAGER_ARG: &str = "--file-manager";
+
 fn main() {
     olo_crash::install();
     // A session or install from before the rename (Tabula) carries on.
@@ -1502,6 +1511,7 @@ fn main() {
             proxy.send(Msg::Settings(s.tracker))
         });
         let desktop = args.iter().any(|a| a == "--desktop");
+        let file_manager = desktop || args.iter().any(|a| a == FILE_MANAGER_ARG);
         let app = cx.new(|cx| Tracker {
             windows: Vec::new(),
             hidden: false,
@@ -1538,8 +1548,12 @@ fn main() {
                     t.register(key, handle.into(), Win::Desktop(d), cx);
                 }
             });
+        }
+        if file_manager {
+            // (Started by D-Bus for the name alone: it stays to answer.)
+            olo_ui::stay_resident(cx);
             // Other programs' "show in folder", while the desktop's Tracker
-            // runs (`filemanager`).
+            // runs, or one D-Bus started for it (`filemanager`).
             let proxy = olo_ui::proxy(cx);
             let _ = std::thread::Builder::new().name("tracker-filemanager".into()).spawn(move || {
                 let reveal = move |paths: Vec<PathBuf>| {

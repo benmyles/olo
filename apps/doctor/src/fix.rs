@@ -35,6 +35,9 @@ pub enum Step {
     },
     /// Have NetworkManager read its configuration again.
     NetworkManagerReload,
+    /// Have the session bus read its configuration again (a user's D-Bus
+    /// activation file written: it applies at once).
+    SessionBusReload,
     /// Set variables in the session's environment for what starts from
     /// now on: systemd's user manager's and D-Bus activation's
     /// (`olo_system::env::update_activation_environment`).
@@ -106,6 +109,7 @@ impl Step {
             Step::WriteFile { path, .. } => format!("Writing {}", path.display()),
             Step::CopyFile { to, .. } => format!("Installing {}", to.display()),
             Step::NetworkManagerReload => "Reloading NetworkManager's settings".into(),
+            Step::SessionBusReload => "Reloading the session bus's settings".into(),
             Step::SetSessionEnvironment { vars } => format!("Setting {} for the session", vars.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(", ")),
             Step::WriteSysfs { path, value } => format!("Setting {} to {value}", path.display()),
             Step::RemoveFile { path } => format!("Removing {}", path.display()),
@@ -175,6 +179,7 @@ impl Step {
             Step::WriteFile { path, content, mode } => write_file(path, content, *mode).map_err(failed),
             Step::CopyFile { from, to, mode } => std::fs::read(from).and_then(|bytes| write_bytes(to, &bytes, *mode)).map_err(failed),
             Step::NetworkManagerReload => olo_system::network::reload().map_err(|e| format!("{}: {e}", self.describe())),
+            Step::SessionBusReload => olo_system::env::reload_session_bus().map_err(|e| format!("{}: {e}", self.describe())),
             Step::SetSessionEnvironment { vars } => {
                 let pairs: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
                 olo_system::env::update_activation_environment(&pairs).map_err(|e| format!("{}: {e}", self.describe()))

@@ -14,6 +14,14 @@ pub fn update_activation_environment(vars: &[(&str, &str)]) -> Result<()> {
     bus::call::<_, ()>(conn, "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "SetEnvironment", &(assignments,))
 }
 
+/// Have the session bus read its configuration again, its services'
+/// activation files among it (a user's own in
+/// `~/.local/share/dbus-1/services`, which it otherwise reads only as it
+/// starts).
+pub fn reload_session_bus() -> Result<()> {
+    bus::call::<_, ()>(bus::session()?, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ReloadConfig", &())
+}
+
 /// The systemd user manager's environment (what the services and scopes
 /// it starts get: `environment.d` read at its start, and what's been set
 /// since), as `KEY=VALUE` pairs.
