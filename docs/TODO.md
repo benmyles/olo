@@ -196,9 +196,45 @@ something nobody here has is in "Blocked", with what it waits for.
   group's front (window 2, both 290 px, then 533 after step 53's drag),
   was raised over it for 8 ms during step 54's drag (the tree read
   `[6 | 5]` then `[2 | 5]`: a group's tile is its top window, and 6
-  hadn't drawn the group's 533 yet). *Next*: what raised it (log
-  `raise_element` callers with a reason during a drag) and keep a
-  group's front over the window being sized mid-drag.
+  hadn't drawn the group's 533 yet). *Fixed* (2026-11-06): the window
+  wasn't the race's. The drag's press, on tile 3's right edge, was under
+  a floating Tracker over the tiles: the press was the float's, a folder
+  dragged out of it was let go over StyledEdit, which opened a window
+  for it, failed to read it, closed it and said so (window 6 and its
+  alert 7, mid-drag). The fuzzer now presses only where no other window
+  is over the edge (`op_drag`), fails when any program of its session
+  leaves a crash report (`check_crashes`, the report kept with the
+  logs), and StyledEdit says a folder can't be opened without opening a
+  window for it first. app_server logs at debug who brought a window
+  to the front (`focus_window`'s caller). Seed 16 with `--reloads`: 8
+  of 8; seeds 1–16 with `--reloads`, 8 at once: 15 pass, 13 fails only
+  under the load (passes alone), no faults.
+  *Left*: an app_server panic seen once at seed 16's step 13 (a
+  `Duration` subtracted below zero, no backtrace kept: before
+  `check_crashes`), not seen in 16 runs since; the fuzzer now keeps a
+  report if it happens again. Then sweeps of more seeds.
+  *Swept* (2026-11-06): seeds 17–40 with `--reloads`, 8 at once: 16
+  failed under the load; the sweep's confirmation (the failures again,
+  side by side) left six, and of those, run alone one at a time, five
+  pass (17, 26, 27, 29, 34). *Left*: seed 38 at step 105, every run:
+  dragging 1's right edge, tiles 9 and 10 stay 2 px further apart than
+  the gap for most of the drag (156 of 339 looks): each draws a pixel
+  narrower than asked (9 asked 680, drew 679; 10 asked 212, drew 211).
+  At the fuzzer's 1.75× an odd logical width is no whole number of
+  device pixels and each app rounds its own down, so two neighbours
+  together are 2 px off where the check allows 1.
+  *Looked at* (2026-11-06; the fuzzer's report now names the tiles'
+  apps): 9 is a StyledEdit, 10 a Terminal, both GPUI. Not the layout's
+  rounding (`divide` gives both sides of a split the same edge) and not
+  GPUI at rest: at 1.75× a floating StyledEdit placed at 678–685 and
+  600–603 wide draws each exactly. Mid-drag it draws a pixel short
+  (680 asked, 679 drawn), and Terminal 10, whose edge the drag doesn't
+  touch, moved from 1332 to 1333: its split's ratio taken again from a
+  drawn frame (`take_ratios`/`fraction_of`), so the short pixel moves a
+  neighbour. *Next*: find where a resize by hand (xdg `resizing`, the
+  swapchain grown to its room, `update_drawable_size_within`) loses the
+  pixel at a fractional scale, and keep ratios from the sizes asked,
+  not drawn.
 
 ## Not started (highest priority first)
 

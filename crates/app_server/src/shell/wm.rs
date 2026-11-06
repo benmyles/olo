@@ -222,11 +222,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
+    #[track_caller]
     pub fn focus_window(&mut self, window: &WindowElement) {
         // A window of a client going away takes nothing (`live`).
         if !live(window) {
             return;
         }
+        // (Who brought it forward: a window over its group's front
+        // mid-drag is found by this.)
+        tracing::debug!(window = window.id(), app_id = window.app_id(), title = window.title(), by = %std::panic::Location::caller(), "focused, to the front");
         self.space.raise_element(window, true);
         // What's under the pointer may have changed.
         self.repoint_soon();

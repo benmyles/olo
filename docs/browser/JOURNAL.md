@@ -3167,3 +3167,13 @@ The visual journal records light 2× and night 1.5×. **Goal active: 0/100
 websites and 0/3,000 site combinations accepted.** Next: initial/live selector
 state, real document input/links, conditional CSS/imports and table layout,
 then JavaScript/runtime and isolated resource loading.
+
+Latest-main follow-up: network milestone **798945a5** is pushed. Merged main
+through **e3e9499a** (including 7815f2e6 and 80c57ce9): auto-fuzz diagnostics,
+fractional-scale fault notes, focus tracing and StyledEdit's early folder
+rejection. Browser runtime source is unchanged. Merged validation passes
+**220 web + seven browser release tests**, twelve kit/Preferences layout tests,
+workspace release build (**11.36 s**) and live Browser/StyledEdit lint at
+1280×800. Evidence: `2026-11-06-network-main-integration.json`. Prior native
+15-mode/scale and frozen performance observations retain their stated scope;
+no website acceptance follows from this merge.
