@@ -7396,6 +7396,8 @@ dependencies = [
  "olo-color",
  "rav1d",
  "rust_h265",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

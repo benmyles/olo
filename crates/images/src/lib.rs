@@ -60,6 +60,9 @@ fn avif(data: &[u8]) -> Result<DynamicImage, String> {
 pub mod gain;
 pub mod hdr;
 
+/// Bounded byte-backed still images for resource workers.
+pub mod raster;
+
 /// AV1 through rav1d's dav1d API (stills and video), and YUV to RGB.
 pub mod av1 {
     use std::{mem::MaybeUninit, ptr::NonNull};

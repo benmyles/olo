@@ -22,3 +22,5 @@ olo-color.workspace = true
 half = "2"
 
 [dev-dependencies]
+serde_json.workspace = true
+sha2 = "0.10"

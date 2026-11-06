@@ -2164,3 +2164,32 @@ complete CSS text-item fitting still needs its own representation. Browser img
 and other replaced/control elements remain explicitly unsupported until resource,
 used-size, tree/flow, paint and agent integration are connected. Website
 acceptance remains zero.
+
+
+## Byte-backed raster resource foundation (2026-11-06)
+
+`olo_images::raster::decode` accepts borrowed resource bytes and an explicit
+budget on the caller's worker, producing oriented sRGB straight-alpha RGBA8.
+PNG, JPEG, WebP and GIF use the existing native Rust codec dependencies; no file
+or application is spawned. Dimensions/pixels and raw/final individual surfaces
+are checked before pixel decode. JPEG's required input buffer reserves its known
+length once, with cancellation checks between 32 KiB copies. PNG receives its
+codec limits during construction; ICC profiles are capped before conversion.
+Other formats fail explicitly, without using the larger file-preview path.
+
+The strict bounds are encoded length, dimensions, pixel count and individual
+surfaces. The upstream codec allocation limit is best effort. Codec internals
+may copy input or retain other buffers; orientation/colour conversion can hold
+additional surfaces. Reads and stage boundaries check cancellation, but codec
+CPU loops and the shared colour converter are not preemptible. Animation,
+vector images, other formats, hard renderer/codec isolation and aggregate page
+resource budgets remain separate work. This API is not yet connected to page
+resources or Browser painting; the current img rejection remains explicit.
+
+`crates/images/tests/raster.rs` checks byte-only lossless formats, malformed and
+unsupported inputs, exact/over-budget dimensions/pixels/surfaces, 16-bit source
+storage, EXIF rotation and existing ICC policy. A reader regression checks a
+live cancellation flag after construction. `raster_bench` compares the tighter
+worker path against the existing codec policy in the same frozen release binary,
+with identical input/pixel hashes, excluding filesystem/network I/O. Neither
+component tests nor these authored performance inputs establish website passes.

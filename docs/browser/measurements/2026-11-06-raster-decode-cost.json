@@ -1,0 +1,1253 @@
+{
+  "scope": "Same frozen default release binary, seven alternating direct/bounded control processes on one allowed performance CPU. Encoders run outside timing; peak RSS includes fixture encoding. No file/network I/O, browser/UI, animation or process isolation coverage.",
+  "cpu": 0,
+  "binary_sha256": "e4575367666e5b1f5eec75d50104ec9a64dc79e01fe710e5850ef33b996de718",
+  "observations": [
+    {
+      "repeat": 0,
+      "rss_kib": 43848,
+      "mode": "direct",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.13618029999999998,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.177984
+        },
+        {
+          "decode_ms": 0.36693180000000003,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.461927
+        },
+        {
+          "decode_ms": 0.0555265,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.10555
+        },
+        {
+          "decode_ms": 0.11694089999999999,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.142385
+        },
+        {
+          "decode_ms": 2.0805084000000003,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.672895
+        },
+        {
+          "decode_ms": 11.5734657,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 14.764314
+        },
+        {
+          "decode_ms": 1.7874406,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.426867
+        },
+        {
+          "decode_ms": 3.9776694,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.904694
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 0,
+      "rss_kib": 44132,
+      "mode": "bounded",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.136187,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.161197
+        },
+        {
+          "decode_ms": 0.3653605,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.464669
+        },
+        {
+          "decode_ms": 0.055875600000000004,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.110147
+        },
+        {
+          "decode_ms": 0.11581330000000001,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.138529
+        },
+        {
+          "decode_ms": 1.9724274999999998,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.329529
+        },
+        {
+          "decode_ms": 11.261546,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 13.99692
+        },
+        {
+          "decode_ms": 1.7875444000000003,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.241796
+        },
+        {
+          "decode_ms": 4.0653542,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.967606
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 1,
+      "rss_kib": 43908,
+      "mode": "bounded",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1374613,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.164911
+        },
+        {
+          "decode_ms": 0.3642076,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.47770199999999996
+        },
+        {
+          "decode_ms": 0.055685899999999997,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.122724
+        },
+        {
+          "decode_ms": 0.11736870000000002,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.13631000000000001
+        },
+        {
+          "decode_ms": 2.0278408000000003,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.415436
+        },
+        {
+          "decode_ms": 13.454881499999999,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 22.568709
+        },
+        {
+          "decode_ms": 1.7674354,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.407677
+        },
+        {
+          "decode_ms": 4.0522965,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.897893000000001
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 1,
+      "rss_kib": 43828,
+      "mode": "direct",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1374117,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.160667
+        },
+        {
+          "decode_ms": 0.3642057,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.462346
+        },
+        {
+          "decode_ms": 0.0553145,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.106117
+        },
+        {
+          "decode_ms": 0.1165223,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.14345
+        },
+        {
+          "decode_ms": 2.0105489000000003,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.320087
+        },
+        {
+          "decode_ms": 11.300817200000001,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 13.960809
+        },
+        {
+          "decode_ms": 1.7567052999999997,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.265274
+        },
+        {
+          "decode_ms": 4.0496566,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.844894
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 2,
+      "rss_kib": 43660,
+      "mode": "direct",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1431489,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.214998
+        },
+        {
+          "decode_ms": 0.362106,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.451593
+        },
+        {
+          "decode_ms": 0.0539971,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.108162
+        },
+        {
+          "decode_ms": 0.1178815,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.140448
+        },
+        {
+          "decode_ms": 1.9573677,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.317408
+        },
+        {
+          "decode_ms": 11.351298199999999,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 14.580152
+        },
+        {
+          "decode_ms": 1.7297651000000003,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.4540230000000003
+        },
+        {
+          "decode_ms": 3.9609177000000004,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.840498
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 2,
+      "rss_kib": 44124,
+      "mode": "bounded",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.13865159999999999,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.161251
+        },
+        {
+          "decode_ms": 0.3463505,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.457149
+        },
+        {
+          "decode_ms": 0.0563136,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.111525
+        },
+        {
+          "decode_ms": 0.1170864,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.13872099999999998
+        },
+        {
+          "decode_ms": 1.961786,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.343533
+        },
+        {
+          "decode_ms": 12.6428504,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 22.85069
+        },
+        {
+          "decode_ms": 1.8175464,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.486357
+        },
+        {
+          "decode_ms": 3.949971,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.838848
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 3,
+      "rss_kib": 43980,
+      "mode": "bounded",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1383413,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.168886
+        },
+        {
+          "decode_ms": 0.3635869,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.461132
+        },
+        {
+          "decode_ms": 0.057139300000000004,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.11429099999999999
+        },
+        {
+          "decode_ms": 0.11504670000000002,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.137916
+        },
+        {
+          "decode_ms": 1.9801227000000001,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.314887
+        },
+        {
+          "decode_ms": 11.266845499999999,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 13.876594
+        },
+        {
+          "decode_ms": 1.7842382999999997,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.2306980000000003
+        },
+        {
+          "decode_ms": 4.0372557,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.806633000000001
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 3,
+      "rss_kib": 43704,
+      "mode": "direct",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1375094,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.160089
+        },
+        {
+          "decode_ms": 0.3787944,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.474815
+        },
+        {
+          "decode_ms": 0.0558283,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.107486
+        },
+        {
+          "decode_ms": 0.11573359999999999,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.137797
+        },
+        {
+          "decode_ms": 1.9450496000000002,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.355417
+        },
+        {
+          "decode_ms": 11.1889847,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 14.079156000000001
+        },
+        {
+          "decode_ms": 1.7468145,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.3256560000000004
+        },
+        {
+          "decode_ms": 3.9715796999999995,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.807806
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 4,
+      "rss_kib": 43668,
+      "mode": "direct",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1337798,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.162019
+        },
+        {
+          "decode_ms": 0.3529739,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.459524
+        },
+        {
+          "decode_ms": 0.0536271,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.10605
+        },
+        {
+          "decode_ms": 0.11539269999999999,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.136749
+        },
+        {
+          "decode_ms": 1.9745289999999998,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.324665
+        },
+        {
+          "decode_ms": 11.406988799999999,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 13.687090000000001
+        },
+        {
+          "decode_ms": 1.7168230000000002,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.280045
+        },
+        {
+          "decode_ms": 3.9654490000000004,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.878278
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 4,
+      "rss_kib": 43976,
+      "mode": "bounded",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.13426259999999998,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.158
+        },
+        {
+          "decode_ms": 0.3597687,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.45081899999999997
+        },
+        {
+          "decode_ms": 0.0547249,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.108493
+        },
+        {
+          "decode_ms": 0.1153718,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.135692
+        },
+        {
+          "decode_ms": 2.0480211,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.352244
+        },
+        {
+          "decode_ms": 11.271374,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 13.937249000000001
+        },
+        {
+          "decode_ms": 1.7535584,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.320763
+        },
+        {
+          "decode_ms": 4.001152,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.896491
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 5,
+      "rss_kib": 44092,
+      "mode": "bounded",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1388511,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.159634
+        },
+        {
+          "decode_ms": 0.3663141,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.474717
+        },
+        {
+          "decode_ms": 0.055497700000000004,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.110446
+        },
+        {
+          "decode_ms": 0.11594610000000001,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.140593
+        },
+        {
+          "decode_ms": 2.0456808,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.369085
+        },
+        {
+          "decode_ms": 11.3043503,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 13.878725999999999
+        },
+        {
+          "decode_ms": 1.7734339,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.177114
+        },
+        {
+          "decode_ms": 3.9819348,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.778128000000001
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 5,
+      "rss_kib": 43800,
+      "mode": "direct",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1356117,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.158476
+        },
+        {
+          "decode_ms": 0.3557302,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.444803
+        },
+        {
+          "decode_ms": 0.0556309,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.11801
+        },
+        {
+          "decode_ms": 0.1189635,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.136295
+        },
+        {
+          "decode_ms": 2.0506924,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.368685
+        },
+        {
+          "decode_ms": 11.3009663,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 14.104491
+        },
+        {
+          "decode_ms": 1.7309805,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.265127
+        },
+        {
+          "decode_ms": 6.4587035,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 18.675524
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 6,
+      "rss_kib": 43968,
+      "mode": "direct",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1377735,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.16393000000000002
+        },
+        {
+          "decode_ms": 0.3638757,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.452055
+        },
+        {
+          "decode_ms": 0.053815199999999994,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.108178
+        },
+        {
+          "decode_ms": 0.11502629999999998,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.136281
+        },
+        {
+          "decode_ms": 2.0328467999999997,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.321913
+        },
+        {
+          "decode_ms": 11.2218615,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 14.042599
+        },
+        {
+          "decode_ms": 1.7243207000000003,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.213352
+        },
+        {
+          "decode_ms": 4.0258963,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.750489999999999
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    },
+    {
+      "repeat": 6,
+      "rss_kib": 43968,
+      "mode": "bounded",
+      "rounds": 10,
+      "rows": [
+        {
+          "decode_ms": 0.1348647,
+          "encoded_bytes": 2707,
+          "encoded_sha256": "fef4d96e082d9be241a782ff93cdb54e53cada157437fd69876a8aa55f0f4a31",
+          "format": "Png",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.160333
+        },
+        {
+          "decode_ms": 0.3628253,
+          "encoded_bytes": 38229,
+          "encoded_sha256": "6429ad78692925b508199b14fec248755cfb30b10a7313b1d235379fdae41875",
+          "format": "Jpeg",
+          "height": 256,
+          "pixels_sha256": "f344d22dcac78c67982c14b47688aa5f334682855b08e218247e09fb55197a5f",
+          "width": 256,
+          "worst_decode_ms": 0.446233
+        },
+        {
+          "decode_ms": 0.054700099999999995,
+          "encoded_bytes": 600,
+          "encoded_sha256": "a53bfec24f6f346b24ba640c4ff3768c14351657ee1dde68b1e87727b3d8c358",
+          "format": "WebP",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.10613
+        },
+        {
+          "decode_ms": 0.1181224,
+          "encoded_bytes": 3348,
+          "encoded_sha256": "8651176b4575baa32d3a672cbdc138c572d338b15aa4b9d26ae51fd3619d3816",
+          "format": "Gif",
+          "height": 256,
+          "pixels_sha256": "8a772f8638579d3b74a02a5686649793dd1656a4a41808331b73dc2dc6ba8d05",
+          "width": 256,
+          "worst_decode_ms": 0.13655399999999998
+        },
+        {
+          "decode_ms": 1.9520094000000001,
+          "encoded_bytes": 68019,
+          "encoded_sha256": "ec435f19428e23ca17a811e8616717d02440f7217e563df2c1a580d93e5fc7a7",
+          "format": "Png",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 4.306907
+        },
+        {
+          "decode_ms": 11.315684,
+          "encoded_bytes": 1167825,
+          "encoded_sha256": "0bba7483a1acde7e61ae27fb65ecbca6e45692e69295ddd3d66b168226319d1a",
+          "format": "Jpeg",
+          "height": 1080,
+          "pixels_sha256": "7264ac7f35dc2c80f9437c35da45d25d989304a6a4d2f9afe04122f35dafc1bf",
+          "width": 1920,
+          "worst_decode_ms": 13.738921
+        },
+        {
+          "decode_ms": 1.7589183000000002,
+          "encoded_bytes": 12754,
+          "encoded_sha256": "7f60556398a0949f19757278a35f7d8bce5432c2e4364d2af50a44dda424d006",
+          "format": "WebP",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 3.217069
+        },
+        {
+          "decode_ms": 3.9615402000000004,
+          "encoded_bytes": 77113,
+          "encoded_sha256": "09d8a2f09a980974491691f6395a08c56556b68f2a43e9ac4f9379e0c432d464",
+          "format": "Gif",
+          "height": 1080,
+          "pixels_sha256": "0feb68e3eafa6576effb233d6ffd684f8dbeccec80fec10f2e7bc4e0d311798b",
+          "width": 1920,
+          "worst_decode_ms": 5.775085
+        }
+      ],
+      "scope": "Authored four-colour stills, direct existing codec policy versus bounded worker with a real cancellation flag. Same binary; timings include allocation/conversion/drop, exclude fixture encoding, file/network I/O, rendering and animation. Peak process RSS also includes fixture encoding."
+    }
+  ]
+}

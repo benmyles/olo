@@ -1,0 +1,46 @@
+{
+  "scope": "Shared byte-backed still decoder foundation. Not yet consumed by page/Browser; no website acceptance.",
+  "parent": "525a6e1c4e6bb7f005811e1bfd121c7db24f71ae",
+  "captured_at": "2026-11-06T17:10:18.700483+00:00",
+  "source_hashes": {
+    "crates/images/src/raster.rs": "a393fc12f7fc194648d9244b584f7322e8dcca90fccddc7aa222bd61e1092233",
+    "crates/images/src/lib.rs": "031a57c6d5155451cbcf92ee11033a6d127f3d2e749158b8071cfa62baa136fc",
+    "crates/images/Cargo.toml": "d15072e38b03dac3cf20c4016fa2d9501a2d65fd02453ba7c1f77c29a9032279",
+    "crates/images/tests/raster.rs": "3ba1ed73679b47ab4b63b456444fb9f39800754a4a913995ce59377390019ccb",
+    "crates/images/examples/raster_bench.rs": "0e29758872159f15fbc006dec828b58d923c3a2a279661bd2300dfcf44ca4947",
+    "Cargo.lock": "674813c9f169cfdc413a13d5bc4b17a7832a5a3890c2af2704670543f3a2bc08"
+  },
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+  "defaults": {
+    "encoded_bytes": 16777216,
+    "pixels": 16777216,
+    "dimension": 32768,
+    "surface_bytes": 67108864,
+    "codec_bytes": 134217728,
+    "profile_bytes": 4194304
+  },
+  "limits": "Strict input/dimensions/pixels/individual decoded and RGBA8 surfaces; codec allocation hint is best effort. ICC extracted before its length is checked. Orientation/colour may retain additional surfaces. Codec CPU/colour work is not preemptible; no aggregate process limit.",
+  "formats": [
+    "PNG",
+    "JPEG",
+    "WebP",
+    "GIF"
+  ],
+  "tests": {
+    "images": 17,
+    "browser_web": 258,
+    "workspace_release_seconds": 111,
+    "web_browser_strict_clippy": "pass; pre-existing dependency warnings",
+    "image_clippy": "normal command succeeds with seven pre-existing findings; strict -D warnings fails on those. No lint suppression or unrelated code changes.",
+    "preexisting_image_clippy_log": "warning: profiles for the non root package will be ignored, specify profiles at the workspace root:\npackage:   /home/ben/worktrees/olo/browser/smithay/smithay/Cargo.toml\nworkspace: /home/ben/worktrees/olo/browser/Cargo.toml\n    Checking olo-color v0.1.0 (/home/ben/worktrees/olo/browser/crates/color)\n    Checking olo-images v0.1.0 (/home/ben/worktrees/olo/browser/crates/images)\nerror: the loop variable `i` is used to index `line`\n  --> crates/images/src/gain.rs:63:22\n   |\n63 |             for i in 0..n {\n   |                      ^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#needless_range_loop\n   = note: `-D clippy::needless-range-loop` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::needless_range_loop)]`\nhelp: consider using an iterator and enumerate()\n   |\n63 -             for i in 0..n {\n63 +             for (i, <item>) in line.iter_mut().enumerate().take(n) {\n   |\n\nerror: using `chunks_exact` with a constant chunk size\n   --> crates/images/src/gain.rs:144:25\n    |\n144 |     for (p, &g) in rgba.chunks_exact(4).zip(gain) {\n    |                         ^^^^^^^^^^^^^^^ help: consider using `as_chunks` instead: `as_chunks::<4>().0.iter()`\n    |\n    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#chunks_exact_to_as_chunks\n    = note: `-D clippy::chunks-exact-to-as-chunks` implied by `-D warnings`\n    = help: to override `-D warnings` add `#[allow(clippy::chunks_exact_to_as_chunks)]`\n\nerror: very complex type used. Consider factoring parts into `type` definitions\n   --> crates/images/src/lib.rs:387:26\n    |\n387 |         fn ycc(&self) -> ((f32, f32, f32, f32), (f32, f32, f32)) {\n    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    |\n    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#type_complexity\n    = note: `-D clippy::type-complexity` implied by `-D warnings`\n    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`\n\nerror: using `chunks_exact_mut` with a constant chunk size\n   --> crates/images/src/lib.rs:425:46\n    |\n425 |                     for (x, (px, &l)) in row.chunks_exact_mut(4).zip(ly).enumerate() {\n    |                                              ^^^^^^^^^^^^^^^^^^^ help: consider using `as_chunks_mut` instead: `as_chunks_mut::<4>().0.iter_mut()`\n    |\n    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#chunks_exact_to_as_chunks\n\nerror: could not compile `olo-images` (lib) due to 4 previous errors\nwarning: build failed, waiting for other jobs to finish...\nerror: manual `Range::contains` implementation\n   --> crates/images/src/gain.rs:172:23\n    |\n172 |             } else if x >= 250 && x < 380 {\n    |                       ^^^^^^^^^^^^^^^^^^^ help: use: `(250..380).contains(&x)`\n    |\n    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#manual_range_contains\n    = note: `-D clippy::manual-range-contains` implied by `-D warnings`\n    = help: to override `-D warnings` add `#[allow(clippy::manual_range_contains)]`\n\nerror: unnecessary map of the identity function\n   --> crates/images/src/lib.rs:891:58\n    |\n891 |         let plane = |c: usize| (0..h).flat_map(|_| (0..w).map(move |x| x)).map(|x| pixels[x as usize / 2][c]).collect::<Vec<u16>>();\n    |                                                          ^^^^^^^^^^^^^^^^ help: remove the call to `map`\n    |\n    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#map_identity\n    = note: `-D clippy::map-identity` implied by `-D warnings`\n    = help: to override `-D warnings` add `#[allow(clippy::map_identity)]`\n\nerror: using `chunks_exact` with a constant chunk size\n   --> crates/images/src/lib.rs:951:33\n    |\n951 |             for (k, px) in rows.chunks_exact(4).enumerate() {\n    |                                 ^^^^^^^^^^^^^^^ help: consider using `as_chunks` instead: `as_chunks::<4>().0.iter()`\n    |\n    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#chunks_exact_to_as_chunks\n\nerror: could not compile `olo-images` (lib test) due to 7 previous errors\n",
+    "baseline_proof": "lib.rs unchanged except the new module declaration; gain.rs byte-identical to parent. Every reported lint location is in that unchanged code."
+  },
+  "benchmark": "Same frozen default release binary, seven alternating controls, CPU affinity, real false cancellation flag in bounded path. Source and decoded pixel hashes agree in all rows. Timing excludes fixture encoding; RSS includes it. No file/network/GUI/animation coverage.",
+  "references": [
+    "https://docs.rs/image/0.25.10/image/struct.Limits.html",
+    "image 0.25.10 pinned local primary source: io/image_reader_type.rs, codecs/png.rs, codecs/jpeg/decoder.rs"
+  ],
+  "website_passes": 0,
+  "visual_change": "None: new worker API is not yet called by desktop or browser rendering.",
+  "main": "origin/main remains at92364e1b, already merged."
+}

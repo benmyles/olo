@@ -331,6 +331,12 @@ this is a harness correction, not a browser speedup.
   expansion; 380 independent Chrome component observations at five scales.
 - [x] CSS device-grid font advances/struts and trailing zero-width control fitting:
   break-control geometry 415/415, inline spacing 219/225 (six pinned nonpasses).
+- [x] Shared byte-backed PNG/JPEG/WebP/GIF still decode with explicit input,
+  dimension/pixel/surface/profile limits, codec allocation hint, EXIF/ICC policy
+  and read/stage cancellation; lossless bytes and direct-path cost controls.
+- [ ] Complete resource decoder isolation and interruptible CPU/colour work,
+  animation, SVG and bounded AVIF/JXL/ICO/other formats. Codec allocation hints
+  are best effort, not a hard process-memory bound.
 - [ ] Connect decoded image assets to HTML/CSS replaced sizing, tree/flow, paint,
   raster and structured agent metadata. The atomic API alone renders no images.
 - [ ] Complete font metric policy: per-inline-item used advances, normal line-height,

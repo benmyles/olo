@@ -3705,3 +3705,41 @@ runners. Fetched origin/main twice; its current **92364e1b** is already merged.
 Both own Agent Screens and the private test session are stopped. No personal
 install/reload or secrets access. Website acceptance stays **0/100, 0/3000**;
 corpus ranking/journeys and the complete browser goal remain open.
+
+### 2026-11-06 — Byte-backed native still decoder
+
+Added shared `olo_images::raster::decode` for PNG/JPEG/WebP/GIF on resource
+workers, with no temporary files. It borrows caller input, enforces encoded,
+dimension/pixel and individual surface quotas before pixel decode, caps profiles
+before conversion, applies EXIF orientation and the existing native ICC policy,
+and returns straight-alpha sRGB RGBA8. JPEG's required encoded-data copy reserves
+its known length once; reads/copies check cancellation every 32 KiB. Literal
+unsupported formats fail without falling back to the file preview's larger limit.
+The existing file API and render paths are unchanged. **Browser images are still
+unsupported** until asset/tree/flow/paint/agent integration is connected.
+
+**17 image tests** pass, including file-free lossless formats, malformed and
+unsupported bytes, exact/over-limit budgets, valid oversized PNG headers rejected
+before pixel-body decoding, 16-bit storage, EXIF/ICC behavior and a live cancelled
+reader. **258 browser/web release tests**, browser/web strict clippy and workspace
+release build (**1m51s**) pass. Image clippy has **seven pre-existing findings**
+in unchanged lib/gain code; its strict command fails on those, with no findings
+in the new API/tests/example. No global lint suppression or unrelated fixes.
+
+One frozen release binary, seven alternating direct/bounded controls on CPU0,
+identical encoded/pixel hashes: 256² PNG/JPEG/WebP/GIF medians **0.1374/0.3639/
+0.0553/0.1165→0.1375/0.3636/0.0557/0.1159 ms**. At 1920×1080 **2.0105/11.3010/
+1.7310/3.9777→1.9801/11.3044/1.7734/4.0012 ms**. Worst individual calls remain
+recorded (direct/bounded JPEG **14.76/22.85 ms**, GIF **18.68/5.97 ms**); no
+maximum-latency or speedup claim. Peak RSS **43660–43968→43908–44132 KiB** includes
+fixture encoding, so it is not an isolated decoder working-set measurement.
+These authored stills exclude network, rendering, animation and presentation.
+
+Codec allocation limits are upstream **best effort**, not OS process limits;
+metadata extraction and colour/orientation conversion can hold other buffers.
+Cancellation is cooperative at reads/stages, not inside every codec CPU loop or
+colour transform. Hard isolation, aggregate page budgets, animation, SVG and
+bounded other formats stay open. Evidence: `2026-11-06-raster-decode-{cost,checks}
+.json`, retained Python runner and `raster_bench`. No visible change/new journal
+image or personal session install/reload. Fetched main, still already merged
+through **92364e1b**. Website acceptance remains **0/100, 0/3000**, goal active.

@@ -1127,7 +1127,23 @@ Pictures are read by `olo_images::open(path)` (`crates/images`, which
 app_server uses too): everything the `image` crate reads plus JPEG XL
 (jxl-oxide), AVIF (avif-parse and rav1d built without asm, with our own
 YUV to RGB and alpha) and HEIC (heifer), EXIF-rotated, with a 1 GiB
-allocation limit; it returns the image and its format's name. Its
+allocation limit; it returns the image and its format's name.
+
+For borrowed network/resource bytes, `olo_images::raster::decode` is a separate
+worker API for PNG/JPEG/WebP/GIF stills: no temporary file, strict encoded length,
+dimension/pixel and individual surface limits, caller-supplied codec/profile
+budgets, EXIF orientation and the same ICC-to-sRGB conversion. Defaults are
+16 MiB encoded, 16M pixels, 32768 per dimension, 64 MiB per surface, 128 MiB codec
+allocation hint and 4 MiB profile. Unsupported formats fail explicitly rather
+than falling back to the file API's larger budgets. The codec allocation hint
+is [best effort](https://docs.rs/image/0.25.10/image/struct.Limits.html), not an
+OS memory limit. Codecs may copy encoded input; colour/orientation conversion
+can hold additional bounded surfaces. Cancellation is checked at reads and
+stage boundaries, not inside every codec CPU loop. Run it on a worker; hard
+process isolation, animation and interruptible colour/codec work remain open.
+The existing file-preview API is unchanged.
+
+Its
 `av1`, `vp9` and `hevc` modules decode video for olo-preview. HEVC is
 rust_h265 (MIT/Apache, pure Rust), chosen over rusty_h265 (2026-11-03):
 both bit-exact on 35 JCT-VC conformance streams (8 and 10 bit, tiles,
