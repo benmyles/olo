@@ -67,6 +67,12 @@ Do not suppress selector/value failures or replace the site with authored HTML.
 - [x] Implement required initial CSS environment substitution; retry the real site.
 - [x] Identify Cqi and implement initial horizontal box query-container lengths.
 - [ ] Implement required original flex layout; retry the same real site.
+  The initial live20-context inventory is retained in `flex-inventory.json`:
+  complete Stripe URL, loaded fonts, native DPR2, no text/account interaction,
+  not a frozen replay. Header rows use auto content sizes, gaps and alignment.
+  Next prerequisite: retained intrinsic text widths, then flex item sizing/
+  wrapping/alignment and anonymous-item box construction. Existing glyph-prefix
+  and break-opportunity data should supply measurements; no guessed text widths.
 - [ ] Complete container semantics: early/inherited contexts, query conditions,
   vertical modes, replaced containment and additional type/name grammars.
 - [ ] Pin a complete replay, locale/region/cohort, assets, fonts and dynamic clock

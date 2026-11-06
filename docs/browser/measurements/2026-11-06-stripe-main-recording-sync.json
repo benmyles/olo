@@ -1,0 +1,598 @@
+{
+  "scope": "Main9f23236a recording-controls integration after Stripe Cqi milestone. No personal install/reload or website acceptance.",
+  "merge": "cc3ed9ea",
+  "checks": {
+    "main-recording-workspace": {
+      "passed": 0,
+      "sha256": "49c5a97e46f2611a65818660e6b0d88762d2d55b7beec9dcf44561264b1b6df3",
+      "tail": [
+        "   Compiling olo-deskbar v0.1.0 (/home/ben/worktrees/olo/browser/apps/deskbar)",
+        "    Finished `release` profile [optimized + debuginfo] target(s) in 4m 41s",
+        "warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1",
+        "note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`"
+      ]
+    },
+    "main-recording-protocol-tests": {
+      "passed": 35,
+      "sha256": "b716183361615a39be5d04a6df507d29a506d4e2207df95e8b2fe701a816ec35",
+      "tail": [
+        "running 0 tests",
+        "",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    "main-recording-browser-tests": {
+      "passed": 13,
+      "sha256": "8b59d97f2bcbc4af5f00f036638fe642d5134c132ca1d367b0e78a4dd88a9bc6",
+      "tail": [
+        "test network::tests::redirect_final_url_charset_css_and_plain_text ... ok",
+        "",
+        "test result: ok. 13 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+        ""
+      ]
+    }
+  },
+  "native": {
+    "pid": 191491,
+    "binary_sha256": "43dac62db8a52548e3c16493a39ed8a191f173669eec0b6b8fca1faf35547bea",
+    "windows": [
+      {
+        "id": 1,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "pid": 191491,
+        "workspace": 0,
+        "minimized": false,
+        "focused": true,
+        "kept": false,
+        "groupable": true,
+        "output": "HEADLESS-1",
+        "frame": {
+          "x": 48,
+          "y": 40,
+          "width": 1010,
+          "height": 731
+        },
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "least": [
+          650,
+          511
+        ],
+        "tab_frame": {
+          "x": 48,
+          "y": 40,
+          "width": 100,
+          "height": 21
+        },
+        "stack": 0,
+        "surface": 37
+      }
+    ],
+    "navigation": {
+      "scope": "Native navigation on an OWN Agent Screen; authored fixtures accept no sites.\nStart release olo-browser there, eval olo-screen env, then run NAME OUTPUT_DIR.\nChecks canonical redirects, query-container box padding, in-document identity/no I/O, history, keyboard focus\nand scroll restoration at all native modes/scales. HTTP server is test-only.\n",
+      "rows": [
+        {
+          "theme": "light",
+          "scale": 1,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 2,
+            "document": 2
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 3,
+            "document": 2
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 7,
+            "document": 4
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.0,
+              "dark": false,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "light",
+          "scale": 1.25,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 10,
+            "document": 5
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 11,
+            "document": 5
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 15,
+            "document": 7
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.25,
+              "dark": false,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "light",
+          "scale": 1.5,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 18,
+            "document": 8
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 19,
+            "document": 8
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 23,
+            "document": 10
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.5,
+              "dark": false,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "light",
+          "scale": 1.75,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 26,
+            "document": 11
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 27,
+            "document": 11
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 31,
+            "document": 13
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.75,
+              "dark": false,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "light",
+          "scale": 2,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 34,
+            "document": 14
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 35,
+            "document": 14
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 39,
+            "document": 16
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 2.0,
+              "dark": false,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "dark",
+          "scale": 1,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 42,
+            "document": 17
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 43,
+            "document": 17
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 47,
+            "document": 19
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.0,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "dark",
+          "scale": 1.25,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 50,
+            "document": 20
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 51,
+            "document": 20
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 55,
+            "document": 22
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.25,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "dark",
+          "scale": 1.5,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 58,
+            "document": 23
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 59,
+            "document": 23
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 63,
+            "document": 25
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.5,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "dark",
+          "scale": 1.75,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 66,
+            "document": 26
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 67,
+            "document": 26
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 71,
+            "document": 28
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.75,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "dark",
+          "scale": 2,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 74,
+            "document": 29
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 75,
+            "document": 29
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 79,
+            "document": 31
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 2.0,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "night",
+          "scale": 1,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 82,
+            "document": 32
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 83,
+            "document": 32
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 87,
+            "document": 34
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.0,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "night",
+          "scale": 1.25,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 90,
+            "document": 35
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 91,
+            "document": 35
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 95,
+            "document": 37
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.25,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "night",
+          "scale": 1.5,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 98,
+            "document": 38
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 99,
+            "document": 38
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 103,
+            "document": 40
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.5,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "night",
+          "scale": 1.75,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 106,
+            "document": 41
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 107,
+            "document": 41
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 111,
+            "document": 43
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 1.75,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        },
+        {
+          "theme": "night",
+          "scale": 2,
+          "initial": {
+            "url": "http://127.0.0.1:45101/nav",
+            "navigation": 114,
+            "document": 44
+          },
+          "fragment": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 115,
+            "document": 44
+          },
+          "restored": {
+            "url": "http://127.0.0.1:45101/nav#section",
+            "navigation": 119,
+            "document": 46
+          },
+          "review": [
+            {
+              "title": "Browser",
+              "width": 1000,
+              "height": 700,
+              "scale": 2.0,
+              "dark": true,
+              "findings": []
+            }
+          ]
+        }
+      ],
+      "requests": [
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/redirect",
+        "/nav",
+        "/other",
+        "/nav",
+        "/nav"
+      ],
+      "reload": {
+        "before": {
+          "url": "http://127.0.0.1:45101/nav#section",
+          "navigation": 121,
+          "document": 46
+        },
+        "restored": {
+          "url": "http://127.0.0.1:45101/nav#section",
+          "navigation": 1,
+          "document": 1
+        },
+        "section_y": 145.20801,
+        "forward_then_back_without_requests": true,
+        "reload_and_history_checks_seconds": 1.3448615160014015
+      },
+      "accepted_websites": 0
+    }
+  },
+  "accepted_websites": 0
+}

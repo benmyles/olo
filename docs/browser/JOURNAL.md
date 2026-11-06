@@ -4262,3 +4262,34 @@ native navigation/screenshot journal. No general website speedup is claimed.
 Origin/main advanced to9f23236a (recording controls); merge next after committing
 this working milestone. **Stripe0/30, corpus0/100,0/3000; goal active.** Next
 required site feature is the original flex formatting/layout implementation.
+
+### 2026-11-06 — Follow recording main; inspect actual Stripe flex requirements
+
+Cqi milestoneea49514a is pushed. Merged main9f23236a ascc3ed9ea, bringing
+recording controls/status protocol, the shared recording-light drawing helper
+and capture-only layer exclusion. Read the changed source/HACKING; native
+screenshots still include visible controls while video/share captures omit them.
+Workspace4m41s, protocol35 and Browser13 pass/1 ignored. A fresh owned session
+and freshly rebuilt Browser pass15 Cqi navigation mode/scale reviews, history,
+scroll and re-exec checks. No personal install/reload; private windows quit and
+screens stopped. Evidence:2026-11-06-stripe-main-recording-sync.json. This is
+integration upkeep, not website acceptance.
+
+A read-only Chrome inventory now records20 actual visible flex contexts from
+https://stripe.com/ at native DPR2, readyState complete and fonts loaded. The
+header is a nowrap row, with auto-sized navigation items, gaps and center
+alignment; nested items also use flex basis/grow/shrink. Stored technical style/
+geometry metadata only, no marketing text or account/payment interaction.
+Rejected preflights are explicit: scratch import path, about:blank with zero
+contexts before navigation committed, and a stale debugging-port startup read.
+None became site evidence. The corrected driver verifies screen/PID/profile,
+waits bounded startup and actual URL/load, rejects empty data, then closes its
+Chrome and waits for exit. The reference screen is stopped.
+
+Retained inventory/driver provenance in eval/stripe/flex-inventory.json is not
+complete capture/replay or pixel acceptance. Next: intrinsic text min/max content
+widths from existing shaped prefixes/break data, then original flex sizing,
+wrapping/alignment and anonymous item construction. The current text API retains
+those inputs but exposes no intrinsic-width operation yet. No line width will
+be guessed and no existing browser engine substituted. **Stripe0/30, corpus0/100,
+0/3000; goal active.** Prior performance nonpasses stay open.
