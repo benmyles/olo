@@ -17,17 +17,6 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-- **Deskbar's tray icons: either click shows their menu** (Ben,
-  2026-11-06): "in the deskbar, left clicking or right clicking an icon
-  should show the context menu for that icon (if there is one -- if not
-  it can open the corresponding app immediately) and the context menu
-  should have an option to open the relevant app(s) for more details".
-  A tray icon (the status icons: displays, network, sound, battery,
-  notifications, keys, the recording, the agent screens…) opens its
-  menu on a left click as on a right one; an icon with no menu opens its
-  app at once; and each menu has an item opening the app(s) that tell
-  more (Preferences' panel, Activity Monitor, Agent Screens…).
-
 - **Passwords: Add Field in each section, and search inside items**
   (Ben, 2026-11-06): "in passwords each section needs its own add field
   button, right now there's only one at the very bottom of all
@@ -1664,6 +1653,25 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Deskbar's tray icons: either click shows their menu**~~ (Ben,
+  2026-11-06): "in the deskbar, left clicking or right clicking an icon
+  should show the context menu for that icon (if there is one -- if not
+  it can open the corresponding app immediately) and the context menu
+  should have an option to open the relevant app(s) for more details".
+  A tray icon (the status icons: displays, network, sound, battery,
+  notifications, keys, the recording, the agent screens…) opens its
+  menu on a left click as on a right one; an icon with no menu opens its
+  app at once; and each menu has an item opening the app(s) that tell
+  more (Preferences' panel, Activity Monitor, Agent Screens…).
+  *Done* (2026-11-06, HACKING's "Deskbar"): every tray icon with a
+  menu opens it on a left click as on a right one (links, battery,
+  volume, notifications, supervisor, Stay Awake, Approve, recording,
+  sharing, AirPods, displays, other programs'), each menu ending with
+  the app that tells more (Stay Awake's now Power's preferences,
+  Approve's Security's, the recording's Screenshot, other programs'
+  "Open NAME"); those with none open their app on either button. Tried
+  headless: each menu opened by a left click.
 
 - ~~**Focus mode: Remove from Group**~~ (Ben, 2026-11-06, with a screenshot
   of three Chrome windows as tabs): "remove from group doesn't seem to

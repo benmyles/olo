@@ -10771,7 +10771,14 @@ the lit workspace), with transparent hit areas over it for the pointer:
 a left click as a click, the right and middle buttons as they're
 pressed (menus open on the press, as BeOS's), hovering that lights and
 a tip in a popup of its own (`olo_ui::tip`: the bar is narrower than
-what its icons say). The tray's glyphs (status.rs) are exact-coverage
+what its icons say). A tray icon opens its menu on either button (Ben,
+2026-11-06), each menu ending with the app that tells more (Network's,
+Displays', Power's, Sound's, Notifications' and Security's preferences,
+Activity Monitor, Screenshot); one with no menu (Olo Doctor, the agent
+screens, an upgrade) does what its click does on either; another
+program's item shows its menu on either button, with "Open NAME" (its
+activation) last, or is activated if it has none. The volume's wheel
+still sets the volume; Mute is in its menu. The tray's glyphs (status.rs) are exact-coverage
 paths and the GPU's discs, rings and arcs (`paint_sector`), straight
 lines on device pixels. An application dragged out is a link to its
 program (`olo_ui::dnd`, its icon and name under the pointer); files
