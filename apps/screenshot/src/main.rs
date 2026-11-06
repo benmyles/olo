@@ -13,6 +13,7 @@
 mod backdrop;
 mod bubble;
 mod capture;
+mod inset;
 mod recording;
 mod region;
 mod sound;

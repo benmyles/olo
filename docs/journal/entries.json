@@ -3376,5 +3376,11 @@
   "title": "A shared window, ringed",
   "caption": "While an app shares a window, it has a red ring round its body on screen (never in what's shared), flush outside its border at every scale.",
   "image": "2026-11-05/185204-a-shared-window-ringed.png"
+ },
+ {
+  "time": "2026-11-05T19:17:58",
+  "title": "A window's recording with the camera",
+  "caption": "Recording a window on a background with Show Camera: the camera (here the stand-in's pattern) drawn on the background's corner, ringed as the on-screen bubble is.",
+  "image": "2026-11-05/191758-a-window-s-recording-with-the-camera.png"
  }
 ]

@@ -65,13 +65,15 @@ impl Backdrop {
     /// A frame: `data`'s `w` × `h` (BGRA, `stride` a row) on the
     /// background, into `canvas` (as big as the backdrop). The canvas
     /// keeps the background between frames: only the window is copied in,
-    /// unless its size changed.
-    pub fn compose(&mut self, data: &[u8], stride: usize, w: u32, h: u32, canvas: &mut [u8]) {
+    /// unless its size changed. Whether the background was made again,
+    /// and where the window went (x, y, w, h).
+    pub fn compose(&mut self, data: &[u8], stride: usize, w: u32, h: u32, canvas: &mut [u8]) -> (bool, [usize; 4]) {
         let (cw, ch) = (self.width as usize, self.height as usize);
         let (w, h) = ((w as usize).min(cw), (h as usize).min(ch));
         let (x0, y0) = ((cw - w) / 2, (ch - h) / 2);
         let r = self.radius.min(w / 2).min(h / 2);
-        if self.made_for != Some([x0, y0, w, h]) {
+        let anew = self.made_for != Some([x0, y0, w, h]);
+        if anew {
             canvas.copy_from_slice(&self.base);
             shadow(canvas, cw, ch, [x0, y0, w, h], r);
             if self.coverage.len() != r * r {
@@ -117,6 +119,7 @@ impl Backdrop {
                 }
             }
         }
+        (anew, [x0, y0, w, h])
     }
 }
 

@@ -556,9 +556,30 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Some(i) => Some(args.get(i + 1).filter(|v| !v.starts_with("--")).cloned().unwrap_or_else(|| "auto".into())),
         None => settings.as_ref().map(|s| s.camera.clone()).filter(|c| !c.is_empty()),
     };
+    // A window on a background has the camera drawn on its background's
+    // corner by the recorder itself (`inset.rs`); a window alone, none.
+    let mut inset: Option<crate::inset::Inset> = None;
     let (bubble, camera, camera_note) = match camera_wanted {
         None => (None, None, None),
-        Some(_) if matches!(source, Source::Window { .. }) => (None, None, Some("a window's recording is only the window: the camera bubble shows in recordings of the screen or a region".to_owned())),
+        Some(id) if matches!(source, Source::Window { .. }) && backdrop.is_some() => {
+            let (w, h) = capture.size().unwrap_or((1280, 800));
+            let m = crate::backdrop::margin(w, h);
+            let (vw, vh) = olo_video::even(w + 2 * m, h + 2 * m);
+            match crate::inset::Inset::start(&id, vw, vh) {
+                Ok(i) => {
+                    let name = i.name.clone();
+                    inset = Some(i);
+                    (None, Some(name), None)
+                }
+                Err(e) => {
+                    eprintln!("olo-screenshot: recording without the camera: {e}");
+                    (None, None, Some(e))
+                }
+            }
+        }
+        Some(_) if matches!(source, Source::Window { .. }) => {
+            (None, None, Some("a window's recording is only the window: the camera shows in recordings of the screen or a region, or of a window on a background".to_owned()))
+        }
         Some(id) => match CameraBubble::start(&id) {
             Ok((b, name)) => (Some(b), Some(name), None),
             Err(e) => {
@@ -567,7 +588,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
             }
         },
     };
-    let result = record_into(&mut capture, &path, fps, seconds, (choice, codec), crop, backdrop, sound, countdown.min(10), &g, woken.as_raw_fd());
+    let result = record_into(&mut capture, &path, fps, seconds, (choice, codec), crop, backdrop, inset, sound, countdown.min(10), &g, woken.as_raw_fd());
     if showing {
         set_showing(false, false, 1.0, false, 0.0);
     }
@@ -599,6 +620,7 @@ fn record_into(
     (choice, codec): (olo_video::Choice, olo_video::Codec),
     crop: Option<[u32; 4]>,
     backdrop: Option<crate::backdrop::Look>,
+    inset: Option<crate::inset::Inset>,
     which: crate::sound::Which,
     countdown: u32,
     going: &Going,
@@ -627,7 +649,7 @@ fn record_into(
         let (slot, ended, end, part, sound_in, marks) = (slot.clone(), ended.clone(), end.clone(), part.clone(), sound_in.clone(), marks.clone());
         std::thread::Builder::new()
             .name("recording encoder".into())
-            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), &ready_tx, &sound_in, &marks))
+            .spawn(move || encode(&slot, &ended, &end, &part, fps, (choice, codec), size, backdrop.as_ref(), inset, &ready_tx, &sound_in, &marks))
             .map_err(|e| e.to_string())?
     };
     // The countdown meanwhile, a number a second (a stop ends it).
@@ -822,6 +844,7 @@ fn encode(
     (choice, codec): (olo_video::Choice, olo_video::Codec),
     size: Option<(u32, u32)>,
     look: Option<&crate::backdrop::Look>,
+    mut inset: Option<crate::inset::Inset>,
     ready: &std::sync::mpsc::Sender<Result<(), String>>,
     sound: &Mutex<Option<SoundIn>>,
     marks: &Mutex<Vec<(u64, String)>>,
@@ -902,7 +925,13 @@ fn encode(
         // The picture at the video's size: a window that grew is cut, one
         // that shrank shown on black (or on its background, centred).
         match backdrop.as_mut() {
-            Some(b) => b.compose(&w.data, w.stride, w.width, w.height, canvas),
+            Some(b) => {
+                let (anew, window) = b.compose(&w.data, w.stride, w.width, w.height, canvas);
+                // The camera on the background's corner.
+                if let Some(i) = inset.as_mut() {
+                    i.draw(canvas, vw as usize, window, anew);
+                }
+            }
             None => fit(&w, canvas, vw, vh),
         }
         // An encoder that fails is opened again, once: its first picture a

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### A window's recording with the camera
+
+*19:17* — Recording a window on a background with Show Camera: the camera (here the stand-in's pattern) drawn on the background's corner, ringed as the on-screen bubble is.
+
+![A window's recording with the camera](2026-11-05/191758-a-window-s-recording-with-the-camera.png)
+
 ### A shared window, ringed
 
 *18:52* — While an app shares a window, it has a red ring round its body on screen (never in what's shared), flush outside its border at every scale.

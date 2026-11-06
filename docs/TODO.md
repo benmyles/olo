@@ -1250,7 +1250,9 @@ of Finished; a new one goes where its priority puts it.
     xdg-desktop-portal (1.22 here) answers it with FileManager1's
     `ShowItems`, which Tracker serves, and only without one opens
     `inode/directory`'s default, which olo-session makes Tracker too.
-  - **Opening things** (started 2026-10-30: the AppChooser portal is
+  - ~~**Opening things**~~ (done: checked 2026-11-05, GIO opens a folder
+    in Tracker and a link in Chrome from `olo-mimeapps.list`, xdg-open
+    going through GIO on Olo's `XDG_CURRENT_DESKTOP`) (started 2026-10-30: the AppChooser portal is
     Olo's Open With window, so OpenURI's "which app?" is Olo's; olo-session
     writes desktop entries and `olo-mimeapps.list` defaults so GIO,
     xdg-open and OpenURI open files in Olo's apps as Olo does, links
@@ -1506,8 +1508,10 @@ of Finished; a new one goes where its priority puts it.
   `olo-camera` (V4L2 in process), checked with the stand-in camera.
   *Left*: the camera bubble on a real camera (Ben's first try: Show
   Camera, then a recording of the screen; the laptop's camera and the
-  Studio Display's were never opened here) and in a window's recording
-  (on its background's corner), and
+  Studio Display's were never opened here); in a window's recording
+  done (2026-11-05: on a background, the recorder draws the camera on
+  the background's corner itself, `inset.rs`; checked with the stand-in
+  camera), and
   the GPU
   encoder below (OpenH264 on the CPU keeps about 9 frames a second at
   4K: 111 ms a frame). *HEVC and AV1* (2026-11-05): `--codec`,

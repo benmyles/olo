@@ -138,7 +138,7 @@ impl Render for Bubble {
 }
 
 /// The middle square of `f`, mirrored, as an image for the window.
-fn square(f: &olo_camera::Frame) -> Option<image::RgbaImage> {
+pub(crate) fn square(f: &olo_camera::Frame) -> Option<image::RgbaImage> {
     let side = f.width.min(f.height) as usize;
     let (x0, y0) = ((f.width as usize - side) / 2, (f.height as usize - side) / 2);
     let row = f.width as usize * 4;

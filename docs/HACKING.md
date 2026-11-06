@@ -6431,8 +6431,15 @@ Screens' Export Video uses too).
   yourself while it counts) and ended after: it says `ready` and the
   camera's name once its first frame is up, or why not (then the video
   is made without, `camera_note` saying why). On the screen, so a
-  recording of the screen or a region has it; a window's recording is
-  only the window (`camera_note` says so). Dragged, it moves: its layer
+  recording of the screen or a region has it. A window's recording is
+  only the window, so on a background (`--background`) the recorder
+  opens the camera itself and draws it on each frame (`inset.rs`): a
+  disc a fifth of the video's shorter side (96 to 360 pixels) on the
+  background's bottom right corner over the window's, ringed as the
+  bubble is, the latest frame scaled to it once on a worker as it comes;
+  what it covers outside the window is kept from when the background
+  was made and put back each frame, so its soft edge never piles up. A
+  window alone has none (`camera_note` says so). Dragged, it moves: its layer
   surface's margins (GPUI's new `Window::set_layer_margin`), kept on the
   screen. Frames on a worker: the camera's middle square mirrored (as a
   mirror shows you), only the latest waiting for the window (a
