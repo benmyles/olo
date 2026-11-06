@@ -37,7 +37,7 @@ use olo_ui::{
     gpui::{App, AppContext as _, ClipboardItem, Context, Entity, Font, FontWeight, Hsla, IntoElement, ParentElement as _, Render, Styled as _, Task, TextRun, Window, WindowHandle, canvas, div, px},
     instance::{self, Launch},
     menu, metrics as m,
-    search::{self, Facet, FilterBar, SearchEvent, SearchField, search_field},
+    search::{self, Facet, SearchEvent, SearchField, search_field},
     style::{self, c},
     theme,
     widgets::{Button, CheckBox, Column, ColumnListView, ListModel, SCROLL_BAR, TextView, text_view},
@@ -811,27 +811,10 @@ impl Render for Logs {
         let bar = MenuBar::new(self.menus(), move |cmd, window, cx| bar_me.update(cx, |l, cx| l.command(cmd, window, cx)));
 
         // The search and the filters' menus: in one row when there's
-        // room, else the menus under the search.
+        // room, else the menus under the search (the kit's search header).
         let facets = self.facets(cx);
         let width = f32::from(window.viewport_size().width) - 2.0 * m::WINDOW_INSET;
-        let bar_w = FilterBar::width(cx, &self.settings.search, &facets) + m::SPACING + 40.0;
-        let one_row = width - bar_w - m::SPACING >= 260.0;
-        let filters_me = me.clone();
-        let filters = FilterBar::new("logs", self.settings.search.clone(), facets).on_change(move |text, _, cx| {
-            filters_me.update(cx, |l, cx| {
-                l.set_search(text, cx);
-                l.query_changed(cx);
-            })
-        });
-        let controls = if one_row {
-            div().flex().flex_row().gap(px(m::SPACING)).child(div().w(px(width - bar_w - m::SPACING)).child(self.search.clone())).child(filters.max_width(bar_w))
-        } else {
-            // Under the search, its first menu's text over the list's
-            // first column's (inside the list's two lines of frame).
-            let frame = f32::from(style::inset(window, olo_ui::gpui::Bounds::default(), 2.0).left());
-            let indent = frame + m::CELL_INSET - m::TEXT_INSET;
-            div().flex().flex_col().gap(px(m::SPACING)).child(self.search.clone()).child(div().pl(px(indent)).child(filters.max_width(width - indent)))
-        };
+        let controls = search::header(&self.search, "logs", facets, width).min_field(260.0).indent(search::list_indent(window));
 
         let list = match &self.failed {
             Some(why) => {

@@ -28,7 +28,7 @@ use olo_ui::{
     Proxy, agent,
     gpui::{App, AppContext as _, Context, Entity, EventEmitter, FontWeight, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Task, TextRun, Window, canvas, div, point, px},
     metrics as m,
-    search::{self, Facet, FilterBar, Query, SearchEvent, SearchField, search_field},
+    search::{self, Facet, Query, SearchEvent, SearchField, search_field},
     style::{self, c},
     theme,
     widgets::{Button, Column, ColumnListView, EmptyState, ListModel, MenuField, Slider, StatusBar},
@@ -1031,7 +1031,6 @@ impl Render for Replay {
         }
 
         // The search and its filters, and how many actions they keep.
-        let me = cx.entity();
         let facets = self.facets(cx);
         let width = self.width;
         let count = if self.shown.len() == self.actions.len() {
@@ -1039,44 +1038,9 @@ impl Render for Replay {
         } else {
             format!("{} of {}", style::thousands(self.shown.len()), style::thousands(self.actions.len()))
         };
-        let font = style::ui_font(FontWeight::NORMAL);
-        let count_w = style::text_width_app(cx, &count, style::PLAIN_SIZE, &font).ceil();
-        let bar_w = FilterBar::width(cx, &self.query, &facets) + m::SPACING + 40.0;
-        let one_row = width - bar_w - count_w - 2.0 * m::SPACING >= 220.0;
-        let field_w = if one_row { width - bar_w - count_w - 2.0 * m::SPACING } else { width - count_w - m::SPACING };
-        let filters_me = me.clone();
-        let filters = FilterBar::new(format!("replay-{}", self.name), self.query.clone(), facets).no_clear().on_change(move |text, _, cx| {
-            filters_me.update(cx, |r, cx| {
-                r.search.update(cx, |s, cx| s.set_text(text.clone(), cx));
-                r.query = text;
-                r.pick();
-                r.revealed = None;
-                cx.notify();
-            })
-        });
-        let count_label = canvas(
-            |_, _, _| {},
-            move |b, _, window, cx| {
-                let p = theme::palette(cx);
-                let r = style::label(window, cx, b.right(), b.center().y, style::Align::Right, count.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
-                agent::record(window, cx, agent::Node::label(count.clone(), r));
-            },
-        )
-        .w(px(count_w))
-        .h(px(m::CONTROL_HEIGHT))
-        .flex_shrink_0();
-        let mut top = div().flex().flex_row().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).child(div().w(px(field_w)).child(self.search.clone()));
-        let controls = if one_row {
-            top = top.child(div().flex_1().min_w_0().child(filters.max_width(bar_w))).child(count_label);
-            div().child(top)
-        } else {
-            // Under the search, its first menu's text over the list's
-            // first column's, as Log Viewer has it.
-            top = top.child(div().flex_1()).child(count_label);
-            let frame = f32::from(style::inset(window, olo_ui::gpui::Bounds::default(), 2.0).left());
-            let indent = frame + m::CELL_INSET - m::TEXT_INSET;
-            div().flex().flex_col().gap(px(m::SPACING)).child(top).child(div().pl(px(indent)).child(filters.max_width(width - indent)))
-        };
+        // (Under the search, its first menu's text over the list's first
+        // column's, as Log Viewer has it.)
+        let controls = search::header(&self.search, format!("replay-{}", self.name), facets, width).no_clear().count(count).indent(search::list_indent(window));
 
         // The screen as it was, the action under it, and the transport.
         let list_w = (width * 0.42).clamp(260.0, 440.0).min(width - 240.0).max(200.0);
