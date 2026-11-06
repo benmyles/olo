@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: snapped edges and mixed border corners
+
+*03:12* — Static native page at 1.5x on an isolated Agent Screen: device-snapped sharp rectangles and clips, disjoint solid border strips, premultiplied corner colour mixing and device-pixel text baselines. All five scales and light/dark/night reviewed live. The expanded native Chrome suite still has exact font-mask, corner-coverage and colour-precision failures; this is not website compatibility.
+
+![Browser: snapped edges and mixed border corners](2026-11-06/031254-browser-snapped-edges-and-mixed-border-corners.png)
+
 ### StyledEdit: Markdown pictures
 
 *02:25* — ![alt](file) shows as the picture it names (a file beside the document), off the caret's line.

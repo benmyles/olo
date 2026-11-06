@@ -58,5 +58,35 @@
     "id": "multicolor-border",
     "body": "<div></div>",
     "css": "div{width:30px;height:30px;border-width:3px;border-style:solid;border-top-color:red;border-right-color:green;border-bottom-color:blue;border-left-color:black}"
+  },
+  {
+    "id": "multicolor-alpha",
+    "body": "<div></div>",
+    "css": "div{width:30px;height:30px;border-width:3px;border-style:solid;border-top-color:rgb(255 0 0 / 50%);border-right-color:rgb(0 128 0 / 50%);border-bottom-color:rgb(0 0 255 / 50%);border-left-color:rgb(0 0 0 / 50%)}"
+  },
+  {
+    "id": "asymmetric",
+    "body": "<div></div>",
+    "css": "div{position:relative;left:.25px;top:.25px;width:29.5px;height:17.25px;border-style:solid;border-top-width:1px;border-right-width:3px;border-bottom-width:5px;border-left-width:7px;border-top-color:red;border-right-color:green;border-bottom-color:blue;border-left-color:black;background-color:magenta}"
+  },
+  {
+    "id": "transparent-side",
+    "body": "<div></div>",
+    "css": "div{width:30px;height:30px;border-width:3px;border-style:solid;border-top-color:red;border-right-color:transparent;border-bottom-color:blue;border-left-color:black}"
+  },
+  {
+    "id": "unequal-alpha",
+    "body": "<div></div>",
+    "css": "div{width:30px;height:30px;border-width:3px;border-style:solid;border-top-color:rgb(255 0 0 / 25%);border-right-color:rgb(0 128 0 / 75%);border-bottom-color:rgb(0 0 255 / 50%);border-left-color:rgb(0 0 0 / 20%)}"
+  },
+  {
+    "id": "thin-box",
+    "body": "<div></div>",
+    "css": "div{width:0;height:0;border-width:3px;border-style:solid;border-top-color:red;border-right-color:green;border-bottom-color:blue;border-left-color:black}"
+  },
+  {
+    "id": "clipped-border",
+    "body": "<div><p></p></div>",
+    "css": "div{width:10px;height:10px;overflow:hidden}p{width:30px;height:30px;border-width:4px;border-style:solid;border-top-color:red;border-right-color:green;border-bottom-color:blue;border-left-color:black}"
   }
 ]

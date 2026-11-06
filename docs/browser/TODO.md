@@ -218,9 +218,10 @@ revalidate the merged workspace and push the integration with browser work.
 - [ ] Implement complete block/inline, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
 - [x] Initial retained static page scenes, outline cache, indexed tile queries,
-  bounded pure-Rust CPU raster and native GPU tile composition. Thirty exact
-  Chrome pixel observations pass; six fractional/multicolour-border observations
-  remain failures, recorded explicitly with an ignored exact test.
+  bounded pure-Rust CPU raster and native GPU tile composition. Ninety actual
+  native-scale Chrome pixel observations are captured; 54 exact matches and
+  36 remaining font/corner/colour failures. Earlier emulated-DPR captures are
+  preserved separately, with the native/emulated border-snap mismatch explained.
 - [x] Initial native single-page shell: local HTML/about page, worker progress,
   Stop/Escape, address shortcuts, retained scrolling, readable agent text/status,
   forwarded files and kit restart restoration. Fifteen live scale/theme reviews
@@ -229,8 +230,12 @@ revalidate the merged workspace and push the integration with browser work.
   window RSS ~90,900 KiB); reduce touchpad first-movement latency (~29 ms),
   the observed drag hitch and half-pixel wheel discontinuities. Release
   observations are in 2026-11-06-paint-ui.json, not universal acceptance.
-- [ ] Fix fractional edge coverage, physical border snapping and multicolour
-  corners; arbitrary-font hinting/raster parity and inline backgrounds/ligature
+- [x] Device-snapped sharp rectangles/clips, device text baselines and
+  disjoint solid border strips with premultiplied corner mixing; tiled/whole
+  equality including empty clips and translucent asymmetric corners.
+- [ ] Match native font masks, GPU/asymmetric corner coverage and retained
+  colour precision (36/90 exact native observations still fail); arbitrary-font
+  hinting/raster parity and inline backgrounds/ligature
   colour clipping. Complete CSS paint/stacking and semantic DOM/hit actions.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
   SVG, canvas, fonts, video and audio; measure each on release builds.
@@ -281,7 +286,7 @@ HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostic
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.
 
-Next: resolve the six independent pixel failures and initial shell input/links;
+Next: resolve the remaining native font/corner/colour pixel failures and initial shell input/links;
 complete mixed
 inline typography, fractional device shaping/line metrics, visual-edge
 whitespace/other-Zs hanging, tab stops, CSS tailoring, UA defaults, clipping,
@@ -295,3 +300,14 @@ but the full 1280×800 desktop lint reports ten findings outside Browser:
 Disk Usage crowding (six), Passwords setup overflow (three), Integrations
 footer/scroll-control grouping (one). Keep these visible for native integration
 acceptance; raw reports are in 2026-11-06-paint-main-integration.json.
+
+Latency method correction: the legacy ~29 ms touchpad figure starts before
+the first report and can miss the first moving frame without a baseline.
+The timestamped replay retains both and reports input-to-client-frame marks
+separately. Full compositor presentation/optical input latency is still open;
+this is a harness correction, not a browser speedup.
+
+- [ ] Avoid outline extraction for fully invisible/transparent glyph runs
+  after validating shared-cluster paint boundaries; omit fully transparent
+  border paint commands while retaining box geometry. Measure the hidden-text
+  path as well as the normal visible path.

@@ -1,0 +1,5666 @@
+{
+  "reviews": [
+    {
+      "scale": 1,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 167.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 520.76,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.26404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 167.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 520.76,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.26404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 578.0,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 167.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 520.76,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.26404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.25,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.4,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.64,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 517.16003,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 520.664,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.25,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.4,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.64,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 517.16003,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 520.664,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.25,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.4,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.4,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.4,
+              "width": 1000.0,
+              "height": 577.6,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.736,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.64,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 517.16003,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 520.664,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 735.0,
+              "width": 968.0,
+              "height": 16.0,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.5,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.06934,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 518.0933,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 521.5973,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.5,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.06934,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 518.0933,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 521.5973,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.5,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.3333,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.06934,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 214.84,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 518.0933,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 521.5973,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.3333,
+              "width": 968.0,
+              "height": 16.666687,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.75,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.28571,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.16457,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.41144,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 519.3314,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 522.83545,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.75,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.28571,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.16457,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.41144,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 519.3314,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 522.83545,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 1.75,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.28571,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.28571,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.2857,
+              "width": 1000.0,
+              "height": 577.1429,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.16457,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.41144,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 519.3314,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 522.83545,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.4286,
+              "width": 968.0,
+              "height": 16.571411,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.236,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.34,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 521.26,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.76404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.236,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.34,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 521.26,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.76404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "tree": [
+        {
+          "window": 2,
+          "app_id": "olo.browser",
+          "title": "Browser",
+          "focused": true,
+          "content": {
+            "x": 54,
+            "y": 67,
+            "width": 1000,
+            "height": 700
+          },
+          "nodes": [
+            {
+              "id": 1,
+              "role": "Window",
+              "name": "Browser",
+              "x": 54.0,
+              "y": 67.0,
+              "width": 1000.0,
+              "height": 700.0,
+              "enabled": true
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "role": "MenuBarItem",
+              "name": "File",
+              "x": 62.0,
+              "y": 68.0,
+              "width": 35.188,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true,
+              "selected": false
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "role": "TextInput",
+              "name": "Address",
+              "value": "/var/tmp/olo-browser-edge/visual.html",
+              "x": 66.0,
+              "y": 105.0,
+              "width": 792.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 4,
+              "parent": 1,
+              "role": "Button",
+              "name": "Go",
+              "x": 870.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 5,
+              "parent": 1,
+              "role": "Button",
+              "name": "Stop",
+              "x": 962.0,
+              "y": 105.0,
+              "width": 80.0,
+              "height": 24.0,
+              "enabled": true,
+              "clickable": true
+            },
+            {
+              "id": 6,
+              "parent": 1,
+              "role": "Document",
+              "name": "Page",
+              "x": 54.0,
+              "y": 141.0,
+              "width": 1000.0,
+              "height": 577.5,
+              "enabled": true
+            },
+            {
+              "id": 7,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 76.16,
+              "y": 168.236,
+              "width": 232.44,
+              "height": 24.024002,
+              "enabled": true
+            },
+            {
+              "id": 8,
+              "parent": 1,
+              "role": "Label",
+              "name": "Sharp rectangles, mixed corner colours and translucent joins.",
+              "x": 74.816,
+              "y": 215.34,
+              "width": 458.192,
+              "height": 16.0,
+              "enabled": true
+            },
+            {
+              "id": 9,
+              "parent": 1,
+              "role": "Label",
+              "name": "Font masks and GPU corner coverage still have exact pixel differe",
+              "x": 75.552,
+              "y": 521.26,
+              "width": 486.24,
+              "height": 16.079987,
+              "enabled": true
+            },
+            {
+              "id": 10,
+              "parent": 1,
+              "role": "Label",
+              "name": "nces.",
+              "x": 563.968,
+              "y": 524.76404,
+              "width": 36.032013,
+              "height": 8.959991,
+              "enabled": true
+            },
+            {
+              "id": 11,
+              "parent": 1,
+              "role": "Label",
+              "name": "Native border paint",
+              "x": 70.0,
+              "y": 734.5,
+              "width": 968.0,
+              "height": 16.5,
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "idle": {
+    "seconds": 3.0,
+    "total": {
+      "cpu": 0.0,
+      "wakeups": 0
+    },
+    "threads": [
+      {
+        "tid": 2346992,
+        "name": "olo-browser",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2346995,
+        "name": "Timer",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2346997,
+        "name": "theme-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2346998,
+        "name": "menus",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2346999,
+        "name": "upgrade-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2347000,
+        "name": "olo-bro:disk$0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2347004,
+        "name": "olo-br:traceq0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2347018,
+        "name": "browser-page",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2347021,
+        "name": "olo-browser",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      }
+    ],
+    "windows": [
+      {
+        "title": "Browser",
+        "frames": 0,
+        "per_second": 0.0,
+        "mean_us": 0,
+        "ui_us": 0,
+        "tessellate_us": 0,
+        "submit_us": 0,
+        "slowest_us": 0
+      }
+    ]
+  },
+  "legacy_scroll": [
+    {
+      "kind": "drag",
+      "frames": 98,
+      "moving_frames": 96,
+      "frame_ms": 8.34,
+      "hitches": 0,
+      "still": 0,
+      "first_move_ms": 28.4,
+      "slowest_draw_ms": 0.73,
+      "distance": 698.7,
+      "reached_end": false,
+      "step_vs_speed": {
+        "mean": 0.978,
+        "sd": 0.028,
+        "min": 0.799,
+        "max": 1.155,
+        "off_25pct": 0,
+        "frames": 92
+      }
+    },
+    {
+      "kind": "flick",
+      "frames": 19,
+      "moving_frames": 17,
+      "frame_ms": 8.33,
+      "hitches": 0,
+      "still": 0,
+      "first_move_ms": 28.4,
+      "slowest_draw_ms": 0.73,
+      "distance": 329.3,
+      "reached_end": false
+    },
+    {
+      "kind": "wheel",
+      "frames": 54,
+      "moving_frames": 52,
+      "frame_ms": 8.35,
+      "hitches": 0,
+      "still": 0,
+      "first_move_ms": 9.0,
+      "slowest_draw_ms": 0.52,
+      "distance": -132.0,
+      "reached_end": false,
+      "notches": {
+        "count": 3,
+        "frames_each": [
+          17,
+          18,
+          17
+        ],
+        "jumps_up": 0,
+        "worst_jump": 0.0
+      }
+    }
+  ],
+  "timestamped_scroll": {
+    "scope": "Owned-screen scroll replay with first-report and submission timestamps.\n\nLoad tests/paint-fixtures/scroll.html, then eval the OWN_SCREEN environment:\n  /usr/bin/python3 THIS_SCRIPT OWN_SCREEN /var/tmp/OWNED/report.json\n\nKeeps legacy scroll-check fields, whose first_move_ms starts before the\nfirst timed report (one period early for drag/flick). Additional fields time\nthe first moving client-frame mark from the first input report/submission.\nThe legacy analyser can also miss the first moving mark without a baseline;\nthis replay retains the before-input pose. These are client marks, not measured\ncompositor presentation or optical latency.\n",
+    "window": {
+      "id": 1,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "pid": 2352624,
+      "workspace": 0,
+      "minimized": false,
+      "focused": true,
+      "kept": false,
+      "groupable": true,
+      "output": "HEADLESS-1",
+      "frame": {
+        "x": 48,
+        "y": 40,
+        "width": 1010,
+        "height": 731
+      },
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "least": [
+        650,
+        511
+      ],
+      "tab_frame": {
+        "x": 48,
+        "y": 40,
+        "width": 100,
+        "height": 21
+      },
+      "stack": 0,
+      "glowing": true,
+      "surface": 37
+    },
+    "legacy_scroll_check_sha256": "5ad43bb872b59f110cfffe1030dac6331ad5d8128c439b8f48f04fe4442395b6",
+    "rows": [
+      {
+        "kind": "drag",
+        "frames": 98,
+        "moving_frames": 96,
+        "frame_ms": 8.34,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 29.1,
+        "slowest_draw_ms": 1.87,
+        "distance": 706.7,
+        "reached_end": false,
+        "step_vs_speed": {
+          "mean": 0.991,
+          "sd": 0.118,
+          "min": 0.622,
+          "max": 1.332,
+          "off_25pct": 6,
+          "frames": 92
+        },
+        "run_started_at_us": 64881240339,
+        "submitted_at_us": 64881252080,
+        "report_at_us": 64881251452,
+        "baseline": {
+          "scroll_pose": [
+            0.0,
+            0.0,
+            0.0,
+            15956.0
+          ],
+          "marks_before_input": [
+            {
+              "at_us": 64880834872,
+              "us": 2746,
+              "ui_us": 97,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 2649,
+              "scrolls": [
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ]
+              ]
+            },
+            {
+              "at_us": 64880851479,
+              "us": 2295,
+              "ui_us": 2120,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 175,
+              "scrolls": [
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  15956.0
+                ]
+              ]
+            },
+            {
+              "at_us": 64880940097,
+              "us": 469,
+              "ui_us": 290,
+              "setup_us": 0,
+              "tessellate_us": 0,
+              "acquire_us": 0,
+              "submit_us": 179,
+              "scrolls": [
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  15956.0
+                ]
+              ]
+            }
+          ]
+        },
+        "client_marks": [
+          {
+            "at_us": 64881261532,
+            "us": 444,
+            "ui_us": 240,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 204,
+            "scrolls": [
+              [
+                0.0,
+                10.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881269427,
+            "us": 394,
+            "ui_us": 230,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 164,
+            "scrolls": [
+              [
+                0.0,
+                16.666666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881278376,
+            "us": 411,
+            "ui_us": 232,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 179,
+            "scrolls": [
+              [
+                0.0,
+                24.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881286115,
+            "us": 344,
+            "ui_us": 205,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 139,
+            "scrolls": [
+              [
+                0.0,
+                30.666666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881294425,
+            "us": 412,
+            "ui_us": 230,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 182,
+            "scrolls": [
+              [
+                0.0,
+                38.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881304135,
+            "us": 413,
+            "ui_us": 243,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 170,
+            "scrolls": [
+              [
+                0.0,
+                45.333332,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881311266,
+            "us": 443,
+            "ui_us": 262,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 181,
+            "scrolls": [
+              [
+                0.0,
+                52.666668,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881319527,
+            "us": 318,
+            "ui_us": 186,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 132,
+            "scrolls": [
+              [
+                0.0,
+                60.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881328056,
+            "us": 405,
+            "ui_us": 267,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 138,
+            "scrolls": [
+              [
+                0.0,
+                67.333336,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881336044,
+            "us": 346,
+            "ui_us": 205,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 141,
+            "scrolls": [
+              [
+                0.0,
+                74.666664,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881345249,
+            "us": 342,
+            "ui_us": 203,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 139,
+            "scrolls": [
+              [
+                0.0,
+                82.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881352883,
+            "us": 350,
+            "ui_us": 208,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 142,
+            "scrolls": [
+              [
+                0.0,
+                89.333336,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881362218,
+            "us": 422,
+            "ui_us": 249,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 173,
+            "scrolls": [
+              [
+                0.0,
+                98.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881369409,
+            "us": 493,
+            "ui_us": 265,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 228,
+            "scrolls": [
+              [
+                0.0,
+                104.666664,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881379739,
+            "us": 352,
+            "ui_us": 205,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 147,
+            "scrolls": [
+              [
+                0.0,
+                112.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881386432,
+            "us": 465,
+            "ui_us": 307,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 158,
+            "scrolls": [
+              [
+                0.0,
+                120.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881394799,
+            "us": 477,
+            "ui_us": 333,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 144,
+            "scrolls": [
+              [
+                0.0,
+                127.333336,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881402882,
+            "us": 445,
+            "ui_us": 291,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 154,
+            "scrolls": [
+              [
+                0.0,
+                134.66667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881411443,
+            "us": 329,
+            "ui_us": 168,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 161,
+            "scrolls": [
+              [
+                0.0,
+                142.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881419350,
+            "us": 433,
+            "ui_us": 226,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 207,
+            "scrolls": [
+              [
+                0.0,
+                149.33333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881430317,
+            "us": 419,
+            "ui_us": 269,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 150,
+            "scrolls": [
+              [
+                0.0,
+                159.33333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881436892,
+            "us": 410,
+            "ui_us": 250,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 160,
+            "scrolls": [
+              [
+                0.0,
+                165.33333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881444477,
+            "us": 384,
+            "ui_us": 205,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 179,
+            "scrolls": [
+              [
+                0.0,
+                172.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881452886,
+            "us": 437,
+            "ui_us": 271,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 166,
+            "scrolls": [
+              [
+                0.0,
+                179.33333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881462560,
+            "us": 366,
+            "ui_us": 214,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 152,
+            "scrolls": [
+              [
+                0.0,
+                188.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881472128,
+            "us": 385,
+            "ui_us": 247,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 138,
+            "scrolls": [
+              [
+                0.0,
+                196.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881477809,
+            "us": 356,
+            "ui_us": 219,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 137,
+            "scrolls": [
+              [
+                0.0,
+                202.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881486229,
+            "us": 432,
+            "ui_us": 282,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 150,
+            "scrolls": [
+              [
+                0.0,
+                209.33333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881495471,
+            "us": 341,
+            "ui_us": 200,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 141,
+            "scrolls": [
+              [
+                0.0,
+                217.33333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881505822,
+            "us": 366,
+            "ui_us": 210,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 156,
+            "scrolls": [
+              [
+                0.0,
+                224.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881511261,
+            "us": 349,
+            "ui_us": 208,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 141,
+            "scrolls": [
+              [
+                0.0,
+                231.33333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881519496,
+            "us": 396,
+            "ui_us": 240,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 156,
+            "scrolls": [
+              [
+                0.0,
+                238.66667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881529137,
+            "us": 548,
+            "ui_us": 249,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 299,
+            "scrolls": [
+              [
+                0.0,
+                247.33333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881536366,
+            "us": 354,
+            "ui_us": 209,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 145,
+            "scrolls": [
+              [
+                0.0,
+                254.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881544452,
+            "us": 649,
+            "ui_us": 229,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 420,
+            "scrolls": [
+              [
+                0.0,
+                261.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881552756,
+            "us": 432,
+            "ui_us": 209,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 223,
+            "scrolls": [
+              [
+                0.0,
+                268.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881561713,
+            "us": 406,
+            "ui_us": 200,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 206,
+            "scrolls": [
+              [
+                0.0,
+                276.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881570401,
+            "us": 570,
+            "ui_us": 407,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 163,
+            "scrolls": [
+              [
+                0.0,
+                284.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881578177,
+            "us": 345,
+            "ui_us": 202,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 143,
+            "scrolls": [
+              [
+                0.0,
+                291.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881588389,
+            "us": 402,
+            "ui_us": 227,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 175,
+            "scrolls": [
+              [
+                0.0,
+                298.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881594423,
+            "us": 401,
+            "ui_us": 236,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 165,
+            "scrolls": [
+              [
+                0.0,
+                306.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881602703,
+            "us": 434,
+            "ui_us": 257,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 177,
+            "scrolls": [
+              [
+                0.0,
+                313.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881611325,
+            "us": 431,
+            "ui_us": 259,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 172,
+            "scrolls": [
+              [
+                0.0,
+                321.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881619614,
+            "us": 1868,
+            "ui_us": 241,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 1627,
+            "scrolls": [
+              [
+                0.0,
+                328.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881628130,
+            "us": 404,
+            "ui_us": 242,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 162,
+            "scrolls": [
+              [
+                0.0,
+                336.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881636617,
+            "us": 420,
+            "ui_us": 243,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 177,
+            "scrolls": [
+              [
+                0.0,
+                344.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881644498,
+            "us": 424,
+            "ui_us": 238,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 186,
+            "scrolls": [
+              [
+                0.0,
+                351.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881653517,
+            "us": 419,
+            "ui_us": 248,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 171,
+            "scrolls": [
+              [
+                0.0,
+                359.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881661190,
+            "us": 417,
+            "ui_us": 237,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 180,
+            "scrolls": [
+              [
+                0.0,
+                366.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881669421,
+            "us": 419,
+            "ui_us": 247,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 172,
+            "scrolls": [
+              [
+                0.0,
+                373.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881680232,
+            "us": 397,
+            "ui_us": 256,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 141,
+            "scrolls": [
+              [
+                0.0,
+                382.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881686035,
+            "us": 330,
+            "ui_us": 206,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 124,
+            "scrolls": [
+              [
+                0.0,
+                388.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881694557,
+            "us": 364,
+            "ui_us": 211,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 153,
+            "scrolls": [
+              [
+                0.0,
+                395.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881702809,
+            "us": 442,
+            "ui_us": 280,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 162,
+            "scrolls": [
+              [
+                0.0,
+                402.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881711820,
+            "us": 475,
+            "ui_us": 220,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 255,
+            "scrolls": [
+              [
+                0.0,
+                410.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881719710,
+            "us": 373,
+            "ui_us": 211,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 162,
+            "scrolls": [
+              [
+                0.0,
+                418.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881730661,
+            "us": 1333,
+            "ui_us": 272,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 1061,
+            "scrolls": [
+              [
+                0.0,
+                428.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881736014,
+            "us": 453,
+            "ui_us": 273,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 180,
+            "scrolls": [
+              [
+                0.0,
+                432.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881744706,
+            "us": 427,
+            "ui_us": 269,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 158,
+            "scrolls": [
+              [
+                0.0,
+                440.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881753326,
+            "us": 337,
+            "ui_us": 203,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 134,
+            "scrolls": [
+              [
+                0.0,
+                447.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881761571,
+            "us": 517,
+            "ui_us": 315,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 202,
+            "scrolls": [
+              [
+                0.0,
+                455.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881769507,
+            "us": 375,
+            "ui_us": 217,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 158,
+            "scrolls": [
+              [
+                0.0,
+                462.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881778733,
+            "us": 477,
+            "ui_us": 263,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 214,
+            "scrolls": [
+              [
+                0.0,
+                470.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881786175,
+            "us": 346,
+            "ui_us": 218,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 128,
+            "scrolls": [
+              [
+                0.0,
+                477.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881797282,
+            "us": 437,
+            "ui_us": 251,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 186,
+            "scrolls": [
+              [
+                0.0,
+                484.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881805626,
+            "us": 466,
+            "ui_us": 269,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 197,
+            "scrolls": [
+              [
+                0.0,
+                494.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881811111,
+            "us": 371,
+            "ui_us": 224,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 147,
+            "scrolls": [
+              [
+                0.0,
+                499.33334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881821245,
+            "us": 349,
+            "ui_us": 211,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 138,
+            "scrolls": [
+              [
+                0.0,
+                508.66666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881828052,
+            "us": 456,
+            "ui_us": 261,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 195,
+            "scrolls": [
+              [
+                0.0,
+                514.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881837021,
+            "us": 355,
+            "ui_us": 219,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 136,
+            "scrolls": [
+              [
+                0.0,
+                522.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881844748,
+            "us": 438,
+            "ui_us": 247,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 191,
+            "scrolls": [
+              [
+                0.0,
+                529.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881853090,
+            "us": 553,
+            "ui_us": 328,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 225,
+            "scrolls": [
+              [
+                0.0,
+                536.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881861326,
+            "us": 1836,
+            "ui_us": 209,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 1627,
+            "scrolls": [
+              [
+                0.0,
+                544.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881869904,
+            "us": 363,
+            "ui_us": 213,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 150,
+            "scrolls": [
+              [
+                0.0,
+                552.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881877939,
+            "us": 463,
+            "ui_us": 277,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 186,
+            "scrolls": [
+              [
+                0.0,
+                559.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881886441,
+            "us": 342,
+            "ui_us": 210,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 132,
+            "scrolls": [
+              [
+                0.0,
+                567.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881897088,
+            "us": 361,
+            "ui_us": 217,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 144,
+            "scrolls": [
+              [
+                0.0,
+                576.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881902827,
+            "us": 394,
+            "ui_us": 257,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 137,
+            "scrolls": [
+              [
+                0.0,
+                582.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881911331,
+            "us": 321,
+            "ui_us": 215,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 106,
+            "scrolls": [
+              [
+                0.0,
+                589.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881919542,
+            "us": 466,
+            "ui_us": 302,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 164,
+            "scrolls": [
+              [
+                0.0,
+                596.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881927928,
+            "us": 1845,
+            "ui_us": 1641,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 204,
+            "scrolls": [
+              [
+                0.0,
+                604.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881936157,
+            "us": 1116,
+            "ui_us": 272,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 844,
+            "scrolls": [
+              [
+                0.0,
+                611.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881944485,
+            "us": 353,
+            "ui_us": 210,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 143,
+            "scrolls": [
+              [
+                0.0,
+                618.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881954024,
+            "us": 722,
+            "ui_us": 439,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 283,
+            "scrolls": [
+              [
+                0.0,
+                626.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881961606,
+            "us": 404,
+            "ui_us": 223,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 181,
+            "scrolls": [
+              [
+                0.0,
+                634.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881969946,
+            "us": 1115,
+            "ui_us": 944,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 171,
+            "scrolls": [
+              [
+                0.0,
+                641.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881978315,
+            "us": 447,
+            "ui_us": 252,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 195,
+            "scrolls": [
+              [
+                0.0,
+                649.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881986981,
+            "us": 543,
+            "ui_us": 378,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 165,
+            "scrolls": [
+              [
+                0.0,
+                657.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64881994572,
+            "us": 310,
+            "ui_us": 204,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 106,
+            "scrolls": [
+              [
+                0.0,
+                664.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882003618,
+            "us": 446,
+            "ui_us": 279,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 167,
+            "scrolls": [
+              [
+                0.0,
+                672.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882011247,
+            "us": 403,
+            "ui_us": 214,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 189,
+            "scrolls": [
+              [
+                0.0,
+                679.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882019624,
+            "us": 485,
+            "ui_us": 265,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 220,
+            "scrolls": [
+              [
+                0.0,
+                686.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882028265,
+            "us": 547,
+            "ui_us": 290,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 257,
+            "scrolls": [
+              [
+                0.0,
+                694.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882037569,
+            "us": 409,
+            "ui_us": 245,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 164,
+            "scrolls": [
+              [
+                0.0,
+                701.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882045198,
+            "us": 357,
+            "ui_us": 213,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 144,
+            "scrolls": [
+              [
+                0.0,
+                708.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882052798,
+            "us": 374,
+            "ui_us": 234,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 140,
+            "scrolls": [
+              [
+                0.0,
+                716.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882061228,
+            "us": 361,
+            "ui_us": 212,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 149,
+            "scrolls": [
+              [
+                0.0,
+                716.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882069770,
+            "us": 440,
+            "ui_us": 212,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 228,
+            "scrolls": [
+              [
+                0.0,
+                716.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          }
+        ],
+        "first_moving_client_frame_at_us": 64881261532,
+        "first_client_move_from_report_ms": 10.08,
+        "first_client_move_from_submission_ms": 9.452,
+        "first_report_delay_from_run_start_ms": 11.113
+      },
+      {
+        "kind": "flick",
+        "frames": 19,
+        "moving_frames": 17,
+        "frame_ms": 8.33,
+        "hitches": 0,
+        "still": 0,
+        "first_move_ms": 28.5,
+        "slowest_draw_ms": 1.8,
+        "distance": 330.0,
+        "reached_end": false,
+        "run_started_at_us": 64882894991,
+        "submitted_at_us": 64882906122,
+        "report_at_us": 64882906104,
+        "baseline": {
+          "scroll_pose": [
+            0.0,
+            716.6667,
+            0.0,
+            15956.0
+          ],
+          "marks_before_input": []
+        },
+        "client_marks": [
+          {
+            "at_us": 64882915046,
+            "us": 453,
+            "ui_us": 260,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 193,
+            "scrolls": [
+              [
+                0.0,
+                734.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882923538,
+            "us": 418,
+            "ui_us": 245,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 173,
+            "scrolls": [
+              [
+                0.0,
+                754.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882931931,
+            "us": 466,
+            "ui_us": 284,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 182,
+            "scrolls": [
+              [
+                0.0,
+                774.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882942284,
+            "us": 476,
+            "ui_us": 291,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 185,
+            "scrolls": [
+              [
+                0.0,
+                796.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882948455,
+            "us": 1797,
+            "ui_us": 452,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 1345,
+            "scrolls": [
+              [
+                0.0,
+                814.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882958261,
+            "us": 337,
+            "ui_us": 217,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 120,
+            "scrolls": [
+              [
+                0.0,
+                837.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882965256,
+            "us": 396,
+            "ui_us": 228,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 168,
+            "scrolls": [
+              [
+                0.0,
+                854.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882973343,
+            "us": 336,
+            "ui_us": 208,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 128,
+            "scrolls": [
+              [
+                0.0,
+                874.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882982073,
+            "us": 524,
+            "ui_us": 346,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 178,
+            "scrolls": [
+              [
+                0.0,
+                894.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882990201,
+            "us": 420,
+            "ui_us": 229,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 191,
+            "scrolls": [
+              [
+                0.0,
+                914.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64882998596,
+            "us": 449,
+            "ui_us": 265,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 184,
+            "scrolls": [
+              [
+                0.0,
+                934.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64883007010,
+            "us": 387,
+            "ui_us": 247,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 140,
+            "scrolls": [
+              [
+                0.0,
+                955.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64883015337,
+            "us": 337,
+            "ui_us": 204,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 133,
+            "scrolls": [
+              [
+                0.0,
+                974.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64883023634,
+            "us": 610,
+            "ui_us": 407,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 203,
+            "scrolls": [
+              [
+                0.0,
+                994.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64883031880,
+            "us": 508,
+            "ui_us": 339,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 169,
+            "scrolls": [
+              [
+                0.0,
+                1014.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64883041830,
+            "us": 360,
+            "ui_us": 208,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 152,
+            "scrolls": [
+              [
+                0.0,
+                1037.3334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64883048895,
+            "us": 356,
+            "ui_us": 190,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 166,
+            "scrolls": [
+              [
+                0.0,
+                1055.3334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64883056940,
+            "us": 404,
+            "ui_us": 266,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 138,
+            "scrolls": [
+              [
+                0.0,
+                1064.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64883064977,
+            "us": 442,
+            "ui_us": 273,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 169,
+            "scrolls": [
+              [
+                0.0,
+                1064.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          }
+        ],
+        "first_moving_client_frame_at_us": 64882915046,
+        "first_client_move_from_report_ms": 8.942,
+        "first_client_move_from_submission_ms": 8.924,
+        "first_report_delay_from_run_start_ms": 11.113
+      },
+      {
+        "kind": "wheel",
+        "frames": 57,
+        "moving_frames": 55,
+        "frame_ms": 8.35,
+        "hitches": 0,
+        "still": 1,
+        "first_move_ms": 9.1,
+        "slowest_draw_ms": 1.93,
+        "distance": -133.3,
+        "reached_end": false,
+        "notches": {
+          "count": 3,
+          "frames_each": [
+            18,
+            20,
+            17
+          ],
+          "jumps_up": 0,
+          "worst_jump": 0.0
+        },
+        "run_started_at_us": 64886847937,
+        "submitted_at_us": 64886847947,
+        "report_at_us": 64886847947,
+        "baseline": {
+          "scroll_pose": [
+            0.0,
+            1064.0,
+            0.0,
+            15956.0
+          ],
+          "marks_before_input": []
+        },
+        "client_marks": [
+          {
+            "at_us": 64886848223,
+            "us": 369,
+            "ui_us": 219,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 150,
+            "scrolls": [
+              [
+                0.0,
+                1055.3334,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886857065,
+            "us": 443,
+            "ui_us": 274,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 169,
+            "scrolls": [
+              [
+                0.0,
+                1048.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886865840,
+            "us": 442,
+            "ui_us": 270,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 172,
+            "scrolls": [
+              [
+                0.0,
+                1042.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886873501,
+            "us": 427,
+            "ui_us": 259,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 168,
+            "scrolls": [
+              [
+                0.0,
+                1038.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886882573,
+            "us": 453,
+            "ui_us": 260,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 193,
+            "scrolls": [
+              [
+                0.0,
+                1034.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886890791,
+            "us": 532,
+            "ui_us": 369,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 163,
+            "scrolls": [
+              [
+                0.0,
+                1030.6666,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886898702,
+            "us": 534,
+            "ui_us": 360,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 174,
+            "scrolls": [
+              [
+                0.0,
+                1028.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886907579,
+            "us": 335,
+            "ui_us": 202,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 133,
+            "scrolls": [
+              [
+                0.0,
+                1026.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886916823,
+            "us": 324,
+            "ui_us": 212,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 112,
+            "scrolls": [
+              [
+                0.0,
+                1024.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886923714,
+            "us": 380,
+            "ui_us": 253,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 127,
+            "scrolls": [
+              [
+                0.0,
+                1022.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886932035,
+            "us": 322,
+            "ui_us": 211,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 111,
+            "scrolls": [
+              [
+                0.0,
+                1021.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886940252,
+            "us": 368,
+            "ui_us": 208,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 160,
+            "scrolls": [
+              [
+                0.0,
+                1020.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886948579,
+            "us": 416,
+            "ui_us": 264,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 152,
+            "scrolls": [
+              [
+                0.0,
+                1020.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886956953,
+            "us": 422,
+            "ui_us": 251,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 171,
+            "scrolls": [
+              [
+                0.0,
+                1019.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886965542,
+            "us": 370,
+            "ui_us": 213,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 157,
+            "scrolls": [
+              [
+                0.0,
+                1018.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886973802,
+            "us": 448,
+            "ui_us": 265,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 183,
+            "scrolls": [
+              [
+                0.0,
+                1018.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886981887,
+            "us": 391,
+            "ui_us": 216,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 175,
+            "scrolls": [
+              [
+                0.0,
+                1017.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886990907,
+            "us": 385,
+            "ui_us": 239,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 146,
+            "scrolls": [
+              [
+                0.0,
+                1016.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64886998622,
+            "us": 349,
+            "ui_us": 220,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 129,
+            "scrolls": [
+              [
+                0.0,
+                1016.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887098407,
+            "us": 465,
+            "ui_us": 254,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 211,
+            "scrolls": [
+              [
+                0.0,
+                1008.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887107116,
+            "us": 416,
+            "ui_us": 239,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 177,
+            "scrolls": [
+              [
+                0.0,
+                1000.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887115605,
+            "us": 415,
+            "ui_us": 274,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 141,
+            "scrolls": [
+              [
+                0.0,
+                994.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887124067,
+            "us": 327,
+            "ui_us": 202,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 125,
+            "scrolls": [
+              [
+                0.0,
+                990.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887132685,
+            "us": 446,
+            "ui_us": 203,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 243,
+            "scrolls": [
+              [
+                0.0,
+                986.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887140306,
+            "us": 423,
+            "ui_us": 242,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 181,
+            "scrolls": [
+              [
+                0.0,
+                983.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887148820,
+            "us": 433,
+            "ui_us": 256,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 177,
+            "scrolls": [
+              [
+                0.0,
+                980.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887157308,
+            "us": 426,
+            "ui_us": 271,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 155,
+            "scrolls": [
+              [
+                0.0,
+                978.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887165493,
+            "us": 291,
+            "ui_us": 175,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 116,
+            "scrolls": [
+              [
+                0.0,
+                976.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887173762,
+            "us": 368,
+            "ui_us": 228,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 140,
+            "scrolls": [
+              [
+                0.0,
+                975.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887182064,
+            "us": 306,
+            "ui_us": 189,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 117,
+            "scrolls": [
+              [
+                0.0,
+                974.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887191089,
+            "us": 395,
+            "ui_us": 258,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 137,
+            "scrolls": [
+              [
+                0.0,
+                972.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887198853,
+            "us": 401,
+            "ui_us": 249,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 152,
+            "scrolls": [
+              [
+                0.0,
+                972.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887207754,
+            "us": 374,
+            "ui_us": 231,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 143,
+            "scrolls": [
+              [
+                0.0,
+                971.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887215407,
+            "us": 424,
+            "ui_us": 249,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 175,
+            "scrolls": [
+              [
+                0.0,
+                970.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887223896,
+            "us": 370,
+            "ui_us": 230,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 140,
+            "scrolls": [
+              [
+                0.0,
+                970.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887232979,
+            "us": 556,
+            "ui_us": 404,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 152,
+            "scrolls": [
+              [
+                0.0,
+                969.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887240359,
+            "us": 419,
+            "ui_us": 233,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 186,
+            "scrolls": [
+              [
+                0.0,
+                969.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887251373,
+            "us": 431,
+            "ui_us": 270,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 161,
+            "scrolls": [
+              [
+                0.0,
+                968.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887258439,
+            "us": 416,
+            "ui_us": 248,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 168,
+            "scrolls": [
+              [
+                0.0,
+                968.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887348338,
+            "us": 455,
+            "ui_us": 270,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 185,
+            "scrolls": [
+              [
+                0.0,
+                960.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887358531,
+            "us": 389,
+            "ui_us": 218,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 171,
+            "scrolls": [
+              [
+                0.0,
+                952.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887365756,
+            "us": 324,
+            "ui_us": 194,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 130,
+            "scrolls": [
+              [
+                0.0,
+                947.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887373694,
+            "us": 557,
+            "ui_us": 433,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 124,
+            "scrolls": [
+              [
+                0.0,
+                942.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887382033,
+            "us": 591,
+            "ui_us": 414,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 177,
+            "scrolls": [
+              [
+                0.0,
+                938.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887390322,
+            "us": 364,
+            "ui_us": 203,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 161,
+            "scrolls": [
+              [
+                0.0,
+                935.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887398630,
+            "us": 380,
+            "ui_us": 217,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 163,
+            "scrolls": [
+              [
+                0.0,
+                932.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887407620,
+            "us": 362,
+            "ui_us": 227,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 135,
+            "scrolls": [
+              [
+                0.0,
+                930.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887415920,
+            "us": 357,
+            "ui_us": 214,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 143,
+            "scrolls": [
+              [
+                0.0,
+                928.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887423657,
+            "us": 320,
+            "ui_us": 196,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 124,
+            "scrolls": [
+              [
+                0.0,
+                927.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887432817,
+            "us": 1929,
+            "ui_us": 247,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 1682,
+            "scrolls": [
+              [
+                0.0,
+                926.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887440468,
+            "us": 373,
+            "ui_us": 216,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 157,
+            "scrolls": [
+              [
+                0.0,
+                925.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887448819,
+            "us": 1245,
+            "ui_us": 309,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 936,
+            "scrolls": [
+              [
+                0.0,
+                924.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887457675,
+            "us": 389,
+            "ui_us": 278,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 111,
+            "scrolls": [
+              [
+                0.0,
+                924.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887465446,
+            "us": 406,
+            "ui_us": 251,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 155,
+            "scrolls": [
+              [
+                0.0,
+                923.3333,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887474093,
+            "us": 328,
+            "ui_us": 210,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 118,
+            "scrolls": [
+              [
+                0.0,
+                922.6667,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887482491,
+            "us": 400,
+            "ui_us": 197,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 203,
+            "scrolls": [
+              [
+                0.0,
+                922.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          },
+          {
+            "at_us": 64887490510,
+            "us": 395,
+            "ui_us": 214,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 181,
+            "scrolls": [
+              [
+                0.0,
+                922.0,
+                0.0,
+                15956.0
+              ]
+            ]
+          }
+        ],
+        "first_moving_client_frame_at_us": 64886848223,
+        "first_client_move_from_report_ms": 0.276,
+        "first_client_move_from_submission_ms": 0.276,
+        "first_report_delay_from_run_start_ms": 0.01
+      }
+    ]
+  },
+  "process_status": "Name:\tolo-browser\nUmask:\t0022\nState:\tS (sleeping)\nTgid:\t2346992\nNgid:\t0\nPid:\t2346992\nPPid:\t1\nTracerPid:\t0\nUid:\t1000\t1000\t1000\t1000\nGid:\t1000\t1000\t1000\t1000\nFDSize:\t64\nGroups:\t10 1000 \nNStgid:\t2346992\nNSpid:\t2346992\nNSpgid:\t2346992\nNSsid:\t2346989\nKthread:\t0\nVmPeak:\t 1360124 kB\nVmSize:\t 1350348 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t   85056 kB\nVmRSS:\t   82384 kB\nRssAnon:\t   23316 kB\nRssFile:\t   59028 kB\nRssShmem:\t      40 kB\nVmData:\t   72684 kB\nVmStk:\t     136 kB\nVmExe:\t   19000 kB\nVmLib:\t  100888 kB\nVmPTE:\t     632 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t9\nSigQ:\t2/254246\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t0000000000000000\nSigIgn:\t0000000000201000\nSigCgt:\t00000001004004e8\nCapInh:\t0000000800000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t0\nSeccomp:\t0\nSeccomp_filters:\t0\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\tffff\nCpus_allowed_list:\t0-15\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t402\nnonvoluntary_ctxt_switches:\t18\nx86_Thread_features:\t\nx86_Thread_features_locked:\t\n",
+  "fixture": "<!doctype html><title>Native border paint</title><style>body{margin:20px}h1{font-size:24px;line-height:32px}p{line-height:24px}.sample{width:180px;height:42px;margin:18px 0;border-width:3px;border-style:solid;border-top-color:red;border-right-color:green;border-bottom-color:blue;border-left-color:black}.fraction{position:relative;left:.25px;top:.25px;background-color:Canvas}.alpha{border-top-color:rgb(255 0 0 / 50%);border-right-color:rgb(0 128 0 / 50%);border-bottom-color:rgb(0 0 255 / 50%);border-left-color:rgb(0 0 0 / 50%)}.asym{border-top-width:1px;border-right-width:3px;border-bottom-width:5px;border-left-width:7px}</style><h1>Native border paint</h1><p>Sharp rectangles, mixed corner colours and translucent joins.</p><div class=sample></div><div class=\"sample fraction\"></div><div class=\"sample alpha\"></div><div class=\"sample asym\"></div><p>Font masks and GPU corner coverage still have exact pixel differences.</p>\n",
+  "scope": "Owned browser-edge only. Fifteen live reviews at odd window position, 400-row idle and scroll. Native text/rectangle paint scope, not website acceptance or calibrated output colour/optical latency."
+}

@@ -1869,9 +1869,12 @@ work. The pure-Rust `tiny-skia` raster library provides path coverage and its
 SIMD kernels; no SIMD speedup is claimed without a measured counterfactual.
 Only bounded tiles allocate raster surfaces. Global f64 coordinates subtract
 the tile origin before conversion to f32, preserving fractional details in
-far-scrolled documents. Same-colour borders use one ring; fractional coverage
-and multicolour border corners/device widths still fail independent Chrome
-pixels. Colour/SVG/bitmap font paint, hinting parity, full CSS backgrounds,
+far-scrolled documents. Solid borders use disjoint device-snapped strips and premultiplied corner
+colour interpolation before one source-over. No per-border temporary surface
+is allocated. Sharp background/clip rectangles snap to the device grid, and
+painted text baselines are retained at device-pixel positions so the index
+and agent bounds agree. Font masks, asymmetric/GPU corner coverage and
+retained colour precision still have exact independent Chrome failures. Colour/SVG/bitmap font paint, hinting parity, full CSS backgrounds,
 radii, decoration, opacity/compositing and GPU web raster are still required.
 
 `apps/browser` composites those device-resolution tiles using the shared
@@ -1884,3 +1887,11 @@ memory budget. The shell has structured controls, page/visible text and status,
 menus, cancel, local-file forwarding and kit reconnect/re-exec state. This
 initial readable paint surface is not a semantic DOM action protocol. Full
 interaction, isolation, network/JS and desktop/credential integration remain.
+
+Native paint reference correction: DevTools emulated DPR was not equivalent
+to actual Wayland scale for border snapping. Historical captures are retained
+under tests/paint-fixtures/emulated; the authoritative native matrix now has
+18 inputs × five actual output scales, 90 observations. 54 match exactly and
+36 remain failures. Reference dimensions, input coverage and immutable source/
+image hashes are verified. This is not website acceptance or complete font/
+colour/GPU fidelity.

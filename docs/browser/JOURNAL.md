@@ -2996,3 +2996,96 @@ Merged follow-up validation also passes all **215 all-feature** web release
 tests (one known pixel-gap test ignored), the browser release regression test
 and strict targeted browser clippy. The full-desktop lint's ten other-app
 findings remain recorded and unresolved; no passing result is implied.
+
+## 2026-11-06 — native scale reference correction and solid paint edges
+
+Revalidated the failing comparisons against actual Wayland output changes.
+The previous pixel method used DevTools emulated DPR. At DPR 1.5 it retained
+a 3-CSS-pixel border, while actual native scale 1.5 computes that border to
+2.66667 CSS pixels (four device pixels). The production computed-style snap
+rule was already correct. The old 36 captures, inputs, method and browser
+metadata are preserved under `paint-fixtures/emulated`; their comparison was
+not a valid native-scale acceptance reference. This corrects the earlier
+interpretation, rather than removing unfavourable observations.
+
+The new capture method verifies that the DevTools browser PID belongs to the
+owned Agent Screen, changes real output scale, checks native/frame DPR and
+font readiness, measures a 100×100 iframe, respects Take Control and restores
+settings. It records GPU/browser, computed border widths/DOM rectangles and
+source/image hashes. All 90 native PNG hashes match a repeat capture; the
+original 60 also match the first native capture. Added 1.25×/1.75× and six
+asymmetric, clipped, collapsed, transparent and translucent border inputs.
+No personal screen/profile was touched.
+
+Changed sharp rectangle and clip painting to device-snapped bounds, and kept
+painted text baselines on device pixels in both commands and their index/agent
+bounds. Solid borders now use disjoint strips, with analytical corner mixing
+in premultiplied colour before one source-over. This avoids double alpha and
+per-border temporary surfaces. Existing SIMD rectangle fills handle strips;
+corner work checks cancellation and has tile-bounded storage. A new tiled/
+whole comparison caught an empty clipped edge painting a stray strip; explicit
+empty-intersection checks fixed it. Distant-coordinate parity still passes.
+
+Against the **same 90 native references**, exact matches rise **36→54**,
+differing pixels **4,043→1,848**, worst channel difference **238→11**. No
+masks/tolerance are applied. **36 exact failures remain**: font masks at
+fractional scales, GPU/asymmetric corner coverage, transparent joins and
+retained colour/premultiplication precision. Some equal-width joins differ
+by one byte level; asymmetric coverage differs by up to eleven. Do not fit
+individual pixels or claim full font/GPU fidelity. All observations remain
+in the failing full comparator; the companion exact test for the known set
+is explicitly ignored. Uniform half-alpha joins, collapsed inner boxes and
+clipped coloured borders match independently at all five scales.
+
+Release measurements in `2026-11-06-edge*`: **42 frozen CPU0 processes**, three
+alternating runs, solid/coloured/half-alpha borders and cached/uncached
+outlines, plus common flow. All flow/geometry hashes agree between revisions;
+cached/uncached pixel hashes agree within each revision. Pixel hashes between
+revisions can change because placement/blending changed. No build activity
+was observed in the accepted run. The parent runtime was temporarily restored
+from **db9910ba** for the expanded harness build and current source restored
+in `finally`. Explicit feature vectors are now emitted by both benchmarks.
+An initial copied flow baseline had unverified compile-time features; its
+comparison was discarded and the complete 42-process experiment rerun with
+all feature vectors checked empty. The discarded rows are retained separately.
+
+For 1,000 paragraphs, cached 256² raster parent/current medians (µs), at
+1×/1.25×/1.5×/1.75×/2×:
+
+| Border | Parent | Current |
+| --- | --- | --- |
+| Solid | 646.274 / 535.788 / 450.998 / 421.305 / 334.113 | 626.016 / 525.901 / 444.900 / 401.109 / 314.973 |
+| Coloured | 573.291 / 521.429 / 357.536 / 332.330 / 321.370 | 561.542 / 517.862 / 355.463 / 322.621 / 320.333 |
+| Half-alpha | 587.887 / 537.939 / 379.094 / 355.975 / 340.424 | 576.704 / 532.997 / 371.945 / 335.694 / 330.155 |
+
+Cached paint-process RSS **9,380–9,784→9,508–9,748 KiB**, process CPU samples
+mostly **.31–.33 s** in both. Common unique-1k width-400 flow resize median
+**653.610→647.410 µs**; RSS **12,404–13,080→12,440–12,692 KiB**. These are
+harness measurements, not browser footprint or a universal speedup.
+
+Fifteen live light/dark/night reviews at 1×/1.25×/1.5×/1.75×/2× pass, with
+the running window at odd x/y and no native-control findings. The visual
+journal shows the mixed/half-alpha/asymmetric samples. Native idle remains
+**0% CPU, zero wakeups, zero frames** over three seconds; a warmed lifecycle
+sample RSS was **82,384 KiB**, high-water **85,056 KiB**. Legacy scroll replay
+had median intervals **8.34/8.33/8.35 ms**, slowest draws **.73/.73/.52 ms**,
+no hitches. It reports first movement **28.4/28.4/9.0 ms** using its old origin.
+
+Latency-method correction: that legacy origin precedes the first timed
+report by one 90-Hz period for drag/flick, and its pairwise comparison can
+miss the first moving frame if it discarded the before-input pose. The new
+replay preserves the pose, reports/submission times and raw client marks.
+In a fresh run, first report→moving client-frame marks were
+**10.080/8.942/.276 ms**, submission→marks **9.452/8.924/.276 ms**, while the
+legacy fields read **29.1/28.5/9.1 ms**. This corrects measurement, not runtime
+performance. These timestamps do **not** measure compositor presentation or
+optical latency; full input-to-display acceptance remains open.
+
+**218 default / 217 all-feature release web tests pass**, one exact known-gap
+test ignored; strict default/all-feature clippy, workspace release build and
+formatting/diff checks pass. The manifest also verifies coverage/dimensions
+and immutable capture bytes. Next: native font masks and colour/GPU coverage,
+actual document input/navigation and the network/runtime path. Full CSS,
+interaction, networking/V8, universal dark mode, sandboxing and native
+credential/desktop integrations remain required. **Goal active, 0/100 websites
+and 0/3,000 site combinations accepted.**

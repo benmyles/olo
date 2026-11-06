@@ -180,7 +180,11 @@ impl<'a> BuildJob<'a> {
         let size = text.text().paragraph().font_size;
         for (li, line) in text.lines().iter().enumerate() {
             check(self.cancel)?;
-            let baseline = at.y + text.baseline(li).ok_or(Error::Invalid)?;
+            // Native text has subpixel x placement and a device-pixel baseline.
+            // Retain the painted baseline in the scene so its index and agent
+            // bounds agree with the actual glyph placement.
+            let scale = layout.device_scale();
+            let baseline = ((at.y + text.baseline(li).ok_or(Error::Invalid)?) * scale).round() / scale;
             for fi in line.fragments.clone() {
                 let f = &text.fragments()[fi as usize];
                 let run = text.run(f).ok_or(Error::Invalid)?;

@@ -18,7 +18,7 @@ fn main() {
     let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
     let mut shaper = shaping::Engine::default();
     let mut painter = paint::Engine::default();
-    for scale in [1., 1.5, 2.] {
+    for scale in [1., 1.25, 1.5, 1.75, 2.] {
         let host = Scaled::new(scope.clone(), scale);
         for input in inputs.as_array().unwrap() {
             let source = Arc::from(format!("<!doctype html><style>{}{}</style>{}", include_str!("../tests/paint-fixtures/base.css"), input["css"].as_str().unwrap(), input["body"].as_str().unwrap()));

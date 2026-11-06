@@ -1,3 +1,5 @@
+#[path = "support/features.rs"]
+mod build_features;
 use olo_web::{
     css::{
         Syntax,
@@ -166,6 +168,6 @@ fn main() {
     }
     println!(
         "{}",
-        json!({"rounds":rounds,"reprepare":reprepare,"no_intern":no_intern,"geometry_bytes":size_of::<layout::Geometry>(),"box_node_bytes":size_of::<layout::BoxNode>(),"build_job_bytes":size_of::<layout::BuildJob<'static>>(),"prepare_job_bytes":size_of::<layout::PrepareJob<'static>>(),"flow_job_bytes":size_of::<layout::Job<'static>>(),"scope":"Prebuilt DOM/styles; original box grouping, text cache and normal-flow geometry. Retained resize vs same-tree text re-preparation. No rasterizer/network/JS/UI/browser evidence. Payload excludes shared DOM/styles/fonts/source maps and headers/capacity/hash/allocator overhead.","cases":cases})
+        json!({"features":build_features::enabled(),"rounds":rounds,"reprepare":reprepare,"no_intern":no_intern,"geometry_bytes":size_of::<layout::Geometry>(),"box_node_bytes":size_of::<layout::BoxNode>(),"build_job_bytes":size_of::<layout::BuildJob<'static>>(),"prepare_job_bytes":size_of::<layout::PrepareJob<'static>>(),"flow_job_bytes":size_of::<layout::Job<'static>>(),"scope":"Prebuilt DOM/styles; original box grouping, text cache and normal-flow geometry. Retained resize vs same-tree text re-preparation. No rasterizer/network/JS/UI/browser evidence. Payload excludes shared DOM/styles/fonts/source maps and headers/capacity/hash/allocator overhead.","cases":cases})
     );
 }

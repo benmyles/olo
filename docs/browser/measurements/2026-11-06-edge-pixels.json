@@ -1,0 +1,637 @@
+{
+  "scope": "Exact full-surface RGBA comparison; no masks, tolerance or discarded pixels. Authored static fixed-font fixtures, not websites.",
+  "passed": 54,
+  "observations": 90,
+  "rows": [
+    {
+      "file": "canvas-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "canvas-1.25.png",
+      "differing_pixels": 0,
+      "pixels": 15625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "canvas-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "canvas-1.75.png",
+      "differing_pixels": 0,
+      "pixels": 30625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "canvas-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "root-canvas-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "root-canvas-1.25.png",
+      "differing_pixels": 0,
+      "pixels": 15625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "root-canvas-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "root-canvas-1.75.png",
+      "differing_pixels": 0,
+      "pixels": 30625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "root-canvas-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "glyphs-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "glyphs-1.25.png",
+      "differing_pixels": 65,
+      "pixels": 15625,
+      "max_channel_error": 5,
+      "passed": false
+    },
+    {
+      "file": "glyphs-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "glyphs-1.75.png",
+      "differing_pixels": 91,
+      "pixels": 30625,
+      "max_channel_error": 5,
+      "passed": false
+    },
+    {
+      "file": "glyphs-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "colors-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "colors-1.25.png",
+      "differing_pixels": 29,
+      "pixels": 15625,
+      "max_channel_error": 3,
+      "passed": false
+    },
+    {
+      "file": "colors-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "colors-1.75.png",
+      "differing_pixels": 41,
+      "pixels": 30625,
+      "max_channel_error": 3,
+      "passed": false
+    },
+    {
+      "file": "colors-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "border-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "border-1.25.png",
+      "differing_pixels": 10,
+      "pixels": 15625,
+      "max_channel_error": 3,
+      "passed": false
+    },
+    {
+      "file": "border-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "border-1.75.png",
+      "differing_pixels": 14,
+      "pixels": 30625,
+      "max_channel_error": 3,
+      "passed": false
+    },
+    {
+      "file": "border-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clip-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clip-1.25.png",
+      "differing_pixels": 5,
+      "pixels": 15625,
+      "max_channel_error": 3,
+      "passed": false
+    },
+    {
+      "file": "clip-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clip-1.75.png",
+      "differing_pixels": 7,
+      "pixels": 30625,
+      "max_channel_error": 3,
+      "passed": false
+    },
+    {
+      "file": "clip-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "normal-order-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "normal-order-1.25.png",
+      "differing_pixels": 10,
+      "pixels": 15625,
+      "max_channel_error": 3,
+      "passed": false
+    },
+    {
+      "file": "normal-order-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "normal-order-1.75.png",
+      "differing_pixels": 14,
+      "pixels": 30625,
+      "max_channel_error": 3,
+      "passed": false
+    },
+    {
+      "file": "normal-order-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "relative-order-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "relative-order-1.25.png",
+      "differing_pixels": 0,
+      "pixels": 15625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "relative-order-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "relative-order-1.75.png",
+      "differing_pixels": 0,
+      "pixels": 30625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "relative-order-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "hidden-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "hidden-1.25.png",
+      "differing_pixels": 10,
+      "pixels": 15625,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "hidden-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "hidden-1.75.png",
+      "differing_pixels": 14,
+      "pixels": 30625,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "hidden-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "alpha-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "alpha-1.25.png",
+      "differing_pixels": 0,
+      "pixels": 15625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "alpha-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "alpha-1.75.png",
+      "differing_pixels": 0,
+      "pixels": 30625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "alpha-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "fractional-1.png",
+      "differing_pixels": 26,
+      "pixels": 10000,
+      "max_channel_error": 6,
+      "passed": false
+    },
+    {
+      "file": "fractional-1.25.png",
+      "differing_pixels": 43,
+      "pixels": 15625,
+      "max_channel_error": 6,
+      "passed": false
+    },
+    {
+      "file": "fractional-1.5.png",
+      "differing_pixels": 40,
+      "pixels": 22500,
+      "max_channel_error": 4,
+      "passed": false
+    },
+    {
+      "file": "fractional-1.75.png",
+      "differing_pixels": 61,
+      "pixels": 30625,
+      "max_channel_error": 4,
+      "passed": false
+    },
+    {
+      "file": "fractional-2.png",
+      "differing_pixels": 26,
+      "pixels": 40000,
+      "max_channel_error": 4,
+      "passed": false
+    },
+    {
+      "file": "multicolor-border-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "multicolor-border-1.25.png",
+      "differing_pixels": 1,
+      "pixels": 15625,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "multicolor-border-1.5.png",
+      "differing_pixels": 1,
+      "pixels": 22500,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "multicolor-border-1.75.png",
+      "differing_pixels": 1,
+      "pixels": 30625,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "multicolor-border-2.png",
+      "differing_pixels": 3,
+      "pixels": 40000,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "multicolor-alpha-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "multicolor-alpha-1.25.png",
+      "differing_pixels": 0,
+      "pixels": 15625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "multicolor-alpha-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "multicolor-alpha-1.75.png",
+      "differing_pixels": 0,
+      "pixels": 30625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "multicolor-alpha-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "asymmetric-1.png",
+      "differing_pixels": 24,
+      "pixels": 10000,
+      "max_channel_error": 10,
+      "passed": false
+    },
+    {
+      "file": "asymmetric-1.25.png",
+      "differing_pixels": 25,
+      "pixels": 15625,
+      "max_channel_error": 11,
+      "passed": false
+    },
+    {
+      "file": "asymmetric-1.5.png",
+      "differing_pixels": 35,
+      "pixels": 22500,
+      "max_channel_error": 10,
+      "passed": false
+    },
+    {
+      "file": "asymmetric-1.75.png",
+      "differing_pixels": 33,
+      "pixels": 30625,
+      "max_channel_error": 9,
+      "passed": false
+    },
+    {
+      "file": "asymmetric-2.png",
+      "differing_pixels": 46,
+      "pixels": 40000,
+      "max_channel_error": 10,
+      "passed": false
+    },
+    {
+      "file": "transparent-side-1.png",
+      "differing_pixels": 6,
+      "pixels": 10000,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "transparent-side-1.25.png",
+      "differing_pixels": 6,
+      "pixels": 15625,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "transparent-side-1.5.png",
+      "differing_pixels": 8,
+      "pixels": 22500,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "transparent-side-1.75.png",
+      "differing_pixels": 10,
+      "pixels": 30625,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "transparent-side-2.png",
+      "differing_pixels": 12,
+      "pixels": 40000,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "unequal-alpha-1.png",
+      "differing_pixels": 102,
+      "pixels": 10000,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "unequal-alpha-1.25.png",
+      "differing_pixels": 127,
+      "pixels": 15625,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "unequal-alpha-1.5.png",
+      "differing_pixels": 201,
+      "pixels": 22500,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "unequal-alpha-1.75.png",
+      "differing_pixels": 296,
+      "pixels": 30625,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "unequal-alpha-2.png",
+      "differing_pixels": 405,
+      "pixels": 40000,
+      "max_channel_error": 1,
+      "passed": false
+    },
+    {
+      "file": "thin-box-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "thin-box-1.25.png",
+      "differing_pixels": 0,
+      "pixels": 15625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "thin-box-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "thin-box-1.75.png",
+      "differing_pixels": 0,
+      "pixels": 30625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "thin-box-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clipped-border-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clipped-border-1.25.png",
+      "differing_pixels": 0,
+      "pixels": 15625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clipped-border-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clipped-border-1.75.png",
+      "differing_pixels": 0,
+      "pixels": 30625,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clipped-border-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    }
+  ]
+}

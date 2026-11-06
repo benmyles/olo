@@ -1,5 +1,5 @@
 use super::*;
-use crate::layout::{Point, Rect};
+use crate::layout::Rect;
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, Transform};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeviceRect {
@@ -52,24 +52,14 @@ impl Engine {
         // Global f32 coordinates discard subpixels in long documents.
         let transform = Transform::identity();
         let local = |r: Rect| {
-            let x = r.x.max(rect.x);
-            let y = r.y.max(rect.y);
-            let right = (r.x + r.width).min(rect.x + rect.width);
-            let bottom = (r.y + r.height).min(rect.y + rect.height);
-            tiny_skia::Rect::from_ltrb(
-                (x * scale - f64::from(region.x)) as f32,
-                (y * scale - f64::from(region.y)) as f32,
-                (right * scale - f64::from(region.x)) as f32,
-                (bottom * scale - f64::from(region.y)) as f32,
-            )
-        };
-        let local_point = |p: Point| -> Result<(f32, f32)> {
-            let x = (p.x * scale - f64::from(region.x)) as f32;
-            let y = (p.y * scale - f64::from(region.y)) as f32;
-            if !x.is_finite() || !y.is_finite() {
-                return Err(Error::Invalid);
+            let x = (r.x * scale).round().max(f64::from(region.x));
+            let y = (r.y * scale).round().max(f64::from(region.y));
+            let right = ((r.x + r.width) * scale).round().min(f64::from(region.x) + f64::from(region.width));
+            let bottom = ((r.y + r.height) * scale).round().min(f64::from(region.y) + f64::from(region.height));
+            if right <= x || bottom <= y {
+                return None;
             }
-            Ok((x, y))
+            tiny_skia::Rect::from_ltrb((x - f64::from(region.x)) as f32, (y - f64::from(region.y)) as f32, (right - f64::from(region.x)) as f32, (bottom - f64::from(region.y)) as f32)
         };
         let mut hits = Vec::new();
         scene.query(rect, &mut hits, cancel)?;
@@ -86,7 +76,7 @@ impl Engine {
                     let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
                     if let Some(r) = local(r) {
                         let path = PathBuilder::from_rect(r);
-                        m.fill_path(&path, FillRule::Winding, true, transform);
+                        m.fill_path(&path, FillRule::Winding, false, transform);
                     }
                     Some(m)
                 };
@@ -102,45 +92,7 @@ impl Engine {
                     let b = scene.layout.geometry(*owner).ok_or(Error::Invalid)?.border_width;
                     let o = c.bounds;
                     let inner = Rect { x: o.x + b.left, y: o.y + b.top, width: (o.width - b.left - b.right).max(0.), height: (o.height - b.top - b.bottom).max(0.) };
-                    if colors.iter().all(|c| *c == colors[0]) {
-                        let mut path = PathBuilder::new();
-                        if let Some(r) = local(o) {
-                            path.push_rect(r)
-                        }
-                        if let Some(r) = local(inner) {
-                            path.push_rect(r)
-                        }
-                        if let Some(path) = path.finish() {
-                            out.fill_path(&path, &paint(colors[0]), FillRule::EvenOdd, transform, mask.as_ref());
-                        }
-                    } else {
-                        let outer = [Point { x: o.x, y: o.y }, Point { x: o.x + o.width, y: o.y }, Point { x: o.x + o.width, y: o.y + o.height }, Point { x: o.x, y: o.y + o.height }];
-                        let inn = [
-                            Point { x: inner.x, y: inner.y },
-                            Point { x: inner.x + inner.width, y: inner.y },
-                            Point { x: inner.x + inner.width, y: inner.y + inner.height },
-                            Point { x: inner.x, y: inner.y + inner.height },
-                        ];
-                        for i in 0..4 {
-                            if colors[i][3] == 0 {
-                                continue;
-                            }
-                            let j = (i + 1) % 4;
-                            let mut path = PathBuilder::new();
-                            let (x, y) = local_point(outer[i])?;
-                            path.move_to(x, y);
-                            for p in [outer[j], inn[j], inn[i]] {
-                                let (x, y) = local_point(p)?;
-                                path.line_to(x, y)
-                            }
-                            path.close();
-                            if let Some(path) = path.finish() {
-                                let mut p = paint(colors[i]);
-                                p.anti_alias = false;
-                                out.fill_path(&path, &p, FillRule::Winding, transform, mask.as_ref());
-                            }
-                        }
-                    }
+                    super::border::raster(&mut out, o, inner, *colors, scale, region, mask.as_ref(), cancel)?;
                 }
                 Primitive::Text { owner, fragment, glyphs, origin, color } => {
                     let text = scene.layout.text_layout(*owner).ok_or(Error::Invalid)?;

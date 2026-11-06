@@ -1,15 +1,23 @@
 #!/usr/bin/python3
-"""Capture localhost-only Chrome pixels on an OWNED Olo Agent Screen.
+"""Capture actual native Wayland-scale Chrome pixels on an OWNED Agent Screen.
 
-Start: olo-screen run OWN_SCREEN olo-chrome --remote-debugging-port=18739 about:blank
-Then: /usr/bin/python3 capture.py /var/tmp/OWN_CAPTURE [18739]
-Only an isolated screen profile may be used. This script never launches Chrome.
+olo-screen run NAME olo-chrome --user-data-dir=/var/tmp/OWNED/profile --remote-debugging-port=18739 about:blank
+eval "$(olo-screen env NAME)"
+/usr/bin/python3 capture.py /var/tmp/OWNED/capture --screen NAME [--port 18739]
+
+Emulated DPR is deliberately not used: it does not match native border snapping.
+Only this screen's settings/profile are touched; original settings are restored.
 """
-import base64,hashlib,http.server,json,os,socket,struct,sys,threading,urllib.parse,urllib.request
+import argparse,base64,hashlib,http.server,json,os,socket,struct,subprocess,sys,threading,urllib.parse,urllib.request
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
-OUT=Path(sys.argv[1]).resolve();assert OUT.is_relative_to('/var/tmp');OUT.mkdir(parents=True,exist_ok=True)
-PORT=int(sys.argv[2])if len(sys.argv)>2 else 18739
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('out',type=Path);parser.add_argument('--screen',required=True);parser.add_argument('--port',type=int,default=18739)
+args=parser.parse_args();OUT=args.out.resolve();assert OUT.is_relative_to('/var/tmp');OUT.mkdir(parents=True,exist_ok=True)
+assert os.environ.get('OLO_SCREEN')==args.screen,'eval the owned screen environment first'
+screen=next(s for s in json.loads(subprocess.check_output(['olo-screen','list']))if s['name']==args.screen)
+assert screen['state']=='running'and screen['olo_socket']==os.environ['OLO_SOCKET']
+PORT=args.port
 class WS:
  def __init__(self,url):
   u=urllib.parse.urlsplit(url);assert u.hostname in ['127.0.0.1','localhost']
@@ -50,28 +58,43 @@ class WS:
 class Handler(http.server.BaseHTTPRequestHandler):
  def do_GET(self):
   if self.path=='/font':data=(HERE.parent/'inline-fixtures/plain.ttf').read_bytes();mime='font/ttf'
-  elif self.path=='/':data=b'<!doctype html><title>Olo independent paint reference</title>';mime='text/html'
+  elif self.path=='/':data=b'<!doctype html><title>Olo native paint reference</title>';mime='text/html'
   else:self.send_error(404);return
   self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
-server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
-threading.Thread(target=server.serve_forever,daemon=True).start()
-targets=json.load(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json'))
-target=next(t for t in targets if t['type']=='page' and t['url']=='about:blank')
-ws=WS(target['webSocketDebuggerUrl']);version=ws.call('Browser.getVersion')
-ws.call('Page.navigate',url=f'http://127.0.0.1:{server.server_port}/')
-ws.call('Runtime.evaluate',expression='new Promise(r=>document.readyState==="complete"?r():addEventListener("load",()=>r(),{once:true}))',awaitPromise=True)
-base=(HERE/'base.css').read_text();inputs=json.loads((HERE/'inputs.json').read_text());rows=[]
-for scale in [1,1.5,2]:
- ws.call('Emulation.setDeviceMetricsOverride',width=100,height=100,deviceScaleFactor=scale,mobile=False)
- for case in inputs:
-  source=f'<style>@font-face{{font-family:"Olo Inline plain";src:url("/font")}}{base}{case["css"]}</style>{case["body"]}'
-  expression=f'''(async()=>{{document.documentElement.innerHTML={json.dumps('<head></head><body>'+source+'</body>')};await document.fonts.load("20px 'Olo Inline plain'");await document.fonts.ready;if(!document.fonts.check("20px 'Olo Inline plain'"))throw Error('font unavailable');await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return {{dpr:devicePixelRatio,width:innerWidth,height:innerHeight}};}})()'''
-  result=ws.call('Runtime.evaluate',expression=expression,awaitPromise=True,returnByValue=True)
-  assert 'exceptionDetails'not in result,result
-  assert result['result']['value']==dict(dpr=scale,width=100,height=100),result
-  image=base64.b64decode(ws.call('Page.captureScreenshot',format='png',fromSurface=True,captureBeyondViewport=False)['data'])
-  name=f'{case["id"]}-{scale}.png';(OUT/name).write_bytes(image)
-  rows.append(dict(file=name,sha256=hashlib.sha256(image).hexdigest(),metrics=result['result']['value']))
-ws.s.close();server.shutdown();server.server_close()
-(OUT/'capture.json').write_text(json.dumps(dict(version=version,rows=rows,scope='12 authored static fixtures at 3 emulated DPRs on owned Olo Chrome. Fixed original font; pixels, not websites or arbitrary typography.'),indent=2)+'\n')
-print(f'Saved {len(rows)} independent Chrome pixel observations in {OUT}')
+def free():
+ subprocess.run(['olo-screen','wait',args.screen,'--free','--timeout','10000'],check=True,stdout=subprocess.DEVNULL)
+def ipc(req):
+ if req['type']!='get_settings':free()
+ with socket.socket(socket.AF_UNIX)as s:
+  s.connect(screen['olo_socket']);s.sendall((json.dumps(req)+'\n').encode());return json.loads(s.makefile().readline())
+# Verify this DevTools endpoint belongs to a Chrome on the named screen before navigation.
+browser=WS(json.load(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json/version'))['webSocketDebuggerUrl'])
+pid=next(p['id']for p in browser.call('SystemInfo.getProcessInfo')['processInfo']if p['type']=='browser')
+wins=json.loads(subprocess.check_output(['olo-screen','windows',args.screen]));assert any(w['pid']==pid and w['app_id']=='google-chrome'for w in wins),'DevTools browser is not on the owned screen'
+version=browser.call('Browser.getVersion');gpu=browser.call('SystemInfo.getInfo')['gpu'];browser.s.close()
+target=next(t for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json'))if t['type']=='page'and t['url']=='about:blank')
+ws=WS(target['webSocketDebuggerUrl']);free();ws.call('Emulation.clearDeviceMetricsOverride')
+server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler);threading.Thread(target=server.serve_forever,daemon=True).start()
+original=ipc({'type':'get_settings'})['settings'];rows=[]
+try:
+ free();ws.call('Page.navigate',url=f'http://127.0.0.1:{server.server_port}/')
+ ws.call('Runtime.evaluate',expression='new Promise(r=>document.readyState==="complete"?r():addEventListener("load",()=>r(),{once:true}))',awaitPromise=True)
+ base=(HERE/'base.css').read_text();inputs=json.loads((HERE/'inputs.json').read_text())
+ for scale in [1,1.25,1.5,1.75,2]:
+  st=ipc({'type':'get_settings'})['settings'];st['display']['scale']=scale
+  for v in st['display']['outputs'].values():v.pop('scale',None)
+  assert ipc({'type':'set_settings','settings':st})['type']=='ok'
+  subprocess.run(['olo-screen','wait',args.screen,'--idle','--timeout','10000'],check=True,stdout=subprocess.DEVNULL)
+  for case in inputs:
+   free()
+   source=f'<!doctype html><style>@font-face{{font-family:"Olo Inline plain";src:url("/font")}}{base}{case["css"]}</style>{case["body"]}'
+   parent='<iframe style="position:absolute;left:0;top:0;width:100px;height:100px;border:0"></iframe>'
+   expression=f"""(async()=>{{document.documentElement.innerHTML={json.dumps('<head></head><body>'+parent+'</body>')};const f=document.querySelector('iframe');const loaded=new Promise(r=>f.onload=r);f.srcdoc={json.dumps(source)};await loaded;const d=f.contentDocument,w=f.contentWindow;await d.fonts.load("20px 'Olo Inline plain'");await d.fonts.ready;if(!d.fonts.check("20px 'Olo Inline plain'"))throw Error('font unavailable');await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return {{dpr:devicePixelRatio,frameDpr:w.devicePixelRatio,width:w.innerWidth,height:w.innerHeight,boxes:[...d.body.children].map(e=>{{const r=e.getBoundingClientRect(),s=w.getComputedStyle(e);return {{tag:e.localName,x:r.x,y:r.y,width:r.width,height:r.height,borderWidths:[s.borderTopWidth,s.borderRightWidth,s.borderBottomWidth,s.borderLeftWidth]}};}})}};}})()"""
+   result=ws.call('Runtime.evaluate',expression=expression,awaitPromise=True,returnByValue=True);assert 'exceptionDetails'not in result,result
+   metrics=result['result']['value'];assert metrics['dpr']==scale and metrics['frameDpr']==scale and metrics['width']==100 and metrics['height']==100,metrics
+   image=base64.b64decode(ws.call('Page.captureScreenshot',format='png',fromSurface=True,captureBeyondViewport=False,clip=dict(x=0,y=0,width=100,height=100,scale=1))['data'])
+   name=f'{case["id"]}-{scale}.png';(OUT/name).write_bytes(image);rows.append(dict(file=name,sha256=hashlib.sha256(image).hexdigest(),metrics=metrics))
+finally:
+ ipc({'type':'set_settings','settings':original});ws.s.close();server.shutdown();server.server_close()
+report=dict(version=version,gpu=gpu,method='Actual native Wayland output scale; no DevTools device metrics override. 100x100 iframe, ready original font, checked native DPR and frame dimensions.',rows=rows,source_hashes={str(p.relative_to(HERE.parent.parent)):hashlib.sha256(p.read_bytes()).hexdigest()for p in [HERE/'inputs.json',HERE/'base.css',HERE/'capture.py',HERE.parent/'inline-fixtures/plain.ttf']})
+(OUT/'capture.json').write_text(json.dumps(report,indent=2)+'\n');print(f'Saved {len(rows)} native-scale independent Chrome pixel observations in {OUT}')

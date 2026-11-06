@@ -1,0 +1,83 @@
+[
+  {
+    "requestedNativeScale": 1,
+    "observed": {
+      "result": {
+        "type": "object",
+        "value": {
+          "dpr": 1,
+          "boxes": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 36,
+              "height": 36,
+              "border": "3px"
+            },
+            {
+              "x": 0.25,
+              "y": 36.25,
+              "width": 32,
+              "height": 17,
+              "border": "1px"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "requestedNativeScale": 1.5,
+    "observed": {
+      "result": {
+        "type": "object",
+        "value": {
+          "dpr": 1.5,
+          "boxes": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 35.333335876464844,
+              "height": 35.333335876464844,
+              "border": "2.66667px"
+            },
+            {
+              "x": 0.25,
+              "y": 35.583335876464844,
+              "width": 31.33333396911621,
+              "height": 16.33333396911621,
+              "border": "0.666667px"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "requestedNativeScale": 2,
+    "observed": {
+      "result": {
+        "type": "object",
+        "value": {
+          "dpr": 2,
+          "boxes": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 36,
+              "height": 36,
+              "border": "3px"
+            },
+            {
+              "x": 0.25,
+              "y": 36.25,
+              "width": 32,
+              "height": 17,
+              "border": "1px"
+            }
+          ]
+        }
+      }
+    }
+  }
+]
