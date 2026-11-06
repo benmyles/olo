@@ -3261,3 +3261,63 @@ workspace release build (**1m42s**) and 1280×800 live Browser/StyledEdit lint.
 Evidence: `2026-11-06-links-main-integration.json`. Earlier full-desktop lint
 and performance observations retain their stated scope and limitations.
 Website acceptance remains **0/100**; no personal session install/reload.
+
+## 2026-11-06 — document history, fragments and keyboard text links
+
+Added native Back/Forward controls, bounded 256-entry history, final redirect
+locations, forward-branch truncation and CSS-pixel scroll restoration. Fragment
+entries retain the live DOM and issue no request; cross-document traversal
+currently refetches. The complete navigation metadata survives the kit's
+upgrade/re-exec path. The Document snapshot caches URL, navigation serial and
+DOM identity for structured verification.
+
+Raw then percent-decoded fragment lookup prefers IDs over legacy anchor names;
+empty/top cases, duplicate IDs and cancellation have regressions. Target state
+reaches `:target` and scrolling uses existing box/text geometry. Pending anchor
+scroll survives request cancellation until the UI accepts Content. Keyboard
+focus uses a worker-built text-link index, positive tabindex/tree order and
+inert/hidden filtering. Inert inheritance is carried by a depth-bounded walk.
+Native Tab/Shift+Tab use the kit's FocusNext/FocusPrev actions (the first GUI
+test caught that ordinary key listeners never received Tab). Enter and the
+documented agent menu commands share activation. Native blur clears document
+focus. URL/text bytes are now shared across paint records; pointer focus
+metadata updates immediately even without focus-dependent CSS.
+
+Validation: **12 browser release tests**, plus the explicit ignored release
+index measurement; **222 web release tests**, strict browser/web all-target
+clippy, full workspace release build, thirteen kit/Preferences lint tests and
+live Browser lint at 1280×800 pass. Navigation: **15** mode/scale reviews and
+**61** HTTP requests including owned-session re-exec, retained-document/no-I/O
+fragment traversal, refetched document/scroll restoration, branch truncation,
+keyboard focus/activation and Back/Forward. Existing links: **15** reviews,
+**36** requests, including the no-CSS focus-metadata regression. Visual journal
+records light 2× and night 1.5×; all 1/1.25/1.5/1.75/2× modes were captured.
+
+Frozen common scroll comparison, three runs per build: RSS **84736→85148 KiB**;
+both variants **0 CPU / 0 wakeups / 0 frames** over three idle seconds. Median
+first-report-to-moving-client-frame drag/flick/wheel:
+**8.956/9.131/0.244→8.931/9.072/0.306 ms**; no hitches in either variant.
+Median slowest client draw **0.57/0.62/0.58→0.58/0.66/0.72 ms**. These small
+samples establish no speedup. Client marks are not compositor presentation.
+
+New keyboard case, 1,001 links, ten cold-document repeats: median first moving
+client frame **17.711 ms**, RSS **88336 KiB**, zero idle CPU/wakeups/frames.
+This is **above the 8.3 ms target**, with full selector restyle/layout/raster
+still on the worker. Incremental invalidation and actual presentation latency
+remain required. Cold link ancestry/focus index alone, 30 release samples after
+one warm-up: **87.0535 µs / 659.9745 µs** for 100 / 1,000 links. No baseline
+counterpart exists for the new feature; this excludes parse/layout/tiles/GPU.
+Other main-worktree builds were observed immediately after native samples;
+possible external load was not controlled. Raw data preserves sample scope.
+
+Evidence: `2026-11-06-navigation-{checks,native,links,index-cost,ui-cost,keyboard-cost}.json`;
+runners `tools/browser/navigation-{smoke,cost}.py`. The pre-commit lint is run
+manually with an owned `/var/tmp` root because the repository hook's tools
+hardcode RAM-backed `/tmp/olo-dev`; the hook bypass is limited to that rerun.
+
+Still open: box/image/empty-anchor hit regions, complete focus/default actions,
+fragment focus starting points, frame/script history, tabs/downloads/BFCache,
+URL-byte history bounds, incremental invalidation, V8/security/Olo credential
+integration, complete rendering and independent website journeys. The visible
+fixture still lacks correct inter-anchor whitespace, among other renderer gaps.
+**0/100 websites / 0/3000 combinations accepted; the goal remains active.**

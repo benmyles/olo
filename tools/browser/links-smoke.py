@@ -48,7 +48,9 @@ try:
    run('move',screen,x,y);loaded('Link fixture');p=shot(f'{theme}-{scale}-hover');assert color(p,(0,128,0))>10
    review=json.loads(run('review',screen,'--window',tree()['window'],'--json'));assert all(not r['findings']for r in review),review
    n=len(requests);run('click',screen,'--role','Link','--name','Second link');loaded('Second destination');assert requests[n:]==['/dest/two']
-   run('click',screen,'--role','Link','--name','Back to links');loaded('Link fixture')
+   back=link('Back to links');bx=back['x']+back['width']/2;by=back['y']+back['height']/2
+   run('down',screen,bx,by);run('wait',screen,'--idle');assert link('Back to links').get('focused'), 'Focus metadata did not update without CSS focus selectors'
+   run('up',screen,bx,by);loaded('Link fixture')
    rows.append({'theme':theme,'scale':scale,'review':review,'hover_green_pixels':color(p,(0,128,0))})
  # Held mouse input and release uses the same node identity as agent clicks.
  target=link('First link');x=target['x']+target['width']/2;y=target['y']+target['height']/2

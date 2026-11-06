@@ -332,17 +332,23 @@ this is a harness correction, not a browser speedup.
 - [ ] Complete document input/hit testing: initial visible text links and
   hover/active/focus ancestry now work through native/agent pointer input.
   Box/advance/whitespace/empty-anchor/image targets, pointer capture, cursor
-  styling, keyboard navigation, selection/editing, fragments and default-action
+  styling, complete keyboard/focus semantics, selection/editing and default-action
   event dispatch remain required. Cross-node shared ligatures deliberately
   have no invented click target until caret ownership is available.
 - [ ] Incremental selector/style/layout/paint invalidation. Dynamic state masks
   avoid restyle when unused, but actual state changes still restyle the full
   retained document and rebuild visible tiles. This is not the final cost model.
+- [x] Initial bounded Back/Forward history, canonical redirects, same-document
+  fragments/:target and CSS-pixel scroll restoration, including native re-exec.
+- [x] Initial Tab/Shift+Tab/Enter text-link control through the kit's focus
+  actions and documented agent menu commands; worker-built ordered index.
 - [ ] Complete navigation history/tabs/downloads/new windows and allowed URL
-  handlers. Unsupported link actions currently report a reason without requests.
-- [ ] Cache shared URL values in per-frame link records and bound structured
-  metadata work for pathological content. Focus-only metadata changes need an
-  immediate lightweight repaint even when no CSS selector depends on focus.
+  handlers, frame/script histories, BFCache, focus starting points and box/image
+  anchor targets. Unsupported link actions report a reason without requests.
+- [x] Share URL/text bytes in per-frame records; immediately repaint pointer
+  focus metadata even without focus-dependent CSS and clear it on native blur.
+- [ ] Bound structured metadata work for pathological overlapping content and
+  bound history URL bytes as well as entry count.
 - [ ] Investigate the two candidate drag hitches from the first link-input
   sample; paired confirmation is clear. Preserve both runs and measure actual
   hover-to-presentation latency before performance acceptance.

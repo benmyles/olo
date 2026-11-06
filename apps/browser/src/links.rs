@@ -8,7 +8,7 @@ use url::Url;
 #[derive(Clone, Debug)]
 pub struct Link {
     pub node: NodeId,
-    pub url: String,
+    pub url: olo_ui::gpui::SharedString,
     pub blocked: Option<&'static str>,
 }
 pub fn resolve(doc: &Document, node: NodeId, base: &Url, origin: &Url, cache: &mut HashMap<NodeId, Option<Arc<Link>>>) -> page::Result<Option<Arc<Link>>> {
@@ -47,7 +47,7 @@ pub fn resolve(doc: &Document, node: NodeId, base: &Url, origin: &Url, cache: &m
                 let _ = url.set_username("");
                 let _ = url.set_password(None);
             }
-            break Some(Arc::new(Link { node, url: url.to_string(), blocked }));
+            break Some(Arc::new(Link { node, url: url.to_string().into(), blocked }));
         }
         at = doc.parent(node)?;
     };

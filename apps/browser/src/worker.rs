@@ -39,13 +39,18 @@ pub struct Request {
     pub cancel: crate::network::Cancel,
     pub recycle: Vec<Arc<RenderImage>>,
     pub interaction: page::Interaction,
+    pub navigation: u64,
+    pub fragment: Option<olo_ui::gpui::SharedString>,
+    pub seek_anchor: bool,
+    pub focus_scroll: Option<olo_web::dom::NodeId>,
 }
 pub enum Message {
     Render(Box<Request>),
     Recycle(Vec<Arc<RenderImage>>),
+    RecycleTargets(Arc<crate::navigation::FocusTargets>),
 }
 pub struct Label {
-    pub text: String,
+    pub text: olo_ui::gpui::SharedString,
     pub rect: layout::Rect,
     pub node: Option<olo_web::dom::NodeId>,
     pub link: Option<Arc<crate::links::Link>>,
@@ -54,7 +59,7 @@ pub enum Reply {
     Status(u64, String),
     Location(u64, String),
     Ready { id: u64, title: String, tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)> },
-    Content { id: u64, labels: Vec<Label>, extent: f64, scroll: i32, interaction_mask: u64 },
+    Content { id: u64, labels: Vec<Label>, extent: f64, scroll: i32, interaction_mask: u64, document: u64, target: Option<olo_web::dom::NodeId>, focus_targets: Arc<crate::navigation::FocusTargets> },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
     Error(u64, String),
 }
@@ -65,6 +70,9 @@ struct Cached {
     origin: url::Url,
     base: url::Url,
     links: HashMap<olo_web::dom::NodeId, Option<Arc<crate::links::Link>>>,
+    navigation: u64,
+    focus_targets: Option<Arc<crate::navigation::FocusTargets>>,
+    anchor_scroll: Option<f64>,
 }
 pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
     let (tx, rx) = mpsc::channel::<Message>();
@@ -89,11 +97,16 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             drop(images);
                             continue;
                         }
+                        Message::RecycleTargets(targets) => {
+                            drop(targets);
+                            continue;
+                        }
                     };
                     while let Ok(message) = rx.try_recv() {
                         match message {
                             Message::Render(new) => r = new,
                             Message::Recycle(images) => drop(images),
+                            Message::RecycleTargets(targets) => drop(targets),
                         }
                     }
                     drop(std::mem::take(&mut r.recycle));
@@ -132,41 +145,8 @@ fn render(
     if r.key.width > MAX_VIEWPORT || r.key.height > MAX_VIEWPORT || !r.key.scale.is_finite() || r.key.scale <= 0. {
         return Err("Viewport exceeds the development renderer limits".into());
     }
-    if let Some(Cached { key, page, viewport_dependent, .. }) = cached.as_mut()
-        && key.source == r.key.source
-        && key.revision == r.key.revision
-        && key.cwd == r.key.cwd
-        && (key.width != r.key.width || key.height != r.key.height || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(r.interaction, page.interaction_mask))
-    {
-        proxy.send(Reply::Status(r.id, "Laying out…".into()));
-        if *viewport_dependent || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(r.interaction, page.interaction_mask) {
-            let previous = page.interaction;
-            page.interaction = r.interaction;
-            let host = PageHost::new(scope, &r.key);
-            if let Err(error) = page.restyle(&host, scope, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {}) {
-                page.interaction = previous;
-                return Err(error);
-            }
-            *viewport_dependent = host.viewport_used.get();
-        } else {
-            let mut job = layout::Job::new(
-                shaper,
-                scope,
-                page.scene.layout().cache().clone(),
-                layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale },
-                Default::default(),
-                Some(&r.cancel),
-            )?;
-            while !job.step(64)?.finished {}
-            let layout = Arc::new(job.finish()?);
-            let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: r.key.palette.document_background }, Default::default(), Some(&r.cancel))?;
-            while !job.step(32)?.finished {}
-            page.scene = job.finish()?;
-        }
-        *key = r.key.clone();
-        cache.clear();
-    }
-    if cached.as_ref().is_none_or(|cached| cached.key != r.key) {
+    let newly_loaded = cached.as_ref().is_none_or(|c| c.key.source != r.key.source || c.key.cwd != r.key.cwd || c.key.revision != r.key.revision);
+    if newly_loaded {
         *cached = None;
         cache.clear();
         proxy.send(Reply::Status(r.id, "Loading…".into()));
@@ -235,14 +215,95 @@ fn render(
         )?;
         let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
         let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());
-        *cached = Some(Cached { key: r.key.clone(), page, viewport_dependent: host.viewport_used.get(), origin, base, links: HashMap::new() });
+        *cached = Some(Cached { key: r.key.clone(), page, viewport_dependent: host.viewport_used.get(), origin, base, links: HashMap::new(), navigation: 0, focus_targets: None, anchor_scroll: None });
         cache.clear();
     }
+    let c = cached.as_mut().unwrap();
+    let navigation_changed = c.navigation != r.navigation;
+    let mut input = r.interaction;
+    input.target = c.page.interaction.target;
+    let mut scene_changed = newly_loaded;
+    let mut sought = if navigation_changed { None } else { c.anchor_scroll };
+    if navigation_changed {
+        let fragment = if newly_loaded { c.origin.fragment().map(str::to_owned) } else { r.fragment.as_ref().map(ToString::to_string) };
+        input.target = crate::navigation::fragment(&c.page.document, fragment.as_deref(), &r.cancel)?;
+        c.origin.set_fragment(fragment.as_deref());
+        c.base = c.page.base_href.as_deref().and_then(|base| c.origin.join(base).ok()).unwrap_or_else(|| c.origin.clone());
+        c.links.clear();
+        c.focus_targets = None;
+        if r.seek_anchor
+            && (fragment.as_deref() == Some("")
+                || input.target.is_none() && fragment.as_deref().is_some_and(|f| percent_encoding::percent_decode_str(f).decode_utf8_lossy().eq_ignore_ascii_case("top")))
+        {
+            sought = Some(0.);
+        }
+    }
+    if let Some(Cached { key, page, viewport_dependent, .. }) = cached.as_mut()
+        && key.source == r.key.source
+        && key.revision == r.key.revision
+        && key.cwd == r.key.cwd
+        && (key.width != r.key.width || key.height != r.key.height || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(input, page.interaction_mask))
+    {
+        proxy.send(Reply::Status(r.id, "Laying out…".into()));
+        if *viewport_dependent || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(input, page.interaction_mask) {
+            let previous = page.interaction;
+            page.interaction = input;
+            let host = PageHost::new(scope, &r.key);
+            if let Err(error) = page.restyle(&host, scope, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {}) {
+                page.interaction = previous;
+                return Err(error);
+            }
+            *viewport_dependent = host.viewport_used.get();
+        } else {
+            let mut job = layout::Job::new(
+                shaper,
+                scope,
+                page.scene.layout().cache().clone(),
+                layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale },
+                Default::default(),
+                Some(&r.cancel),
+            )?;
+            while !job.step(64)?.finished {}
+            let layout = Arc::new(job.finish()?);
+            let mut job = paint::BuildJob::new(&page.document, layout, painter, paint::Options { canvas: r.key.palette.document_background }, Default::default(), Some(&r.cancel))?;
+            while !job.step(32)?.finished {}
+            page.scene = job.finish()?;
+        }
+        *key = r.key.clone();
+        cache.clear();
+        scene_changed = true;
+    }
     let cached = cached.as_mut().unwrap();
+    cached.page.interaction = input;
+    if navigation_changed || scene_changed && r.seek_anchor {
+        if r.seek_anchor
+            && let Some(target) = input.target
+            && let Some(rect) = crate::navigation::target_rect(&cached.page, target, &r.cancel)?
+        {
+            sought = Some(rect.y);
+        }
+        cached.anchor_scroll = sought;
+        cached.navigation = r.navigation;
+    }
+    // Keep an unacknowledged anchor move across cancellation/replacement. The
+    // UI clears seek_anchor only after it accepts Content for this request.
+    sought = r.seek_anchor.then_some(cached.anchor_scroll).flatten();
+    if let Some(target) = r.focus_scroll
+        && let Some(rect) = crate::navigation::target_rect(&cached.page, target, &r.cancel)?
+    {
+        let top = f64::from(r.scroll) / r.key.scale;
+        let height = f64::from(r.key.height) / r.key.scale;
+        if rect.y < top || rect.y + rect.height > top + height {
+            sought = Some(rect.y + rect.height / 2. - height / 2.);
+        }
+    }
+    if scene_changed || cached.focus_targets.is_none() {
+        cached.focus_targets = Some(crate::navigation::focus_targets(&cached.page, &cached.base, &cached.origin, &mut cached.links, &r.cancel)?);
+    }
     let page = &cached.page;
     let scene = &page.scene;
     let extent = scene.content_extent().height;
-    let scroll = r.scroll.clamp(0, max_scroll(&r.key, extent));
+    let scroll = sought.map_or(r.scroll, |y| (y * r.key.scale).round().max(0.) as i32).clamp(0, max_scroll(&r.key, extent));
     let visible = layout::Rect { x: 0., y: f64::from(scroll) / r.key.scale, width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale };
     let mut hits = Vec::new();
     scene.query(visible, &mut hits, Some(&r.cancel))?;
@@ -265,12 +326,21 @@ fn render(
                         Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
                         None => None,
                     };
-                    labels.push(Label { text: run.source[lo as usize..end as usize].to_owned(), rect, node, link });
+                    labels.push(Label { text: run.source[lo as usize..end as usize].to_owned().into(), rect, node, link });
                 }
             }
         }
     }
-    proxy.send(Reply::Content { id: r.id, labels, extent, scroll, interaction_mask: page.interaction_mask });
+    proxy.send(Reply::Content {
+        id: r.id,
+        labels,
+        extent,
+        scroll,
+        interaction_mask: page.interaction_mask,
+        document: page.document.id(),
+        target: page.interaction.target,
+        focus_targets: cached.focus_targets.as_ref().unwrap().clone(),
+    });
     let mut tiles = Vec::new();
     let mut last = Instant::now();
     let top = scroll.div_euclid(256) * 256;
@@ -322,7 +392,7 @@ fn render(
     });
     Ok(())
 }
-struct PageHost {
+pub(crate) struct PageHost {
     scope: Scope,
     palette: Arc<Palette>,
     scale: f64,
@@ -330,7 +400,7 @@ struct PageHost {
     viewport_used: Cell<bool>,
 }
 impl PageHost {
-    fn new(scope: &Scope, key: &Key) -> Self {
+    pub(crate) fn new(scope: &Scope, key: &Key) -> Self {
         Self {
             scope: scope.clone(),
             palette: key.palette.clone(),

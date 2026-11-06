@@ -3526,5 +3526,17 @@
     "title": "Browser: interactive links in night mode",
     "caption": "Same native text-link fixture at live 1.5\u00d7, dark appearance and forced 4500K night light. Layout identity comes from retained source mappings without increasing the 80-byte paint command. Hover still uses conservative full-document restyle; complete input, keyboard navigation, fragments, JavaScript and website fidelity remain required.",
     "image": "2026-11-06/045235-browser-interactive-links-in-night-mode.png"
+  },
+  {
+    "time": "2026-11-06T05:40:43",
+    "title": "Browser: document navigation",
+    "caption": "Back/Forward and keyboard text-link control share native and agent actions. Fragment moves retain the document and issue no request; :target styling reaches the handwritten engine. Authored fixture, light 2\u00d7; no website acceptance.",
+    "image": "2026-11-06/054043-browser-document-navigation.png"
+  },
+  {
+    "time": "2026-11-06T05:40:44",
+    "title": "Browser: fragment history in night mode",
+    "caption": "The same native controls at 1.5\u00d7 in night mode. All fifteen mode/scale navigation reviews pass; URL, scroll and forward history survive owned-session re-exec. Complete focus, event and browser semantics remain open.",
+    "image": "2026-11-06/054044-browser-fragment-history-in-night-mode.png"
   }
 ]

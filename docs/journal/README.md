@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: fragment history in night mode
+
+*05:40* — The same native controls at 1.5× in night mode. All fifteen mode/scale navigation reviews pass; URL, scroll and forward history survive owned-session re-exec. Complete focus, event and browser semantics remain open.
+
+![Browser: fragment history in night mode](2026-11-06/054044-browser-fragment-history-in-night-mode.png)
+
+### Browser: document navigation
+
+*05:40* — Back/Forward and keyboard text-link control share native and agent actions. Fragment moves retain the document and issue no request; :target styling reaches the handwritten engine. Authored fixture, light 2×; no website acceptance.
+
+![Browser: document navigation](2026-11-06/054043-browser-document-navigation.png)
+
 ### Browser: interactive links in night mode
 
 *04:52* — Same native text-link fixture at live 1.5×, dark appearance and forced 4500K night light. Layout identity comes from retained source mappings without increasing the 80-byte paint command. Hover still uses conservative full-document restyle; complete input, keyboard navigation, fragments, JavaScript and website fidelity remain required.

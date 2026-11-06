@@ -1994,3 +1994,46 @@ pixels, relative navigation/return, hidden/clipped links and blocked actions,
 across 15 live mode/scale combinations. `interaction_bench` measures the new
 full-restyle cost; the common `page_bench` retains source/geometry identities
 and reports actual paint-command size. No authored fixture is a website pass.
+
+## Initial document history, fragments and keyboard links (2026-11-06)
+
+The native toolbar and Navigate menu expose Back/Forward. The menu's documented
+`back`, `forward`, `next-link`, `previous-link` and `open-link` actions are also
+agent commands; disabled actions reject invocation. Alt+Left/Right traverse
+history. The document participates in the kit's Tab actions; Tab/Shift+Tab step
+its text-link order, Enter activates the focused link, and Cmd+L focuses the
+address. Leaving the document clears its focus state and agent focus metadata.
+These are initial light-document text links, not the complete HTML focus model.
+
+The page worker builds the ordered link index (positive tabindex first,
+then tree order, excluding negative tabindex, inert ancestors and text without
+visible ink). Inert state follows a depth-bounded traversal rather than an
+ancestor walk for every link. The UI looks up the current position in constant
+time; indexing, fragment lookup and target geometry stay on the worker.
+Offscreen link focus scrolls it into view; already visible links stay put.
+Shared text and URL strings avoid copying their bytes on every canvas paint.
+Replaced index snapshots are released on the worker, like replaced tile images.
+
+History retains up to 256 URL/working-directory/document-group/scroll entries,
+truncates forward entries on a new branch and records final redirect URLs.
+Fragment entries reuse the live document. Cross-document traversal currently
+refetches; there is no BFCache. CSS-pixel scroll positions and the complete
+bounded history survive the kit's upgrade/re-exec state path. This is navigation
+metadata, not a complete session-history implementation for script/frames.
+
+Fragment lookup checks raw identifiers before percent-decoded UTF-8, preferring
+the first ID over a legacy HTML anchor name at each lookup. Empty fragments
+and the reserved `top` fallback scroll to the top. Target state reaches CSS
+`:target`; target geometry uses existing box or clipped text bounds. An
+unacknowledged anchor move survives replacement of a cancelled render request.
+The `Document` agent record's JSON value contains `url`, `navigation` and the
+document-scoped `document` identity, cached between accepted navigations.
+
+`tools/browser/navigation-smoke.py` checks all 15 native mode/scale cases,
+redirects, no-request fragment/history moves, actual keyboard focus and
+activation, cross-document refetch/scroll restoration, forward-branch removal
+and owned-session re-exec restoration. `navigation-cost.py` measures the new
+keyboard path separately from the common scroll comparison. Empty/image/box
+targets, caret geometry, focus starting points after fragments, all HTML focus
+semantics, events/JS and full browser history remain open. These authored
+fixtures and native reviews do not establish website fidelity.

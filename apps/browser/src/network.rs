@@ -318,7 +318,7 @@ mod tests {
             let server = thread::spawn(move || {
                 let (mut stream, _) = socket.accept().unwrap();
                 let mut request = [0; 4096];
-                stream.read(&mut request).unwrap();
+                assert!(stream.read(&mut request).unwrap() > 0);
                 write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", gzip.len()).unwrap();
                 stream.write_all(gzip).unwrap();
             });
