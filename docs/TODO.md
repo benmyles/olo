@@ -14,7 +14,7 @@ something nobody here has is in "Blocked", with what it waits for.
 ## Working on now
 
 - **Screen recording in Screenshot** (below, in Not started): the
-  control bar is done; next the thumbnail after, the export pipeline,
+  control bar and the card after are done; next the export pipeline,
   the editor and the library.
 
 ## Not started (highest priority first)
@@ -37,7 +37,9 @@ something nobody here has is in "Blocked", with what it waits for.
     `--restart` for agents, and in Deskbar's menu; `--stop` waits for
     the recording to finish, not the recorder (0.13 s, was 30).
   - **After**: a thumbnail in the corner with Save, Copy, Show in Tracker,
-    Edit and Delete, dragged out as the file.
+    Edit and Delete, dragged out as the file. Done but Edit (HACKING,
+    "After"): the card, Show in Tracker, Copy, Delete, dragged out; it's
+    saved already (in Videos), so no Save. Edit comes with the editor.
   - **Library**: every recording with its picture, length, size and date:
     play, edit, show, rename, delete, search.
   - **Editor**: a timeline (pictures along it, the sound's waveform),

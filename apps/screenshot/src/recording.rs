@@ -1270,8 +1270,17 @@ pub fn toggle(args: &[String]) -> i32 {
     }
     match record(&args) {
         Ok(Some(made)) => {
-            tell(&made);
             println!("{}", serde_json::to_string_pretty(&made).unwrap_or_default());
+            // What it made, in a card in the corner (`after.rs`); told in
+            // a notification if that can't start, or something went wrong
+            // on the way (it says what).
+            let card = (made.encoder_note.is_none() && made.stopped_early.is_none())
+                .then(|| std::env::current_exe().ok())
+                .flatten()
+                .and_then(|exe| std::process::Command::new(exe).arg("--after").arg(&made.path).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).spawn().ok());
+            if card.is_none() {
+                tell(&made);
+            }
             0
         }
         Ok(None) => 0,

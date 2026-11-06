@@ -6939,6 +6939,31 @@ Screens' Export Video uses too).
   1.5× and 2×, light and dark (`tsession review --all`: nothing found);
   each button clicked; a frame of the video decoded where the bar was
   shows the wallpaper.
+- **After** (`after.rs`, `olo-screenshot --after PATH`, which
+  `--toggle-record` starts once the file is whole, in the saved
+  notification's place; the notification only when it can't start, or
+  when the recording has something to say: an encoder that failed, a
+  recording stopped early): a card in the screen's lower left, as
+  CleanShot X's quick-access overlay, on the Top layer (never in front of
+  a full-screen app's Overlay) and never taking the keyboard. The
+  recording's picture (a tenth of the way in, at most a second: past a
+  countdown; decoded by `olo_preview::video::picture_at` on a worker,
+  made at the window's scale with `preview_of`, one pixel to a device
+  pixel, again when the scale changes), its name, then its length, its
+  size in pixels and its bytes, and Show in Tracker (`tracker::open`,
+  the file selected), Copy (the file as file managers copy one,
+  `clipboard::files`, served by `clipboard::hold` with no window until
+  something else is copied) and Delete (to the freedesktop Trash, which
+  Tracker restores from), with a close box. The picture pressed and
+  moved 4 points drags the file out (`dnd::files`: a folder copies it, a
+  chat or a mail attaches it); dropped somewhere, the card goes. It goes
+  by itself 20 s after the pointer left it, the window asked then
+  whether the pointer is over it (`is_window_hovered`: a drag out of it
+  takes the pointer without the leaving being told), and stays while it
+  is. Checked headless at 1×, 1.5× and 2×, light and dark (`tsession
+  review --all`: nothing found); dragged into a Tracker window (the file
+  copied there), Copy pasted as the path, Delete in the Trash, Show in
+  Tracker its folder; idle, 0 wakeups.
 - **For agents**, on their screen: `olo-screen record-video NAME
   [--seconds N] [--fps N] [--window ID] [--region X,Y,W,H]
   [--no-pointer] [--to PATH]` starts it on the screen's display and

@@ -10,6 +10,7 @@
 //! (⌘⇧4) lets you drag out part of the screen first (region.rs). However
 //! it is saved, the file's path goes on the clipboard.
 
+mod after;
 mod backdrop;
 mod bubble;
 mod capture;
@@ -831,6 +832,9 @@ fn main() -> std::process::ExitCode {
     }
     if args.iter().any(|a| a == "--controls") {
         return controls::run();
+    }
+    if args.iter().any(|a| a == "--after") {
+        return after::run(&args);
     }
     if args.iter().any(|a| a == "--resume") {
         std::process::exit(recording::pause(false));

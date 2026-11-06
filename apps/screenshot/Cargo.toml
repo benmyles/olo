@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 olo-capture.workspace = true
 olo-video.workspace = true
+olo-preview.workspace = true
 olo-camera.workspace = true
 olo-system.workspace = true
 libc = "0.2"
@@ -22,4 +23,4 @@ olo-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tiff", "webp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tiff", "webp", "gif"] }
