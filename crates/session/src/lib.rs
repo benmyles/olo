@@ -64,7 +64,8 @@ const SHELL: &[&[&str]] = &[&["olo-deskbar"], &["olo-tracker", "--desktop"]];
 /// of problems at login and of the Wi-Fi healer's resets; the AirPods
 /// service talks to the computer's own Bluetooth; olo-secrets answers
 /// for the login keyring (when Preferences ▸ Security says so) in GNOME
-/// Keyring's place, which PAM started for this login.
+/// Keyring's place, which PAM started for this login; Terminal's tab
+/// title service for coding agents listens on another loopback port.
 const REAL_SHELL: &[&[&str]] = &[
     &["olo-polkit-agent"],
     &["olo-notifications"],
@@ -78,6 +79,9 @@ const REAL_SHELL: &[&[&str]] = &[
     // with the agent turned off).
     &["olo-passwords", "--agent"],
     &["olo-secrets"],
+    // The coding agents' tab title tool, over loopback HTTP (they
+    // reconnect to it by themselves; Terminal's agent_title.rs).
+    &["olo-terminal", "--mcp-service"],
 ];
 /// Give up restarting something that crashes this often.
 const CRASH_LIMIT: usize = 5;

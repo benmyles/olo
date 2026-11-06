@@ -140,13 +140,19 @@ pub fn mark_waiting(on: bool) {
 /// and what's open without close-on-exec (stdin, stdout and stderr: a
 /// server over them carries on); returns only if it couldn't.
 pub fn exec_new_version() -> std::io::Error {
+    exec_new_version_with(&[])
+}
+
+/// [`exec_new_version`] with `env` set for the new version: what it is
+/// handed (a listening socket's descriptor, left open across the exec).
+pub fn exec_new_version_with(env: &[(&str, String)]) -> std::io::Error {
     use std::os::unix::process::CommandExt as _;
     // (The file it ran from was replaced: /proc names it "(deleted)".)
     let exe = match std::env::current_exe() {
         Ok(exe) => PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)")),
         Err(e) => return e,
     };
-    Command::new(&exe).args(std::env::args_os().skip(1)).exec()
+    Command::new(&exe).args(std::env::args_os().skip(1)).envs(env.iter().map(|(k, v)| (*k, v.as_str()))).exec()
 }
 
 /// For a program with no kit loop (a session service's watcher, a

@@ -8888,39 +8888,62 @@ tab gets a tool, `set_tab_title`, and is asked to keep the tab titled
 with what it is working on: the hook above (installed while either
 setting is on; the file says which, `Snapshot::groups`/`titles`) prints
 the instructions at `SessionStart` and a one-line reminder with each
-prompt. The tool is an MCP server, `olo-terminal --mcp` (JSON-RPC 2.0, a
-line each way on stdin and stdout: `initialize`, `tools/list`,
-`tools/call`), which both agents run outside their sandboxes (Codex's
-sandboxed shell can't reach Terminal's socket). On, Terminal names it in
-Claude Code's global `.claude.json` (`mcpServers.olo-terminal`, in
+prompt. The tool is an MCP server the person's session serves over
+loopback HTTP, `olo-terminal --mcp-service` (`src/title_service.rs`, one
+of olo-session's `REAL_SHELL`), at `http://127.0.0.1:17893/mcp` (Token
+Pool has 17891 and 17892): MCP's streamable HTTP, a JSON-RPC 2.0
+request per POST answered with plain JSON (`initialize`, `tools/list`,
+`tools/call`; notifications 202; GET and DELETE 405, as there is no
+stream from the server and no session). Why HTTP: Claude Code reconnects
+an HTTP or SSE server by itself, and never a stdio one (its own code:
+`type !== "stdio"` before "attempting automatic reconnection"), so a
+stdio server that went (three were ended by signals on 2026-11-06 while
+their sessions went on) took the tool for the rest of the session until
+the person reconnected it with /mcp. Over HTTP nothing is lost: the
+service keeps no sessions (no `Mcp-Session-Id`), so any copy of it
+answers any request the same, and each response closes its connection.
+An upgrade (olo-session's SIGURG) stops it taking connections, lets the
+requests under way finish, and execs the new version in place with the
+listening socket handed over (`OLO_TERMINAL_MCP_LISTENER`,
+`restore::exec_new_version_with`): what connects meanwhile waits in the
+kernel's queue, so nobody is refused (`tests/title_service.rs`: four
+threads asking through ten upgrades, every request answered by the same
+process). Should it stop otherwise, olo-session starts it again, and an
+agent's next call works (a call while it was away fails once with
+ECONNREFUSED, the one after succeeds, in the same Claude Code session).
+Only this user's programs may set a title (for `tools/call`, the
+connection's other end looked up in `/proc/net/tcp`: its user, about
+1 ms), and no web page is answered (an `Origin`, or a `Host` that isn't
+loopback, is refused: DNS rebinding). Idle it costs nothing (asleep in
+`poll`: 0.0% of a core, 0 wakeups/s, 8 MB); a request takes 1.5 ms
+(median) from an agent's connecting to its answer, a `tools/call` about
+10 ms (28 ms at the 99th percentile: finding the agent's process among
+the user's). On, Terminal
+names its URL in Claude Code's global `.claude.json`
+(`mcpServers.olo-terminal`, `{"type": "http", "url": …}`, in
 `CLAUDE_CONFIG_DIR` else the home folder; Claude Code rewrites that file
 now and then, so it is read just before and checked after), allows the
 tool in its `settings.json` (`mcp__olo-terminal__set_tab_title`, so it
 isn't asked each time), and in Codex's `config.toml`
-(`[mcp_servers.olo-terminal]`, through `toml_edit`, the rest of the
-file as it was); off, it takes them out. Agents see it from their next
-start (`claude mcp list` and `codex mcp list` show it). The server finds
-its tab as the hook does (Claude Code starts it under the tab's shell;
-Codex's daemon by the folder the agent passes as `cwd`, else its own,
-the tab running the same agent first, `agent_context::own_agent` from
-the server's ancestors) and hands the title to that tab's Terminal on
-the tab's display (`olo-terminal --set-tab-title SHELL TITLE` through
-the single-instance socket, `instance::forward_on`, which Terminal
-listens on: the GPUI port had dropped `instance::listen`, so no title
-and no second launch ever arrived). Codex starts its MCP servers with a
-bare environment (HOME, PATH, LANG, LOGNAME, SHELL, TERM, USER,
-SSL_CERT_FILE: no `XDG_RUNTIME_DIR`, no display), so the snapshot and
-the socket are found in `olo_xdg::runtime_dir()` (`XDG_RUNTIME_DIR`,
-else /run/user/UID). An upgrade leaves the server as it is: neither
-agent starts one again once it has gone (Codex not until its session
-ends), and a Codex server that re-executed for the 22:27 upgrade on
-2026-11-05 was gone minutes later with nothing saying why, its titles
-failing from then on ("Transport closed"); so SIGURG stays ignored, the
-handover above is kept the same from version to version, and
-olo-session leaves a stale one alone (its agent started it). Each
-server notes its life in `~/.local/state/olo/terminal-mcp.log` (when it
-started, for which program, and how it ended: input closed, a reply it
-couldn't write, a signal), for the next one that goes. `tools/dev/agent-title-check` drives it both
+(`[mcp_servers.olo-terminal]`, `url = …`, through `toml_edit`, the rest
+of the file as it was; Codex takes HTTP servers on loopback); off, it
+takes them out. An agent sees it from its next start. The service finds
+the tab from the process that asked (the socket's holder: agents'
+processes, `claude`, `codex`, `node`, looked in first; every process
+of the user's otherwise, about 25 to 45 ms more; only for `tools/call`): it and its ancestors, as the hook does (Claude Code
+is under the tab's shell; Codex's daemon by the folder the agent passes
+as `cwd`, else its own, the tab running the same agent first,
+`agent_context::own_agent`), and hands the title to that tab's Terminal
+on the tab's display (`olo-terminal --set-tab-title SHELL TITLE`
+through the single-instance socket, `instance::forward_on`, which
+Terminal listens on: the GPUI port had dropped `instance::listen`, so
+no title and no second launch ever arrived). The snapshot and the
+socket are found in `olo_xdg::runtime_dir()` (`XDG_RUNTIME_DIR`, else
+/run/user/UID). `olo-terminal --mcp` still serves the same over stdin
+and stdout (a line each way), for an agent whose settings named it
+before Terminal rewrote them; it stays as it is through upgrades
+(SIGURG ignored; olo-session leaves alone what an agent started) and
+notes its life in `~/.local/state/olo/terminal-mcp.log`. `tools/dev/agent-title-check` drives it both
 ways in a headless session: as Codex (a bare environment, outside the
 tab, by folder) and as Claude Code (from the tab's shell, across the
 server's file replaced and SIGURG). The tab shows it (`Tab::agent_title`,

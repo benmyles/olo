@@ -13,15 +13,18 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-Nothing: what's left is waiting for Ben or blocked.
+- **Screen recording in Screenshot** (below, in Not started): the control
+  bar while recording first.
 
 ## Not started (highest priority first)
 
-- **Screen Recorder: the app, as CleanShot X is** (Ben, 2026-11-04,
+- **Screen recording in Screenshot, all of CleanShot X's** (Ben, 2026-11-04,
   again 2026-11-06: "where is the screen recording app?"). The
   recording itself is built (the "Screen recording, for people and
   agents" entry below: `olo-screenshot --record` and Screenshot's
-  Record… menu), but there is no app around it. An Olo app of its own:
+  Record… menu), but not the app around it. In Screenshot (Ben,
+  2026-11-06: "it's fine for screen recording to be in screenshot as long
+  as all the functionality i asked for is in there"):
   - **Start**: Screen, Window or Region (the region picker, with sizes
     and aspect ratios to snap to), and its options in one place: sound
     (computer, microphone), camera, clicks and keys shown, pointer size
@@ -55,6 +58,34 @@ Nothing: what's left is waiting for Ben or blocked.
   the StyledEdit entry: "Not done").
 
 ## Done, waiting for Ben to try or confirm
+
+- **Agents' tab title tool works by itself, always** (Ben, 2026-11-06,
+  "i've asked you like 10 times to make the olo terminal set tab title
+  mcp work properly and yet it still errors", "i don't want to have to do
+  anything manually it needs to work by itself always and self heal",
+  "have olo serve a localhost http server for it and have claude connect
+  to that and olo keeps it available seamlessly on upgrades like we do
+  with token pool … fix it right"). Why it kept failing: the tool was a
+  stdio server each agent started, and Claude Code never starts a stdio
+  server again once it has gone (its own code reconnects only HTTP and
+  SSE servers); three were ended by signals on 2026-11-06 while their
+  sessions went on, each tool lost till /mcp. Now the session serves it
+  over loopback HTTP (`olo-terminal --mcp-service`, one of olo-session's
+  services, at `http://127.0.0.1:17893/mcp`), and Terminal names that URL
+  in Claude Code's and Codex's settings. No sessions kept, every request
+  on a connection of its own: an upgrade execs the new version in place
+  with the listening socket handed over (2235 requests from four threads
+  through ten upgrades, none refused, `tests/title_service.rs`); a crash
+  is restarted by olo-session and the agent's next call works (tried with
+  Claude Code 2.1.319 itself: a call while it was down failed once, the
+  next succeeded, the same session); `tools/dev/agent-title-check` drives
+  Codex's way and Claude Code's, across an upgrade and a crash, headless.
+  Left for Ben: upgrade. olo-session starts the service and Terminal
+  rewrites the agents' settings by themselves; Claude Code sessions
+  started from then on have it. One already running keeps the stdio
+  server it started with (Claude Code doesn't read its MCP settings
+  again), so one whose tool is already gone, as this session's is, gets
+  it back when it's next started.
 
 - **Token Pool upgrades seamlessly** (Ben, 2026-11-06): "make it so that
   on an upgrade token pool app is seamless, i.e. it should serve new

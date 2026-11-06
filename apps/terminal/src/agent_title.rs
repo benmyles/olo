@@ -4,18 +4,23 @@
 //! and is told (agent_context.rs's hook) to keep the title saying what
 //! it's working on.
 //!
-//! The tool is an MCP server, `olo-terminal --mcp` (JSON-RPC over its
-//! stdin and stdout), which both agents run outside their sandboxes: on,
-//! Terminal names it in Claude Code's `.claude.json` (`mcpServers`, with
-//! an allow rule for the tool in its `settings.json`) and in Codex's
-//! `config.toml` (`mcp_servers`); off, it takes it out again, leaving the
-//! rest of each file as it was. The server finds its tab as the hook does
-//! (Claude Code runs it under the tab's shell; Codex in its daemon, so by
-//! the folder the agent gives, else its own) and hands the title to that
-//! tab's Terminal (`--set-tab-title SHELL TITLE`, through its
-//! single-instance socket on the tab's display). The title shows in the
-//! tab as a program's own title would, ahead of it, until the agent
-//! leaves the tab or gives an empty one.
+//! The tool is an MCP server the session serves over loopback HTTP
+//! (`title_service.rs`, `olo-terminal --mcp-service`, one of the real
+//! session's services): on, Terminal names its URL in Claude Code's
+//! `.claude.json` (`mcpServers`, with an allow rule for the tool in its
+//! `settings.json`) and in Codex's `config.toml` (`mcp_servers`); off,
+//! it takes it out again, leaving the rest of each file as it was. Over
+//! HTTP, an agent reconnects by itself whenever the server was away
+//! (Claude Code never starts a stdio server again once it has gone: its
+//! tool was lost for the rest of the session, 2026-11-06), and the
+//! service upgrades without a gap. It finds the tab from the process
+//! that asked (Claude Code is under the tab's shell; Codex's daemon by
+//! the folder the agent gives) and hands the title to that tab's
+//! Terminal (`--set-tab-title SHELL TITLE`, through its single-instance
+//! socket on the tab's display). The title shows in the tab as a
+//! program's own title would, ahead of it, until the agent leaves the
+//! tab or gives an empty one. `olo-terminal --mcp` serves the same over
+//! stdin and stdout, for an agent whose settings still name it.
 
 use std::{
     io::Write,
@@ -59,13 +64,21 @@ fn tool() -> Value {
     })
 }
 
-/// The tab this server is for: under its shell (Claude Code), else in
-/// `cwd` (Codex: what the agent gives, else the server's own).
-fn find_tab(cwd: Option<&Path>) -> Option<TabInfo> {
+/// The tab of the agent that is `lineage` (it and its ancestors): under
+/// its shell (Claude Code), else in `cwd` (Codex: what the agent gives,
+/// else `own`, the folder it's in).
+fn find_tab(lineage: &[i32], cwd: Option<&Path>, own: Option<&Path>) -> Option<TabInfo> {
     let snapshot = agent_context::read_all()?;
-    let ancestors = agent_context::ancestors();
-    let own = std::env::current_dir().ok();
-    agent_context::tab_of(&snapshot, &ancestors, cwd.or(own.as_deref()), agent_context::own_agent(&ancestors)).cloned()
+    agent_context::tab_of(&snapshot, lineage, cwd.or(own), agent_context::own_agent(lineage)).cloned()
+}
+
+/// Set the title of the tab of the agent that is `lineage` (`cwd` the
+/// folder it says it's in, `own` the one it is): what to tell it, or
+/// why not.
+pub fn set_for(lineage: &[i32], title: &str, cwd: Option<&Path>, own: Option<&Path>) -> Result<String, String> {
+    let tab = find_tab(lineage, cwd, own).ok_or("This session isn't in an Olo Terminal tab (or Terminal's setting for it is off).")?;
+    hand_over(&tab, title)?;
+    Ok(if title.is_empty() { "The tab's title is its own again.".into() } else { format!("The tab is titled \u{201c}{title}\u{201d}.") })
 }
 
 /// Set `tab`'s title through its Terminal.
@@ -87,11 +100,11 @@ pub fn tidy(title: &str) -> String {
 
 /// What sets a title (given the folder the agent says it's in): what to
 /// tell the agent, or why it couldn't.
-type Set<'a> = dyn FnMut(&str, Option<&Path>) -> Result<String, String> + 'a;
+pub type Set<'a> = dyn FnMut(&str, Option<&Path>) -> Result<String, String> + 'a;
 
 /// The answer to one request (None for a notification), `set` doing the
 /// tool's work.
-fn answer(msg: &Value, set: &mut Set) -> Option<Value> {
+pub fn answer(msg: &Value, set: &mut Set) -> Option<Value> {
     let id = msg.get("id").cloned()?;
     let ok = |result: Value| json!({"jsonrpc": "2.0", "id": id.clone(), "result": result});
     let fail = |code: i32, message: &str| json!({"jsonrpc": "2.0", "id": id.clone(), "error": {"code": code, "message": message}});
@@ -131,11 +144,9 @@ fn answer(msg: &Value, set: &mut Set) -> Option<Value> {
 /// is kept the same from version to version. Its life is noted in
 /// `log_path()`: when it started, for whom, and how it ended.
 pub fn serve() -> std::process::ExitCode {
-    let mut set = |title: &str, cwd: Option<&Path>| -> Result<String, String> {
-        let tab = find_tab(cwd).ok_or("This session isn't in an Olo Terminal tab (or Terminal's setting for it is off).")?;
-        hand_over(&tab, title)?;
-        Ok(if title.is_empty() { "The tab's title is its own again.".into() } else { format!("The tab is titled \u{201c}{title}\u{201d}.") })
-    };
+    let lineage = agent_context::ancestors();
+    let own = std::env::current_dir().ok();
+    let mut set = |title: &str, cwd: Option<&Path>| set_for(&lineage, title, cwd, own.as_deref());
     note_life();
     let mut out = std::io::stdout().lock();
     let mut why = "";
@@ -285,9 +296,9 @@ fn permission() -> String {
     format!("mcp__{SERVER}__{TOOL}")
 }
 
-/// `v` (Claude Code's global configuration) naming the server (run as
-/// `exe`), or not; the rest as it was. Whether it changed.
-fn claude_server(v: &mut Value, exe: &str, on: bool) -> bool {
+/// `v` (Claude Code's global configuration) naming the server (at
+/// `url`), or not; the rest as it was. Whether it changed.
+fn claude_server(v: &mut Value, url: &str, on: bool) -> bool {
     let before = v.clone();
     if !v.is_object() {
         *v = json!({});
@@ -298,7 +309,7 @@ fn claude_server(v: &mut Value, exe: &str, on: bool) -> bool {
         if !servers.is_object() {
             *servers = json!({});
         }
-        servers[SERVER] = json!({"type": "stdio", "command": exe, "args": [MCP_FLAG], "env": {}});
+        servers[SERVER] = json!({"type": "http", "url": url});
     } else if let Some(servers) = root.get_mut("mcpServers").and_then(Value::as_object_mut) {
         servers.shift_remove(SERVER);
         if servers.is_empty() {
@@ -338,8 +349,8 @@ fn claude_allow(v: &mut Value, on: bool) -> bool {
     *v != before
 }
 
-/// `doc` (Codex's `config.toml`) naming the server, or not.
-fn codex_server(doc: &mut DocumentMut, exe: &str, on: bool) -> bool {
+/// `doc` (Codex's `config.toml`) naming the server (at `url`), or not.
+fn codex_server(doc: &mut DocumentMut, url: &str, on: bool) -> bool {
     let before = doc.to_string();
     if on {
         if !doc.get("mcp_servers").is_some_and(Item::is_table) {
@@ -349,10 +360,7 @@ fn codex_server(doc: &mut DocumentMut, exe: &str, on: bool) -> bool {
         }
         let servers = doc["mcp_servers"].as_table_mut().expect("a table");
         let mut ours = toml_edit::Table::new();
-        ours.insert("command", toml_edit::value(exe));
-        let mut args = toml_edit::Array::new();
-        args.push(MCP_FLAG);
-        ours.insert("args", toml_edit::value(args));
+        ours.insert("url", toml_edit::value(url));
         servers.insert(SERVER, Item::Table(ours));
     } else if let Some(servers) = doc.get_mut("mcp_servers").and_then(Item::as_table_mut) {
         servers.remove(SERVER);
@@ -390,16 +398,16 @@ fn edit_json(path: &Path, on: bool, edit: impl Fn(&mut Value) -> bool) -> Result
     Ok(())
 }
 
-/// Name the server (this program, `exe`) to each agent set up here, or
-/// take it out. Claude Code rewrites its global file now and then: read
-/// just before, and checked after (put back if a write of its own took
-/// it away).
-pub fn register(on: bool, exe: &Path) -> Result<(), String> {
-    let exe = exe.display().to_string();
+/// Name the server (the session's, at `title_service::url`) to each
+/// agent set up here, or take it out. Claude Code rewrites its global
+/// file now and then: read just before, and checked after (put back if
+/// a write of its own took it away).
+pub fn register(on: bool) -> Result<(), String> {
+    let url = crate::title_service::url();
     let (claude, global) = claude_files();
     if claude.is_dir() {
         for _ in 0..3 {
-            edit_json(&global, on, |v| claude_server(v, &exe, on))?;
+            edit_json(&global, on, |v| claude_server(v, &url, on))?;
             std::thread::sleep(std::time::Duration::from_millis(300));
             let now = read_json(&global, on)?.unwrap_or_default();
             if now["mcpServers"].get(SERVER).is_some() == on {
@@ -417,7 +425,7 @@ pub fn register(on: bool, exe: &Path) -> Result<(), String> {
             Err(_) => String::new(),
         };
         let mut doc: DocumentMut = text.parse().map_err(|e| format!("{}: {e}", path.display()))?;
-        if codex_server(&mut doc, &exe, on) {
+        if codex_server(&mut doc, &url, on) {
             replace(&path, doc.to_string().as_bytes())?;
             tracing::info!(file = %path.display(), on, "coding agents' tab title tool");
         }
@@ -533,10 +541,11 @@ mod tests {
     fn names_itself_to_the_agents_and_leaves_the_rest() {
         let mut claude: Value = serde_json::from_str(r#"{"numStartups":3,"mcpServers":{"theirs":{"command":"x"}},"projects":{}}"#).unwrap();
         let original = claude.clone();
-        assert!(claude_server(&mut claude, "/x/olo-terminal", true));
-        assert_eq!(claude["mcpServers"][SERVER]["args"][0], MCP_FLAG);
-        assert!(!claude_server(&mut claude, "/x/olo-terminal", true));
-        assert!(claude_server(&mut claude, "/x/olo-terminal", false));
+        let url = "http://127.0.0.1:17893/mcp";
+        assert!(claude_server(&mut claude, url, true));
+        assert_eq!(claude["mcpServers"][SERVER], json!({"type": "http", "url": url}));
+        assert!(!claude_server(&mut claude, url, true));
+        assert!(claude_server(&mut claude, url, false));
         assert_eq!(serde_json::to_string(&claude).unwrap(), serde_json::to_string(&original).unwrap());
 
         let mut settings: Value = serde_json::from_str(r#"{"permissions":{"allow":["Bash(ls:*)"]},"model":"opus"}"#).unwrap();
@@ -553,14 +562,27 @@ mod tests {
 
         let text = "model = \"gpt-5\"  # theirs\n\n[mcp_servers.docs]\ncommand = \"docs-mcp\"\n";
         let mut doc: DocumentMut = text.parse().unwrap();
-        assert!(codex_server(&mut doc, "/x/olo-terminal", true));
+        assert!(codex_server(&mut doc, url, true));
         let on = doc.to_string();
-        assert!(on.contains("[mcp_servers.olo-terminal]") && on.contains("command = \"/x/olo-terminal\"") && on.contains("args = [\"--mcp\"]"), "{on}");
-        assert!(codex_server(&mut doc, "/x/olo-terminal", false));
+        assert!(on.contains("[mcp_servers.olo-terminal]") && on.contains(&format!("url = \"{url}\"")) && !on.contains("command = \"/x"), "{on}");
+        assert!(codex_server(&mut doc, url, false));
         assert_eq!(doc.to_string(), text);
         let mut fresh: DocumentMut = "".parse().unwrap();
-        codex_server(&mut fresh, "/x/olo-terminal", true);
-        codex_server(&mut fresh, "/x/olo-terminal", false);
+        codex_server(&mut fresh, url, true);
+        codex_server(&mut fresh, url, false);
         assert_eq!(fresh.to_string(), "");
+    }
+
+    /// The stdio server an agent was given before is replaced by the
+    /// session's, over HTTP.
+    #[test]
+    fn the_stdio_server_gives_way_to_the_session_s() {
+        let url = "http://127.0.0.1:17893/mcp";
+        let mut claude = json!({"mcpServers": {SERVER: {"type": "stdio", "command": "/home/x/.local/bin/olo-terminal", "args": [MCP_FLAG], "env": {}}}});
+        assert!(claude_server(&mut claude, url, true));
+        assert_eq!(claude["mcpServers"][SERVER], json!({"type": "http", "url": url}));
+        let mut doc: DocumentMut = "[mcp_servers.olo-terminal]\ncommand = \"/home/x/.local/bin/olo-terminal\"\nargs = [\"--mcp\"]\n".parse().unwrap();
+        assert!(codex_server(&mut doc, url, true));
+        assert_eq!(doc.to_string(), format!("[mcp_servers.olo-terminal]\nurl = \"{url}\"\n"));
     }
 }
