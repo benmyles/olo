@@ -7,5 +7,7 @@ pub mod dom;
 pub mod font;
 pub mod html;
 pub mod layout;
+pub mod page;
+pub mod paint;
 
 pub mod text;

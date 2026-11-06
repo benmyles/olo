@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: first native static page
+
+*02:16* — Original Rust DOM/style/flow/paint pipeline in a native kit window, with worker rendering, retained tiles and structured visible text. Light mode at 1.5x on an isolated Agent Screen; live light/dark/night reviews also run at 1x, 1.25x, 1.5x, 1.75x and 2x. Static local HTML only: networking, JavaScript, complete layout and website acceptance remain open.
+
+![Browser: first native static page](2026-11-06/021656-browser-first-native-static-page.png)
+
 ### Terminal: Keep It Going for a coding agent that stopped
 
 *00:43* — On a tab with Claude Code or Codex, its menu has Keep It Going: after two minutes with nothing at all changing on its screen (Codex's goal clock doesn't count) and its turn over, Terminal says "please continue" to it, at most once an hour. The tab's icon carries a blue disc with a go-on triangle while it's on.

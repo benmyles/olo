@@ -11329,3 +11329,21 @@ A Telegram client of Olo's own: MTProto in process through grammers
   scrolled list's rows painted beyond its edges aren't).
 * **Not yet**: recording voice notes (no Opus encoder in Rust yet), and
   animated stickers show their first frame.
+
+## Native browser development shell (apps/browser)
+
+`olo-browser` is the development window over `crates/web`'s original Rust
+static page pipeline (`page`, `paint`, `layout`). It opens `about:engine` or
+local UTF-8 HTML, with native address/Go/Stop/menu controls, structured visible
+text and status, worker progress/cancellation, retained scrolling tiles and
+kit restart state. It is not yet a complete web browser: network navigation,
+JavaScript, full layout/painting, semantic document actions, universal page
+darkening and desktop/password/passkey integrations remain open. Nothing
+registers it as the default browser. See `apps/browser/README.md` and the
+acceptance/journal/TODO in `docs/browser` before making compatibility claims.
+
+The shared kit supplies the widgets, agent API, pixel-exact texture painting,
+proxy and restart lifecycle. Document parsing/layout/raster/upload preparation
+and file I/O stay on its page worker; the UI composites viewport tiles and
+handles input. `tools/dev/ui-lint Browser --screen 1280x800` covers its native
+window, with owned Agent Screens used for visual and live scale-change checks.

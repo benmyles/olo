@@ -1,0 +1,62 @@
+[
+  {
+    "id": "canvas",
+    "body": "",
+    "css": "body{background-color:red}"
+  },
+  {
+    "id": "root-canvas",
+    "body": "<div></div>",
+    "css": "html{background-color:blue}body{background-color:red}div{height:20px}"
+  },
+  {
+    "id": "glyphs",
+    "body": "<div>A B C</div>",
+    "css": "div{color:green}"
+  },
+  {
+    "id": "colors",
+    "body": "<div>A <span>B</span> C</div>",
+    "css": "span{color:red}"
+  },
+  {
+    "id": "border",
+    "body": "<div>A</div>",
+    "css": "div{width:40px;height:30px;border-width:2px;border-style:solid;border-color:green;background-color:blue}"
+  },
+  {
+    "id": "clip",
+    "body": "<div>A B C</div>",
+    "css": "div{width:4px;height:10px;overflow:hidden}"
+  },
+  {
+    "id": "normal-order",
+    "body": "<div id=a>A</div><div id=b></div>",
+    "css": "#a{height:20px}#b{height:20px;margin-top:-20px;background-color:blue}"
+  },
+  {
+    "id": "relative-order",
+    "body": "<div id=a>A</div><div id=b></div>",
+    "css": "#a{height:20px}#b{position:relative;height:20px;margin-top:-20px;background-color:blue}"
+  },
+  {
+    "id": "hidden",
+    "body": "<div>A<span>B</span>C</div>",
+    "css": "div{visibility:hidden}span{visibility:visible;color:red}"
+  },
+  {
+    "id": "alpha",
+    "body": "<div></div>",
+    "css": "html{background-color:blue}div{width:40px;height:30px;background-color:rgb(255 0 0 / 50%)}"
+  },
+  {
+    "id": "fractional",
+    "body": "<div>A B</div>",
+    "css": "div{position:relative;top:.25px;left:.25px;width:30px;height:15px;border-width:1px;border-style:solid;border-color:red;background-color:blue;overflow:hidden}"
+  },
+  {
+    "id": "multicolor-border",
+    "body": "<div></div>",
+    "css": "div{width:30px;height:30px;border-width:3px;border-style:solid;border-top-color:red;border-right-color:green;border-bottom-color:blue;border-left-color:black}"
+  }
+]

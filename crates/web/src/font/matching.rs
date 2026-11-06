@@ -52,7 +52,7 @@ impl Selection {
     pub fn collection_index(&self) -> u32 {
         self.index
     }
-    pub(super) fn parsed(&self) -> Result<ttf_parser::Face<'_>> {
+    pub(crate) fn parsed(&self) -> Result<ttf_parser::Face<'_>> {
         let mut face = ttf_parser::Face::parse(self.data(), self.index).map_err(|_| Error::Invalid)?;
         for coordinate in &self.coordinates {
             face.set_variation(ttf_parser::Tag::from_bytes(&coordinate.tag), coordinate.value).ok_or(Error::Invalid)?;

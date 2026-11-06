@@ -2867,3 +2867,99 @@ again (**4.391 s wall**), and the full workspace release build passes again
 (**41.504 s wall**, cargo 41.24 s). Commands/times are preserved in
 `measurements/2026-11-06-flow-latest-main-checks.json`. Main integration is part
 of the regular checkpoint workflow, not a one-off catch-up.
+
+## 2026-11-06 — retained page paint and the first native Browser window
+
+Added original retained paint scenes over the DOM flow boxes: backgrounds,
+solid borders, foreground span colours/visibility, simple relative paint
+order and rectangular ancestor clips. An eight-way bounds hierarchy avoids
+walking all paint commands for each tile. Text commands reference retained
+shaped glyphs and split after at most 64 glyphs; native variable-font outlines
+are cached with font leases and explicit payload/count limits. `tiny-skia`
+supplies pure-Rust path coverage/SIMD kernels. Tile-local conversion preserves
+fractional geometry far down a document (including the regression at
+16,777,216.25 CSS pixels). This is CPU raster plus native GPU texture
+composition, not complete GPU web painting or Chromium font fidelity.
+
+`page::load` connects the original parser, embedded styles, initial UA rules,
+font host, normal flow and paint on a worker. Independent Chrome capture
+caught an actual body-canvas propagation mistake in the initial UA defaults;
+Canvas now supplies the backing surface without overriding a transparent
+root. Thirty of **36 exact Chrome pixel observations** pass at 1×/1.5×/2×.
+Six fractional/multicolour-border observations remain **failures**, with raw
+PNGs, browser revision, exact comparator and an explicitly ignored exact
+test. No tolerance or masks hide them. Fixed original rectangular glyphs
+are not arbitrary-font raster or website evidence.
+
+`olo-browser` is now a native single-document development app. It opens
+about/local UTF-8 HTML, streams worker progress/tiles, exposes native address,
+Go/Stop, page text, status and menus to agents, supports address/reload/escape
+keys and launch forwarding, and retains scene/tiles across scrolls. Palette
+and device scale invalidate the page key; viewport resizing can reuse
+prepared text. File reads, parsing/font/layout/paint, image preparation and
+reclamation run off the UI thread. A 256-entry tile LRU caps cached tile
+payload at **64 MiB**. Signed scrolling leaves room for the viewport and
+aligned tile end even on extreme CSS document heights. Network navigation
+is an explicit error; scripts remain inert. Agent labels are visible paint
+runs, not semantic DOM snapshots or a complete input/action API.
+
+Fifteen live light/dark/night reviews at **1×/1.25×/1.5×/1.75×/2×** pass.
+The initial status inset error was fixed at every scale. The live Browser
+layout lint also passes at 1280×800, 1×/1.5×/2× light/dark. Its existing test
+session paths were redirected in-memory into owned `/var/tmp` wrappers,
+without changing personal-session files or the repository's general tools.
+Added Browser to the regular lint roster. The visual journal records the
+native page; journal regeneration first required fetching existing LFS
+screenshots. A restarted owned app_server caused kit re-execution and
+restored the file and CSS scroll position. Address selection, forwarded opens,
+structured network-error status and Escape cancellation were checked.
+No personal session was installed, upgraded, reloaded or driven.
+
+Release measurements: **30 frozen CPU0 processes**, three alternating runs;
+raw results, source/binary hashes and replay scripts in
+`measurements/2026-11-06-paint*`. Parent flow/style executables exactly match
+those committed in the preceding flow evidence. Two existing main-worktree
+builds were waited for, never stopped. All common flow hashes and cached/
+uncached raster hashes agree. An initial harness scale mismatch was rejected
+as Stale; the corrected harness was rebuilt and the full measurement rerun.
+
+At 1,000 paragraphs, 1×/1.5×/2× medians (µs): cached scene build
+**4,562/4,545/4,550**, uncached **25,410/25,141/25,367**; indexed query
+**.167/.150/.131**, linear scan **2.061/2.038/2.073**; cached 256² tile raster
+**679/469/348**, uncached **885/603/453**. Retained command/index payload is
+**224,360 B**, with **15 glyphs / 5,626 B outline payload** and a conservative
+**712,460 B font-source lease** count. Cached 32-box worker-step maximum was
+**179.513 µs**. These exclude shared DOM/style/layout/text and allocator/GPU
+costs. The 100-paragraph 1× raster median was **927 vs 891 µs**, so caching
+was not faster in every wall-time observation. CLI RSS spans **9,588–9,824
+KiB cached**, **9,656–9,732 uncached**, not a browser footprint.
+
+Common pre/post unique-1k width-400 flow resize median **678.990→680.568 µs**;
+RSS **12,480–12,616→12,504–12,792 KiB**. Common 10k style build medians (ms)
+**15.113→15.146 / 21.549→21.516 / 29.070→28.898** (bare/uniform/varying).
+Those payloads are unchanged; Layout retains one additional scale value.
+No universal speedup or broad performance acceptance follows.
+
+The native release app on a 400-row fixture measured **0% CPU, zero wakeups,
+zero frames** over a three-second idle sample. An earlier sample's RSS was
+**90,900 KiB** including native window/font/GPU-related mappings, not an
+inclusive GPU-memory budget. Final 1.5× scroll drag/flick/wheel median frame
+intervals **8.33/8.35/8.34 ms**, first movement **28.7/28.6/3.9 ms**, slowest
+client draws **3.32/.71/2.67 ms**. There was **one drag hitch** and two
+half-pixel wheel acceleration discontinuities. Keep touchpad latency and
+scroll smoothness open; these are not perfect results. An intermediate sample
+overlapping our own build was discarded and repeated after builds stopped.
+
+**216 default / 215 all-feature web release tests pass; one explicitly ignored
+pixel-gap test**. The browser extreme-scroll release test, targeted strict
+clippy (`--no-deps`, default/all-feature web), formatting/diff checks and full
+workspace release builds pass. Dependency clippy without `--no-deps` hit the
+existing GPUI build-script borrow lint; that unrelated dependency was not
+edited. Fetched main repeatedly; it remains at already-merged **c61acc5d**.
+
+Full web rendering/interaction, flex/grid/table, arbitrary mixed typography,
+networking/V8, isolation, images/media, semantic agent actions, native icon/
+application registration, universal dark/night and Olo/password/passkey
+integration remain required. **Goal active: 0/100 websites and 0/3,000
+website combinations accepted.** Next: fix the independent pixel failures
+and build actual document interaction, then the network/runtime path.

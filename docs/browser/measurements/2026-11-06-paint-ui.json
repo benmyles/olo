@@ -1,0 +1,1174 @@
+{
+  "scope": "Owned browser-paint Agent Screen only. Static about page live scale/theme matrix; 400-row local HTML scroll/idle; not website, arbitrary-font fidelity or universal dark-mode acceptance.",
+  "matrix": [
+    {
+      "scale": 1,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.5,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.5,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.5,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.5,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 2,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 2,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 2,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 2.0,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.25,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.25,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.25,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.25,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.75,
+      "theme": "light",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": false,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.75,
+      "theme": "dark",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    },
+    {
+      "scale": 1.75,
+      "theme": "night",
+      "review": [
+        {
+          "title": "Browser",
+          "width": 1000,
+          "height": 700,
+          "scale": 1.75,
+          "dark": true,
+          "findings": []
+        }
+      ],
+      "settings_reply": {
+        "type": "ok"
+      }
+    }
+  ],
+  "idle": {
+    "seconds": 3.0,
+    "total": {
+      "cpu": 0.0,
+      "wakeups": 0
+    },
+    "threads": [
+      {
+        "tid": 2267237,
+        "name": "olo-browser",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267252,
+        "name": "Timer",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267287,
+        "name": "theme-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267291,
+        "name": "menus",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267292,
+        "name": "upgrade-watch",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267310,
+        "name": "olo-bro:disk$0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267333,
+        "name": "olo-br:traceq0",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267368,
+        "name": "browser-page",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267370,
+        "name": "glyph-warm",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      },
+      {
+        "tid": 2267371,
+        "name": "olo-browser",
+        "cpu": 0.0,
+        "user": 0.0,
+        "sys": 0.0,
+        "wakeups": 0,
+        "preempted": 0
+      }
+    ],
+    "windows": [
+      {
+        "title": "Browser",
+        "frames": 0,
+        "per_second": 0.0,
+        "mean_us": 0,
+        "ui_us": 0,
+        "tessellate_us": 0,
+        "submit_us": 0,
+        "slowest_us": 0
+      }
+    ]
+  },
+  "scroll": [
+    {
+      "kind": "drag",
+      "frames": 98,
+      "moving_frames": 96,
+      "frame_ms": 8.33,
+      "hitches": 1,
+      "still": 0,
+      "first_move_ms": 28.7,
+      "slowest_draw_ms": 3.32,
+      "distance": 700.0,
+      "reached_end": false,
+      "step_vs_speed": {
+        "mean": 0.982,
+        "sd": 0.055,
+        "min": 0.711,
+        "max": 1.333,
+        "off_25pct": 2,
+        "frames": 92
+      }
+    },
+    {
+      "kind": "flick",
+      "frames": 19,
+      "moving_frames": 17,
+      "frame_ms": 8.35,
+      "hitches": 0,
+      "still": 0,
+      "first_move_ms": 28.6,
+      "slowest_draw_ms": 0.71,
+      "distance": 329.3,
+      "reached_end": false
+    },
+    {
+      "kind": "wheel",
+      "frames": 55,
+      "moving_frames": 53,
+      "frame_ms": 8.34,
+      "hitches": 0,
+      "still": 0,
+      "first_move_ms": 3.9,
+      "slowest_draw_ms": 2.67,
+      "distance": -134.7,
+      "reached_end": false,
+      "notches": {
+        "count": 3,
+        "frames_each": [
+          18,
+          18,
+          17
+        ],
+        "jumps_up": 2,
+        "worst_jump": 0.5
+      }
+    }
+  ],
+  "earlier_scroll_before_coordinate_guard": [
+    {
+      "kind": "drag",
+      "frames": 98,
+      "moving_frames": 96,
+      "frame_ms": 8.32,
+      "hitches": 0,
+      "still": 0,
+      "first_move_ms": 28.5,
+      "slowest_draw_ms": 0.7,
+      "distance": 697.3,
+      "reached_end": false,
+      "step_vs_speed": {
+        "mean": 0.979,
+        "sd": 0.039,
+        "min": 0.712,
+        "max": 1.246,
+        "off_25pct": 1,
+        "frames": 92
+      }
+    },
+    {
+      "kind": "flick",
+      "frames": 19,
+      "moving_frames": 17,
+      "frame_ms": 8.31,
+      "hitches": 0,
+      "still": 0,
+      "first_move_ms": 28.4,
+      "slowest_draw_ms": 0.44,
+      "distance": 329.3,
+      "reached_end": false
+    },
+    {
+      "kind": "wheel",
+      "frames": 54,
+      "moving_frames": 52,
+      "frame_ms": 8.35,
+      "hitches": 0,
+      "still": 0,
+      "first_move_ms": 8.6,
+      "slowest_draw_ms": 0.58,
+      "distance": -132.7,
+      "reached_end": false,
+      "notches": {
+        "count": 3,
+        "frames_each": [
+          17,
+          18,
+          17
+        ],
+        "jumps_up": 0,
+        "worst_jump": 0.0
+      }
+    }
+  ],
+  "final_review": [
+    {
+      "title": "Browser",
+      "width": 1000,
+      "height": 700,
+      "scale": 1.5,
+      "dark": true,
+      "findings": []
+    }
+  ],
+  "before_restart": [
+    {
+      "window": 2,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "/var/tmp/olo-browser-research/paint/tall.html",
+          "x": 65.0,
+          "y": 104.28571,
+          "width": 792.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.28571,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.28571,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "x": 53.0,
+          "y": 140.2857,
+          "width": 1000.0,
+          "height": 577.1429,
+          "enabled": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 19: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 140.2857,
+          "width": 251.52,
+          "height": 12.905144,
+          "enabled": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 20: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 178.25371,
+          "width": 251.52,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 21: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 219.39658,
+          "width": 251.52,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 22: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 260.53943,
+          "width": 251.52,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 11,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 23: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 301.68228,
+          "width": 251.52,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 12,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 24: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 342.82513,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 13,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 25: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 383.968,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 14,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 26: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 425.11084,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 15,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 27: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 466.2537,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 16,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 28: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 507.39658,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 17,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 29: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 548.5394,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 18,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 30: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 589.6823,
+          "width": 251.52,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 19,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 31: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 630.82513,
+          "width": 251.52,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 20,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 32: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 671.968,
+          "width": 251.52,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 21,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 33: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 713.11084,
+          "width": 251.52,
+          "height": 4.317749,
+          "enabled": true
+        },
+        {
+          "id": 22,
+          "parent": 1,
+          "role": "Label",
+          "name": "Scroll fixture",
+          "x": 69.0,
+          "y": 733.4286,
+          "width": 968.0,
+          "height": 16.571411,
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "after_restart": [
+    {
+      "window": 1,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "/var/tmp/olo-browser-research/paint/tall.html",
+          "x": 65.0,
+          "y": 104.28571,
+          "width": 792.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.28571,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.28571,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "x": 53.0,
+          "y": 140.2857,
+          "width": 1000.0,
+          "height": 577.1429,
+          "enabled": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 19: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 140.2857,
+          "width": 251.52,
+          "height": 12.905144,
+          "enabled": true
+        },
+        {
+          "id": 8,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 20: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 178.25371,
+          "width": 251.52,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 9,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 21: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 219.39658,
+          "width": 251.52,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 10,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 22: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 260.53943,
+          "width": 251.52,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 11,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 23: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 301.68228,
+          "width": 251.52,
+          "height": 16.080002,
+          "enabled": true
+        },
+        {
+          "id": 12,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 24: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 342.82513,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 13,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 25: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 383.968,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 14,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 26: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 425.11084,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 15,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 27: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 466.2537,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 16,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 28: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 507.39658,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 17,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 29: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 548.5394,
+          "width": 251.52,
+          "height": 16.079987,
+          "enabled": true
+        },
+        {
+          "id": 18,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 30: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 589.6823,
+          "width": 251.52,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 19,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 31: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 630.82513,
+          "width": 251.52,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 20,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 32: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 671.968,
+          "width": 251.52,
+          "height": 16.080017,
+          "enabled": true
+        },
+        {
+          "id": 21,
+          "parent": 1,
+          "role": "Label",
+          "name": "Row 33: office alpha beta gamma.",
+          "x": 63.12343,
+          "y": 713.11084,
+          "width": 251.52,
+          "height": 4.317749,
+          "enabled": true
+        },
+        {
+          "id": 22,
+          "parent": 1,
+          "role": "Label",
+          "name": "Scroll fixture",
+          "x": 69.0,
+          "y": 733.4286,
+          "width": 968.0,
+          "height": 16.571411,
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "cancelled": [
+    {
+      "window": 2,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "focused": true,
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "nodes": [
+        {
+          "id": 1,
+          "role": "Window",
+          "name": "Browser",
+          "x": 53.0,
+          "y": 66.0,
+          "width": 1000.0,
+          "height": 700.0,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "parent": 1,
+          "role": "MenuBarItem",
+          "name": "File",
+          "x": 61.0,
+          "y": 67.0,
+          "width": 35.188,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true,
+          "selected": false
+        },
+        {
+          "id": 3,
+          "parent": 1,
+          "role": "TextInput",
+          "name": "Address",
+          "value": "about:enginehttps://example.com",
+          "x": 65.0,
+          "y": 104.28571,
+          "width": 792.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 4,
+          "parent": 1,
+          "role": "Button",
+          "name": "Go",
+          "x": 869.0,
+          "y": 104.28571,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 5,
+          "parent": 1,
+          "role": "Button",
+          "name": "Stop",
+          "x": 961.0,
+          "y": 104.28571,
+          "width": 80.0,
+          "height": 24.0,
+          "enabled": true,
+          "clickable": true
+        },
+        {
+          "id": 6,
+          "parent": 1,
+          "role": "Document",
+          "name": "Page",
+          "x": 53.0,
+          "y": 140.2857,
+          "width": 1000.0,
+          "height": 577.1429,
+          "enabled": true
+        },
+        {
+          "id": 7,
+          "parent": 1,
+          "role": "Label",
+          "name": "Stopped",
+          "x": 69.0,
+          "y": 733.4286,
+          "width": 968.0,
+          "height": 16.571411,
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "final_window": [
+    {
+      "id": 1,
+      "app_id": "olo.browser",
+      "title": "Browser",
+      "pid": 2267237,
+      "workspace": 0,
+      "minimized": false,
+      "focused": true,
+      "kept": false,
+      "groupable": true,
+      "output": "HEADLESS-1",
+      "frame": {
+        "x": 48,
+        "y": 40,
+        "width": 1010,
+        "height": 731
+      },
+      "content": {
+        "x": 53,
+        "y": 66,
+        "width": 1000,
+        "height": 700
+      },
+      "least": [
+        650,
+        511
+      ],
+      "tab_frame": {
+        "x": 48,
+        "y": 40,
+        "width": 100,
+        "height": 21
+      },
+      "stack": 0,
+      "glowing": true,
+      "surface": 32
+    }
+  ],
+  "process_status": "Name:\tolo-browser\nUmask:\t0022\nState:\tS (sleeping)\nTgid:\t2265916\nNgid:\t0\nPid:\t2265916\nPPid:\t1\nTracerPid:\t0\nUid:\t1000\t1000\t1000\t1000\nGid:\t1000\t1000\t1000\t1000\nFDSize:\t64\nGroups:\t10 1000 \nNStgid:\t2265916\nNSpid:\t2265916\nNSpgid:\t2265916\nNSsid:\t2265827\nKthread:\t0\nVmPeak:\t 1361352 kB\nVmSize:\t 1361272 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t   90900 kB\nVmRSS:\t   90900 kB\nRssAnon:\t   32476 kB\nRssFile:\t   58384 kB\nRssShmem:\t      40 kB\nVmData:\t   77736 kB\nVmStk:\t     136 kB\nVmExe:\t   18984 kB\nVmLib:\t  100888 kB\nVmPTE:\t     616 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t9\nSigQ:\t1/254246\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t0000000000000000\nSigIgn:\t0000000000201000\nSigCgt:\t00000001004004e8\nCapInh:\t0000000800000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t000001ffffffffff\nCapAmb:\t0000000000000000\nNoNewPrivs:\t0\nSeccomp:\t0\nSeccomp_filters:\t0\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\tffff\nCpus_allowed_list:\t0-15\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t420\nnonvoluntary_ctxt_switches:\t19\nx86_Thread_features:\t\nx86_Thread_features_locked:\t\n",
+  "notes": [
+    "An intermediate sample overlapped our own clippy/build and was discarded; the final scroll/idle samples were taken after all owned builds stopped.",
+    "Final coordinate guard caps signed device scrolling and bounds viewports; the extra release test checks room for viewport and aligned tile ends.",
+    "Native windows/agent labels are readable; complete DOM semantics, stable actions, input, links and credential mediation are not implemented.",
+    "Night setting enables the compositor night-light while using the dark palette; screenshot pipeline is not an independent calibrated output-colour test."
+  ],
+  "source_hashes": {
+    "apps/browser/src/worker.rs": "224a03f9b8b33e8726e0fd6479eeedd0718f03ef485164cc6f5308e1d525640f",
+    "apps/browser/src/main.rs": "4c9193a89a85ccdb59f946adeafc29c0ce6a7f0f01a25d59f5ebc1a14817b25d",
+    "apps/browser/Cargo.toml": "7e0835174d524a6b205646bc0379d71e343643fbfa4a52af80b6affaa38a9453",
+    "tools/dev/ui-lint": "f3a09ba59d7229fee22005d234a663497ab4dec5a0821371a28cb9503d66e84b"
+  },
+  "fixture": {
+    "path": "crates/web/tests/paint-fixtures/scroll.html",
+    "sha256": "9a6ebfaf7307352a356237d368570cfa660c96456021354b1b2c75935e606301",
+    "rows": 400
+  }
+}

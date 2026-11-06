@@ -179,8 +179,12 @@ pub struct Layout {
     cache: Arc<Cache>,
     geometry: Box<[Geometry]>,
     texts: Box<[Option<inline::Layout>]>,
+    scale: f64,
 }
 impl Layout {
+    pub fn device_scale(&self) -> f64 {
+        self.scale
+    }
     pub fn cache(&self) -> &Arc<Cache> {
         &self.cache
     }
@@ -259,7 +263,13 @@ pub struct Job<'a> {
 impl<'a> Job<'a> {
     pub fn new(engine: &'a mut shaping::Engine, scope: &'a Scope, cache: Arc<Cache>, viewport: Viewport, limits: Limits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
         check(cancel)?;
-        if ![viewport.width, viewport.height].into_iter().all(|v| v.is_finite() && v >= 0.) || !viewport.scale.is_finite() || viewport.scale <= 0. {
+        if ![viewport.width, viewport.height].into_iter().all(|v| v.is_finite() && v >= 0.)
+            || !viewport.scale.is_finite()
+            || viewport.scale <= 0.
+            || !(viewport.scale * 64.).is_finite()
+            || viewport.scale * 64. == 0.
+            || ![viewport.width, viewport.height].into_iter().all(|v| (v * viewport.scale * 64.).is_finite())
+        {
             return Err(Error::Invalid);
         }
         if cache.tree.styles.iter().next().is_some_and(|(_, s)| s.device_scale() != viewport.scale) {
@@ -433,6 +443,6 @@ impl<'a> Job<'a> {
         if !self.progress.finished {
             return Err(Error::Incomplete);
         }
-        Ok(Layout { cache: self.cache, geometry: self.geometry.into_boxed_slice(), texts: self.texts.into_boxed_slice() })
+        Ok(Layout { cache: self.cache, geometry: self.geometry.into_boxed_slice(), texts: self.texts.into_boxed_slice(), scale: self.scale })
     }
 }

@@ -47,6 +47,7 @@ def apps(home):
     tg = os.path.join(home, ".telegram-demo")
     out = [
         ("Activity", ["olo-activity"], {"OLO_ACTIVITY_HELPER": "off"}, False),
+        ("Browser", ["olo-browser", "about:engine"], {}, False),
         ("DeskCalc", ["olo-deskcalc"], {}, False),
         ("Disk Usage", ["olo-disk-usage", home], {}, False),
         ("Doctor", ["olo-doctor"], {"OLO_DOCTOR_HELPER": "off"}, False),

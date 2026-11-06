@@ -1,0 +1,259 @@
+{
+  "scope": "Exact full-surface RGBA comparison; no masks, tolerance or discarded pixels. Authored static fixed-font fixtures, not websites.",
+  "passed": 30,
+  "observations": 36,
+  "rows": [
+    {
+      "file": "canvas-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "canvas-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "canvas-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "root-canvas-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "root-canvas-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "root-canvas-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "glyphs-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "glyphs-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "glyphs-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "colors-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "colors-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "colors-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "border-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "border-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "border-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clip-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clip-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "clip-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "normal-order-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "normal-order-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "normal-order-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "relative-order-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "relative-order-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "relative-order-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "hidden-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "hidden-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "hidden-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "alpha-1.png",
+      "differing_pixels": 0,
+      "pixels": 10000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "alpha-1.5.png",
+      "differing_pixels": 0,
+      "pixels": 22500,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "alpha-2.png",
+      "differing_pixels": 0,
+      "pixels": 40000,
+      "max_channel_error": 0,
+      "passed": true
+    },
+    {
+      "file": "fractional-1.png",
+      "differing_pixels": 208,
+      "pixels": 10000,
+      "max_channel_error": 112,
+      "passed": false
+    },
+    {
+      "file": "fractional-1.5.png",
+      "differing_pixels": 199,
+      "pixels": 22500,
+      "max_channel_error": 192,
+      "passed": false
+    },
+    {
+      "file": "fractional-2.png",
+      "differing_pixels": 417,
+      "pixels": 40000,
+      "max_channel_error": 192,
+      "passed": false
+    },
+    {
+      "file": "multicolor-border-1.png",
+      "differing_pixels": 12,
+      "pixels": 10000,
+      "max_channel_error": 128,
+      "passed": false
+    },
+    {
+      "file": "multicolor-border-1.5.png",
+      "differing_pixels": 300,
+      "pixels": 22500,
+      "max_channel_error": 255,
+      "passed": false
+    },
+    {
+      "file": "multicolor-border-2.png",
+      "differing_pixels": 24,
+      "pixels": 40000,
+      "max_channel_error": 128,
+      "passed": false
+    }
+  ]
+}

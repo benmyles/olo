@@ -207,7 +207,8 @@ revalidate the merged workspace and push the integration with browser work.
   percentage/box-sizing/auto margins, margin collapse and relative blocks;
   139 independent Chrome DOM-rectangle fixtures at three scales (417 observations),
   source-safe shared paragraphs and cancellation/quotas. This is partial normal
-  flow, with explicit unsupported formatting and no painting/website passes.
+  flow, with explicit unsupported formatting; those geometry checks provide
+  no pixel or website acceptance.
 - [ ] Profile compact geometry and registry costs: current box/geometry records
   are 56/128 B. Source-safe paragraph sharing reduces repeated glyph/index
   payload by 1000× in repeated-text fixtures, but unique tree+prepare median
@@ -216,6 +217,21 @@ revalidate the merged workspace and push the integration with browser work.
   similar process CPU. See 2026-11-06-flow raw measurements; no universal win.
 - [ ] Implement complete block/inline, flex/grid/table layout,
   positioning, fragmentation and incremental layout.
+- [x] Initial retained static page scenes, outline cache, indexed tile queries,
+  bounded pure-Rust CPU raster and native GPU tile composition. Thirty exact
+  Chrome pixel observations pass; six fractional/multicolour-border observations
+  remain failures, recorded explicitly with an ignored exact test.
+- [x] Initial native single-page shell: local HTML/about page, worker progress,
+  Stop/Escape, address shortcuts, retained scrolling, readable agent text/status,
+  forwarded files and kit restart restoration. Fifteen live scale/theme reviews
+  and 1280×800 native layout lint pass. This does not finish browser interaction.
+- [ ] Profile native tile upload/cache size and browser memory (initial 400-row
+  window RSS ~90,900 KiB); reduce touchpad first-movement latency (~29 ms),
+  the observed drag hitch and half-pixel wheel discontinuities. Release
+  observations are in 2026-11-06-paint-ui.json, not universal acceptance.
+- [ ] Fix fractional edge coverage, physical border snapping and multicolour
+  corners; arbitrary-font hinting/raster parity and inline backgrounds/ligature
+  colour clipping. Complete CSS paint/stacking and semantic DOM/hit actions.
 - [ ] Retained GPU painting, clipping, compositing, scrolling, images,
   SVG, canvas, fonts, video and audio; measure each on release builds.
 - [ ] Native browser shell, tabs/navigation/find/history/bookmarks/downloads.
@@ -265,10 +281,11 @@ HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostic
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.
 
-Next: native page painting over the initial DOM flow boxes; complete mixed
+Next: resolve the six independent pixel failures and initial shell input/links;
+complete mixed
 inline typography, fractional device shaping/line metrics, visual-edge
 whitespace/other-Zs hanging, tab stops, CSS tailoring, UA defaults, clipping,
 scrolling and incremental box reuse. Initial native font/shaping
 work is verified at glyph/Unicode/library scope; no website acceptance follows.
 Web fonts/sanitization, complete CSS/live invalidation, networking/V8, the native
-shell, universal dark mode and agent/Olo/password/passkey integration remain.
+complete shell, universal dark mode and agent/Olo/password/passkey integration remain.

@@ -4,9 +4,11 @@ The engine crate is `olo-web`. It parses supported static HTML into its
 own compact document storage, constructs generic CSS syntax and compiles/matches
 selectors against a stable borrowed tree, compiles/resolves typed colors and
 computes frozen styles over the supported property registry, selects native fonts
-and prepares retained glyph runs with original Unicode text orchestration. It has no
-network, UA stylesheet, complete style coverage/live invalidation, layout, JavaScript execution, browser shell or
-demonstrated website compatibility.
+and prepares retained glyph runs with original Unicode text orchestration.
+Initial normal-flow layout, retained static paint, a partial UA stylesheet and
+native single-page development shell are implemented. Network, complete style/
+layout/paint/live invalidation, JavaScript execution, full browser interaction
+and demonstrated website compatibility remain required.
 
 ## Parse API
 
@@ -1820,10 +1822,11 @@ objects/controls/br/wbr, floating/absolute/fixed/clearance and vertical layout,
 scrollbar-dependent overflow, intrinsic/fit-content sizes, nonzero inline
 edges/borders and positioned/vertically aligned inline boxes. Mixed inline
 font requests, sizes, directions, line heights or whitespace are rejected at
-preparation. Colors/source identity survive grouping, but there is no painting,
-inline background/decorations, clipping, scrolling, caret/selection, Web IDL or
-complete CSS Inline/Block acceptance yet. Full HTML UA defaults, ordinary mixed
-markup and actual raster/website integration remain required.
+preparation. Colors/source identity survive grouping and feed the initial
+paint/clip/scroll layer described below. Inline backgrounds/decorations,
+caret/selection, Web IDL and complete CSS Inline/Block acceptance are still
+required. Full HTML UA defaults, ordinary mixed markup and website integration
+remain open.
 
 `tests/flow-fixtures` pins 139 authored inputs and independent Chrome DOM
 rectangles at 1×/1.5×/2×: 417 observations, each checked with one- and
@@ -1837,3 +1840,47 @@ invokes Chrome; the local fixture server is development-only.
 References: [normal block widths](https://www.w3.org/TR/CSS22/visudet.html#blockwidth),
 [collapsing margins](https://www.w3.org/TR/CSS22/box.html#collapsing-margins),
 [CSS Display](https://www.w3.org/TR/css-display-3/).
+
+### Initial static page paint and native shell
+
+`page::load` runs the current HTML→styles→boxes→prepared text→flow→paint
+pipeline on a worker, collecting embedded author styles, an initial UA
+stylesheet, title, inert-script count and stylesheet diagnostics. It uses
+host Canvas as the opaque backing surface, leaving the root background
+transparent so body canvas propagation works. This is not the full HTML
+rendering stylesheet or runtime; external stylesheets/media contexts are
+currently explicit errors.
+
+`paint::BuildJob` retains the flow layout and source/style identity. Box
+origins are accumulated once in preorder; original paint commands share the
+existing shaped glyph arrays. Backgrounds, solid borders, simple normal and
+relative paint order, foreground span colours/visibility and rectangular
+ancestor clips form the first paint subset. Text commands split at colour
+changes or 64 glyphs to bound tile work on long lines. An eight-way bounds
+hierarchy queries only commands intersecting a damaged/visible region and
+restores their paint order. Scene construction has incremental worker steps,
+quotas and cancellation checks; sorting/font parsing is not a hard realtime
+or security sandbox.
+
+The worker outline cache retains actual variable-font instances and source
+leases; pointer keys cannot be reused while a cache entry is alive. It is
+bounded by font count/source bytes, glyph count/path payload and path segment
+work. The pure-Rust `tiny-skia` raster library provides path coverage and its
+SIMD kernels; no SIMD speedup is claimed without a measured counterfactual.
+Only bounded tiles allocate raster surfaces. Global f64 coordinates subtract
+the tile origin before conversion to f32, preserving fractional details in
+far-scrolled documents. Same-colour borders use one ring; fractional coverage
+and multicolour border corners/device widths still fail independent Chrome
+pixels. Colour/SVG/bitmap font paint, hinting parity, full CSS backgrounds,
+radii, decoration, opacity/compositing and GPU web raster are still required.
+
+`apps/browser` composites those device-resolution tiles using the shared
+kit's nearest texture path, one texel per physical pixel. Worker page keys
+include source revision, viewport, scale and palette; resizes can retain
+prepared text, scrolls retain the scene, and an LRU reuses raster tiles.
+Dropping recycled visible images and evicting worker caches occur off the UI
+thread. The current tile cache cap is 64 MiB payload, not an inclusive browser
+memory budget. The shell has structured controls, page/visible text and status,
+menus, cancel, local-file forwarding and kit reconnect/re-exec state. This
+initial readable paint surface is not a semantic DOM action protocol. Full
+interaction, isolation, network/JS and desktop/credential integration remain.

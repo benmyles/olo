@@ -6992,6 +6992,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-browser"
+version = "0.1.0"
+dependencies = [
+ "olo-crash",
+ "olo-theme",
+ "olo-ui",
+ "olo-web",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "olo-brush"
 version = "0.1.0"
 dependencies = [
@@ -8096,6 +8109,7 @@ dependencies = [
  "sha2 0.10.9",
  "simdutf8",
  "smallvec",
+ "tiny-skia 0.12.0",
  "triomphe",
  "ttf-parser",
  "unicode-bidi",

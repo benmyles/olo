@@ -1,0 +1,336 @@
+{
+  "version": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/157.0.8103.38",
+    "revision": "@a733b5afbb3ba618844ff8876b89ad1a774b2f18",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+    "jsVersion": "15.7.112.23"
+  },
+  "rows": [
+    {
+      "file": "canvas-1.png",
+      "sha256": "820905622a1763b5effd5155c41d4376ef7b02ec219a328061aa454b99ff6b18",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "root-canvas-1.png",
+      "sha256": "b2aeca006fc672013efca4ea377470a7b74c415ec4bb7cbc694e94d5cf405b62",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "glyphs-1.png",
+      "sha256": "b6989b0bc07b4285f5af79d1622b4d2213f38e6090697ae0c1b7899f560cf354",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "colors-1.png",
+      "sha256": "29857f81368019bfd0db1b17f0b46b0c759ab25ddec0211179f4d4afcf31792a",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "border-1.png",
+      "sha256": "0bbfe2121f7ce50a5150169b6e8b0245a8abb5468ab2df4248e068a2a696c404",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "clip-1.png",
+      "sha256": "102bc4b1f5ba2fc856420996ca9a21b2e02430c2e406506b0c2f863521a8f6d8",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "normal-order-1.png",
+      "sha256": "f4421fb903d16f191026e556cc84b98939c8698d909e5a34d19b856bde545bf0",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "relative-order-1.png",
+      "sha256": "49bfd6b05a417b0ed89b75253af8034051174a22e35fdc489ec3ae1c4d5af4fb",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "hidden-1.png",
+      "sha256": "bfa9e3953f1592780a92552c0a41fe92d827450f2a3142f7635ec576cc3e2c01",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "alpha-1.png",
+      "sha256": "68c56d1d76ec1b94d8d53709c55151dae73232de5945ded0cbfd68e7cf5464a3",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "fractional-1.png",
+      "sha256": "34fe90cf7b0dc374c60bab59d15d6215f3d1d3aaddf1bd0a63b9adede8c8925c",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "multicolor-border-1.png",
+      "sha256": "76049eac3958007f6e39b58e174af61062d8fb8437d93f55c2fe19752e29a7c9",
+      "metrics": {
+        "dpr": 1,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "canvas-1.5.png",
+      "sha256": "3b7d5a53804c9bf0ceabf5632bc3e200434b37bff693bdb07eac79c1875c0da5",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "root-canvas-1.5.png",
+      "sha256": "fba930c2a0de0efb7b3e81ad7ce16959a7c538af22e318cf015d779cb126a5b0",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "glyphs-1.5.png",
+      "sha256": "8592b089f20ade9de7850d05c718db52dd87f84fbf8c4bc06d8b73a9d23eeb9b",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "colors-1.5.png",
+      "sha256": "3c7a0cb669510803c955b55918cabb7944848bf2fb8a8eba4497d9c016ca8b6d",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "border-1.5.png",
+      "sha256": "0176cdb9b9cea56038f9161a22caca4f3a188bc785eaeac8fde624b301ff417e",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "clip-1.5.png",
+      "sha256": "7508e7a150dc7eea07198b148b21732373231980d30677d3511b94bd35c0f96f",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "normal-order-1.5.png",
+      "sha256": "942d82803bccfe5c79be5aa60bac8b1b4deba3e7fdefd5f1deddf37f16b2b7c8",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "relative-order-1.5.png",
+      "sha256": "79bf5093867c2612c260fa125deff70d5ec4073fde2e28601dd83012d014e5a5",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "hidden-1.5.png",
+      "sha256": "4f9fcdf8312846549dbb221f96fbc3cf46c6a37e97d58a0a8765884d8d5379dc",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "alpha-1.5.png",
+      "sha256": "8634934ec18f3ce6bd3766f7f8a2fd9e6fa374e6239491b5e8ae619db671b500",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "fractional-1.5.png",
+      "sha256": "cd5f8f36e5fb044ca0ee0acee4b68969b33b3aee278126787f07066e6ef48c3a",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "multicolor-border-1.5.png",
+      "sha256": "fdb10556a017f464b25f81e5b4cdbe903d50ef1d32f2538f339c3e99ad4da5e0",
+      "metrics": {
+        "dpr": 1.5,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "canvas-2.png",
+      "sha256": "55746f8eb8fe6c9c129ebd5449da69ab2289807abd6cc093a71335bee684e7a3",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "root-canvas-2.png",
+      "sha256": "6cc3ddded11a19bfaab26320f6a731041b682c130f88c9dcf9b79064248c8f63",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "glyphs-2.png",
+      "sha256": "bd7ef4d1fc36b1c961a09a07699ca59888e103fd984129dd732f249061a3d3df",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "colors-2.png",
+      "sha256": "bd7eed37abc6f06156f8ce3c19a8fd2af8a63c898832569174d4a46882a403ed",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "border-2.png",
+      "sha256": "432a625d6ccebc02a5170409ff08e9a9e4a786f2fe67e60b9372decbb2e98942",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "clip-2.png",
+      "sha256": "6cb8f86dd98b51540838f3c0901202d9f61bd259c6d2b96a34df50c695dd37f1",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "normal-order-2.png",
+      "sha256": "b6c31948ffb5442e4c3443098174cce66605f40810740c71304dba37c41d3aef",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "relative-order-2.png",
+      "sha256": "5034afd640234482eb182bd412e50ffadbb2a29decd0bf8098afbdf988d7670c",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "hidden-2.png",
+      "sha256": "df88b5fcc4f68af9e9dd34cd2067fcc690cb00a9c8c761f74fc0791458a1e301",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "alpha-2.png",
+      "sha256": "b0b300f830dc6de76ae4fd39b7faad29d2eabc8e2e68a7955b781e1236e26483",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "fractional-2.png",
+      "sha256": "2601c21e30662ff3ec56318a862179c64d61d5ae92e5f8f07b51606d7eb99966",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    },
+    {
+      "file": "multicolor-border-2.png",
+      "sha256": "24b6fb747586e7bebc952fe144f88cca402cbe89fc93e76e11a450503a185355",
+      "metrics": {
+        "dpr": 2,
+        "width": 100,
+        "height": 100
+      }
+    }
+  ],
+  "scope": "12 authored static fixtures at 3 emulated DPRs on owned Olo Chrome. Fixed original font; pixels, not websites or arbitrary typography."
+}
