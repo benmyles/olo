@@ -3,6 +3,12 @@
 //! without a drag) cancels. `--record --region` picks the part to record
 //! the same way (`pick_region`).
 //!
+//! A bar at the top of each screen, as CleanShot X's: a shape the drag
+//! keeps (Free, 16:9, 4:3, 1:1; keys 1 to 4; ⇧ makes a free drag
+//! square), and sizes (1280 × 720, 1920 × 1080; keys 7 and 8) that place
+//! a frame that many pixels big, which is dragged where it's wanted and
+//! taken with Return or a click in it.
+//!
 //! Every output is captured first, then covered by an overlay showing its
 //! picture one pixel to a device pixel, so what you select is exactly what
 //! you saw.
@@ -22,7 +28,8 @@ use olo_ui::{
         LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, Render, RenderImage, Styled as _, Window, canvas, div, point, px,
         rgb, size,
     },
-    style, theme,
+    metrics as m, style, theme,
+    widgets::buttons::Button,
 };
 
 use crate::capture::{self, Settings, Shot};
@@ -36,6 +43,21 @@ const MIN_DRAG: f32 = 4.0;
 const LOUPE_PIXELS: i64 = 9;
 const LOUPE_CELL: f32 = 10.0;
 const LOUPE_GAP: f32 = 20.0;
+
+/// The shapes a drag may keep (width over height; None: any).
+const SHAPES: [(&str, Option<f32>); 4] = [("Free", None), ("16:9", Some(16.0 / 9.0)), ("4:3", Some(4.0 / 3.0)), ("1:1", Some(1.0))];
+/// Sizes a frame is placed at (pixels).
+const SIZES: [(u32, u32); 2] = [(1280, 720), (1920, 1080)];
+
+/// The corner `z` moved so the rectangle from `a` keeps `ratio` (the
+/// longer way the pointer went sets the size).
+fn keep_shape(a: Point<Pixels>, z: Point<Pixels>, ratio: f32) -> Point<Pixels> {
+    let (dx, dy) = (f32::from(z.x - a.x), f32::from(z.y - a.y));
+    let (w, h) = (dx.abs(), dy.abs());
+    let (w, h) = if h == 0.0 || w / h > ratio { (h * ratio, h) } else { (w, w / ratio) };
+    let (w, h) = if w < 1.0 && h < 1.0 { (dx.abs().max(dy.abs() * ratio), dx.abs().max(dy.abs() * ratio) / ratio) } else { (w, h) };
+    point(a.x + px(w * dx.signum()), a.y + px(h * dy.signum()))
+}
 
 enum Msg {
     /// An output's picture (and it as GPUI draws it), or None if it
@@ -65,6 +87,14 @@ struct Picker {
     /// Picking a colour (`--pick-color`) rather than a region: the one
     /// picked.
     pick: Option<Arc<Mutex<Option<[u8; 3]>>>>,
+    /// The shape drags keep (an index into `SHAPES`).
+    shape: usize,
+    /// A frame placed by a size (screen, its bounds in the window), and
+    /// where in it a press is moving it from.
+    placed: Option<(usize, Bounds<Pixels>)>,
+    moving: Option<Point<Pixels>>,
+    /// Where each screen's bar was drawn (presses there aren't drags).
+    bars: Vec<Bounds<Pixels>>,
 }
 
 /// One output's overlay.
@@ -129,6 +159,26 @@ impl Picker {
         }
     }
 
+    /// A frame `w` × `h` pixels placed in the middle of screen `index`
+    /// (window `bounds`), as large as fits.
+    fn place(&mut self, index: usize, bounds: Bounds<Pixels>, (w, h): (u32, u32), cx: &mut Context<Self>) {
+        let Some(screen) = self.screens.get(index) else { return };
+        let k = screen.image.width() as f32 / f32::from(bounds.size.width).max(1.0);
+        let (mut pw, mut ph) = (w as f32 / k, h as f32 / k);
+        let fit = (f32::from(bounds.size.width) / pw).min(f32::from(bounds.size.height) / ph).min(1.0);
+        (pw, ph) = (pw * fit, ph * fit);
+        self.placed = Some((index, Bounds::centered_at(bounds.center(), size(px(pw), px(ph)))));
+        self.drag = None;
+        cx.notify();
+    }
+
+    /// The frame placed, taken.
+    fn take_placed(&mut self, bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
+        let Some((i, r)) = self.placed.take() else { return };
+        let cut = self.cut(i, bounds, r.origin, r.bottom_right());
+        self.finish(cut, cx);
+    }
+
     /// The rectangle of screen `index`'s picture under `a`–`b` (points in
     /// a window `bounds`), in the picture's pixels.
     fn cut(&self, index: usize, bounds: Bounds<Pixels>, a: Point<Pixels>, b: Point<Pixels>) -> Option<Cut> {
@@ -159,9 +209,8 @@ fn rgb_of([r, g, b]: [u8; 3]) -> Hsla {
 }
 
 impl Render for Overlay {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (picker, index) = (self.picker.clone(), self.index);
-        let escape = picker.clone();
         let screen = canvas(
             move |b, window, _| window.insert_hitbox(b, HitboxBehavior::Normal),
             move |b, hitbox: Hitbox, window, cx| {
@@ -180,9 +229,11 @@ impl Render for Overlay {
                         loupe(window, cx, b, &image, at, &p);
                     }
                 } else {
-                    // Dim everything but the selection.
+                    // Dim everything but the selection (being dragged, or
+                    // a frame placed).
                     let dim = style::c(p.scrim);
-                    match state.drag.filter(|(i, _, _)| *i == index) {
+                    let chosen = state.drag.filter(|(i, _, _)| *i == index).or_else(|| state.placed.filter(|(i, _)| *i == index).map(|(i, r)| (i, r.origin, r.bottom_right())));
+                    match chosen {
                         Some((_, a, z)) => {
                             let s = style::snap(window, Bounds::from_corners(point(a.x.min(z.x), a.y.min(z.y)), point(a.x.max(z.x), a.y.max(z.y))));
                             for r in [
@@ -219,6 +270,20 @@ impl Render for Overlay {
                 window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
                     if phase.bubble() && e.button == MouseButton::Left && hb.is_hovered(window) {
                         m.update(cx, |s, cx| {
+                            // (The bar's own buttons take presses on it.)
+                            if s.bars.get(index).is_some_and(|bar| bar.contains(&e.position)) {
+                                return;
+                            }
+                            // In a frame placed: moving it (a click takes it).
+                            if let Some((i, r)) = s.placed
+                                && i == index
+                                && r.contains(&e.position)
+                                && s.pick.is_none()
+                            {
+                                s.moving = Some(e.position - r.origin);
+                                return;
+                            }
+                            s.placed = None;
                             s.drag = Some((index, e.position, e.position));
                             cx.notify();
                         });
@@ -231,10 +296,26 @@ impl Render for Overlay {
                     }
                     m.update(cx, |s, cx| {
                         let at = point(e.position.x.clamp(b.left(), b.right()), e.position.y.clamp(b.top(), b.bottom()));
-                        if let Some((i, _, end)) = &mut s.drag
+                        if let (Some(off), Some((i, r))) = (s.moving, s.placed.as_mut())
                             && *i == index
                         {
-                            *end = at;
+                            // Moved, kept on its screen.
+                            let o = at - off;
+                            let x = o.x.clamp(b.left(), (b.right() - r.size.width).max(b.left()));
+                            let y = o.y.clamp(b.top(), (b.bottom() - r.size.height).max(b.top()));
+                            r.origin = point(x, y);
+                        } else if let Some((i, a, end)) = &mut s.drag
+                            && *i == index
+                        {
+                            // The shape chosen kept (⇧: square, if free).
+                            let ratio = SHAPES[s.shape].1.or(e.modifiers.shift.then_some(1.0));
+                            *end = match ratio {
+                                Some(r) => {
+                                    let z = keep_shape(*a, at, r);
+                                    point(z.x.clamp(b.left(), b.right()), z.y.clamp(b.top(), b.bottom()))
+                                }
+                                None => at,
+                            };
                         }
                         cx.notify();
                     });
@@ -255,19 +336,77 @@ impl Render for Overlay {
                             }
                             return s.finish(None, cx);
                         }
-                        let Some((i, a, _)) = s.drag.take().filter(|(i, _, _)| *i == index) else { return };
-                        let cut = s.cut(i, b, a, e.position);
+                        // A frame placed: moved, or (a click in it) taken.
+                        if let Some(off) = s.moving.take() {
+                            let still = s.placed.is_some_and(|(_, r)| {
+                                let d = e.position - (r.origin + off);
+                                f32::from(d.x).abs() < MIN_DRAG && f32::from(d.y).abs() < MIN_DRAG
+                            });
+                            if still {
+                                s.take_placed(b, cx);
+                            }
+                            return;
+                        }
+                        let Some((i, a, z)) = s.drag.take().filter(|(i, _, _)| *i == index) else { return };
+                        let cut = s.cut(i, b, a, z);
                         s.finish(cut, cx);
                     });
                 });
             },
         )
         .size_full();
-        div().size_full().track_focus(&self.focus).child(screen).on_key_down(move |e: &KeyDownEvent, _, cx| {
-            if e.keystroke.key == "escape" {
-                escape.update(cx, |s, cx| s.finish(None, cx));
-            }
-        })
+        let picking = self.picker.read(cx).pick.is_some();
+        let bounds = window.bounds();
+        let bounds = Bounds::new(point(px(0.0), px(0.0)), bounds.size);
+        let keys = self.picker.clone();
+        let root = div().size_full().relative().track_focus(&self.focus).child(screen).on_key_down(move |e: &KeyDownEvent, _, cx| {
+            let key = e.keystroke.key.as_str();
+            keys.update(cx, |s, cx| match key {
+                "escape" => s.finish(None, cx),
+                "enter" if s.placed.is_some() => s.take_placed(bounds, cx),
+                "1" | "2" | "3" | "4" if s.pick.is_none() => {
+                    s.shape = key.parse::<usize>().unwrap_or(1) - 1;
+                    cx.notify();
+                }
+                "7" | "8" if s.pick.is_none() => s.place(index, bounds, SIZES[if key == "7" { 0 } else { 1 }], cx),
+                _ => {}
+            });
+        });
+        if picking {
+            return root;
+        }
+        // The bar: shapes and sizes.
+        let shape = self.picker.read(cx).shape;
+        let mut bar = div().flex().items_center().gap(px(m::TIGHT)).p(px(m::TIGHT)).rounded(px(m::CARD_RADIUS)).bg(style::c(theme::palette(cx).panel_background));
+        for (k, (name, _)) in SHAPES.iter().enumerate() {
+            let pk = self.picker.clone();
+            bar = bar.child(Button::new(*name).id(format!("shape-{k}")).small().pushed(shape == k).on_click(move |_, cx| {
+                pk.update(cx, |s, cx| {
+                    s.shape = k;
+                    cx.notify();
+                })
+            }));
+        }
+        bar = bar.child(div().w(px(m::SPACING)));
+        for (w, h) in SIZES {
+            let pk = self.picker.clone();
+            bar = bar.child(Button::new(format!("{w} × {h}")).small().on_click(move |_, cx| pk.update(cx, |s, cx| s.place(index, bounds, (w, h), cx))));
+        }
+        let at = self.picker.clone();
+        let mark = canvas(
+            move |b, _, cx| {
+                at.update(cx, |s, _| {
+                    if s.bars.len() <= index {
+                        s.bars.resize(index + 1, Bounds::default());
+                    }
+                    s.bars[index] = b;
+                })
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .inset_0();
+        root.child(div().absolute().top(px(m::SPACING)).left_0().right_0().flex().justify_center().child(bar.relative().child(mark)))
     }
 }
 
@@ -327,7 +466,7 @@ fn freeze(cut: Arc<Mutex<Option<Cut>>>, pick: Option<Arc<Mutex<Option<[u8; 3]>>>
         }
         // With no window until the pictures are in.
         olo_ui::stay_resident(cx);
-        let picker = cx.new(|_| Picker { waiting: outputs.len(), frozen: Vec::new(), screens: Vec::new(), drag: None, cut, pick });
+        let picker = cx.new(|_| Picker { waiting: outputs.len(), frozen: Vec::new(), screens: Vec::new(), drag: None, cut, pick, shape: 0, placed: None, moving: None, bars: Vec::new() });
         let messages = picker.clone();
         olo_ui::message_handler(cx, move |m, cx| {
             if let Ok(m) = m.downcast::<Msg>() {

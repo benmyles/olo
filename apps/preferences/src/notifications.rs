@@ -181,7 +181,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             let to = time_menu(ui, "dnd-to", "to:", &clock, to, |s, v| s.1 = v);
             ui.add(div().flex().flex_row().gap(px(m::SPACING)).pl(px(20.0)).child(from).child(to));
         }
-        check(ui, "While sharing the screen (errors wait too)", s.while_sharing, |s, v| s.while_sharing = v);
+        check(ui, "While sharing or recording the screen (errors wait too)", s.while_sharing, |s, v| s.while_sharing = v);
     });
     ui.bbox("Banners", |ui| {
         // 0: never (errors still show).

@@ -6930,6 +6930,24 @@ Screens' Export Video uses too).
   `$XDG_RUNTIME_DIR/olo-recording-<display>.json`
   (`olo-screenshot --recording` says it), so an Agent Screen's and the
   person's don't meet.
+- **A region's shape and size** (`region.rs`, the screenshot's region
+  picker too): a bar at the top of each screen while it's picked, as
+  CleanShot X's: Free, 16:9, 4:3, 1:1 (keys 1 to 4; ⇧ makes a free drag
+  square) held while the corner is dragged (`keep_shape`: the longer
+  way the pointer went sets the size); 1280 × 720 and 1920 × 1080 (keys
+  7 and 8) place a frame that many pixels big in the middle (as large as
+  fits), which a press in it drags (kept on its screen) and Return or a
+  click in it takes. Presses on the bar are its buttons', never a drag.
+  Checked headless: a 16:9 drag saved 356 × 200 (1.78), a placed
+  1280 × 720 moved and taken saved 1280 × 720; `review --all` finds
+  nothing on the bar.
+- **Quiet while recording**: Notifications treats a recording going on
+  its display as it does a share (its `while_sharing`, Preferences ▸
+  Notifications ▸ "While sharing or recording the screen"): no banners
+  (errors wait too) from the moment it records to its end, those on
+  screen put in the history; the recording's file is watched with the
+  sharing's. Record ▸ Countdown sets the seconds counted down first
+  (None, 3, 5, 10; the settings' `screen_recording.countdown`).
 - **For people**: ⌘⇧6 (Ctrl+Alt+Print with the Windows and BeOS
   profiles; `Shortcut::ScreenRecording`, "Record the screen, or stop")
   runs `olo-screenshot --toggle-record`: a recording of the screen

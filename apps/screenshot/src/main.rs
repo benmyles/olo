@@ -274,6 +274,7 @@ impl Screenshot {
             "smooth-pointer" => r.smooth_pointer = !r.smooth_pointer,
             "zoom-follow" => r.zoom_follow = !r.zoom_follow,
             "camera" => r.camera = if r.camera.is_empty() { "auto".into() } else { String::new() },
+            c if c.starts_with("countdown-") => r.countdown = c["countdown-".len()..].parse().unwrap_or(3),
             _ => return,
         }
         let mine = r.clone();
@@ -384,6 +385,11 @@ impl Screenshot {
                     .separator()
                     .item("Save as GIF", "gif")
                     .checked(r.gif)
+                    .submenu(
+                        [(0, "None"), (3, "3 Seconds"), (5, "5 Seconds"), (10, "10 Seconds")]
+                            .into_iter()
+                            .fold(Menu::new("Countdown"), |m, (n, label)| m.item(label, format!("countdown-{n}")).checked(r.countdown == n)),
+                    )
                     .separator()
                     .item("Recordings…", "library")
             }
@@ -392,7 +398,8 @@ impl Screenshot {
 
     fn record_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let what = match command {
-            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" | "camera" => {
+            "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" | "camera" | "countdown-0"
+            | "countdown-3" | "countdown-5" | "countdown-10" => {
                 self.toggle(command);
                 cx.notify();
                 return;

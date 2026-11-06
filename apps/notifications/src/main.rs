@@ -175,11 +175,14 @@ impl Notifications {
         self.settings.while_sharing && self.sharing
     }
 
-    /// Whether the screen is shared now; when sharing starts (and it is to
-    /// be quiet then), the banners on screen go into the history, as if
-    /// they had timed out.
+    /// Whether the screen is shared now, or recorded (a recording going
+    /// on this display: a banner would be in the video, as CleanShot X
+    /// turns on Do Not Disturb while recording); when that starts (and it
+    /// is to be quiet then), the banners on screen go into the history, as
+    /// if they had timed out.
     fn refresh_sharing(&mut self, cx: &mut Context<Self>) {
-        let sharing = !olo_protocol::sharing::SharingState::load().shares.is_empty();
+        let recording = olo_protocol::recording::going_on(&olo_protocol::recording::this_display()).is_some_and(|g| g.recording);
+        let sharing = !olo_protocol::sharing::SharingState::load().shares.is_empty() || recording;
         if sharing == self.sharing {
             return;
         }
@@ -1023,10 +1026,10 @@ fn main() -> std::process::ExitCode {
             })
             .expect("spawn");
         // The settings change when Preferences or Deskbar write them, and
-        // a share starting or ending is news too: both watched (nothing
-        // read while nothing changes).
+        // a share or a recording starting or ending is news too: all
+        // watched (nothing read while nothing changes).
         let mut watches = Vec::new();
-        for path in [NotificationSettings::path(), olo_protocol::sharing::SharingState::path()] {
+        for path in [NotificationSettings::path(), olo_protocol::sharing::SharingState::path(), olo_protocol::recording::path_for(&olo_protocol::recording::this_display())] {
             let ticker = proxy.clone();
             watches.extend(olo_kit_base::watch::watch([path], move |_| ticker.send(Msg::Tick)));
         }
