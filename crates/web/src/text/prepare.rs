@@ -58,12 +58,14 @@ impl WhiteSpace {
 pub enum ControlKind {
     Break,
     Opportunity,
+    Object,
 }
 impl ControlKind {
     pub fn carrier(self) -> &'static str {
         match self {
             Self::Break => "\n",
             Self::Opportunity => "\u{200b}",
+            Self::Object => "\u{fffc}",
         }
     }
 }
@@ -83,7 +85,11 @@ impl Control {
         self.0 & Self::POSITION
     }
     pub fn kind(self) -> ControlKind {
-        if self.0 >> 30 == 0 { ControlKind::Break } else { ControlKind::Opportunity }
+        match self.0 >> 30 {
+            0 => ControlKind::Break,
+            1 => ControlKind::Opportunity,
+            _ => ControlKind::Object,
+        }
     }
 }
 /// A nonempty UTF-8 range. Spans partition the source without gaps. The host

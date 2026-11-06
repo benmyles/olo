@@ -326,6 +326,17 @@ this is a harness correction, not a browser speedup.
   border paint commands while retaining box geometry. Measure the hidden-text
   path as well as the normal visible path.
 
+- [x] Baseline atomic-inline worker geometry: explicit semantic objects, glyph-free
+  shaping, complete bounded used metrics, bidi/wrap/margins and sparse line-height
+  expansion; 380 independent Chrome component observations at five scales.
+- [x] CSS device-grid font advances/struts and trailing zero-width control fitting:
+  break-control geometry 415/415, inline spacing 219/225 (six pinned nonpasses).
+- [ ] Connect decoded image assets to HTML/CSS replaced sizing, tree/flow, paint,
+  raster and structured agent metadata. The atomic API alone renders no images.
+- [ ] Complete font metric policy: per-inline-item used advances, normal line-height,
+  arbitrary fonts/hinting/variation and mixed struts; six independent inline
+  coordinate nonpasses remain explicit.
+
 - [ ] Public navigation smoke failures: Example Domain is visibly incomplete;
   Hacker News gets past inline spacing/padding and now fails on replaced/
   control/forced-break inline objects. Complete those objects, inline

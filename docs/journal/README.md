@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser font grid after, dark 1.75x
+
+*08:56* — Device-scale font metric correction in the native canvas. Dark and night use the existing native palette; this does not establish universal website darkening or complete typography.
+
+![Browser font grid after, dark 1.75x](2026-11-06/085601-browser-font-grid-after-dark-1-75x.png)
+
+### Browser font grid before, dark 1.75x
+
+*08:56* — Frozen dac55f4e browser and the same authored fractional text fixture. Captured on an owned Agent Screen without changing the personal session.
+
+![Browser font grid before, dark 1.75x](2026-11-06/085601-browser-font-grid-before-dark-1-75x.png)
+
+### Browser font grid after, light 1.25x
+
+*08:55* — CSS struts and used advances now follow the device font grid. All 380 independent atomic geometry observations match; images themselves remain unsupported. Native five-scale light/dark/night reviews pass.
+
+![Browser font grid after, light 1.25x](2026-11-06/085559-browser-font-grid-after-light-1-25x.png)
+
+### Browser font grid before, light 1.25x
+
+*08:55* — Frozen dac55f4e browser on an owned Agent Screen. Baselines and used text advances still use unrounded font metrics. Authored static text fixture, not website acceptance.
+
+![Browser font grid before, light 1.25x](2026-11-06/085558-browser-font-grid-before-light-1-25x.png)
+
 ### Browser: semantic forced and optional breaks
 
 *07:10* — The same authored page renders forced and consecutive breaks and an optional break under nowrap. Formatting carriers stay out of agent-visible text; DOM Unicode remains intact. Native link actions and reviews checked across light/dark/night at five live scales. Four of 415 independent Chrome position/height combinations remain nonpasses; website acceptance stays 0/100.

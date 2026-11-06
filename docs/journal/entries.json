@@ -3568,5 +3568,29 @@
     "title": "Browser: semantic forced and optional breaks",
     "caption": "The same authored page renders forced and consecutive breaks and an optional break under nowrap. Formatting carriers stay out of agent-visible text; DOM Unicode remains intact. Native link actions and reviews checked across light/dark/night at five live scales. Four of 415 independent Chrome position/height combinations remain nonpasses; website acceptance stays 0/100.",
     "image": "2026-11-06/071035-browser-semantic-forced-and-optional-breaks.png"
+  },
+  {
+    "time": "2026-11-06T08:55:58",
+    "title": "Browser font grid before, light 1.25x",
+    "caption": "Frozen dac55f4e browser on an owned Agent Screen. Baselines and used text advances still use unrounded font metrics. Authored static text fixture, not website acceptance.",
+    "image": "2026-11-06/085558-browser-font-grid-before-light-1-25x.png"
+  },
+  {
+    "time": "2026-11-06T08:55:59",
+    "title": "Browser font grid after, light 1.25x",
+    "caption": "CSS struts and used advances now follow the device font grid. All 380 independent atomic geometry observations match; images themselves remain unsupported. Native five-scale light/dark/night reviews pass.",
+    "image": "2026-11-06/085559-browser-font-grid-after-light-1-25x.png"
+  },
+  {
+    "time": "2026-11-06T08:56:01",
+    "title": "Browser font grid before, dark 1.75x",
+    "caption": "Frozen dac55f4e browser and the same authored fractional text fixture. Captured on an owned Agent Screen without changing the personal session.",
+    "image": "2026-11-06/085601-browser-font-grid-before-dark-1-75x.png"
+  },
+  {
+    "time": "2026-11-06T08:56:01",
+    "title": "Browser font grid after, dark 1.75x",
+    "caption": "Device-scale font metric correction in the native canvas. Dark and night use the existing native palette; this does not establish universal website darkening or complete typography.",
+    "image": "2026-11-06/085601-browser-font-grid-after-dark-1-75x.png"
   }
 ]

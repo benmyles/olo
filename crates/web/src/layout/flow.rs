@@ -464,7 +464,7 @@ impl<'a> Job<'a> {
             // width-independent cache, but shape the actual used boundaries.
             text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), self.limits.text, self.cancel)?;
         }
-        let mut j = inline::Job::for_style_with_spacing(self.engine, text, style, self.scope, parent.used.width, self.limits.text, self.cancel, spacing)?;
+        let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text, style, self.scope, parent.used.width, self.scale, self.limits.text, self.cancel, spacing)?;
         while !j.step(64)?.finished {}
         let work = j.progress().work;
         let l = j.finish()?;

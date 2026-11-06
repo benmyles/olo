@@ -137,12 +137,15 @@ impl Index {
         ))
     }
     pub fn advance(&self, p: &Paragraph, a: End, b: End) -> Result<f64> {
+        self.advance_measured(p, a, b, None)
+    }
+    pub fn advance_measured(&self, p: &Paragraph, a: End, b: End, pixel_scale: Option<f64>) -> Result<f64> {
         if a.run > b.run {
             return Err(Error::Invalid);
         }
-        let scale = |i: usize| p.font_size / f64::from(p.runs[i].font.units_per_em());
+        let measure = |i: usize, units: i64| measured(units, p.font_size, p.runs[i].font.units_per_em(), pixel_scale);
         if a.run == b.run {
-            let width = if a.run as usize == p.runs.len() { 0. } else { (b.units - a.units) as f64 * scale(a.run as usize) };
+            let width = if a.run as usize == p.runs.len() { 0. } else { measure(a.run as usize, b.units - a.units)? };
             return if width.is_finite() { Ok(width) } else { Err(Error::Invalid) };
         }
         let mut width = 0.;
@@ -152,7 +155,7 @@ impl Index {
             }
             let before = if i == a.run as usize { a.units } else { 0 };
             let after = if i == b.run as usize { b.units } else { self.runs[i].units };
-            width += (after - before) as f64 * scale(i);
+            width += measure(i, after - before)?;
         }
         if !width.is_finite() {
             return Err(Error::Invalid);
@@ -174,4 +177,18 @@ impl Index {
         let (Some(a), Some(b)) = (edge(range.start), edge(range.end)) else { return Ok(None) };
         Ok(Some(a.min(b)..a.max(b)))
     }
+}
+
+/// Linear scalable-font advances use a 16.16 scale over a 26.6 device size.
+/// Layout measures then enclose each item on the 1/64 device-pixel grid.
+pub(super) fn measured(units: i64, size: f64, upem: u16, pixel_scale: Option<f64>) -> Result<f64> {
+    let width = if let Some(scale) = pixel_scale {
+        let device_size = (size * scale * 64.).trunc();
+        let fixed_scale = (device_size * 65536. / f64::from(upem)).round();
+        let fixed_advance = (units as f64 * fixed_scale / 64.).round();
+        (fixed_advance / 1024.).ceil() / (64. * scale)
+    } else {
+        units as f64 * (size / f64::from(upem))
+    };
+    if width.is_finite() { Ok(width) } else { Err(Error::Invalid) }
 }

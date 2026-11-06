@@ -218,6 +218,7 @@ pub struct ParagraphJob<'a> {
     failed: bool,
     allow_lf: bool,
     shaping_breaks: ShapingBreaks,
+    inline_objects: Box<[u32]>,
 }
 impl<'a> ParagraphJob<'a> {
     pub fn new(engine: &'a mut Engine, scope: &'a Scope, request: FontRequest, source: Arc<str>, base: BaseDirection, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
@@ -328,6 +329,7 @@ impl<'a> ParagraphJob<'a> {
             failed: false,
             allow_lf,
             shaping_breaks: ShapingBreaks::default(),
+            inline_objects: Box::default(),
         })
     }
     /// Explicit inline box edges isolate shaping context without inserting
@@ -337,6 +339,44 @@ impl<'a> ParagraphJob<'a> {
         if self.failed || self.progress.finished || self.next != 0 || self.pending.is_some() || !self.runs.is_empty() || !self.shaping_breaks.is_empty() {
             return Err(Error::Invalid);
         }
+        self.set_shaping_breaks(boundaries)?;
+        Ok(self)
+    }
+    /// U+FFFC carriers owned by atomic inline boxes. They retain their Unicode
+    /// bidi/line-break identity but never request a font glyph or fallback.
+    pub fn with_inline_objects(mut self, positions: Box<[u32]>) -> Result<Self> {
+        check(self.cancel)?;
+        if self.failed || self.progress.finished || self.next != 0 || self.pending.is_some() || !self.runs.is_empty() || !self.inline_objects.is_empty() {
+            return Err(Error::Invalid);
+        }
+        if positions.len() > self.limits.clusters {
+            return Err(Error::Limit);
+        }
+        if positions.is_empty() {
+            return Ok(self);
+        }
+        let source = self.analysis.source();
+        let mut cuts = self.shaping_breaks.to_vec();
+        for (i, &at) in positions.iter().enumerate() {
+            check(self.cancel)?;
+            let end = at.checked_add(3).ok_or(Error::Invalid)?;
+            if source.get(at as usize..end as usize) != Some("\u{fffc}") || i > 0 && positions[i - 1] >= at {
+                return Err(Error::Invalid);
+            }
+            if at > 0 {
+                cuts.push(at);
+            }
+            if (end as usize) < source.len() {
+                cuts.push(end);
+            }
+        }
+        cuts.sort_unstable();
+        cuts.dedup();
+        self.set_shaping_breaks(cuts.into_boxed_slice())?;
+        self.inline_objects = positions;
+        Ok(self)
+    }
+    fn set_shaping_breaks(&mut self, boundaries: Box<[u32]>) -> Result<()> {
         if boundaries.len() > self.limits.clusters {
             return Err(Error::Limit);
         }
@@ -347,7 +387,7 @@ impl<'a> ParagraphJob<'a> {
         if !boundaries.is_empty() {
             let mut clusters = Vec::new();
             let mut boundary = 0;
-            for cluster in self.clusters {
+            for cluster in std::mem::take(&mut self.clusters) {
                 check(self.cancel)?;
                 let mut start = cluster.range.start;
                 while boundaries.get(boundary).is_some_and(|b| (*b as usize) <= start) {
@@ -369,7 +409,7 @@ impl<'a> ParagraphJob<'a> {
             self.clusters = clusters;
         }
         self.shaping_breaks = ShapingBreaks((!boundaries.is_empty()).then(|| triomphe::ThinArc::from_header_and_iter((), boundaries.into_vec().into_iter())));
-        Ok(self)
+        Ok(())
     }
     pub fn for_style(engine: &'a mut Engine, scope: &'a Scope, style: &Style, source: Arc<str>, base: BaseDirection, limits: ParagraphLimits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
         if style.font().context() != scope.context() {
@@ -478,6 +518,26 @@ impl<'a> ParagraphJob<'a> {
                 self.next += 1;
                 self.progress.clusters += 1;
                 self.report.hard_breaks += 1;
+                continue;
+            }
+            if !self.inline_objects.is_empty() && self.inline_objects.binary_search(&(range.start as u32)).is_ok() {
+                if text != "\u{fffc}" {
+                    return Err(Error::Invalid);
+                }
+                self.flush()?;
+                if self.runs.len() >= self.limits.runs {
+                    return Err(Error::Limit);
+                }
+                self.runs.push(Run {
+                    source: source.clone(),
+                    range: range.start as u32..range.end as u32,
+                    font: primary.as_ref().ok_or(Error::Invalid)?.clone(),
+                    script,
+                    direction: if level % 2 == 0 { Direction::LeftToRight } else { Direction::RightToLeft },
+                    glyphs: Box::default(),
+                });
+                self.next += 1;
+                self.progress.clusters += 1;
                 continue;
             }
             let primary = primary.as_ref().ok_or(Error::Invalid)?;

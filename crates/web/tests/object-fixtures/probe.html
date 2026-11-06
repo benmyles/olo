@@ -1,0 +1,30 @@
+<!doctype html><meta charset=utf-8><title>Atomic object geometry reference</title>
+<h1>Atomic object geometry reference</h1><p id=status>Capturing local inputs…</p>
+<script>
+(async()=>{
+ const inputs=await(await fetch('/inputs')).json(),base=await(await fetch('/base')).text(),rows=[];
+ for(const input of inputs){
+  const frame=document.createElement('iframe');frame.style.cssText=`border:0;position:absolute;left:8px;top:100px;width:${input.width}px;height:${input.height}px`;
+  const loaded=new Promise(resolve=>frame.onload=resolve);
+  frame.srcdoc=`<!doctype html><html id=root><head><style>@font-face{font-family:'Olo Inline plain';src:url('/font')} ${base}${input.css}</style></head><body id=body>${input.body}</body></html>`;
+  document.body.append(frame);await loaded;
+  const d=frame.contentDocument;await d.fonts.load("20px 'Olo Inline plain'");await d.fonts.ready;
+  if(!d.fonts.check("20px 'Olo Inline plain'"))throw Error('font unavailable');
+  const walker=d.createTreeWalker(d.body,NodeFilter.SHOW_TEXT),letters=[];
+  let node;
+  while(node=walker.nextNode())for(let i=0;i<node.length;i++)if(/[A-Z]/.test(node.data[i])){
+   const range=d.createRange();range.setStart(node,i);range.setEnd(node,i+1);
+   const r=range.getBoundingClientRect();letters.push({letter:node.data[i],x:r.x,y:r.y,width:r.width,height:r.height});
+  }
+  const ruler=d.createElement('div');ruler.style.cssText='position:fixed;inset:0;visibility:hidden';d.body.append(ruler);
+  const viewport=ruler.getBoundingClientRect();
+  const boxes={};for(const node of d.querySelectorAll('[id]')){
+   const r=node.getBoundingClientRect();boxes[node.id]={x:r.x,y:r.y,width:r.width,height:r.height};
+  }
+  rows.push({...input,layoutViewport:{width:viewport.width,height:viewport.height},letters,boxes});frame.remove();
+ }
+ const report={userAgent:navigator.userAgent,devicePixelRatio,base,scope:'Original fixed-metric font; independent Chrome letter ranges and boxes. Component geometry, not pixels or websites.',rows};
+ const response=await fetch('/result',{method:'POST',body:JSON.stringify(report)});if(!response.ok)throw Error('saving report failed');
+ document.getElementById('status').textContent=`Saved ${rows.length} layouts at DPR ${devicePixelRatio}`;
+})().catch(e=>document.getElementById('status').textContent=String(e));
+</script>

@@ -10,7 +10,7 @@
     "inputs.json": "105be81adc0a4c0de62e670319ecfb699f51776c4678f5899bc2fd474f50b6a8",
     "probe.html": "6d3c6b6bf54393515b81cbbf8068f860becb8661d62c07175d0be1551def8787",
     "serve.py": "f93b10e433a21df9704b7c5bd1c4d72523f99ee28097f26acf6ac0a9decfff19",
-    "known-nonpasses.json": "8138d2aec97b92cb5320dca8c04579cc29c6f8e3da3b72a12f9d8655dccbc984"
+    "known-nonpasses.json": "4afef754cfb5834d280997707b8076fcba57a57559875404ce0278af3bc6fb7d"
   },
   "font": {
     "path": "../inline-fixtures/plain.ttf",
@@ -49,9 +49,9 @@
   },
   "coverage": {
     "total": 415,
-    "matching_within_dom_range_export_unit": 411,
-    "nonpasses": 4,
+    "matching_within_dom_range_export_unit": 415,
+    "nonpasses": 0,
     "website_passes": 0
   },
-  "scope": "83 cases at five scales, budgets 1/128. Letters and block heights only, not full pixels or complete CSS, bidi, controls, replaced objects, scripting, accessibility or websites. X allows one device layout unit for DOM Range enclosure; all other differences are explicit nonpasses."
+  "scope": "83 cases at five scales/two worker budgets; letters and block heights within stated DOM Range enclosure allowance. Full pixels, complete CSS/bidi/controls/replaced resources, scripting and websites remain unverified."
 }

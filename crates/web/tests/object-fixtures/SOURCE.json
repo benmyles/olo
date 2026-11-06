@@ -1,0 +1,59 @@
+{
+  "kind": "Authored atomic-inline inputs; independent Chrome geometry. Used object dimensions supplied by the component test; no image fetching, decoding, CSS replaced sizing, painting or website acceptance.",
+  "capture": "Owned browser-object-ref Olo Agent Screen, Wayland olo-chrome, 1280x800, localhost, live scales 1/1.25/1.5/1.75/2. No personal screen or profile.",
+  "references": [
+    "https://www.w3.org/TR/CSS22/visudet.html#inline-replaced-height",
+    "https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/core/layout/inline/line_utils.cc",
+    "https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/platform/fonts/shaping/shape_result.h",
+    "https://skia.googlesource.com/skia/+/main/src/ports/SkFontHost_FreeType.cpp"
+  ],
+  "inputs": {
+    "inputs.json": "c82005ac21f226ebe8acfb39aaa018de4318ed94f008f9c3d810d3a283159e90",
+    "probe.html": "503e24972cdb568aa35c1f12155dca08752183b70aae27c5083f6d6e6d4df788",
+    "serve.py": "f93b10e433a21df9704b7c5bd1c4d72523f99ee28097f26acf6ac0a9decfff19"
+  },
+  "font": {
+    "path": "../inline-fixtures/plain.ttf",
+    "sha256": "e7b07fbfc96c4a565dadd783147e683e31fbb09354956315fc6868a794e250bb"
+  },
+  "base": {
+    "path": "../flow-fixtures/base.css",
+    "sha256": "d3224fc302c7d78153a09cea76b2406366fa5d60033c5673f0a68a86c8a9a35d"
+  },
+  "reports": {
+    "1": {
+      "file": "chrome-1.json",
+      "sha256": "1abc876e942728c11b79fb9789d7c1920342b37c38265a415df308934d5f674a",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.25": {
+      "file": "chrome-1.25.json",
+      "sha256": "37a0e2c03afb13d421614828d05621f08c6ad11218a918791fdee3faa75f7366",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.5": {
+      "file": "chrome-1.5.json",
+      "sha256": "d1d930f61aae27414c1fc8a07fa42ca7d4f4fa2755e69f69a0cd498f70f78de2",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "1.75": {
+      "file": "chrome-1.75.json",
+      "sha256": "9a3810b35a1eefb649f573cc155381714651d2f8fa4e40ccfc081d9dc136e967",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    },
+    "2": {
+      "file": "chrome-2.json",
+      "sha256": "f05d7363e65799c7e38ed63b5cd353f4d0e47785cea8422ff1a689d1afbe2376",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+    }
+  },
+  "coverage": {
+    "cases": 76,
+    "scales": 5,
+    "total": 380,
+    "matching": 380,
+    "nonpasses": 0,
+    "website_passes": 0
+  },
+  "scope": "Parent styles and font metrics use the native CSS factories. Used object advance/ascent/descent are supplied, not computed from HTML img CSS. Every object X/Y, paragraph height and letter Y must match within 1e-5 CSS pixels after CSSOM float projection; letter X allows 1/(64*DPR)+1e-5 for DOM Range enclosure. The iframe viewport is recovered on the physical-pixel grid before native layout. No pixel comparison."
+}

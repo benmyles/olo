@@ -1,0 +1,707 @@
+{
+  "scope": "Frozen before/after release scroll and idle samples on an OWN Agent Screen.\nUsage: SCREEN /var/tmp/OWNED OUTPUT.json; eval that screen's environment first.\nExpects browser-before/browser-after. Only authored local text is loaded.\nClient submission marks do not measure compositor presentation or optical latency.\n",
+  "fixture_sha256": "7095431b1596ecfbd9c506d20aa5aaa29f223909d5a2f234296ef1bb1862b5fe",
+  "rows": [
+    {
+      "variant": "before",
+      "binary_sha256": "3a2245d6b1e7e489214858dfa96e2ef54e86aba4c0fed4c5338d7e638f982194",
+      "rss_kib": 107432,
+      "hwm_kib": 107432,
+      "idle": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3259103,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259112,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259114,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259115,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259116,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259118,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259122,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259136,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259138,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      "bursts": [
+        {
+          "repeat": 0,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.7,
+          "slowest_draw_ms": 0.73,
+          "distance": 711.0,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 0.997,
+            "sd": 0.01,
+            "min": 0.932,
+            "max": 0.999,
+            "off_25pct": 0,
+            "frames": 92
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.3,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.9,
+          "slowest_draw_ms": 0.72,
+          "distance": 329.0,
+          "reached_end": false
+        },
+        {
+          "repeat": 0,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 9.4,
+          "slowest_draw_ms": 0.6,
+          "distance": -132.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.32,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.4,
+          "slowest_draw_ms": 0.62,
+          "distance": -713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.002,
+            "sd": 0.049,
+            "min": 0.668,
+            "max": 1.336,
+            "off_25pct": 2,
+            "frames": 92
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "flick",
+          "frames": 12,
+          "moving_frames": 10,
+          "frame_ms": 8.32,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.6,
+          "slowest_draw_ms": 0.42,
+          "distance": -189.0,
+          "reached_end": true
+        },
+        {
+          "repeat": 1,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 9.3,
+          "slowest_draw_ms": 0.58,
+          "distance": 131.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.5,
+          "slowest_draw_ms": 0.47,
+          "distance": 713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.0,
+            "sd": 0.0,
+            "min": 1.0,
+            "max": 1.0,
+            "off_25pct": 0,
+            "frames": 92
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.7,
+          "slowest_draw_ms": 0.63,
+          "distance": 329.5,
+          "reached_end": false
+        },
+        {
+          "repeat": 2,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 8.3,
+          "slowest_draw_ms": 0.6,
+          "distance": -132.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          }
+        }
+      ],
+      "compositor": {
+        "type": "timings",
+        "timings": {
+          "outputs": [],
+          "beats": 0,
+          "latest_beat_us": 0,
+          "slowest": null,
+          "phases": []
+        }
+      }
+    },
+    {
+      "variant": "after",
+      "binary_sha256": "bfac6cdbcd8eeb1bc39f422386462dadf6ba5a65f3731332a3d8ffeb5395d61c",
+      "rss_kib": 107724,
+      "hwm_kib": 107724,
+      "idle": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3259327,
+            "name": "browser-after",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259330,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259332,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259333,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259334,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259335,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259339,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259351,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3259353,
+            "name": "browser-after",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      "bursts": [
+        {
+          "repeat": 0,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.32,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.6,
+          "slowest_draw_ms": 0.71,
+          "distance": 713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.002,
+            "sd": 0.0,
+            "min": 1.002,
+            "max": 1.002,
+            "off_25pct": 0,
+            "frames": 92
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.35,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.5,
+          "slowest_draw_ms": 0.72,
+          "distance": 330.0,
+          "reached_end": false
+        },
+        {
+          "repeat": 0,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 8.9,
+          "slowest_draw_ms": 0.61,
+          "distance": -132.0,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.7,
+          "slowest_draw_ms": 0.61,
+          "distance": -713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.0,
+            "sd": 0.039,
+            "min": 0.733,
+            "max": 1.267,
+            "off_25pct": 2,
+            "frames": 92
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "flick",
+          "frames": 12,
+          "moving_frames": 10,
+          "frame_ms": 8.27,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.5,
+          "slowest_draw_ms": 0.62,
+          "distance": -189.5,
+          "reached_end": true
+        },
+        {
+          "repeat": 1,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 8.4,
+          "slowest_draw_ms": 0.61,
+          "distance": 133.0,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.9,
+          "slowest_draw_ms": 0.55,
+          "distance": 713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.0,
+            "sd": 0.0,
+            "min": 1.0,
+            "max": 1.0,
+            "off_25pct": 0,
+            "frames": 92
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 28.4,
+          "slowest_draw_ms": 0.63,
+          "distance": 329.5,
+          "reached_end": false
+        },
+        {
+          "repeat": 2,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "first_move_ms": 8.2,
+          "slowest_draw_ms": 0.63,
+          "distance": -132.0,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          }
+        }
+      ],
+      "compositor": {
+        "type": "timings",
+        "timings": {
+          "outputs": [
+            {
+              "output": "HEADLESS-1",
+              "frames": 913,
+              "slowest_us": 2638,
+              "total_us": 191504
+            }
+          ],
+          "beats": 6376,
+          "latest_beat_us": 3857,
+          "slowest": [
+            "clients' requests",
+            243
+          ],
+          "phases": [
+            {
+              "name": "clients' requests",
+              "count": 1640,
+              "total_us": 25584,
+              "slowest_us": 244
+            },
+            {
+              "name": "commit",
+              "count": 544,
+              "total_us": 19980,
+              "slowest_us": 109
+            },
+            {
+              "name": "damage and draw",
+              "count": 913,
+              "total_us": 64516,
+              "slowest_us": 363
+            },
+            {
+              "name": "gather (all)",
+              "count": 913,
+              "total_us": 40276,
+              "slowest_us": 2312
+            },
+            {
+              "name": "gather: lower layers",
+              "count": 973,
+              "total_us": 1201,
+              "slowest_us": 11
+            },
+            {
+              "name": "gather: upper layers",
+              "count": 973,
+              "total_us": 6125,
+              "slowest_us": 40
+            },
+            {
+              "name": "gather: wallpaper",
+              "count": 973,
+              "total_us": 2794,
+              "slowest_us": 16
+            },
+            {
+              "name": "gather: windows",
+              "count": 973,
+              "total_us": 18358,
+              "slowest_us": 2289
+            },
+            {
+              "name": "look (whole)",
+              "count": 913,
+              "total_us": 194525,
+              "slowest_us": 2639
+            },
+            {
+              "name": "post_repaint",
+              "count": 913,
+              "total_us": 1810,
+              "slowest_us": 13
+            },
+            {
+              "name": "pre_repaint",
+              "count": 913,
+              "total_us": 57647,
+              "slowest_us": 208
+            },
+            {
+              "name": "repoint",
+              "count": 267,
+              "total_us": 3729,
+              "slowest_us": 75
+            },
+            {
+              "name": "space refresh",
+              "count": 10538,
+              "total_us": 122274,
+              "slowest_us": 107
+            },
+            {
+              "name": "tick",
+              "count": 10538,
+              "total_us": 197355,
+              "slowest_us": 205
+            },
+            {
+              "name": "tick: auto-tiling",
+              "count": 3147,
+              "total_us": 27910,
+              "slowest_us": 74
+            },
+            {
+              "name": "tick: groups",
+              "count": 3147,
+              "total_us": 96769,
+              "slowest_us": 123
+            },
+            {
+              "name": "tick: sides, children, focus",
+              "count": 3147,
+              "total_us": 16575,
+              "slowest_us": 58
+            },
+            {
+              "name": "tick: window infos",
+              "count": 3147,
+              "total_us": 43671,
+              "slowest_us": 100
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

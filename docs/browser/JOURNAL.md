@@ -3646,3 +3646,62 @@ reload, secrets access or policy change. The browser journal stays at **595**
 unique images (all present); this performance change has no new intended visual
 output. Website acceptance stays **0/100**, goal active; next work is images and
 replaced inline layout, then further compatibility and latency work.
+
+### 2026-11-06 — Atomic inline geometry and CSS font grid
+
+Added semantic atomic objects to the bounded text worker: isolated glyph-free
+shaping, mandatory complete used metrics, bidi order, wrapping/negative margins,
+and sparse per-line baseline/height expansion. Ordinary text allocates no object
+table. Literal DOM U+FFFC remains font text. CSS flow now passes device scale
+through font advance measurement and strut half-leading. Overwide words consume
+adjacent trailing zero-width controls together. This is the geometry foundation:
+**HTML images still fail explicitly**; decoding, replaced sizing, tree/paint and
+agent metadata integration are next.
+
+New independent Chrome set: **76 cases × five live scales = 380/380** matching
+object/letter/paragraph geometry observations at both worker budgets. Parent
+styles/font requests use real CSS factories; object used metrics are supplied.
+Hashes pin the authored inputs, font, probe/server and captures. No native output
+generated reference data. Existing unchanged break captures now match **415/415**
+(previously 411); inline spacing **219/225** (previously 198), with six remaining
+transparent-inline text-item X differences pinned. Normal line-height selection,
+arbitrary font metrics/hinting, mixed struts and complete inline alignment remain
+open. These component observations accept no websites.
+
+**258 unique release browser/web tests** pass (257 in the full run plus the added
+literal-carrier regression); **245 all-feature web**, strict clippy, full workspace
+release (**3.52s**), thirteen kit/Preferences lints and Browser live lint pass.
+Native links/breaks: **15 reviews / 36 requests**; navigation: **15 / 61**, including
+re-exec. Frozen before/after font-grid fixture: **30 reviews**, light/dark/night
+at 1/1.25/1.5/1.75/2, live scale changes and odd window X. Looked at the matrix
+and enlarged detail; journal has paired light/dark captures, **599 unique images**
+(all present). Existing exact native pixel nonpasses remain open.
+
+Frozen default pipeline on one allowed performance CPU, seven alternating runs:
+100/1k blocks **774.603/7687.826→777.241/7514.918 µs**. Runner confirmation,
+all samples retained: **774.632/7645.572→773.069/7473.493 µs**. Source/command
+geometry hashes agree. Initial peak RSS **8852–9152→8940–9100 KiB**; overlapping
+ranges, no memory improvement claim. These exclude network, JS, raster/GPU and
+presentation. Native common-scroll precise samples (three replays each), RSS
+**107452→108236 KiB**, both **zero idle CPU/wakeups/frames**. Report→moving
+client D/F/W **9.078/9.144/0.505→8.975/9.102/0.301 ms**; slowest-draw medians
+**0.60/0.61/0.62→0.61/0.56/0.61 ms**, no hitches. No causal scroll speedup claim;
+this path reuses retained layout. The 120Hz latency target remains open. Earlier
+legacy samples are retained separately: their pre-report first_move_ms is not
+the precise latency result. `tools/browser/measure-native.py` now retains the
+idle offset and actual input-report timestamp for repeatable client measurements.
+
+Private two-display performance fuzz, mapped browser readiness, own fake HOME,
+default budgets: **24 steps, seed 4105, pass**. Worst loop delay **7.3 ms**, ping
+**10.4 ms**, compositor frame **1.9 ms**, app frame **4.9 ms**; fd **122→86**,
+threads **14→13**, RSS **128→131 MiB**. Shell windows are included in this stock
+fuzzer, so zero app-frame rows do not establish browser scroll coverage; the
+Agent Screen replay above does. Full desktop lint was not repeated; earlier
+findings outside Browser remain open.
+
+Evidence: `2026-11-06-atomic-inline-{checks,pipeline,pipeline-initial,ui-cost,
+ui-cost-legacy}.json`, fixture SOURCE files and the new native/font-grid/pipeline
+runners. Fetched origin/main twice; its current **92364e1b** is already merged.
+Both own Agent Screens and the private test session are stopped. No personal
+install/reload or secrets access. Website acceptance stays **0/100, 0/3000**;
+corpus ranking/journeys and the complete browser goal remain open.

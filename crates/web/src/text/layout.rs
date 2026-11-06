@@ -1,6 +1,7 @@
 //! Horizontal text geometry over prepared source and retained glyph runs.
 //! Worker-only. This is not block layout, painting or complete CSS Inline.
 mod index;
+mod objects;
 mod spacing;
 use super::{
     linebreak::{Breaks, Kind},
@@ -8,6 +9,7 @@ use super::{
     shaping::{self, Direction, Engine, Paragraph, Run, RunOptions},
 };
 use index::{End, Index, Window};
+pub use objects::{Object, ObjectFragment};
 use smallvec::SmallVec;
 use spacing::Spaces;
 pub use spacing::{Side, Spacing};
@@ -98,15 +100,23 @@ pub struct Options {
     pub align: Align,
     pub rtl: bool,
     pub last_align: Option<Align>,
+    /// CSS device-grid measurement; None keeps exact design-unit geometry.
+    pub pixel_scale: Option<f64>,
 }
 impl Default for Options {
     fn default() -> Self {
-        Self { width: 800., line_height: 20., baseline: 16., align: Align::Start, rtl: false, last_align: None }
+        Self { width: 800., line_height: 20., baseline: 16., align: Align::Start, rtl: false, last_align: None, pixel_scale: None }
     }
 }
 impl Options {
     pub fn for_style(style: &crate::css::style::Style, scope: &crate::font::Scope, width: f64, cancel: Option<&AtomicBool>) -> Result<Self> {
+        Self::for_style_at_scale(style, scope, width, 1., cancel)
+    }
+    pub fn for_style_at_scale(style: &crate::css::style::Style, scope: &crate::font::Scope, width: f64, scale: f64, cancel: Option<&AtomicBool>) -> Result<Self> {
         check(cancel)?;
+        if !scale.is_finite() || scale <= 0. {
+            return Err(Error::Invalid);
+        }
         use crate::css::style::{Keyword as K, Property as P, Value as V, WritingMode};
         if style.font().context() != scope.context() {
             return Err(Error::Stale);
@@ -149,10 +159,11 @@ impl Options {
         Ok(Self {
             width,
             line_height: style.line_height(),
-            baseline: metrics.ascent + (style.line_height() - (metrics.ascent - metrics.descent)) / 2.,
+            baseline: ((metrics.ascent * scale).round() + ((style.line_height() * scale - (metrics.ascent * scale).round() - (-metrics.descent * scale).round()) / 2.).floor()) / scale,
             align: align(style.value(P::TextAlign))?,
             rtl: style.axes().direction == crate::css::style::Direction::Rtl,
             last_align,
+            pixel_scale: Some(scale),
         })
     }
 }
@@ -246,8 +257,12 @@ pub struct Text {
     whitespace: WhiteSpace,
     monotonic: bool,
     complex: usize,
+    objects: u32,
 }
 impl Text {
+    pub fn object_count(&self) -> usize {
+        self.objects as usize
+    }
     pub fn prepared(&self) -> &Arc<Prepared> {
         &self.prepared
     }
@@ -282,6 +297,7 @@ pub struct TextJob<'a> {
     next: usize,
     explicit: Box<[u32]>,
     next_explicit: usize,
+    objects: u32,
     at: usize,
     trailing: Option<u32>,
     lf_trailing: Option<u32>,
@@ -315,6 +331,7 @@ impl<'a> TextJob<'a> {
             return Err(Error::Unsupported("tabs and visible control glyph layout"));
         }
         let index = Index::new(&paragraph, limits, cancel)?;
+        let objects = u32::try_from(prepared.controls().iter().filter(|c| c.kind() == super::prepare::ControlKind::Object).count()).map_err(|_| Error::Limit)?;
         let mut explicit = Vec::new();
         for c in prepared.controls().iter().filter(|c| c.kind() == super::prepare::ControlKind::Opportunity) {
             check(cancel)?;
@@ -339,6 +356,7 @@ impl<'a> TextJob<'a> {
             next: 0,
             explicit: explicit.into_boxed_slice(),
             next_explicit: 0,
+            objects,
             at: 0,
             trailing: None,
             lf_trailing: None,
@@ -483,6 +501,7 @@ impl<'a> TextJob<'a> {
             whitespace: self.whitespace,
             monotonic: self.monotonic,
             complex: self.breaks.complex_context_scalars(),
+            objects: self.objects,
         }))
     }
 }
@@ -512,8 +531,12 @@ pub struct Layout {
     fragments: Box<[Fragment]>,
     owned: Box<[Arc<Run>]>,
     options: Options,
+    objects: Option<Box<objects::LayoutObjects>>,
 }
 impl Layout {
+    pub fn object_fragments(&self) -> &[ObjectFragment] {
+        self.objects.as_ref().map_or(&[], |o| &o.placed)
+    }
     pub fn text(&self) -> &Arc<Text> {
         &self.text
     }
@@ -527,13 +550,16 @@ impl Layout {
         if fragment.run & OWNED == 0 { self.text.paragraph.runs.get(fragment.run as usize) } else { self.owned.get((fragment.run & !OWNED) as usize).map(Arc::as_ref) }
     }
     pub fn baseline(&self, line: usize) -> Option<f64> {
-        (line < self.lines.len()).then_some(self.options.baseline + line as f64 * self.options.line_height)
+        (line < self.lines.len()).then(|| self.options.baseline + line as f64 * self.options.line_height + self.objects.as_ref().map_or(0., |o| o.baseline_extra(line)))
     }
     pub fn height(&self) -> f64 {
-        self.lines.len() as f64 * self.options.line_height
+        self.lines.len() as f64 * self.options.line_height + self.objects.as_ref().map_or(0., |o| o.height_extra())
     }
     pub fn geometry_payload_bytes(&self) -> usize {
-        self.lines.len() * size_of::<Line>() + self.fragments.len() * size_of::<Fragment>() + self.owned.iter().map(|r| r.glyph_payload_bytes()).sum::<usize>()
+        self.lines.len() * size_of::<Line>()
+            + self.fragments.len() * size_of::<Fragment>()
+            + self.owned.iter().map(|r| r.glyph_payload_bytes()).sum::<usize>()
+            + self.objects.as_ref().map_or(0, |o| o.payload_bytes())
     }
 }
 /// Greedy line selection and visual fragments. Glyph slices at certified safe
@@ -559,6 +585,7 @@ pub struct Job<'a> {
     owned: Vec<Arc<Run>>,
     progress: Progress,
     failed: bool,
+    objects: Option<Box<objects::Objects>>,
 }
 impl<'a> Job<'a> {
     pub fn for_style(
@@ -583,13 +610,27 @@ impl<'a> Job<'a> {
         cancel: Option<&'a AtomicBool>,
         spacing: Vec<Spacing>,
     ) -> Result<Self> {
+        Self::for_style_with_spacing_at_scale(engine, text, style, scope, width, 1., limits, cancel, spacing)
+    }
+    #[allow(clippy::too_many_arguments)] // CSS scale and width are independent layout inputs.
+    pub fn for_style_with_spacing_at_scale(
+        engine: &'a mut Engine,
+        text: Arc<Text>,
+        style: &crate::css::style::Style,
+        scope: &crate::font::Scope,
+        width: f64,
+        scale: f64,
+        limits: Limits,
+        cancel: Option<&'a AtomicBool>,
+        spacing: Vec<Spacing>,
+    ) -> Result<Self> {
         if text.paragraph.font_context() != style.font().context()
             || text.paragraph.request() != &style.font().request
             || text.whitespace != WhiteSpace::for_style(style).map_err(|_| Error::Invalid)?
         {
             return Err(Error::Stale);
         }
-        let options = Options::for_style(style, scope, width, cancel)?;
+        let options = Options::for_style_at_scale(style, scope, width, scale, cancel)?;
         if text.paragraph.analysis.paragraphs().any(|(_, level)| (!level.is_multiple_of(2)) != options.rtl) {
             return Err(Error::Stale);
         }
@@ -600,7 +641,11 @@ impl<'a> Job<'a> {
     }
     pub fn with_spacing(engine: &'a mut Engine, text: Arc<Text>, options: Options, limits: Limits, cancel: Option<&'a AtomicBool>, spacing: Vec<Spacing>) -> Result<Self> {
         check(cancel)?;
-        if ![options.width, options.line_height, options.baseline].into_iter().all(f64::is_finite) || options.width < 0. || options.line_height < 0. {
+        if ![options.width, options.line_height, options.baseline].into_iter().all(f64::is_finite)
+            || options.width < 0.
+            || options.line_height < 0.
+            || options.pixel_scale.is_some_and(|s| !s.is_finite() || s <= 0.)
+        {
             return Err(Error::Invalid);
         }
         if text.points.len() > limits.points || text.prepared.text().len() > limits.text_bytes {
@@ -634,9 +679,22 @@ impl<'a> Job<'a> {
             owned: Vec::new(),
             progress: Progress::default(),
             failed: false,
+            objects: None,
         };
         job.begin()?;
         Ok(job)
+    }
+    /// Metrics for every semantic object in this context. Configure before
+    /// stepping; an omitted item is an error rather than disappearing text.
+    pub fn with_objects(mut self, input: Vec<Object>) -> Result<Self> {
+        check(self.cancel)?;
+        if self.failed || self.progress.work != 0 || self.scan != 0 || !self.lines.is_empty() || self.objects.is_some() {
+            return Err(Error::Invalid);
+        }
+        if !input.is_empty() || self.text.object_count() != 0 {
+            self.objects = Some(Box::new(objects::Objects::new(&self.text, input, self.limits, self.cancel)?));
+        }
+        Ok(self)
     }
     pub fn progress(&self) -> Progress {
         self.progress
@@ -704,9 +762,10 @@ impl<'a> Job<'a> {
         {
             let rtl = self.text.paragraph.runs[w.run as usize].direction == Direction::RightToLeft;
             let run = self.shape(w.run, self.paint_start..end.byte, rtl)?;
-            return Ok(all_units(&run) as f64 * (self.text.paragraph.font_size / f64::from(run.font.units_per_em())));
+            return Ok(index::measured(all_units(&run), self.text.paragraph.font_size, run.font.units_per_em(), self.options.pixel_scale)?
+                + self.objects.as_ref().map_or(0., |o| o.width(self.paint_start, end.byte)));
         }
-        self.text.index.advance(&self.text.paragraph, self.start, end)
+        Ok(self.text.index.advance_measured(&self.text.paragraph, self.start, end, self.options.pixel_scale)? + self.objects.as_ref().map_or(0., |o| o.width(self.paint_start, end.byte)))
     }
     fn point_width(&mut self, p: Point) -> Result<(f64, End)> {
         let space = self.spacing.width(self.spacing_start, self.from, p.end.byte, p.offset, p.offset as usize == self.text.prepared.text().len());
@@ -716,6 +775,12 @@ impl<'a> Job<'a> {
             return Ok((self.width(end)? + space, end));
         }
         Ok((full, p.end))
+    }
+    fn fit_limit(&self, p: Point) -> f64 {
+        // Atomic items use the layout grid's epsilon when fitting against an
+        // item boundary already rounded up from a linear text advance.
+        let epsilon = self.options.pixel_scale.filter(|_| self.objects.as_ref().is_some_and(|o| p.end.byte >= 3 && o.at(p.end.byte - 3).is_some())).map_or(0., |scale| 1. / (64. * scale));
+        self.options.width + epsilon
     }
     pub fn step(&mut self, budget: usize) -> Result<Progress> {
         if self.failed {
@@ -729,6 +794,9 @@ impl<'a> Job<'a> {
     }
     fn advance(&mut self, budget: usize) -> Result<Progress> {
         check(self.cancel)?;
+        if self.text.object_count() != 0 && self.objects.is_none() {
+            return Err(Error::Invalid);
+        }
         if self.progress.finished {
             return Ok(self.progress);
         }
@@ -746,13 +814,14 @@ impl<'a> Job<'a> {
                 continue;
             }
             let (width, effective) = self.point_width(p)?;
-            if width <= self.options.width {
+            let fit_limit = self.fit_limit(p);
+            if width <= fit_limit {
                 self.best = Some(current);
             }
-            let monotonic = self.text.monotonic && self.start_window.is_none_or(|w| effective.byte >= w.end);
-            if p.kind == Kind::Required || (width > self.options.width && monotonic) {
+            let monotonic = self.text.monotonic && self.objects.as_ref().is_none_or(|o| o.monotonic) && self.start_window.is_none_or(|w| effective.byte >= w.end);
+            if p.kind == Kind::Required || (width > fit_limit && monotonic) {
                 let chosen = self.best.unwrap_or(self.first.min(current));
-                self.emit_line(chosen)?;
+                let chosen = self.emit_line(chosen)?;
                 self.from = self.text.points[chosen].offset;
                 self.spacing_start = self.text.points[chosen].end.byte;
                 self.scan = chosen + 1;
@@ -777,6 +846,14 @@ impl<'a> Job<'a> {
             return Err(Error::Limit);
         }
         let base = &self.text.paragraph.runs[ri];
+        if let Some(o) = self.objects.as_ref().and_then(|o| o.at(source.start)) {
+            if source.end != o.at + 3 {
+                return Err(Error::Invalid);
+            }
+            totals.push((ri, 0));
+            self.fragments.push(Fragment { source, glyphs: 0..0, x: 0., advance: o.advance, level, run: ri as u32 });
+            return Ok(());
+        }
         let rtl = !level.is_multiple_of(2);
         let slice =
             if !cfg!(feature = "baseline-inline-reshape") && (base.direction == Direction::RightToLeft) == rtl { self.text.index.glyph_slice(&self.text.paragraph, ri, source.clone())? } else { None };
@@ -793,7 +870,7 @@ impl<'a> Job<'a> {
             self.owned.push(shaped);
             (id, glyphs, count)
         };
-        let advance = count as f64 * (self.text.paragraph.font_size / f64::from(self.text.paragraph.runs[ri].font.units_per_em()));
+        let advance = index::measured(count, self.text.paragraph.font_size, self.text.paragraph.runs[ri].font.units_per_em(), self.options.pixel_scale)?;
         totals.push((ri, count));
         self.fragments.push(Fragment { source, glyphs, x: 0., advance, level, run });
         Ok(())
@@ -829,9 +906,32 @@ impl<'a> Job<'a> {
         }
         Ok(())
     }
-    fn emit_line(&mut self, chosen: usize) -> Result<()> {
+    fn emit_line(&mut self, mut chosen: usize) -> Result<usize> {
         if self.lines.len() >= self.limits.lines {
             return Err(Error::Limit);
+        }
+        // An overwide first word may end before several zero-width break
+        // controls. Consume the whole trailing control sequence on that line;
+        // otherwise a following control can become a spurious empty line.
+        if self.best.is_none() {
+            let width = self.point_width(self.text.points[chosen])?.0;
+            while self.text.points[chosen].kind == Kind::Allowed {
+                check(self.cancel)?;
+                let Some(next) = self.text.points.get(chosen + 1).copied() else { break };
+                let source = self.text.prepared.text();
+                let from = self.text.points[chosen].offset;
+                if !source[from as usize..next.offset as usize].chars().all(|c| c == '\u{200b}' || c == '\n' || bidi(c) || (c == ' ' && collapses(self.text.whitespace))) {
+                    break;
+                }
+                if self.point_width(next)?.0 != width {
+                    break;
+                }
+                self.progress.work += 1;
+                if self.progress.work > self.limits.work {
+                    return Err(Error::Limit);
+                }
+                chosen += 1;
+            }
         }
         let point = self.text.points[chosen];
         let (fit, fit_end) = self.point_width(point)?;
@@ -866,9 +966,10 @@ impl<'a> Job<'a> {
                 sum += totals[at].1;
                 at += 1;
             }
-            content += sum as f64 * (self.text.paragraph.font_size / f64::from(self.text.paragraph.runs[ri].font.units_per_em()));
+            content += index::measured(sum, self.text.paragraph.font_size, self.text.paragraph.runs[ri].font.units_per_em(), self.options.pixel_scale)?;
         }
         content += self.spacing.width(self.spacing_start, self.from, point.end.byte, point.offset, point.offset as usize == self.text.prepared.text().len());
+        content += self.objects.as_ref().map_or(0., |o| o.width(visible.start, visible.end));
         if !content.is_finite() || !fit.is_finite() {
             return Err(Error::Invalid);
         }
@@ -883,6 +984,9 @@ impl<'a> Job<'a> {
             fragment.x = x + self.spacing.before(self.spacing_start, self.from, fragment.source.start);
             x += fragment.advance;
         }
+        if let Some(objects) = &mut self.objects {
+            objects.line(self.lines.len(), &self.fragments[first..], self.options, self.limits, self.cancel)?;
+        }
         self.lines.push(Line {
             source: self.from..point.offset,
             text: visible,
@@ -890,10 +994,10 @@ impl<'a> Job<'a> {
             advance,
             content_advance: content,
             offset,
-            overflow: advance > self.options.width,
+            overflow: advance > self.fit_limit(point),
             end: point.kind,
         });
-        Ok(())
+        Ok(chosen)
     }
     fn aligned_offset(&self, advance: f64, end: Kind) -> f64 {
         let align = if end == Kind::Required { self.options.last_align.unwrap_or(self.options.align) } else { self.options.align };
@@ -925,6 +1029,13 @@ impl<'a> Job<'a> {
         if !self.progress.finished {
             return Err(Error::Incomplete);
         }
-        Ok(Layout { text: self.text, lines: self.lines.into_boxed_slice(), fragments: self.fragments.into_boxed_slice(), owned: self.owned.into_boxed_slice(), options: self.options })
+        Ok(Layout {
+            text: self.text,
+            lines: self.lines.into_boxed_slice(),
+            fragments: self.fragments.into_boxed_slice(),
+            owned: self.owned.into_boxed_slice(),
+            options: self.options,
+            objects: self.objects.map(|o| o.finish()),
+        })
     }
 }

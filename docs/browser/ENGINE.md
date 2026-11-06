@@ -2063,8 +2063,8 @@ width-independent cache. Its additional geometry is accounted separately.
 Ordinary zero-edge text keeps the existing shaping/line-layout path.
 
 `inline-box-fixtures` records 45 independent Chrome letter/box probes at five
-live scales and two native worker budgets. **198/225** match the documented
-DOM Range allowance; **27 fractional-font coordinate non-passes remain pinned**.
+live scales and two native worker budgets. **219/225** match the documented
+DOM Range allowance; **six transparent-inline item advance nonpasses remain pinned**.
 Wrapping/heights and Y coordinates pass in all cases. This is not typography,
 pixel or website acceptance. Horizontal inline margins/padding now render in
 the native canvas and existing text-link control, but inline borders,
@@ -2090,10 +2090,9 @@ than scanning the whole run per segment. Shared clusters still have no invented
 DOM click target; complete caret and anchor ownership remain open.
 
 `tests/break-control-fixtures` pins 83 independently measured Chrome cases at
-five scales (two worker budgets). 411/415 combinations match letter positions
-and block heights within the stated DOM Range export allowance; four are
-explicit nonpasses. Two include exact-fit wrapping/height differences from
-fractional font advances; two have RTL horizontal position differences. These
+five scales (two worker budgets). All 415 combinations match letter positions
+and block heights within the stated DOM Range export allowance after the
+device-grid metric and trailing zero-width-control corrections below. These
 are component measurements, not full pixels, complete break semantics or website
 acceptance. Images and other replaced/control objects remain unsupported.
 
@@ -2123,3 +2122,45 @@ report RSS and require default features. Compile archived revisions with matchin
 profiles/dependency versions, separate build targets, and identical new benchmark
 examples; probe the control-bearing before binary before collecting samples.
 These measurements exclude network, JS, raster timing, GPU and presentation.
+
+## Atomic inline geometry and CSS font grid (2026-11-06)
+
+The worker text API accepts an explicit semantic object control, with its own
+U+FFFC carrier in prepared text. Literal DOM U+FFFC remains ordinary font text.
+The shaping job isolates registered objects from neighboring shaping context,
+preserves Unicode bidi/line-break identity, and emits an empty glyph run without
+font fallback. No object glyph is fabricated. The layout job requires complete,
+ordered finite used metrics before stepping; missing metrics fail explicitly.
+
+Object advance participates in line fitting and visual order. Baseline extents
+expand only affected lines; subsequent lines inherit a sparse cumulative shift.
+Negative horizontal margins disable the monotone overflow shortcut. Placed
+objects and changed line metrics use optional sparse storage, with no object
+table allocation for ordinary text. Inputs, output counts, work and cancellation
+remain bounded. This API supplies baseline-aligned used margin-box dimensions;
+it does not compute HTML image sizes, resolve resources or paint pixels.
+
+CSS text layout now receives device scale from normal flow. Scalable linear
+font advances use a 26.6 device size / 16.16 font scale before enclosing used
+item width on a 1/64 device-pixel grid. CSS struts round font ascent/descent to
+device pixels, then floor the ascent share of half-leading. The general layout
+API retains exact design-unit behavior unless this policy is selected. Layout
+recomputes used metrics on scale changes; retained shaping remains in font units.
+An overwide first word consumes adjacent trailing zero-width controls together,
+preventing a following optional control from becoming a spurious empty line.
+
+`tests/object-fixtures` pins 76 independent Chrome inputs at five live scales:
+all **380** object/letter/paragraph geometry observations match the documented
+CSSOM allowance at both one- and 128-action worker budgets. Parent styles use
+the real CSS factories, but object dimensions are supplied by the component
+test. The existing break-control suite improves to 415/415 and inline spacing
+to 219/225 with unchanged independent captures and comparison tolerances.
+
+This is partial typography and atomic layout, not image rendering. Normal
+line-height selection, per-transparent-inline used advances, arbitrary font
+hinting/variation, mixed font struts and complete inline alignment remain open.
+The atomic fit allowance currently applies at explicit object boundaries;
+complete CSS text-item fitting still needs its own representation. Browser img
+and other replaced/control elements remain explicitly unsupported until resource,
+used-size, tree/flow, paint and agent integration are connected. Website
+acceptance remains zero.

@@ -1,0 +1,1067 @@
+{
+  "scope": "Frozen before/after release scroll and idle samples on an OWN Agent Screen.\nUsage: SCREEN /var/tmp/OWNED OUTPUT.json; eval that screen's environment first.\nExpects browser-before/browser-after. Only authored local text is loaded.\nClient submission marks do not measure compositor presentation or optical latency.\n",
+  "fixture_sha256": "7095431b1596ecfbd9c506d20aa5aaa29f223909d5a2f234296ef1bb1862b5fe",
+  "rows": [
+    {
+      "variant": "before",
+      "binary_sha256": "3a2245d6b1e7e489214858dfa96e2ef54e86aba4c0fed4c5338d7e638f982194",
+      "rss_kib": 107452,
+      "hwm_kib": 107452,
+      "idle": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3269192,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269195,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269197,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269198,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269199,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269200,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269204,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269216,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269218,
+            "name": "browser-before",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      "bursts": [
+        {
+          "repeat": 0,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.63,
+          "distance": 711.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 0.998,
+            "sd": 0.01,
+            "min": 0.933,
+            "max": 0.999,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.7,
+          "report_to_first_moving_client_ms": 9.078,
+          "first_report_at_us": 85167523691,
+          "baseline_y": 0.0,
+          "first_moving_mark": {
+            "at_us": 85167532769,
+            "us": 627,
+            "ui_us": 367,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 260,
+            "scrolls": [
+              [
+                0.0,
+                9.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.31,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.78,
+          "distance": 328.5,
+          "reached_end": false,
+          "legacy_first_move_ms": 29.0,
+          "report_to_first_moving_client_ms": 9.178,
+          "first_report_at_us": 85169180779,
+          "baseline_y": 720.5,
+          "first_moving_mark": {
+            "at_us": 85169189957,
+            "us": 359,
+            "ui_us": 229,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 130,
+            "scrolls": [
+              [
+                0.0,
+                738.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.62,
+          "distance": -132.0,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 9.4,
+          "report_to_first_moving_client_ms": 0.505,
+          "first_report_at_us": 85173124166,
+          "baseline_y": 1066.5,
+          "first_moving_mark": {
+            "at_us": 85173124671,
+            "us": 618,
+            "ui_us": 383,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 235,
+            "scrolls": [
+              [
+                0.0,
+                1058.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.57,
+          "distance": -713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.0,
+            "sd": 0.02,
+            "min": 0.867,
+            "max": 1.134,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.7,
+          "report_to_first_moving_client_ms": 8.948,
+          "first_report_at_us": 85174740248,
+          "baseline_y": 926.0,
+          "first_moving_mark": {
+            "at_us": 85174749196,
+            "us": 574,
+            "ui_us": 373,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 201,
+            "scrolls": [
+              [
+                0.0,
+                919.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "flick",
+          "frames": 12,
+          "moving_frames": 10,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.6,
+          "distance": -189.0,
+          "reached_end": true,
+          "legacy_first_move_ms": 28.5,
+          "report_to_first_moving_client_ms": 9.144,
+          "first_report_at_us": 85176396431,
+          "baseline_y": 206.0,
+          "first_moving_mark": {
+            "at_us": 85176405575,
+            "us": 597,
+            "ui_us": 359,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 238,
+            "scrolls": [
+              [
+                0.0,
+                189.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.32,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.6,
+          "distance": 132.0,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 8.2,
+          "report_to_first_moving_client_ms": 0.467,
+          "first_report_at_us": 85180340276,
+          "baseline_y": 0.0,
+          "first_moving_mark": {
+            "at_us": 85180340743,
+            "us": 603,
+            "ui_us": 373,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 230,
+            "scrolls": [
+              [
+                0.0,
+                8.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.6,
+          "distance": 712.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.0,
+            "sd": 0.0,
+            "min": 1.0,
+            "max": 1.0,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.7,
+          "report_to_first_moving_client_ms": 9.907,
+          "first_report_at_us": 85181957607,
+          "baseline_y": 140.5,
+          "first_moving_mark": {
+            "at_us": 85181967514,
+            "us": 598,
+            "ui_us": 383,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 215,
+            "scrolls": [
+              [
+                0.0,
+                148.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.35,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.61,
+          "distance": 330.0,
+          "reached_end": false,
+          "legacy_first_move_ms": 28.6,
+          "report_to_first_moving_client_ms": 8.891,
+          "first_report_at_us": 85183614658,
+          "baseline_y": 860.5,
+          "first_moving_mark": {
+            "at_us": 85183623549,
+            "us": 609,
+            "ui_us": 368,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 241,
+            "scrolls": [
+              [
+                0.0,
+                877.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.62,
+          "distance": -131.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 8.3,
+          "report_to_first_moving_client_ms": 0.529,
+          "first_report_at_us": 85187558100,
+          "baseline_y": 1207.5,
+          "first_moving_mark": {
+            "at_us": 85187558629,
+            "us": 603,
+            "ui_us": 356,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 247,
+            "scrolls": [
+              [
+                0.0,
+                1199.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        }
+      ],
+      "compositor": {
+        "type": "timings",
+        "timings": {
+          "outputs": [],
+          "beats": 0,
+          "latest_beat_us": 0,
+          "slowest": null,
+          "phases": []
+        }
+      }
+    },
+    {
+      "variant": "after",
+      "binary_sha256": "bfac6cdbcd8eeb1bc39f422386462dadf6ba5a65f3731332a3d8ffeb5395d61c",
+      "rss_kib": 108236,
+      "hwm_kib": 108236,
+      "idle": {
+        "seconds": 3.0,
+        "total": {
+          "cpu": 0.0,
+          "wakeups": 0
+        },
+        "threads": [
+          {
+            "tid": 3269416,
+            "name": "browser-after",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269419,
+            "name": "Timer",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269421,
+            "name": "theme-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269422,
+            "name": "menus",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269423,
+            "name": "upgrade-watch",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269424,
+            "name": "browser:disk$0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269428,
+            "name": "browse:traceq0",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269440,
+            "name": "browser-page",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          },
+          {
+            "tid": 3269442,
+            "name": "browser-after",
+            "cpu": 0.0,
+            "user": 0.0,
+            "sys": 0.0,
+            "wakeups": 0,
+            "preempted": 0
+          }
+        ],
+        "windows": [
+          {
+            "title": "Browser",
+            "frames": 0,
+            "per_second": 0.0,
+            "mean_us": 0,
+            "ui_us": 0,
+            "tessellate_us": 0,
+            "submit_us": 0,
+            "slowest_us": 0
+          }
+        ]
+      },
+      "bursts": [
+        {
+          "repeat": 0,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.85,
+          "distance": 714.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.002,
+            "sd": 0.034,
+            "min": 0.867,
+            "max": 1.134,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.5,
+          "report_to_first_moving_client_ms": 8.947,
+          "first_report_at_us": 85193309664,
+          "baseline_y": 0.0,
+          "first_moving_mark": {
+            "at_us": 85193318611,
+            "us": 475,
+            "ui_us": 286,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 189,
+            "scrolls": [
+              [
+                0.0,
+                6.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.29,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.49,
+          "distance": 329.5,
+          "reached_end": false,
+          "legacy_first_move_ms": 28.6,
+          "report_to_first_moving_client_ms": 9.102,
+          "first_report_at_us": 85194964970,
+          "baseline_y": 721.0,
+          "first_moving_mark": {
+            "at_us": 85194974072,
+            "us": 433,
+            "ui_us": 267,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 166,
+            "scrolls": [
+              [
+                0.0,
+                738.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 0,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.61,
+          "distance": -131.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 9.2,
+          "report_to_first_moving_client_ms": 0.458,
+          "first_report_at_us": 85198908044,
+          "baseline_y": 1067.5,
+          "first_moving_mark": {
+            "at_us": 85198908502,
+            "us": 603,
+            "ui_us": 367,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 236,
+            "scrolls": [
+              [
+                0.0,
+                1059.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.32,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.6,
+          "distance": -713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.001,
+            "sd": 0.0,
+            "min": 1.001,
+            "max": 1.001,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.4,
+          "report_to_first_moving_client_ms": 8.975,
+          "first_report_at_us": 85200525124,
+          "baseline_y": 927.5,
+          "first_moving_mark": {
+            "at_us": 85200534099,
+            "us": 599,
+            "ui_us": 375,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 224,
+            "scrolls": [
+              [
+                0.0,
+                921.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "flick",
+          "frames": 12,
+          "moving_frames": 10,
+          "frame_ms": 8.38,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.56,
+          "distance": -190.5,
+          "reached_end": true,
+          "legacy_first_move_ms": 28.5,
+          "report_to_first_moving_client_ms": 8.988,
+          "first_report_at_us": 85202181186,
+          "baseline_y": 207.5,
+          "first_moving_mark": {
+            "at_us": 85202190174,
+            "us": 565,
+            "ui_us": 365,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 200,
+            "scrolls": [
+              [
+                0.0,
+                190.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 1,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.34,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.69,
+          "distance": 132.0,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 0,
+            "worst_jump": 0.0
+          },
+          "legacy_first_move_ms": 9.0,
+          "report_to_first_moving_client_ms": 0.289,
+          "first_report_at_us": 85206124421,
+          "baseline_y": 0.0,
+          "first_moving_mark": {
+            "at_us": 85206124710,
+            "us": 695,
+            "ui_us": 467,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 228,
+            "scrolls": [
+              [
+                0.0,
+                8.5,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "drag",
+          "frames": 98,
+          "moving_frames": 96,
+          "frame_ms": 8.31,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.61,
+          "distance": 713.5,
+          "reached_end": false,
+          "step_vs_speed": {
+            "mean": 1.002,
+            "sd": 0.01,
+            "min": 0.936,
+            "max": 1.069,
+            "off_25pct": 0,
+            "frames": 92
+          },
+          "legacy_first_move_ms": 28.6,
+          "report_to_first_moving_client_ms": 9.006,
+          "first_report_at_us": 85207740975,
+          "baseline_y": 140.5,
+          "first_moving_mark": {
+            "at_us": 85207749981,
+            "us": 610,
+            "ui_us": 382,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 228,
+            "scrolls": [
+              [
+                0.0,
+                147.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "flick",
+          "frames": 19,
+          "moving_frames": 17,
+          "frame_ms": 8.32,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.61,
+          "distance": 329.5,
+          "reached_end": false,
+          "legacy_first_move_ms": 28.5,
+          "report_to_first_moving_client_ms": 9.32,
+          "first_report_at_us": 85209396733,
+          "baseline_y": 860.5,
+          "first_moving_mark": {
+            "at_us": 85209406053,
+            "us": 612,
+            "ui_us": 389,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 223,
+            "scrolls": [
+              [
+                0.0,
+                878.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        },
+        {
+          "repeat": 2,
+          "kind": "wheel",
+          "frames": 60,
+          "moving_frames": 58,
+          "frame_ms": 8.33,
+          "hitches": 0,
+          "still": 0,
+          "slowest_draw_ms": 0.59,
+          "distance": -131.5,
+          "reached_end": false,
+          "notches": {
+            "count": 3,
+            "frames_each": [
+              19,
+              20,
+              19
+            ],
+            "jumps_up": 2,
+            "worst_jump": 0.125
+          },
+          "legacy_first_move_ms": 8.3,
+          "report_to_first_moving_client_ms": 0.301,
+          "first_report_at_us": 85213338642,
+          "baseline_y": 1207.5,
+          "first_moving_mark": {
+            "at_us": 85213338943,
+            "us": 590,
+            "ui_us": 384,
+            "setup_us": 0,
+            "tessellate_us": 0,
+            "acquire_us": 0,
+            "submit_us": 206,
+            "scrolls": [
+              [
+                0.0,
+                1199.0,
+                0.0,
+                71512.96
+              ]
+            ]
+          }
+        }
+      ],
+      "compositor": {
+        "type": "timings",
+        "timings": {
+          "outputs": [
+            {
+              "output": "HEADLESS-1",
+              "frames": 925,
+              "slowest_us": 2665,
+              "total_us": 196756
+            }
+          ],
+          "beats": 6356,
+          "latest_beat_us": 3630,
+          "slowest": [
+            "flushing to clients",
+            346
+          ],
+          "phases": [
+            {
+              "name": "clients' requests",
+              "count": 1652,
+              "total_us": 30432,
+              "slowest_us": 221
+            },
+            {
+              "name": "commit",
+              "count": 545,
+              "total_us": 20692,
+              "slowest_us": 129
+            },
+            {
+              "name": "damage and draw",
+              "count": 925,
+              "total_us": 64003,
+              "slowest_us": 399
+            },
+            {
+              "name": "gather (all)",
+              "count": 925,
+              "total_us": 42614,
+              "slowest_us": 2293
+            },
+            {
+              "name": "gather: lower layers",
+              "count": 985,
+              "total_us": 1816,
+              "slowest_us": 13
+            },
+            {
+              "name": "gather: upper layers",
+              "count": 985,
+              "total_us": 5968,
+              "slowest_us": 30
+            },
+            {
+              "name": "gather: wallpaper",
+              "count": 985,
+              "total_us": 2860,
+              "slowest_us": 15
+            },
+            {
+              "name": "gather: windows",
+              "count": 985,
+              "total_us": 18149,
+              "slowest_us": 2267
+            },
+            {
+              "name": "look (whole)",
+              "count": 925,
+              "total_us": 199627,
+              "slowest_us": 2666
+            },
+            {
+              "name": "post_repaint",
+              "count": 925,
+              "total_us": 1772,
+              "slowest_us": 14
+            },
+            {
+              "name": "pre_repaint",
+              "count": 925,
+              "total_us": 59909,
+              "slowest_us": 210
+            },
+            {
+              "name": "repoint",
+              "count": 267,
+              "total_us": 3665,
+              "slowest_us": 78
+            },
+            {
+              "name": "space refresh",
+              "count": 10560,
+              "total_us": 121085,
+              "slowest_us": 104
+            },
+            {
+              "name": "tick",
+              "count": 10560,
+              "total_us": 198791,
+              "slowest_us": 204
+            },
+            {
+              "name": "tick: auto-tiling",
+              "count": 3135,
+              "total_us": 28047,
+              "slowest_us": 83
+            },
+            {
+              "name": "tick: groups",
+              "count": 3135,
+              "total_us": 97805,
+              "slowest_us": 127
+            },
+            {
+              "name": "tick: sides, children, focus",
+              "count": 3135,
+              "total_us": 16474,
+              "slowest_us": 52
+            },
+            {
+              "name": "tick: window infos",
+              "count": 3135,
+              "total_us": 44214,
+              "slowest_us": 92
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

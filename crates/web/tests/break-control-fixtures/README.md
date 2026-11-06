@@ -7,8 +7,7 @@ letter positions and block rectangles after its local font is ready. The
 reference does not import engine output. SOURCE.json pins all inputs, font,
 base CSS and independent reports.
 
-411 of 415 case/scale combinations match within one device layout unit of
-horizontal DOM Range enclosure; four remain nonpasses. Two include wrap and
-height differences at an exact fit boundary; two have RTL horizontal font
-position differences. The test pins these differences without accepting them.
-This is component coverage, not website or full pixel acceptance.
+415 case/scale combinations match within one device layout unit of horizontal
+DOM Range enclosure. Earlier four nonpasses were resolved by linear advance/grid
+measurement and consuming adjacent zero-width controls on an overwide line.
+This remains component geometry coverage, not website or full pixel acceptance.

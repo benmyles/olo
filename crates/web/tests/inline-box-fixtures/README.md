@@ -19,10 +19,10 @@ after CSSOM float32 projection, allowing one device layout unit (1/64 pixel)
 because a DOM Range can enclose a caret outward from its glyph origin. This
 does not make it a glyph-raster or pixel comparison.
 
-**198/225 case/scale observations match that definition. 27 are explicit
-non-passes**, with 32 X-coordinate mismatches beyond that allowance, at 1.25
-and 1.75. The engine still measures glyph advances in font units; Chrome's
-device-size font metrics differ slightly. `known-nonpasses.json` pins each
+**219/225 case/scale observations match that definition. Six are explicit
+non-passes**, each with one X-coordinate mismatch at 1.25 or 1.75. Device-grid
+font metric corrections resolve the other 21 cases. Transparent inline item
+boundaries still need separate used advances. `known-nonpasses.json` pins each
 wrong native coordinate and independent Chrome coordinate, with a 1e-9 numeric
 comparison tolerance for JSON float round trips. This ledger is a regression
 guard, not an acceptance oracle: a changed non-pass requires investigation,
