@@ -27,6 +27,19 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Done, waiting for Ben to try or confirm
 
+- **Olo Doctor's "Voice processing's sound isn't realtime" comes back
+  after Fix** (Ben, 2026-11-06): "i press fix it, it says it's fixed,
+  but then it just comes back". *Found*: the fix did take (rtkit's
+  journal: refusing every request for days at its default 15 processes,
+  then restarted at 10:59:07 with 64 and 256, and olo-voice's sound
+  thread made realtime at 10:59:17, the supervisor's next once-a-minute
+  try); but Doctor looked again the moment the fix finished, still found
+  the thread refused, and showed the finding again. *Fixed*: a fix can
+  leave a step to do as the person before that look (`after_fix`); this
+  one asks rtkit for the voice services' sound threads itself (rtkit
+  gives only to a thread's own user, so not the root helper). Ben's
+  thread is realtime now, so his next look shows it fine.
+
 - **Passwords: Add Field in each section, and search inside items**
   (Ben, 2026-11-06): "in passwords each section needs its own add field
   button, right now there's only one at the very bottom of all

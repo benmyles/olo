@@ -7763,7 +7763,11 @@ scan made for the sudo user). What it looks for:
   thread that rtkit refused (its processes-per-user limit reached).
   Fixed by an rtkit drop-in (`/etc/systemd/system/rtkit-daemon.service.d/olo.conf`:
   64 processes, 256 threads a user), systemd reloaded, rtkit restarted;
-  the supervisor asks again within a minute.
+  then Doctor itself, as the person (rtkit gives only to a thread's own
+  user), asks it again for those threads before it looks
+  (`checks::after_fix`, a fix's after-step, off the UI thread). Left to
+  the supervisor's retry a minute on, the look just after the fix still
+  found them refused and the finding came back after "Fixed.".
 - **Frames kept off the fast cores**: `kernel.sched_util_clamp_min`
   below 1024 caps the `uclamp.min` app_server's and the windows' threads
   ask for (rule 9): set to 1024, now and at boot (/etc/sysctl.d/
