@@ -25,6 +25,38 @@ pub struct Going {
     /// of seconds); before, nothing is recorded yet.
     #[serde(default = "yes")]
     pub recording: bool,
+    /// How much it had recorded (milliseconds, pauses left out) when
+    /// `as_of` (milliseconds since the epoch) was: its clock, for the
+    /// controls on the screen (`recorded_ms`).
+    #[serde(default)]
+    pub recorded_ms: u64,
+    #[serde(default)]
+    pub as_of: u64,
+    /// The recorder's own arguments: what Restart starts again.
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+impl Going {
+    /// How long it has recorded by now (milliseconds), pauses left out.
+    pub fn recorded_now(&self) -> u64 {
+        if !self.recording || self.paused || self.as_of == 0 {
+            return self.recorded_ms;
+        }
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+        self.recorded_ms + now.saturating_sub(self.as_of)
+    }
+}
+
+/// The namespace of the recording's controls on the screen (a layer
+/// surface): app_server leaves them out of every capture, so they're on
+/// the screen but never in the recording (or a share).
+pub const CONTROLS_NAMESPACE: &str = "olo-recording-controls";
+
+/// Beside the status file while a recording is being discarded
+/// (`--discard`): the recorder, finishing, deletes what it made.
+pub fn discard_path_for(display: &str) -> PathBuf {
+    path_for(display).with_extension("discard")
 }
 
 fn yes() -> bool {
