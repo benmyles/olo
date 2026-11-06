@@ -2520,7 +2520,10 @@ stopped: a service of the session's is restarted by it, an app starts
 as the new version when next opened. The proxies are never touched
 (a retired one serves the outside programs it had until they close),
 nor olo-portal (it may be waiting out a screen share,
-`upgrade_waits_while`), which is only named. Programs of ours left
+`upgrade_waits_while`), which is only named, nor olo-pool (one from
+before the waiting marker drains, then becomes the new version by itself
+within its own 10 minutes), nor a program marked waiting for what it has
+under way (`olo_kit_base::restore::mark_waiting`). Programs of ours left
 from a session that has gone (their `WAYLAND_DISPLAY`'s socket no
 longer exists: a login before, a test session or Agent Screen stopped
 without them; `upgrade::leftovers`, none younger than 30 s, none with
