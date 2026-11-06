@@ -31,6 +31,7 @@ mod markup;
 mod pictures;
 mod server;
 mod sound;
+mod startup;
 mod store;
 mod web;
 
@@ -982,6 +983,8 @@ fn main() -> std::process::ExitCode {
     olo_preview::audio::set_identity("Notifications", "olo-notifications");
     olo_ui::run(APP_ID, move |cx| {
         olo_ui::stay_resident(cx);
+        // Olo's start-up sound, once a session.
+        startup::at_start();
         let proxy = olo_ui::proxy(cx);
         let _ = REFRESH.set(proxy.clone());
         let bus = Arc::new(Mutex::new(None));

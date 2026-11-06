@@ -2550,7 +2550,8 @@ impl AnvilState<UdevData> {
             // "Upgrading Olo", in front of all, while a restart's windows
             // come back.
             let (displays, back) = (self.space.outputs().filter(|o| o.current_mode().is_some()).count(), self.space.elements().count());
-            let (veiled, again) = crate::veil::frame(&mut self.veil, false, displays, back, &mut renderer, &output);
+            let shell = crate::veil::shell_up(&self.space);
+            let (veiled, again) = crate::veil::frame(&mut self.veil, false, displays, back, shell, &mut renderer, &output);
             overlays.splice(0..0, veiled);
             if again {
                 let _ = self.handle.insert_source(smithay::reexports::calloop::timer::Timer::immediate(), |_, _, state| {

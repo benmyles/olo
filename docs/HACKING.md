@@ -2327,6 +2327,24 @@ points from the set's sizes, both pixel for pixel (between-scales take
 the next size down, centred: never resampled); a frame only as a stage
 is reached and through the fade. `OLO_VEIL_SHEET=/var/tmp/veil.png cargo
 test -p app_server --lib veil_sheet` draws its stages at 1, 1.5 and 2×.
+The same is **Olo's start-up screen** as a session starts: olo-session
+tells its first app_server (`OLO_STARTING`, in a real session; a test's
+with `OLO_STARTUP_VEIL=1`), which shows "Starting Olo" with its own
+icons (the window server, the displays, the desktop, the apps), lit as
+the displays come up, Tracker's desktop layer shows and Deskbar's does
+("Welcome"), at least 1.8 s, then faded. As it starts, the session's
+Notifications plays **Olo's start-up sound**, once a session (a mark by
+the session's pid; not when re-executed or started again) unless
+Preferences ▸ Sound's "Play a sound when Olo starts" is off
+(`Settings::startup_sound`): a swell made in process
+(`notifications/src/startup.rs`), a D♭ major ninth chord coming in
+low to high, each note a sine with a little of its octave and twelfth,
+a soft attack and long decay, spread in stereo, with a light Schroeder
+room, 3.2 s at −6 dBFS, written to the cache as a WAV and played as
+Notifications' sounds are (`OLO_STARTUP_WAV=FILE cargo test -p
+olo-notifications startup_wav` writes it out to listen to). Taking over
+the boot itself (Plymouth's place) and the login screen (GDM's) wait for
+a try on the machine: they change what it boots into.
 Their connections do end when app_server restarts in place, and each
 kind of client has its way back: an Olo app re-executes itself with
 its state saved, as for an upgrade, and reconnects (olo-ui

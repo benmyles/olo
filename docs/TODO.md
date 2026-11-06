@@ -1356,7 +1356,15 @@ of Finished; a new one goes where its priority puts it.
   "Upgrading Olo" veil on every display while app_server restarts
   and the displays settle, in the same style. *Done* (2026-11-05,
   HACKING "The session and in-place reload"): the upgrade's veil, the
-  wordmark and the icon set's art lit stage by stage.
+  wordmark and the icon set's art lit stage by stage; the same as the
+  start-up screen as a session starts ("Starting Olo", till the desktop
+  and Deskbar show); the start-up sound, made in process (a D♭ major
+  ninth swell), once a session, with a switch in Preferences ▸ Sound.
+  *Left*, both needing a try on the machine (they change what it boots
+  into, and can't be seen without a reboot): the login screen in GDM's
+  place (a daemon owning the seat, PAM and logind's session, a greeter on
+  the kit) and the boot in Plymouth's (a theme of the same picture, or
+  Olo drawing from the initramfs).
 
 - **Text and everything drawn, better than Apple's** (Ben, 2026-10-31):
   "make sure our text system is SOTA -- rivalling apple's or anything

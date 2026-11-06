@@ -277,6 +277,9 @@ struct Session {
     retired: Vec<i32>,
     /// The proxy kept crashing: app_server takes the socket itself.
     no_proxy: bool,
+    /// The session is starting: its first app_server shows Olo's
+    /// start-up screen (`OLO_STARTING`; app_server's `veil.rs`).
+    starting: bool,
 }
 
 const RESUME_ENV: &str = "OLO_SESSION_RESUME";
@@ -303,6 +306,7 @@ impl Session {
         if backend.is_empty() {
             backend.push("--tty-udev".into());
         }
+        let real_start = backend.iter().any(|b| b == "--tty-udev");
         let (display, wayland, lock) = bind_wayland().unwrap_or_else(|e| {
             log(format!("could not create a Wayland socket: {e}"));
             std::process::exit(1);
@@ -347,6 +351,8 @@ impl Session {
             proxy_binary: None,
             retired: Vec::new(),
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
+            // (A real session's start; a test's when asked.)
+            starting: real_start || std::env::var_os("OLO_STARTUP_VEIL").is_some(),
         };
         s.own_files();
         s.start_server();
@@ -438,6 +444,7 @@ impl Session {
             proxy_binary,
             retired,
             no_proxy: std::env::var_os("OLO_NO_WAYLAND_PROXY").is_some(),
+            starting: false,
         };
         s.own_files();
         s.upgrades = exe().parent().and_then(|d| upgrade::Watcher::new(d, &s.display));
@@ -526,6 +533,11 @@ impl Session {
         }
         if let Some(fd) = fds.get(2) {
             env.push(("OLO_WAYLAND_PROXY_FD", fd.to_string()));
+        }
+        // The first app_server of a session starting shows Olo's start-up
+        // screen; one restarted, the upgrade's veil.
+        if std::mem::take(&mut self.starting) {
+            env.push(("OLO_STARTING", "1".into()));
         }
         // The listening sockets must survive into app_server.
         for &fd in &fds {

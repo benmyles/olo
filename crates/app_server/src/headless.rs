@@ -541,7 +541,8 @@ fn twitcher_overlay(state: &mut AnvilState<HeadlessData>, output: &Output) -> Ve
     let scale = output.current_scale().fractional_scale();
     // "Upgrading Olo", in front of all, while a restart's windows come back.
     let (displays, back) = (state.space.outputs().filter(|o| o.current_mode().is_some()).count(), state.space.elements().count());
-    let (mut out, again) = crate::veil::frame(&mut state.veil, false, displays, back, &mut state.backend_data.renderer, output);
+    let shell = crate::veil::shell_up(&state.space);
+    let (mut out, again) = crate::veil::frame(&mut state.veil, false, displays, back, shell, &mut state.backend_data.renderer, output);
     if again {
         let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::immediate(), |_, _, state| {
             state.backend_data.wake(None);

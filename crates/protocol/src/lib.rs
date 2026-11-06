@@ -1370,6 +1370,8 @@ pub struct Settings {
     pub tracker: TrackerSettings,
     /// Screen recordings (Preferences ▸ GPUs ▸ Screen Recordings).
     pub screen_recording: ScreenRecordingSettings,
+    /// Olo's start-up sound as a session starts (Preferences ▸ Sound).
+    pub startup_sound: bool,
     pub terminal: TerminalSettings,
     pub security: SecuritySettings,
     pub ai: AiSettings,
@@ -2134,6 +2136,7 @@ impl Default for Settings {
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
             screen_recording: ScreenRecordingSettings::default(),
+            startup_sound: true,
             terminal: TerminalSettings::default(),
             security: SecuritySettings::default(),
             ai: AiSettings::default(),

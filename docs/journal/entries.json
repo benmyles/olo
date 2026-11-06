@@ -3388,5 +3388,11 @@
   "title": "Upgrading Olo: the veil",
   "caption": "While a restarted app_server brings the windows back, every display shows Olo's wordmark and a row of icons lit stage by stage, after BeOS's boot screen; it lifts once the windows are back.",
   "image": "2026-11-05/193521-upgrading-olo-the-veil.png"
+ },
+ {
+  "time": "2026-11-05T19:47:42",
+  "title": "Starting Olo: the start-up screen",
+  "caption": "As a session starts, every display shows Olo's start-up screen (the upgrade veil's look, its own icons), lit as the displays, the desktop and Deskbar come up; Olo's start-up sound plays once a session.",
+  "image": "2026-11-05/194742-starting-olo-the-start-up-screen.png"
  }
 ]

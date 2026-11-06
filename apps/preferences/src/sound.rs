@@ -195,6 +195,10 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let left = ui.collect(|ui| {
         section(ui, st, &devices, Kind::Output);
         section(ui, st, &devices, Kind::Input);
+        ui.bbox("Starting Up", |ui| {
+            let on = ui.s.startup_sound;
+            ui.check("Play a sound when Olo starts", on, |s, v| s.startup_sound = v);
+        });
     });
     let right = ui.collect(|ui| voice_section(ui, st, &devices));
     ui.add_columns(left, right);

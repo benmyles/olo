@@ -1265,6 +1265,22 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         // restart, and its auto-tiling as it was.
         state.showing = crate::layout::showing(&state.layout, state.settings.workspace_count);
         let trees = crate::layout::load_trees();
+        // A session starting: Olo's start-up screen till its desktop is up
+        // (the session says, for its first app_server; not in Rescue).
+        let starting = std::env::var_os("OLO_STARTING").is_some();
+        // SAFETY: start-up, before threads that read the environment.
+        unsafe { std::env::remove_var("OLO_STARTING") };
+        if starting && state.layout.is_empty() && !crate::rescue::active() && std::env::var_os("OLO_NO_VEIL").is_none() {
+            let veil = crate::veil::Veil::starting();
+            let looks = [veil.soonest(), veil.deadline()];
+            state.veil = Some(veil);
+            for after in looks {
+                let _ = state.handle.insert_source(smithay::reexports::calloop::timer::Timer::from_duration(after), |_, _, state| {
+                    state.backend_data.wake(None);
+                    smithay::reexports::calloop::timer::TimeoutAction::Drop
+                });
+            }
+        }
         if !state.layout.is_empty() {
             // Veiled till the windows are back (not in Rescue).
             if !crate::rescue::active() && std::env::var_os("OLO_NO_VEIL").is_none() {

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-05
 
+### Starting Olo: the start-up screen
+
+*19:47* — As a session starts, every display shows Olo's start-up screen (the upgrade veil's look, its own icons), lit as the displays, the desktop and Deskbar come up; Olo's start-up sound plays once a session.
+
+![Starting Olo: the start-up screen](2026-11-05/194742-starting-olo-the-start-up-screen.png)
+
 ### Upgrading Olo: the veil
 
 *19:35* — While a restarted app_server brings the windows back, every display shows Olo's wordmark and a row of icons lit stage by stage, after BeOS's boot screen; it lifts once the windows are back.
