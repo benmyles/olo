@@ -214,6 +214,12 @@ struct Resume {
     /// and how far the checking got.
     #[serde(default)]
     stale: Option<(u64, u8)>,
+    /// The upgraded programs still to be nudged once app_server has
+    /// restarted (`nudge_at`): in how many milliseconds. (Lost, a reload
+    /// that re-executed us for its own upgrade nudged no one: each became
+    /// its new version only when `check_stale` asked again, 20 s on.)
+    #[serde(default)]
+    nudge_in_ms: Option<u64>,
 }
 
 /// olo-wlproxy and app_server's two other sockets: one for Olo's own
@@ -433,7 +439,7 @@ impl Session {
             shell: r.shell,
             stale_check: r.stale.map(|(at, stage)| (Instant::now() - Duration::from_secs(now_secs().saturating_sub(at)), stage)),
             leftovers: Vec::new(),
-            nudge_at: None,
+            nudge_at: r.nudge_in_ms.map(|ms| Instant::now() + Duration::from_millis(ms)),
             binary: own_binary(),
             stopping: false,
             real,
@@ -901,6 +907,7 @@ impl Session {
             server: self.server.clone(),
             shell: self.shell.clone(),
             stale: self.stale_check.map(|(at, stage)| (now_secs().saturating_sub(at.elapsed().as_secs()), stage)),
+            nudge_in_ms: self.nudge_at.map(|t| t.saturating_duration_since(Instant::now()).as_millis() as u64),
             reloading,
             proxy,
             nudge,
