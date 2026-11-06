@@ -10771,7 +10771,22 @@ what its icons say). The tray's glyphs (status.rs) are exact-coverage
 paths and the GPU's discs, rings and arcs (`paint_sector`), straight
 lines on device pixels. An application dragged out is a link to its
 program (`olo_ui::dnd`, its icon and name under the pointer); files
-dropped on one open with it, its row lit as they come over it. Bars
+dropped on one open with it, its row lit as they come over it. A
+click on a running application's row with ⌘ held (Super on a Mac's
+keys; Control too), or ⌘ held as an application is chosen in the Olo
+menu (`run:` and `desktop:` items), starts it again as a process of its
+own beside the one running (`launch_again`,
+`DesktopEntry::launch_new_instance`): Olo's apps are started with
+`OLO_NEW_INSTANCE=1` (`olo_xdg::NEW_INSTANCE`), for which the kit's
+`instance::forward` hands nothing over (and clears it; `spawn_detached`
+never passes it on), so the copy opens its own window and leaves the
+launch socket to the first; another program does as it does (Chrome
+opens a window in the one it has). Deskbar never has the keyboard, so
+Wayland doesn't say what's held: it asks app_server at the click
+(`Request::HeldModifiers`, the seat's keys as pressed). Tried headless:
+⌘-clicking Terminal's row, and ⌘-choosing Terminal in Applications,
+each started a second olo-terminal with its own window; plain, a
+window in the one running. Bars
 for displays that come are opened once the model's update is over (a
 window draws as it opens, and its bar reads the model), before those
 going are closed, so the app always has one. Approve Without Asking's

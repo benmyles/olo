@@ -17,13 +17,25 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
-- **Deskbar: Super-click launches a second instance** (Ben, 2026-11-06,
-  prioritised): "when opening an app in the deskbar menu if i hold down
-  super and click the app it should launch a second instance of that app
-  if the app is already running -- not just go to the app or open a new
-  window in the app". In Deskbar's menu (the Olo menu's apps, the
-  running apps' rows), a click with Super held starts the app again as
-  a process of its own, beside the one running.
+- **Focus mode: Remove from Group** (Ben, 2026-11-06, with a screenshot
+  of three Chrome windows as tabs): "remove from group doesn't seem to
+  work at least here i can't remove the chrome window from the chrome
+  group. clarification: it works in standard mode but in focus mode it
+  doesn't work -- in focus mode an ungrouped window for the same app
+  should get its own focus without the other window tabs for that app".
+  In Focus mode, a window taken out of its app's group is focused on its
+  own, the app's other windows no longer its tabs.
+
+- **Deskbar's tray icons: either click shows their menu** (Ben,
+  2026-11-06): "in the deskbar, left clicking or right clicking an icon
+  should show the context menu for that icon (if there is one -- if not
+  it can open the corresponding app immediately) and the context menu
+  should have an option to open the relevant app(s) for more details".
+  A tray icon (the status icons: displays, network, sound, battery,
+  notifications, keys, the recording, the agent screens…) opens its
+  menu on a left click as on a right one; an icon with no menu opens its
+  app at once; and each menu has an item opening the app(s) that tell
+  more (Preferences' panel, Activity Monitor, Agent Screens…).
 
 - **Passwords: Add Field in each section, and search inside items**
   (Ben, 2026-11-06): "in passwords each section needs its own add field
@@ -1661,6 +1673,20 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Deskbar: Super-click launches a second instance**~~ (Ben, 2026-11-06,
+  prioritised): "when opening an app in the deskbar menu if i hold down
+  super and click the app it should launch a second instance of that app
+  if the app is already running -- not just go to the app or open a new
+  window in the app". In Deskbar's menu (the Olo menu's apps, the
+  running apps' rows), a click with Super held starts the app again as
+  a process of its own, beside the one running.
+  *Done* (2026-11-06, HACKING's "Deskbar"): ⌘ (Super) held as a
+  running app's row is clicked, or as an app is chosen in the Olo menu,
+  starts it again as a process of its own (Olo's apps with
+  `OLO_NEW_INSTANCE=1`, which the kit's single-instance hand-over
+  honours; Deskbar asks app_server what's held, `HeldModifiers`). Tried
+  headless: a second Terminal process each way, a plain click unchanged.
 
 - ~~**Passwords in an agent screen opens black**~~ (Ben, 2026-11-06, with a
   screenshot of the screen "work-qa"): "trying to open

@@ -910,6 +910,14 @@ impl Deskbar {
 
     fn run_command(&mut self, cmd: &str, cx: &mut Context<Self>) {
         match cmd.split_once(':') {
+            // One of Olo's apps (with ⌘ held, a copy of its own beside one
+            // running).
+            Some(("run", bin)) if CHOSEN_WITH_COMMAND.with(|c| c.get()) => {
+                let app = bin.split_whitespace().next().and_then(|b| b.strip_prefix("olo-")).map(|b| format!("olo.{b}")).unwrap_or_default();
+                if let Err(e) = olo_xdg::spawn_detached_app_with(bin, &app, &[(olo_xdg::NEW_INSTANCE, "1")]) {
+                    tracing::warn!("launch {bin} again: {e}");
+                }
+            }
             Some(("run", bin)) => spawn(bin),
             Some(("pref", panel)) => spawn(&format!("olo-preferences {panel}")),
             Some(("caff", arg)) => self.caffeine_command(arg),
@@ -992,9 +1000,10 @@ impl Deskbar {
             Some(("arrange", id)) => request(Request::RunShortcut { id: id.into(), window: self.focused_window() }),
             Some(("notif", "history")) => spawn("olo-notifications --history"),
             Some(("notif", arg)) => self.do_not_disturb(arg),
+            // With ⌘ held, a copy of its own beside one running.
             Some(("desktop", id)) => {
                 if let Some(e) = self.installed.entries.iter().find(|e| e.id == id) {
-                    let _ = e.launch();
+                    let _ = if CHOSEN_WITH_COMMAND.with(|c| c.get()) { e.launch_new_instance() } else { e.launch() };
                 }
             }
             _ => match cmd {
@@ -1150,6 +1159,25 @@ impl Deskbar {
         }
         if !ids.is_empty() {
             request(Request::ActivateAll { ids });
+        }
+    }
+
+    /// The application `team_key_` started again as a copy of its own
+    /// (⌘-click): from its installed entry.
+    fn launch_again(&mut self, team_key_: &str) {
+        let Some(app) = self.windows.iter().find(|w| team_key_ == team_key(w)).map(|w| w.app_id.clone()) else { return };
+        let started = match self.entry(&app) {
+            Some(e) => e.launch_new_instance(),
+            // One of Olo's own with no entry installed (a test's home):
+            // its program, as Olo names them (olo.terminal, olo-terminal).
+            None if olo_xdg::apps::our_app(&app).is_some() => {
+                let program = format!("olo-{}", app.strip_prefix("olo.").unwrap_or(&app));
+                olo_xdg::spawn_detached_app_with(&program, &app, &[(olo_xdg::NEW_INSTANCE, "1")])
+            }
+            None => Err(std::io::Error::other("no entry to start it from")),
+        };
+        if let Err(err) = started {
+            tracing::warn!("starting {app} again: {err}");
         }
     }
 
@@ -1772,6 +1800,21 @@ fn hit(view: &Entity<BarView>, key: &str, r: Bounds<Pixels>, tip_text: Option<St
 
 /// Opens `menu` under `r`, from the bar's element `key` (shown open
 /// until it goes); commands go to `then`.
+/// Whether Super (⌘ on a Mac's keys) or Control was held as a menu's item
+/// was chosen or a row clicked: an app started then is a copy of its own
+/// (`DesktopEntry::launch_new_instance`). Deskbar never has the keyboard,
+/// so Wayland doesn't say: app_server is asked (`HeldModifiers`), at
+/// the click only.
+fn command_held(_: &Window) -> bool {
+    let asked = olo_protocol::Client::connect().ok().and_then(|mut c| c.request(&Request::HeldModifiers).ok());
+    matches!(asked, Some(olo_protocol::Reply::HeldModifiers { ctrl, logo, .. }) if ctrl || logo)
+}
+
+thread_local! {
+    /// The command key was held as the menu item being run was chosen.
+    static CHOSEN_WITH_COMMAND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 fn open_menu(window: &mut Window, cx: &mut App, view: &Entity<BarView>, key: &str, r: Bounds<Pixels>, menu: Menu, then: impl Fn(&str, &mut App) + 'static) {
     let key = SharedString::from(key.to_owned());
     let (v, k) = (view.clone(), key.clone());
@@ -1781,7 +1824,11 @@ fn open_menu(window: &mut Window, cx: &mut App, view: &Entity<BarView>, key: &st
         menu,
         r,
         Corner::BottomLeft,
-        move |cmd, _, cx| then(cmd, cx),
+        move |cmd, window, cx| {
+            CHOSEN_WITH_COMMAND.with(|c| c.set(command_held(window)));
+            then(cmd, cx);
+            CHOSEN_WITH_COMMAND.with(|c| c.set(false));
+        },
         move |cx| {
             v.update(cx, |v, cx| {
                 if v.open.as_ref() == Some(&k) {
@@ -2739,7 +2786,9 @@ impl Deskbar {
         let mut row = hit(view, &key, r, None)
             .on_any_button(move |e, window, cx| match button(e) {
                 // A click brings the application forward, every window of
-                // it; the right button opens the menu of them, to choose one.
+                // it (with ⌘ held, starts a copy of it of its own); the
+                // right button opens the menu of them, to choose one.
+                MouseButton::Left if command_held(window) => m.update(cx, |d, _| d.launch_again(&team_key_)),
                 MouseButton::Left => m.read(cx).bring_forward(&team_key_, dsp.as_deref(), ws),
                 MouseButton::Right => {
                     let menu = m.read(cx).team_menu(&menu_team);
