@@ -213,6 +213,18 @@ something nobody here has is in "Blocked", with what it waits for.
   `Duration` subtracted below zero, no backtrace kept: before
   `check_crashes`), not seen in 16 runs since; the fuzzer now keeps a
   report if it happens again. Then sweeps of more seeds.
+  *Swept* (2026-11-06): seeds 17–40 with `--reloads`, 8 at once: 16
+  failed under the load; the sweep's confirmation (the failures again,
+  side by side) left six, and of those, run alone one at a time, five
+  pass (17, 26, 27, 29, 34). *Left*: seed 38 at step 105, every run:
+  dragging 1's right edge, tiles 9 and 10 stay 2 px further apart than
+  the gap for most of the drag (156 of 339 looks): each draws a pixel
+  narrower than asked (9 asked 680, drew 679; 10 asked 212, drew 211).
+  At the fuzzer's 1.75× an odd logical width is no whole number of
+  device pixels and each app rounds its own down, so two neighbours
+  together are 2 px off where the check allows 1. To look at: asking
+  tiles for sizes whole in device pixels at the display's scale (or
+  the client's rounding), against "Fractional scaling" in HACKING.
 
 ## Not started (highest priority first)
 
