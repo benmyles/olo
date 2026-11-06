@@ -558,7 +558,10 @@ of Finished; a new one goes where its priority puts it.
     Display side by side, Performance in two tabs; the lint on a
     1280 × 800 screen, following windows that resize themselves;
     `ui-lint --screen`; the rule in CLAUDE.md and HACKING. Left: the
-    live lint's findings on every app at 1280 × 800 (being run).
+    live lint's findings on every app at 1280 × 800: none (2026-11-05:
+    `--screen 2560x1600` at 2×, 1920x1200 at 1.5× and 1280x800 at 1×
+    all clean; the lint now opens apps at the first scale asked for
+    when 2× isn't one, as 1280x800 opened at 2× was 640 × 400 points).
   - Power modes: Preferences ▸ Power (and a button there from
     Performance), Deskbar's battery menu; through tuned-ppd's power
     profiles API, following Fn+L/M/H.
@@ -634,7 +637,7 @@ of Finished; a new one goes where its priority puts it.
     the session the sensor (Olo Doctor installs it). Left: try it in
     front of the machine (Ben: install the rule from Doctor, turn it
     on); dim when looking away.
-  - Left, not started: the IR camera (face sign-in).
+  - The IR camera (face sign-in): built, see "Face unlock" above.
 
 - **Palms read as fingertips on the ThinkPad's touchpad** (Ben,
   2026-11-04): "on the thinkpad touchpad when i try to do the palm
