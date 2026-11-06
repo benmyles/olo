@@ -1,0 +1,40 @@
+{
+  "scope": "Job-scoped selected Font sharing; no shaping/layout/UI/website acceptance.",
+  "checks": {
+    "tests_default": {
+      "command": "cargo test --release -p olo-web",
+      "passed": 166,
+      "failed": 0,
+      "log_sha256": "1ba8365ce9273947d410052a47a4ddee6cf4993e0c2aebe12cef2d08efc6dca8"
+    },
+    "tests_all": {
+      "command": "cargo test --release -p olo-web --all-features",
+      "passed": 165,
+      "failed": 0,
+      "log_sha256": "4a9c4b458e194b57a8b1a973f67ab192108ee9d7343f763350c60dedb4804e98"
+    },
+    "clippy_default": {
+      "command": "cargo clippy --release -p olo-web --all-targets -- -D warnings",
+      "finished": true,
+      "log_sha256": "6ee921ed129f4af611629af8b2bba1de3d0afbed1d6bc72dea4b4feb992fa9a7"
+    },
+    "clippy_all": {
+      "command": "cargo clippy --release -p olo-web --all-targets --all-features -- -D warnings",
+      "finished": true,
+      "log_sha256": "36ef8257890e1220fbf84cbac52fc9be9601c27fcd8e3703bcd50073fea1a1e6"
+    },
+    "workspace": {
+      "command": "cargo build --release --workspace",
+      "finished": true,
+      "log_sha256": "4174a65e2eab034bc12b5ddff86239c34b7fdb1bad0fdc9b8f5857a8800495e4",
+      "cargo_seconds": 2.89,
+      "elapsed": "0:02.99"
+    }
+  },
+  "notes": [
+    "Nine new integration groups cover key/context identity, nonadjacent/equal-source sharing, saturation/disabled controls, failure/cancel/stale-hit publication, lifetime and job-budget charge. Huge valid family lists skip optional hashing.",
+    "Formatting and diff checks pass. Workspace retains existing GPUI warnings/proc-macro-error2 notice.",
+    "No owned GUI was started; no personal-session installation/reload.",
+    "Unique requests incur measured lookup/insertion overhead; raw timing outliers and CPU/scheduler counters are preserved."
+  ]
+}

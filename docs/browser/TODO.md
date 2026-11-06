@@ -108,10 +108,14 @@ item means implemented and verified; a partial implementation stays open.
   real mixed pages; initial full passes are not live incremental invalidation.
 - [x] Scope selected metric reuse by explicit immutable subject/language/font
   context; reject context changes during publication and root Defaults mismatch.
+- [x] Bounded per-job selected Font request interning with complete request/
+  subject-context keys, equal separate family contents, saturation controls,
+  scratch accounting and release measurements. Generated 10k repeating requests
+  now retain 301 Font objects (38,528 B), vs 10,001 (1,280,128 B).
 - [ ] Complete automatic script/cluster contexts before globally sharing
-  selected fonts. Intern repeated nonadjacent selected requests: the
-  generated 10k font case currently retains 10,001 Font objects for repeating
-  requests. Fixed supplied metrics are not real font-selection evidence.
+  selected fonts. Profile unique-request cache overhead (about 6–9% in current
+  synthetic controls), slot storage and mixed-load worker latency. Supplied
+  metrics are not real font-selection evidence; the separate Noto job is.
 - [ ] Complete property registry/grammars (fonts/families, backgrounds/images,
   border-image/radius, grid/alignment, transforms, animations/transitions,
   aliases/descriptors), CSSOM, computed/used-value contexts and style hosts.
@@ -188,8 +192,7 @@ HTML encoding sniffing/byte/stream input handling; complete tokenizer diagnostic
 and the six tree cases requiring script execution.
 Evaluation capture/replay and executable site journeys remain open.
 
-Next: intern repeated selected requests within immutable font contexts, then
-shaping/bidi and original inline/block layout. Initial native font catalogs,
-matching and metrics are validated prerequisites; whole-font sanitization,
-web-font loading, automatic generic policy and rendering remain open. No
-website acceptance claim.
+Next: shaping/bidi and original inline/block layout. Initial native font
+catalogs/matching/metrics and bounded job-scoped request sharing are validated
+prerequisites. Whole-font sanitization, web fonts, automatic generic policy,
+full font APIs and rendering remain open; website acceptance is still zero.

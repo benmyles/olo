@@ -1370,8 +1370,8 @@ shaping, rasterization, layout, JS, network and UI are excluded. The comparison
 with parent 239cdb4b uses unchanged supplied-metric style/font/raw-cascade cases;
 there was no native font implementation in that parent to benchmark. Raw runs,
 source/binary hashes and replay commands live in
-`measurements/2026-11-05-native-font{.json,-measure.py}`. Repeated Font object
-interning and the prior raw width/margin query regression remain explicit TODOs.
+`measurements/2026-11-05-native-font{.json,-measure.py}`. The next section adds bounded Font object
+interning; the prior raw width/margin query regression remains an explicit TODO.
 
 Primary rules: [CSS Fonts matching](https://drafts.csswg.org/css-fonts-4/#font-matching-algorithm),
 [font-relative units](https://drafts.csswg.org/css-values-4/#font-relative-lengths),
@@ -1379,3 +1379,56 @@ Primary rules: [CSS Fonts matching](https://drafts.csswg.org/css-fonts-4/#font-m
 [loca](https://learn.microsoft.com/en-us/typography/opentype/spec/loca),
 [glyf](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf),
 [ttf-parser 0.25.1](https://docs.rs/ttf-parser/0.25.1/ttf_parser/).
+
+## Job-scoped selected Font sharing
+
+Style jobs now intern selected `Font` objects across nonadjacent nodes, using
+all numeric request bits, slant kind, writing/direction/orientation axes,
+family **contents** and immutable `Host::font_context`. Separate equal family
+allocations can share; different language/font contexts cannot. Exhaustive Rust
+patterns require updating the key when FontRequest/Axes gains a field. Existing
+parent/default Font reuse runs first, avoiding pool work on ordinary inherited
+fonts. Direct `Style::compute` remains independent; no global cache or thread
+is introduced.
+
+`JobLimits::font_cache_entries` defaults to 4,096; zero disables the pool.
+Saturation stops new insertions while existing entries stay usable. Failed
+optional reservation also falls back to normal uncached selection. Numeric
+values, failure/cancellation semantics and the complete style publication guards
+remain in force. Pool hits do not bypass host revision/context/cancellation
+checks. The pool is dropped at job completion; published styles own their Font
+references and do not keep the pool alive. A failed job cannot publish a prefix.
+
+`Job::font_cache_stats()` reports hits/misses/entries and HashMap slot payload.
+The latter is worker scratch, charged to `JobLimits::retained_bytes`, and excludes
+allocator/hash control overhead. Fonts and their referenced families are already
+included once in the style Memory account; pool keys share the stored Font's
+family allocation. These are payload counts, not hard process RSS limits. Entry
+limits bound saturation; there is no polling or idle activity.
+
+Nine integration tests cover nonadjacent/equal-source sharing, subject-context
+separation, every numeric/slant/axis dimension, disabled/saturated pools,
+cancel/revision failures, a context change during a hit, failed selection,
+release lifetime and exact additional job-budget charge for observed pool
+scratch. Very large family lists also skip optional caching: hashing is capped
+at 64 KiB of family payload, with an early traversal exit. Literal supplied
+metrics and pointer/callback assertions vary with the input dimensions to expose
+incorrect reuse. These tests validate cache/style wiring; native matching,
+shaping and website rendering remain separate evidence.
+
+```sh
+cargo test --release -p olo-web --test font_pool
+cargo run --release -p olo-web --example font_pool_bench -- 10
+cargo run --release -p olo-web --example font_pool_bench -- 10 reverse
+```
+
+The new benchmark compares disabled/default pools in the same binary for
+repeated requests, separately parsed equal family lists and unique requests.
+It records first calls, means, maximum 128-node slices, retained font objects,
+style payload and pool scratch separately. Unique requests retain no fewer
+Font objects and incur cache overhead; that cost remains in the results.
+Parent facd8cd3 comparisons use the existing supplied-font/style/raw-cascade and
+real-Noto benchmarks. The native metric cache control in `font_native_bench`
+still controls only that cache; default style jobs now also use Font interning.
+Raw observations, binary/source hashes, CPU/scheduler/RSS counters and replay
+commands are `measurements/2026-11-05-font-pool{.json,-measure.py}`.

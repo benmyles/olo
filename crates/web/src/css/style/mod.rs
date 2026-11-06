@@ -3,10 +3,12 @@
 mod compute;
 mod context;
 mod coupled;
+mod font_pool;
 mod job;
 mod memory;
 use super::{Syntax, cascade, color, math, properties as p, variables};
 pub use cascade::{Axes, Direction, TextOrientation, WritingMode};
+pub use font_pool::FontCacheStats;
 pub use job::{Job, JobLimits, JobOptions, Progress, Report, StyleTree};
 pub use memory::Memory;
 pub use p::{Display, Families, Family, GenericFamily, Inner, Internal, Keyword, Outer, Property};
@@ -304,7 +306,7 @@ impl Defaults {
             empty_customs: Arc::new(Dictionary { values: Box::new([]), bytes: 0 }),
         };
         let cascade = cascade::Builder::new(Default::default(), cancelled).finish(false, None).map_err(Error::cascade)?;
-        let computed = compute::values(&defaults, &cascade, None, None, host, Options::default(), limits, cancelled)?;
+        let computed = compute::values(&defaults, &cascade, None, None, None, host, Options::default(), limits, cancelled)?;
         defaults.values = computed.values.into_boxed_slice();
         for (i, entry) in defaults.values.iter().enumerate() {
             defaults.positions[entry.property as usize] = i as u8;
@@ -381,15 +383,16 @@ impl Style {
         limits: Limits,
         cancelled: Option<&AtomicBool>,
     ) -> Result<Self> {
-        Self::compute_reusing(defaults, cascade, parent, root, None, host, options, limits, cancelled)
+        Self::compute_reusing(defaults, cascade, parent, root, None, None, host, options, limits, cancelled)
     }
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn compute_reusing(
+    fn compute_reusing(
         defaults: Arc<Defaults>,
         cascade: &cascade::Cascade<'_>,
         parent: Option<&Style>,
         root: Option<&Style>,
         reuse: Option<&Style>,
+        fonts: Option<&mut font_pool::FontPool>,
         host: &impl Host,
         options: Options,
         limits: Limits,
@@ -406,7 +409,7 @@ impl Style {
         if cascade.has_parent() != parent.is_some() || options.root && parent.is_some() {
             return Err(Error::Invalid);
         }
-        let mut computed = compute::values(&defaults, cascade, parent, root, host, options, limits, cancelled)?;
+        let mut computed = compute::values(&defaults, cascade, parent, root, fonts, host, options, limits, cancelled)?;
         if !cfg!(feature = "baseline-style-dense") {
             computed.values.retain(|entry| !entry.value.same(defaults.value(entry.property)));
         }

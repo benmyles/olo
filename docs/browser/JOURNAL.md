@@ -2229,3 +2229,78 @@ context-scoped selected-request interning, shaping/bidi and original layout,
 while tracking remaining font APIs/conditions/UA defaults/live invalidation.
 Browser shell, networking, V8, all-site dark mode, structured browser actions,
 passwords/passkeys and end-to-end Olo integrations remain unimplemented.
+
+## 2026-11-05 — bounded selected Font request sharing
+
+Previous native-font milestone facd8cd3 is pushed. Style jobs now pool selected
+Font objects by complete numeric/slant/axis request, family contents and immutable
+font context. Equal separately parsed family lists share; different contexts do
+not. Parent/default fast paths run first. Defaults allow 4,096 entries; zero
+disables the pool, saturation stops new insertion and reservation failure keeps
+normal uncached selection. Hashing/traversal skips very large family payloads
+(64 KiB cap) rather than spending unbounded time on optional memoization.
+Exhaustive FontRequest/Axes patterns require updating keys when inputs grow.
+
+Pool slots count toward the job's retained payload budget and are reported by
+font_cache_stats. Fonts/families are already counted once by style Memory.
+The pool drops at finish; completed styles own their shared Fonts. No global
+cache, thread, timer, UI or new browser rendering capability is introduced.
+Revision/context/cancel guards run on hits; failure poisons publication.
+
+Nine integration groups cover nonadjacent/equal-source sharing, numeric/style/
+axis/family/context separation, zero/full pools, failed selection, cancellation,
+revision and context change during a hit, release lifetime, exact budget charge
+for observed scratch and huge valid family lists. All **166 default / 165
+all-feature release tests** pass; strict release all-target default/all-feature
+clippy, formatting and diff checks pass. Full workspace build: cargo **2.89 s**,
+wall **2.99 s**, existing GPUI warnings/proc-macro-error2 notice remain.
+
+Final frozen CPU0 evidence: measurements/2026-11-05-font-pool{.json,-measure.py}.
+Three alternating parent/current processes and same-binary reversed pool
+controls include means, cold calls, max slices, source/binary hashes and
+process CPU/scheduler/RSS counters. An earlier unpublished pre-hash-cap draft
+is retained separately as exploratory raw evidence, not an exact checkoutable
+baseline. Final source hashes are checked after measurement.
+
+The existing supplied-font 10k case retains **301 Fonts / 38,528 B** instead of
+**10,001 / 1,280,128 B**, a **97.0% Font payload reduction**. Whole-process RSS
+medians **15,160 → 12,616 KiB**. Real Noto job Font payload **1,275,904 → 38,656 B**
+(302 Fonts); process RSS **19,072 → 17,160 KiB**. Real-metric job 10k build/drop,
+metric cache off **41.892 → 25.383 ms**, on **27.773 → 26.378 ms**. Process user
+CPU across that full native benchmark goes .79/.79/.80 → .63/.62/.61 s. Those
+are library workloads with pre-read font bytes, not navigation/UI measurements.
+
+Same-binary 10k repeated-size control, pool off → on: **10,000 → 100 subject
+Fonts**, total Font payload **1,280,128 → 12,928 B**, retained style-tree payload
+**4,415,820 → 3,148,620 B**, and **7,168 B** pool slot scratch for 100 entries.
+Separate equal inline-family lists also reduce Font objects to 100; independent
+computed family values still retain **680,032 B**. Their style-tree payload
+**5,095,752 → 3,828,552 B**. No Font reduction for all-unique requests; at 10k the
+pool saturates at 4,096 entries / **458,752 B** slots and then stops insertion.
+This unique-request overhead remains a tuning/profile TODO before real pages.
+
+Timing tradeoffs stay visible. Same-binary pool off/on build medians: 1k repeated
+**2.603 / 2.814 ms**, inline-family **3.971 / 3.193 ms**, unique **2.551 / 2.782 ms**;
+10k repeated **27.106 / 25.711 ms**, inline-family **34.077 / 33.019 ms**, unique
+**28.086 / 29.993 ms**. Unique overhead is ~9.1%/6.8%, with no memory saving.
+Supplied-font parent/current 10k **34.719 → 36.111 ms**, while process CPU is
+similar (.41/.41/.41 → .41/.42/.40 s) and wall-clock slice maxima vary widely.
+Do not claim a universal speedup or settled latency acceptance.
+
+Common parent/current 10k bare/uniform/varying style job build medians
+**15.163 → 17.454 / 23.261 → 22.200 / 29.946 → 31.987 ms**. Median max slices
+**389 → 3,515 / 3,120 → 2,181 / 815 → 5,119 µs**. These inherited-font scenes
+allocate no pool slots. Preserve variation/outliers and process counters; they
+do not establish a cause for individual wall-clock stalls. Raw width/margin/
+color/missing medians **12.293 → 11.947 / 11.190 → 11.113 / 8.038 → 7.527 /
+3.054 → 3.837 ns**; indexed cascade 1k/2k/4k **0.3540 → 0.3285 / 0.6503 →
+0.5924 / 1.2005 → 1.3698 ms**. Earlier raw-query regression and mixed-load
+worker latency remain open. No UI or owned GUI was started; no personal
+session reload/install. Scratch is removed after the pushed checkpoint.
+
+Full browser goal remains active: **0/3,000 website combinations, 0/100 sites**.
+Next: shaping/bidi and original inline/block layout, including real text/font
+selection and independently checked output. Font sanitization/web fonts,
+automatic generic policy, complete CSS/live invalidation, browser shell,
+networking, V8, universal dark mode and Olo/agent/password/passkey integration
+remain substantial open work.

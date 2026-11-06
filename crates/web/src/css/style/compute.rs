@@ -236,6 +236,7 @@ pub(super) fn values(
     cascade: &cascade::Cascade<'_>,
     parent: Option<&Style>,
     root: Option<&Style>,
+    fonts: Option<&mut font_pool::FontPool>,
     host: &impl Host,
     options: Options,
     limits: Limits,
@@ -299,6 +300,8 @@ pub(super) fn values(
         parent.unwrap().font.clone()
     } else if defaults.initial_font.request == request && defaults.initial_font.context == host.font_context() {
         defaults.initial_font.clone()
+    } else if let Some(fonts) = fonts {
+        fonts.resolve(host, request)?
     } else {
         Arc::new(Font::new(host, request)?)
     };

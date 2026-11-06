@@ -23,6 +23,9 @@ pub struct JobLimits {
     pub retained_bytes: usize,
     pub inline_bytes: usize,
     pub inline_declarations: usize,
+    /// Optional per-job font request interning. Saturation stops insertion;
+    /// zero disables it. Pool capacity counts toward retained_bytes.
+    pub font_cache_entries: usize,
     pub css: super::super::Limits,
     pub property: p::Limits,
     pub cascade: cascade::Limits,
@@ -40,6 +43,7 @@ impl Default for JobLimits {
             retained_bytes: 512 * 1024 * 1024,
             inline_bytes: 1024 * 1024,
             inline_declarations: 16384,
+            font_cache_entries: 4096,
             css: Default::default(),
             property: Default::default(),
             cascade: Default::default(),
@@ -126,6 +130,7 @@ pub struct Job<'a> {
     scratch: cascade::MatchScratch,
     tree: StyleTree,
     account: memory::Account,
+    fonts: font_pool::FontPool,
 }
 impl<'a> Job<'a> {
     pub fn new(document: &'a Document, rules: &'a cascade::RuleSet, defaults: Arc<Defaults>, options: JobOptions<'a>, limits: JobLimits, cancelled: Option<&'a AtomicBool>) -> Result<Self> {
@@ -145,6 +150,7 @@ impl<'a> Job<'a> {
             failed: false,
             scratch: Default::default(),
             account: Default::default(),
+            fonts: font_pool::FontPool::new(limits.font_cache_entries),
             tree: StyleTree {
                 document: document.id(),
                 revision: document.revision(),
@@ -157,6 +163,11 @@ impl<'a> Job<'a> {
     }
     pub fn progress(&self) -> Progress {
         self.progress
+    }
+    /// Worker scratch only. The pool drops at finish; published Font objects
+    /// remain owned by the completed styles and are included in Memory.
+    pub fn font_cache_stats(&self) -> FontCacheStats {
+        self.fonts.stats()
     }
     pub fn completed(&self) -> Result<impl Iterator<Item = (NodeId, &Style)>> {
         if self.failed {
@@ -278,6 +289,7 @@ impl<'a> Job<'a> {
             parent,
             root,
             self.tree.styles.last().map(|s| &s.style),
+            Some(&mut self.fonts),
             host,
             Options { root: parent.is_none(), layout_parent, ..Default::default() },
             self.limits.style,
@@ -300,6 +312,7 @@ impl<'a> Job<'a> {
             .saturating_add(self.tree.storage_payload_bytes())
             .saturating_sub(self.tree.styles.len() * size_of::<Style>())
             .saturating_add(self.account.scratch_bytes());
+        let retained = retained.saturating_add(self.fonts.stats().reserved_bytes);
         if retained > self.limits.retained_bytes {
             return Err(Error::Limit);
         }
