@@ -1504,7 +1504,10 @@ people.
   P taken for palms (S by their size)" and the model's time a report;
   nothing runs once the section is left (tried headless with synthetic
   contacts: a fingertip and a palm, 2 judged, 1 palm by its size, 1 µs
-  a report).
+  a report). *Re-checked* (2026-11-06): the machine is now the ThinkPad,
+  whose pad isn't filtered (no pressure to judge: `filter: false`) and
+  reported nothing in the minute read (Ben away from it); its latency
+  and any long wait show only while he uses it (Activity ▸ Inputs).
 
 - **The best baseline palm model there is** (Ben, 2026-11-02): "try to
   optimize the baseline as much as you can -- and if it would be better
