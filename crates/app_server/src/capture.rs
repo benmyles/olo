@@ -78,11 +78,6 @@ where
         }
         Target::Window(id) => {
             let (mut elements, size, scale) = crate::render::window_picture(renderer, space, parked, output, id)?;
-            // A private window's share shows it blacked out (`private.rs`).
-            if let Some(shade) = space.elements().chain(parked.iter()).find(|w| w.id() == id).and_then(|w| crate::private::window_blackout(w, size)) {
-                let shade = crate::render::FrameElements::Normal(crate::render::OutputRenderElements::Custom(crate::render::CustomRenderElements::Warm(shade)));
-                return Some(Picture { elements: vec![shade], clear: Color32F::TRANSPARENT, size, scale });
-            }
             // The pointer, over the window's content (a shown window's).
             let (_, _, _, pointer) = screen();
             if let Some((at, status)) = pointer

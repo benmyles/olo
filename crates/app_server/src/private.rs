@@ -1,21 +1,13 @@
-//! Windows kept out of what's shared: a screen share or recording
-//! (`capture_elements` for a capture session, a window share of one)
-//! shows them blacked out, where the person still sees them. Passwords'
-//! windows and the polkit prompt by their app ids, and any window its
-//! app tags `private` (the kit's `WindowOptions::private`: Terminal's
-//! sudo prompt, Deskbar's approve-without-asking). While the screen is
-//! locked, a share shows black altogether, never the lock screen.
-//! (macOS keeps a window out of captures likewise, `NSWindowSharingNone`.)
-//! The person's own screenshots show them, as do agents' looks at their
-//! own screens.
-//!
-//! A window being shared (olo-portal says which: `Request::SharedWindows`)
-//! has a ring round it on screen while it is (`shared_rings`), drawn
-//! with the frame, never in what's shared.
+//! Windows being shared: one a share is of (olo-portal says which:
+//! `Request::SharedWindows`) has a ring round it on screen while it is
+//! (`shared_rings`), drawn with the frame, never in what's shared.
+//! Nothing is kept out of a share or a recording (Ben, 2026-11-06:
+//! "nothing should be intentionally blacked out"): Passwords' windows,
+//! prompts and the lock screen show as they are, in an agent screen's
+//! live view too.
 
 use std::{cell::RefCell, collections::HashMap};
 
-use smithay::desktop::WindowSurface;
 use smithay::{
     backend::renderer::{
         element::{Id, Kind, solid::SolidColorRenderElement},
@@ -24,69 +16,18 @@ use smithay::{
     desktop::Space,
     output::Output,
     utils::{Physical, Rectangle},
-    wayland::{compositor::with_states, xdg_toplevel_tag::XdgToplevelTagSurfaceData},
 };
 
 use crate::shell::WindowElement;
 
-/// Apps whose every window shows secrets.
-const PRIVATE_APPS: &[&str] = &["olo.passwords", "olo.polkit-agent"];
-
-/// What blacked-out windows show: a dark grey, as an empty picture.
-const SHADE: [f32; 4] = [0.08, 0.08, 0.09, 1.0];
-
-/// Window `w` is kept out of shares.
-pub fn is_private(w: &WindowElement) -> bool {
-    if PRIVATE_APPS.contains(&w.app_id().as_str()) {
-        return true;
-    }
-    match w.0.underlying_surface() {
-        WindowSurface::Wayland(t) => {
-            with_states(t.wl_surface(), |s| s.data_map.get::<XdgToplevelTagSurfaceData>().is_some_and(|d| d.tag().is_some_and(|t| t.split_whitespace().any(|t| t == "private"))))
-        }
-    }
-}
-
 thread_local! {
-    /// Each blackout's element id (by window, or by output for a locked
-    /// screen), kept so a share's damage follows only what moved.
+    /// Each ring bar's element id, kept so the frame's damage follows
+    /// only what moved.
     static IDS: RefCell<HashMap<String, Id>> = RefCell::new(HashMap::new());
 }
 
 fn id(key: String) -> Id {
     IDS.with(|ids| ids.borrow_mut().entry(key).or_insert_with(Id::new).clone())
-}
-
-fn shade(key: String, rect: Rectangle<i32, Physical>) -> SolidColorRenderElement {
-    SolidColorRenderElement::new(id(key), rect, CommitCounter::default(), SHADE, Kind::Unspecified)
-}
-
-/// What covers `output`'s private windows (front first) in a capture of
-/// it, or the whole of it while `locked`: in the output's physical
-/// pixels, to go in front of everything it shows.
-pub fn blackouts(output: &Output, space: &Space<WindowElement>, locked: bool) -> Vec<SolidColorRenderElement> {
-    let Some(geo) = space.output_geometry(output) else { return Vec::new() };
-    let scale = output.current_scale().fractional_scale();
-    if locked {
-        let size = geo.size.to_f64().to_physical(scale).to_i32_round();
-        return vec![shade(format!("locked:{}", output.name()), Rectangle::from_size(size))];
-    }
-    space
-        .elements()
-        .filter(|w| is_private(w))
-        .filter_map(|w| {
-            let bbox = space.element_bbox(w)?;
-            let on = bbox.intersection(geo)?;
-            let local = Rectangle::new(on.loc - geo.loc, on.size);
-            Some(shade(format!("window:{}", w.id()), local.to_f64().to_physical(scale).to_i32_round()))
-        })
-        .collect()
-}
-
-/// A window share of `w` shows it blacked out (its picture's size in
-/// pixels), if it's private.
-pub fn window_blackout(w: &WindowElement, size: smithay::utils::Size<i32, Physical>) -> Option<SolidColorRenderElement> {
-    is_private(w).then(|| shade(format!("share:{}", w.id()), Rectangle::from_size(size)))
 }
 
 /// The ring's colour (a recording's red) and its width, in points.

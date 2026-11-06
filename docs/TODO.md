@@ -17,6 +17,14 @@ Nothing: what's left is waiting for Ben or blocked.
 
 ## Not started (highest priority first)
 
+- **Deskbar: Super-click launches a second instance** (Ben, 2026-11-06,
+  prioritised): "when opening an app in the deskbar menu if i hold down
+  super and click the app it should launch a second instance of that app
+  if the app is already running -- not just go to the app or open a new
+  window in the app". In Deskbar's menu (the Olo menu's apps, the
+  running apps' rows), a click with Super held starts the app again as
+  a process of its own, beside the one running.
+
 - **Passwords: Add Field in each section, and search inside items**
   (Ben, 2026-11-06): "in passwords each section needs its own add field
   button, right now there's only one at the very bottom of all
@@ -1653,6 +1661,21 @@ people.
   meeting), which needs Slack's client to build against.
 
 ## Done (most recently finished first)
+
+- ~~**Passwords in an agent screen opens black**~~ (Ben, 2026-11-06, with a
+  screenshot of the screen "work-qa"): "trying to open
+  passwords in agent screens doesn't seem to work anymore". Its window
+  shows (Deskbar lists it) but stays a black rectangle over Chrome.
+  *Found*: the screen drew Passwords (its own screenshot showed it); the
+  Live view is a capture session of the screen's app_server, and every
+  capture blacked out Passwords' windows (`private.rs`). *Fixed* (Ben:
+  "nothing should be intentionally blacked out"): no blackout at all in
+  shares, recordings or the Live view (Passwords, the polkit prompt,
+  windows tagged private, the locked screen); the kit's
+  `WindowOptions::private` gone with it. Checked with `olo-portal
+  capture-test`: a screen capture and a window share of Passwords both
+  show it. A screen running before the upgrade keeps its app_server till
+  it's started again.
 
 - ~~**Viewer: a video zoomed to fill, and full screen**~~ (Ben, 2026-11-06):
   "watching a video in viewer needs to support zooming, like an option
