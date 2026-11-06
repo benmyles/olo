@@ -35,7 +35,7 @@ runs just those kinds (drag, resize, shortcuts, arrange, switcher,
 workspaces, open-many, close-some, theme, scale, flood-terminal, type,
 scroll, hints, show-desktop).
 """
-import json, os, random, socket, subprocess, sys, threading, time
+import json, os, random, re, socket, subprocess, sys, threading, time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TSESSION = os.path.join(ROOT, "tools", "dev", "tsession")
@@ -68,6 +68,7 @@ class Fuzz:
         self.name = name
         env = json.load(open(os.path.join("/tmp/olo-dev", name, "env.json")))
         self.sock = env["OLO_SOCKET"]
+        self.display = env["WAYLAND_DISPLAY"]
         self.runtime = env["XDG_RUNTIME_DIR"]
         self.rng = random.Random(seed)
         self.seed, self.quiet, self.budgets = seed, quiet, budgets
@@ -159,11 +160,33 @@ class Fuzz:
             return None
         try:
             fds = len(os.listdir(f"/proc/{self.server}/fd"))
-            threads = len(os.listdir(f"/proc/{self.server}/task"))
+            threads = {}
+            for t in os.listdir(f"/proc/{self.server}/task"):
+                try:
+                    name = open(f"/proc/{self.server}/task/{t}/comm").read().strip()
+                except OSError:
+                    continue
+                threads[name] = threads.get(name, 0) + 1
             rss = int(open(f"/proc/{self.server}/statm").read().split()[1]) * os.sysconf("SC_PAGE_SIZE") // 1024
         except OSError:
             return None
         return fds, threads, rss
+
+    def fd_kinds(self):
+        """app_server's descriptors by what they are (a dmabuf, a socket, a
+        render node…), to say what grew."""
+        kinds = {}
+        try:
+            for fd in os.listdir(f"/proc/{self.server}/fd"):
+                try:
+                    target = os.readlink(f"/proc/{self.server}/fd/{fd}")
+                except OSError:
+                    continue
+                kind = re.sub(r"[0-9]+", "N", target.split(" ")[0])
+                kinds[kind] = kinds.get(kind, 0) + 1
+        except OSError:
+            pass
+        return kinds
 
     # ---- measuring ----
 
@@ -428,6 +451,11 @@ class Fuzz:
         if self.only:
             weights = [1 if op.__name__[3:].replace("_", "-") in self.only else 0 for op in ops]
         start = self.resources()
+        start_kinds = self.fd_kinds()
+        try:
+            there = set(self.windows())
+        except Failure:
+            there = set()
         for self.step in range(1, steps + 1):
             op = self.rng.choices(ops, weights)[0]
             name = op.__name__[3:]
@@ -441,11 +469,34 @@ class Fuzz:
                 self.fail(name, str(e))
             if len(self.failures) > n and not keep_going:
                 break
-        # Close what was opened, then look for leaks.
-        for i in self.opened:
+        # Close what was opened (and what its apps opened by themselves:
+        # every window that wasn't there at the start), then look for
+        # leaks.
+        try:
+            since = [i for i in self.windows() if i not in there]
+        except Failure:
+            since = []
+        for i in list(dict.fromkeys(list(self.opened) + since)):
             try:
                 self.req({"type": "close", "id": i})
             except Failure:
+                pass
+        # A window that won't close (a document typed into, asking to
+        # save) keeps its buffers, as it should: its program is ended
+        # (one of this session's, by pid) before anything counts as a
+        # leak.
+        time.sleep(1.0)
+        try:
+            kept = {w["id"]: w.get("pid") for w in self.windows().values() if w["id"] not in there}
+        except Failure:
+            kept = {}
+        for pid in sorted({p for p in kept.values() if p}):
+            try:
+                env = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+                if f"WAYLAND_DISPLAY={self.display}".encode() in env:
+                    print(f"ending pid {pid}: its windows wouldn't close ({len([1 for p in kept.values() if p == pid])} kept)")
+                    os.kill(pid, 15)
+            except OSError:
                 pass
         # Buffers still in flight hold file descriptors for a moment:
         # given a few seconds to settle before anything counts as a leak.
@@ -457,12 +508,21 @@ class Fuzz:
             end = self.resources()
         if start and end:
             if end[0] > start[0] + 2:
-                self.fail("end", f"app_server has {end[0] - start[0]} more file descriptors than it started with ({start[0]} -> {end[0]})")
-            if end[1] > start[1]:
-                self.fail("end", f"app_server has {end[1] - start[1]} more threads than it started with")
+                end_kinds = self.fd_kinds()
+                grew = ", ".join(f"{k} {start_kinds.get(k, 0)} -> {c}" for k, c in sorted(end_kinds.items()) if c > start_kinds.get(k, 0))
+                self.fail("end", f"app_server has {end[0] - start[0]} more file descriptors than it started with ({start[0]} -> {end[0]}: {grew})")
+            # A worker app_server starts the first time it's needed (the
+            # tabs' drawing, Smithay's shm pool dropping) is one new name;
+            # a leak is a name multiplying, or more of one already there.
+            started = sorted(n for n, c in end[1].items() if n not in start[1] and c == 1)
+            grown = {n: (start[1].get(n, 0), c) for n, c in end[1].items() if c > start[1].get(n, 0) and n not in started}
+            if grown:
+                self.fail("end", "app_server has more threads than it started with: " + ", ".join(f"{n} {a} -> {b}" for n, (a, b) in sorted(grown.items())))
+            if started:
+                print(f"app_server started workers it needed: {', '.join(started)}")
             if end[2] - start[2] > self.budgets["rss"] * 1024:
                 self.fail("end", f"app_server grew {(end[2] - start[2]) // 1024} MiB ({start[2] // 1024} -> {end[2] // 1024} MiB)")
-            print(f"app_server: fds {start[0]} -> {end[0]}, threads {start[1]} -> {end[1]}, rss {start[2] // 1024} -> {end[2] // 1024} MiB")
+            print(f"app_server: fds {start[0]} -> {end[0]}, threads {sum(start[1].values())} -> {sum(end[1].values())}, rss {start[2] // 1024} -> {end[2] // 1024} MiB")
         print(f"{'burst':<14} {'stall':>7} {'ping':>7} {'frame':>7} {'app frame':>10} {'answer':>8}   slowest handler (worst, ms)")
         for kind, (stall, ping, frame, app_frame, answer, culprit) in sorted(self.worst.items()):
             print(f"{kind:<14} {stall:7.1f} {ping:7.1f} {frame:7.1f} {app_frame:10.1f} {answer:8.1f}   {culprit}")

@@ -1396,13 +1396,31 @@ people.
   synchronous work (importing a client's buffer, a fence, a DCP test
   or commit) is what blocks today, and the heartbeat (`timings`)
   finds it. After the reliability work.
-  *Taken up again* (2026-11-06) and *blocked*: moving input, the
-  pointer's plane and each display's commits off the main loop rewrites
-  app_server's core around Smithay's single-threaded state, and only
-  real displays and input can show it works and what it buys (latency
-  from a motion event to the plane's move, frames late): headless has
-  neither planes nor vblank nor libinput. Today's numbers (above) show
-  no frame or pointer problem a person would notice on the ThinkPad.
+  *Taken up again* (2026-11-06). *Done of it*: what holds the main loop
+  (where input, the pointer and every display's commits run) found and
+  taken off it, measured headless on release builds with
+  `tools/dev/perf-fuzz --stall 4` (bursts of drags, resizes, scale and
+  theme flips, windows opening and closing, terminal floods). Nothing
+  held it more than 2.3 ms but windows opening together: seven or five
+  at once held it 7, 10, 12 and 13 ms, and `strace` showed the main
+  thread waiting on a lock, the tab worker's: measuring a new tab's
+  title (`text::measure`) went through the one locked cosmic-text the
+  worker draws tabs with. Each thread now has a font system of its own
+  (`text.rs`, from one font database; the tab family's faces shared):
+  the same burst holds it 4.5, 5.0 and 5.5 ms, the rest being the frame
+  that first draws them, memory the same. The heartbeat now names a
+  burst of small parts by kind ("a new window ×5"), new windows and
+  their placing are timed, and perf-fuzz tells a worker started once
+  (tabs, shm dropping) from a leaked thread, closes the windows apps
+  opened themselves and says which descriptors grew (no leak found:
+  dmabufs held by a document's window that asked to save; once, early
+  in a fresh session, 8 that didn't repeat). Freeing a replaced
+  wallpaper was looked at and costs 1–13 µs: nothing to move.
+  *Blocked*, what's left: the frame itself (drawing and the commit) and
+  input on threads of their own rewrite app_server's core around
+  Smithay's single-threaded state, and only real displays and libinput
+  can show it works and what it buys (a motion event to the plane's
+  move, frames late): headless has neither planes, vblank nor libinput.
   Unblocked by the same virtual display (vkms on a seat of its own), or
   by Ben asking for it with his displays to try it on.
 

@@ -1,8 +1,13 @@
 //! Text for app_server's own drawing (window tab titles), via cosmic-text
 //! onto tiny-skia pixmaps.
+//!
+//! Each thread that draws or measures text has a font system of its own
+//! (made the first time from one database of the fonts, found once), so
+//! none ever waits on another's: the main loop measuring a new tab's
+//! title once waited on the tab worker drawing five others (a held lock,
+//! the loop stalled up to 13 ms as windows opened).
 
-use olo_sync::Mutex;
-use std::sync::OnceLock;
+use std::{cell::RefCell, sync::OnceLock};
 
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
 use tiny_skia::Pixmap;
@@ -13,21 +18,53 @@ struct Fonts {
     ui_family: String,
 }
 
-fn fonts() -> &'static Mutex<Fonts> {
-    static FONTS: OnceLock<Mutex<Fonts>> = OnceLock::new();
-    FONTS.get_or_init(|| {
-        let system = font_system();
-        let ui_family =
-            olo_theme::fonts::UI.iter().find(|name| system.db().faces().any(|f| f.families.iter().any(|(fam, _)| fam == *name))).map(|s| s.to_string()).unwrap_or_else(|| "sans-serif".into());
+/// The fonts, found once (scanning the system's takes a while: `warm_up`
+/// does it off the loop): their database and locale, and the family tabs
+/// are in.
+struct Base {
+    locale: String,
+    db: cosmic_text::fontdb::Database,
+    ui_family: String,
+}
+
+fn base() -> &'static Base {
+    static BASE: OnceLock<Base> = OnceLock::new();
+    BASE.get_or_init(|| {
+        let (locale, mut db) = font_db();
+        let ui_family = olo_theme::fonts::UI.iter().find(|name| db.faces().any(|f| f.families.iter().any(|(fam, _)| fam == *name))).map(|s| s.to_string()).unwrap_or_else(|| "sans-serif".into());
+        // The tab family's faces read once and shared by every thread's
+        // font system (mapped, not copied each time).
+        let ids: Vec<_> = db.faces().filter(|f| f.families.iter().any(|(fam, _)| *fam == ui_family)).map(|f| f.id).collect();
+        for id in ids {
+            // SAFETY: font files aren't changed under a running
+            // app_server (Olo's own are its install's).
+            unsafe { db.make_shared_face_data(id) };
+        }
         tracing::info!(font = ui_family, "tab font");
-        Mutex::new(Fonts { system, cache: SwashCache::new(), ui_family })
+        Base { locale, db, ui_family }
+    })
+}
+
+thread_local! {
+    static FONTS: RefCell<Option<Fonts>> = const { RefCell::new(None) };
+}
+
+/// This thread's fonts (made from `base` the first time).
+fn with_fonts<R>(f: impl FnOnce(&mut Fonts) -> R) -> R {
+    FONTS.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        let fonts = slot.get_or_insert_with(|| {
+            let b = base();
+            Fonts { system: FontSystem::new_with_locale_and_db(b.locale.clone(), b.db.clone()), cache: SwashCache::new(), ui_family: b.ui_family.clone() }
+        });
+        f(fonts)
     })
 }
 
 /// The system's fonts, with Olo's own (data/fonts) in place of the
 /// system's copies of the same families: tabs in the faces the kit draws
 /// in, whatever the system has.
-fn font_system() -> FontSystem {
+fn font_db() -> (String, cosmic_text::fontdb::Database) {
     let (locale, mut db) = FontSystem::new().into_locale_and_db();
     if let Some(dir) = olo_xdg::fonts_dir() {
         let mut own = cosmic_text::fontdb::Database::new();
@@ -39,13 +76,14 @@ fn font_system() -> FontSystem {
         }
         db.load_fonts_dir(&dir);
     }
-    FontSystem::new_with_locale_and_db(locale, db)
+    (locale, db)
 }
 
-/// Load fonts on a background thread so the first window doesn't stall.
+/// Find the fonts on a background thread so the first window doesn't
+/// stall.
 pub fn warm_up() {
     std::thread::spawn(|| {
-        drop(fonts().lock());
+        base();
     });
 }
 
@@ -63,9 +101,10 @@ fn shaped(fonts: &mut Fonts, text: &str, size: f32, bold: bool) -> Buffer {
 
 /// Width in pixels of `text` at `size` pixels.
 pub fn measure(text: &str, size: f32, bold: bool) -> f32 {
-    let mut fonts = fonts().lock().unwrap();
-    let buffer = shaped(&mut fonts, text, size, bold);
-    buffer.layout_runs().map(|r| r.line_w).fold(0.0, f32::max)
+    with_fonts(|fonts| {
+        let buffer = shaped(fonts, text, size, bold);
+        buffer.layout_runs().map(|r| r.line_w).fold(0.0, f32::max)
+    })
 }
 
 /// Where to `draw` text at `size` pixels so its capitals are centred on
@@ -73,22 +112,23 @@ pub fn measure(text: &str, size: f32, bold: bool) -> f32 {
 /// the face's own ascent and cap height, so whichever font the UI is in
 /// sits in the middle of a tab or badge.
 pub fn top_for_centre(centre: f32, size: f32, bold: bool) -> f32 {
-    let mut fonts = fonts().lock().unwrap();
-    let buffer = shaped(&mut fonts, "H", size, bold);
-    let Some(run) = buffer.layout_runs().next() else {
-        return (centre - size * 0.625).round();
-    };
-    let cap = run
-        .glyphs
-        .first()
-        .and_then(|g| fonts.system.get_font(g.font_id, g.font_weight))
-        .map(|f| {
-            let m = f.as_swash().metrics(&[]);
-            m.cap_height / f32::from(m.units_per_em)
-        })
-        .unwrap_or(0.7);
-    // `draw` puts the baseline at the top plus `line_y`, cut to a pixel.
-    (centre + cap * size / 2.0).round() - run.line_y.trunc()
+    with_fonts(|fonts| {
+        let buffer = shaped(fonts, "H", size, bold);
+        let Some(run) = buffer.layout_runs().next() else {
+            return (centre - size * 0.625).round();
+        };
+        let cap = run
+            .glyphs
+            .first()
+            .and_then(|g| fonts.system.get_font(g.font_id, g.font_weight))
+            .map(|f| {
+                let m = f.as_swash().metrics(&[]);
+                m.cap_height / f32::from(m.units_per_em)
+            })
+            .unwrap_or(0.7);
+        // `draw` puts the baseline at the top plus `line_y`, cut to a pixel.
+        (centre + cap * size / 2.0).round() - run.line_y.trunc()
+    })
 }
 
 /// Truncate with an ellipsis so the text fits in `max_width` pixels.
@@ -113,9 +153,13 @@ pub fn ellipsize(text: &str, size: f32, bold: bool, max_width: f32) -> String {
 /// Draw `text` with its top-left at (x, y); vertically, `y` is the top of
 /// the line box. Colour is straight-alpha RGBA.
 pub fn draw(pixmap: &mut Pixmap, text: &str, x: f32, y: f32, size: f32, bold: bool, rgba: [u8; 4]) {
-    let mut fonts = fonts().lock().unwrap();
-    let mut buffer = shaped(&mut fonts, text, size, bold);
-    let Fonts { system, cache, .. } = &mut *fonts;
+    with_fonts(|fonts| draw_with(fonts, pixmap, text, x, y, size, bold, rgba));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_with(fonts: &mut Fonts, pixmap: &mut Pixmap, text: &str, x: f32, y: f32, size: f32, bold: bool, rgba: [u8; 4]) {
+    let mut buffer = shaped(fonts, text, size, bold);
+    let Fonts { system, cache, .. } = fonts;
     let (pw, ph) = (pixmap.width() as i32, pixmap.height() as i32);
     let data = pixmap.data_mut();
     let color = Color::rgba(rgba[0], rgba[1], rgba[2], rgba[3]);
