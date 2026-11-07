@@ -109,7 +109,8 @@ impl Job<'_> {
         let parent = node.parent.ok_or(Error::Invalid)?;
         let mut cb = parent;
         let mut depth = 0;
-        while cb != tree.root() && matches!(tree.style(cb).ok_or(Error::Stale)?.value(P::Position), Value::Keyword(K::Static)) {
+        // A list item's marker is positioned by its item, whatever its position.
+        while !node.marker && cb != tree.root() && matches!(tree.style(cb).ok_or(Error::Stale)?.value(P::Position), Value::Keyword(K::Static)) {
             check(self.cancel)?;
             depth += 1;
             if depth > self.limits.depth {
@@ -200,10 +201,15 @@ impl Job<'_> {
             return Ok(false);
         }
         let a = self.active_absolute.take().ok_or(Error::Invalid)?;
+        let marker = self.cache.tree.get(id).is_some_and(|b| b.marker);
         let g = &mut self.geometry[id.index()];
         let h = g.content_box().height;
         let vertical = positioned::solve(Input { intrinsic: [h, h], ..a.y }, self.scale)?;
         g.border_box.x = a.x;
+        if marker {
+            // An outside marker ends where its item's content starts.
+            g.border_box.x = a.x - g.border_box.width;
+        }
         g.border_box.y = a.offset_y + vertical.border_start();
         g.border_box.height = vertical.size + g.padding.vertical() + g.border_width.vertical();
         g.margin.top = vertical.margin[0];

@@ -72,6 +72,8 @@ pub struct BoxNode {
     pub kind: BoxKind,
     /// Absolutely positioned: laid out after its containing block, out of flow.
     pub absolute: bool,
+    /// A list item's outside marker: positioned before its item's content.
+    pub marker: bool,
     /// A table cell's column and row spans (1 elsewhere).
     pub span: [u16; 2],
     pub parent: Option<BoxId>,
@@ -286,6 +288,8 @@ pub struct BuildJob<'a> {
     inlines: Vec<InlineBox>,
     controls: Vec<Control>,
     open: Vec<OpenInline>,
+    /// The last ordinal given in each list (by the list's node).
+    list_counters: std::collections::HashMap<NodeId, i64>,
     stack: Vec<Cursor>,
     pending: Option<Pending>,
     progress: BuildProgress,
@@ -315,6 +319,7 @@ impl<'a> BuildJob<'a> {
                 style_node: document.root().into(),
                 kind: BoxKind::Viewport,
                 absolute: false,
+                marker: false,
                 span: [1, 1],
                 parent: None,
                 first_child: None,
@@ -325,6 +330,7 @@ impl<'a> BuildJob<'a> {
             inlines: Vec::new(),
             controls: Vec::new(),
             open: Vec::new(),
+            list_counters: Default::default(),
             stack: vec![Cursor { next: document.first_child(document.root())?, container: root, style: document.root().into(), close: false, inline: false, after: None, restore: None }],
             pending: None,
             progress: BuildProgress { boxes: 1, ..Default::default() },
@@ -363,7 +369,7 @@ impl<'a> BuildJob<'a> {
         }
         self.boxes[parent.index()].last_child = Some(id);
         let absolute = matches!(kind, BoxKind::Block { absolute: true, .. });
-        self.boxes.push(BoxNode { node, style_node, kind, absolute, span: [1, 1], parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
+        self.boxes.push(BoxNode { node, style_node, kind, absolute, marker: false, span: [1, 1], parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
         self.progress.boxes = self.boxes.len();
         Ok(id)
     }
@@ -496,6 +502,45 @@ impl<'a> BuildJob<'a> {
         self.stack.push(Cursor { next: self.document.first_child(node)?, container: block, style: node.into(), close: true, inline: false, after: Some(node), restore });
         self.generated(node, block, PseudoElement::Before)?;
         Ok(())
+    }
+    /// A list item's marker (CSS Lists 3 §3): the counter or bullet for its
+    /// `list-style-type`, as a positioned block before the item's content
+    /// (`outside`) or the first run of its text (`inside`).
+    fn marker(&mut self, node: NodeId, item: BoxId, s: &Style) -> Result<()> {
+        let Value::Keyword(kind) = s.value(Property::ListStyleType) else { return Ok(()) };
+        if *kind == Keyword::None {
+            return Ok(());
+        }
+        if !matches!(s.value(Property::ListStyleImage), Value::Keyword(Keyword::None)) {
+            self.note("list-style-image as the type's marker", node);
+        }
+        // Ordinal: the item's `value`, else one past the previous item of
+        // the same list (its `start`, `reversed` not implemented).
+        let parent = self.document.parent(node)?;
+        let ordinal = match self.document.attribute(node, "value")?.and_then(|v| v.trim().parse::<i64>().ok()) {
+            Some(v) => v,
+            None => match parent.and_then(|p| self.list_counters.get(&p)) {
+                Some(&n) => n + 1,
+                None => parent.and_then(|p| self.document.attribute(p, "start").ok().flatten()).and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(1),
+            },
+        };
+        if let Some(p) = parent {
+            if self.list_counters.len() >= 65536 {
+                self.list_counters.clear();
+            }
+            self.list_counters.insert(p, ordinal);
+        }
+        let text = marker_text(*kind, ordinal);
+        if matches!(s.value(Property::ListStylePosition), Value::Keyword(Keyword::Inside)) {
+            self.pending(item)?;
+            return self.append(node, item, node, &text, None);
+        }
+        let marker = self.add(node, node, BoxKind::Block { flow_root: true, root: false, absolute: true }, item)?;
+        self.boxes[marker.index()].absolute = true;
+        self.boxes[marker.index()].marker = true;
+        self.pending(marker)?;
+        self.append(node, marker, node, &text, None)?;
+        self.flush()
     }
     /// The element's `::before` or `::after` content, if it has any: text in
     /// the pseudo-element's style, as an inline run of the paragraph, an
@@ -864,13 +909,13 @@ impl<'a> BuildJob<'a> {
                                 Inner::Flow | Inner::FlowRoot | Inner::Flex | Inner::Grid | Inner::Table => {}
                                 Inner::Ruby => self.note("ruby as block", node),
                             }
-                            if list_item {
-                                self.note("list marker not drawn", node);
-                            }
                             self.flush()?;
                             let root = self.boxes[container.index()].kind == BoxKind::Viewport;
                             let id = self.add(node, node, BoxKind::Block { flow_root: inner != Inner::Flow, root, absolute }, container)?;
                             self.push(node, id, node, true)?;
+                            if list_item {
+                                self.marker(node, id, s)?;
+                            }
                             self.generated(node, id, PseudoElement::Before)?;
                         }
                         Display::Internal(internal) => {
@@ -968,5 +1013,48 @@ impl BuildJob<'_> {
                 Ok(())
             }
         }
+    }
+}
+
+/// A marker's text for a `list-style-type` and ordinal (CSS Counter Styles 3
+/// §6): the bullet or the counter with its suffix, a space after.
+fn marker_text(kind: Keyword, ordinal: i64) -> String {
+    fn alpha(mut n: i64, upper: bool) -> String {
+        if n <= 0 {
+            return n.to_string();
+        }
+        let mut out = Vec::new();
+        while n > 0 {
+            let r = ((n - 1) % 26) as u8;
+            out.push((if upper { b'A' } else { b'a' }) + r);
+            n = (n - 1) / 26;
+        }
+        out.reverse();
+        String::from_utf8(out).unwrap_or_default()
+    }
+    fn roman(n: i64, upper: bool) -> String {
+        if !(1..=3999).contains(&n) {
+            return n.to_string();
+        }
+        let mut n = n;
+        let mut out = String::new();
+        for (value, numeral) in [(1000, "m"), (900, "cm"), (500, "d"), (400, "cd"), (100, "c"), (90, "xc"), (50, "l"), (40, "xl"), (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i")] {
+            while n >= value {
+                out.push_str(numeral);
+                n -= value;
+            }
+        }
+        if upper { out.to_ascii_uppercase() } else { out }
+    }
+    match kind {
+        Keyword::Disc => "\u{2022}\u{a0}".into(),
+        Keyword::Circle => "\u{25e6}\u{a0}".into(),
+        Keyword::Square => "\u{25aa}\u{a0}".into(),
+        Keyword::DecimalLeadingZero => format!("{}{ordinal}.\u{a0}", if (0..10).contains(&ordinal) { "0" } else { "" }),
+        Keyword::LowerAlpha | Keyword::LowerLatin => format!("{}.\u{a0}", alpha(ordinal, false)),
+        Keyword::UpperAlpha | Keyword::UpperLatin => format!("{}.\u{a0}", alpha(ordinal, true)),
+        Keyword::LowerRoman => format!("{}.\u{a0}", roman(ordinal, false)),
+        Keyword::UpperRoman => format!("{}.\u{a0}", roman(ordinal, true)),
+        _ => format!("{ordinal}.\u{a0}"),
     }
 }

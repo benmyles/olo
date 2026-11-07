@@ -137,6 +137,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::WhiteSpace => white_space(&parts),
                 Expansion::TextWrap => text_wrap(&parts),
                 Expansion::TextDecoration => text_decoration(&parts, limits, cancelled),
+                Expansion::ListStyle => list_style(&parts, limits, cancelled),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
                 Expansion::Grid | Expansion::Radius | Expansion::Background => unreachable!("these shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
@@ -261,6 +262,50 @@ fn ratio(parts: &[Component<'_>]) -> Result<Value> {
         [_] | [_, _] => Ok(Value::Keyword(Keyword::Auto)),
         _ => Err(Error::Invalid),
     }
+}
+/// `list-style: <type> || <position> || <image>` (CSS Lists 3 §3.4); one
+/// `none` is the image and the type, two are both.
+fn list_style(parts: &[Component<'_>], limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Assignments> {
+    if parts.is_empty() || parts.len() > 3 {
+        return Err(Error::Invalid);
+    }
+    let (mut kind, mut position, mut image, mut nones) = (None, None, None, 0);
+    for c in parts {
+        if c.kind() == Kind::Ident {
+            let name = c.text().unwrap();
+            if name.eq_ignore_ascii_case("none") {
+                nones += 1;
+                continue;
+            }
+            if let Some((_, k)) = [("inside", Keyword::Inside), ("outside", Keyword::Outside)].into_iter().find(|(s, _)| name.eq_ignore_ascii_case(s)) {
+                if position.replace(k).is_some() {
+                    return Err(Error::Invalid);
+                }
+                continue;
+            }
+            if let Ok(Value::Keyword(k)) = component(Property::ListStyleType.grammar(), *c, limits, cancelled) {
+                if kind.replace(k).is_some() {
+                    return Err(Error::Invalid);
+                }
+                continue;
+            }
+            return Err(Error::Invalid);
+        }
+        match decoration::parse_images(&[*c], limits, cancelled) {
+            Ok(v) if image.is_none() => image = Some(v),
+            _ => return Err(Error::Invalid),
+        }
+    }
+    if nones > 2 || (nones == 2 && (kind.is_some() || image.is_some())) {
+        return Err(Error::Invalid);
+    }
+    let kind = kind.unwrap_or(if nones > 0 { Keyword::None } else { Keyword::Disc });
+    let image = image.unwrap_or(Value::Keyword(Keyword::None));
+    Ok(smallvec::smallvec![
+        Assignment { property: Property::ListStyleType, value: Value::Keyword(kind) },
+        Assignment { property: Property::ListStylePosition, value: Value::Keyword(position.unwrap_or(Keyword::Outside)) },
+        Assignment { property: Property::ListStyleImage, value: image },
+    ])
 }
 /// `text-decoration: <line>+ || <style> || <color>` (CSS Text Decoration 3
 /// §2.4); a thickness is not supported.

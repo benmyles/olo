@@ -47,6 +47,7 @@ pub(super) enum Expansion {
     Background,
     TextWrap,
     TextDecoration,
+    ListStyle,
 }
 macro_rules! keyword_registry {
     ($($id:ident => $name:literal),* $(,)?) => {
@@ -77,6 +78,7 @@ keyword_registry! {
     BreakWord => "break-word",
     BreakSpaces => "break-spaces",
     Center => "center",
+    Circle => "circle",
     Clip => "clip",
     Collapse => "collapse",
     Column => "column",
@@ -87,11 +89,18 @@ keyword_registry! {
     ContentBox => "content-box",
     Cover => "cover",
     Dashed => "dashed",
+    Decimal => "decimal",
+    DecimalLeadingZero => "decimal-leading-zero",
+    Disc => "disc",
     Dotted => "dotted",
     Double => "double",
     End => "end",
     Evenodd => "evenodd",
+    Inside => "inside",
     LineThrough => "line-through",
+    LowerAlpha => "lower-alpha",
+    LowerLatin => "lower-latin",
+    LowerRoman => "lower-roman",
     Luminance => "luminance",
     MatchSource => "match-source",
     Nonzero => "nonzero",
@@ -100,6 +109,7 @@ keyword_registry! {
     Fixed => "fixed",
     FlexStart => "flex-start",
     FlexEnd => "flex-end",
+    Outside => "outside",
     Overline => "overline",
     Pretty => "pretty",
     SpaceBetween => "space-between",
@@ -125,8 +135,12 @@ keyword_registry! {
     Lighter => "lighter",
     Ltr => "ltr",
     MatchParent => "match-parent",
+    Square => "square",
     Stable => "stable",
     Underline => "underline",
+    UpperAlpha => "upper-alpha",
+    UpperLatin => "upper-latin",
+    UpperRoman => "upper-roman",
     Wavy => "wavy",
     WebkitCenter => "-webkit-center",
     WebkitLeft => "-webkit-left",
@@ -290,6 +304,9 @@ property_registry! {
     Left, "left", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
     LetterSpacing, "letter-spacing", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Normal]), "normal", true;
     LineHeight, "line-height", Grammar::Numeric(NumericKind::LineHeight, Range::Nonnegative, &[Keyword::Normal]), "normal", true;
+    ListStyleImage, "list-style-image", Grammar::Images, "none", true;
+    ListStylePosition, "list-style-position", Grammar::Keywords(&[Keyword::Outside,Keyword::Inside]), "outside", true;
+    ListStyleType, "list-style-type", Grammar::Keywords(&[Keyword::Disc,Keyword::Circle,Keyword::Square,Keyword::Decimal,Keyword::DecimalLeadingZero,Keyword::LowerAlpha,Keyword::UpperAlpha,Keyword::LowerLatin,Keyword::UpperLatin,Keyword::LowerRoman,Keyword::UpperRoman,Keyword::None]), "disc", true;
     MarginBlockEnd, "margin-block-end", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "0", false;
     MarginBlockStart, "margin-block-start", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "0", false;
     MarginBottom, "margin-bottom", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "0", false;
@@ -379,7 +396,7 @@ shorthand_registry! {
     // and the not-yet-implemented unicode-bidi are excluded by definition.
     WebkitMask, "-webkit-mask", [MaskImage,MaskPosition,MaskSize,MaskRepeat], Background;
     WebkitTextDecoration, "-webkit-text-decoration", [TextDecorationLine,TextDecorationStyle,TextDecorationColor], TextDecoration;
-    All, "all", [AlignContent,AlignItems,AlignSelf,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextOrientation,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AlignContent,AlignItems,AlignSelf,AspectRatio,BackgroundClip,BackgroundColor,BackgroundImage,BackgroundOrigin,BackgroundPosition,BackgroundRepeat,BackgroundSize,BlockSize,BorderBottomColor,BorderBottomLeftRadius,BorderBottomRightRadius,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderSpacing,BorderTopColor,BorderTopLeftRadius,BorderTopRightRadius,BorderTopStyle,BorderTopWidth,Bottom,BoxShadow,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Content,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontFeatureSettings,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,ListStyleImage,ListStylePosition,ListStyleType,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaskImage,MaskMode,MaskPosition,MaskRepeat,MaskSize,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextDecorationLine,TextDecorationStyle,TextOrientation,TextWrapMode,TextWrapStyle,Top,Transform,TransformOrigin,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Background, "background", [BackgroundColor,BackgroundImage,BackgroundPosition,BackgroundSize,BackgroundRepeat,BackgroundClip,BackgroundOrigin], Background;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
     // Logical border shorthands map to physical sides for horizontal-tb,
@@ -410,6 +427,7 @@ shorthand_registry! {
     Inset, "inset", [Top,Right,Bottom,Left], Quad;
     InsetBlock, "inset-block", [InsetBlockStart,InsetBlockEnd], Repeat;
     InsetInline, "inset-inline", [InsetInlineStart,InsetInlineEnd], Repeat;
+    ListStyle, "list-style", [ListStyleType,ListStylePosition,ListStyleImage], ListStyle;
     Margin, "margin", [MarginTop,MarginRight,MarginBottom,MarginLeft], Quad;
     MarginBlock, "margin-block", [MarginBlockStart,MarginBlockEnd], Repeat;
     MarginInline, "margin-inline", [MarginInlineStart,MarginInlineEnd], Repeat;
