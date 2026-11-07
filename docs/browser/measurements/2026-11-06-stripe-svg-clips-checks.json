@@ -25,5 +25,8 @@
   "native_reviews": 15,
   "native_review_findings": 0,
   "main_at_measurement": "53b1ba749c5a35247796fcdc9d27c889454c7380",
-  "process_cleanup": "Cmd+Q closed window; process outlived 10s wait, then exited after owned screen stop; absence verified"
+  "process_cleanup": "Cmd+Q closed window; process outlived 10s wait, then exited after owned screen stop; absence verified",
+  "merged_main": "ca0dcc77086bd8b330fce55a06863304351ba22a",
+  "merge_commit": "27bea606",
+  "merged_workspace_release_duration": "1m 01s"
 }

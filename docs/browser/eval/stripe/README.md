@@ -42,6 +42,12 @@ rectangles at0,0, with no other geometry/transform/units attributes. This is
 source evidence for the initial clip component, not computed cascade, a frozen replay
 or proof that all references are visible.
 
+The retained-source [opacity inventory](opacity-inventory.json) has explicit
+opacity on one rect (.10), one g (.9) and one root svg (1). It does not identify
+the winning computed value at the current startup failure. The existing
+"SVG group opacity" diagnostic covers graphics elements as well as groups.
+Implement object/group compositing without assuming only a g can trigger it.
+
 ## Current evidence
 
 An isolated Olo Chrome profile loaded `https://stripe.com/` with

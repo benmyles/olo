@@ -5138,3 +5138,19 @@ No personal-session changes. Stripe0/30; corpus0/100. Goal remains active.
 Main advanced to ca0dcc77; merge/combined validation follows this component
 checkpoint. Next: group compositing, preserve/close clipping fidelity gaps,
 connect inset painting, retry Stripe. No other website selected.
+
+Follow-up investigation: retained source has one rect opacity=.10, one g=.9,
+and one svg style opacity:1. The static "SVG group opacity" diagnostic covers
+all these elements; no claim yet which winning live node triggered it. Source
+inventory retained in eval/stripe/opacity-inventory.json. SVG2 rendering3.6.1
+requires object/group opacity after compositing the group's children; simply
+multiplying each shape alpha is incorrect for overlaps. Next component needs
+bounded tile-local isolated surfaces, nested groups and clip/effect ordering,
+with independent overlap/nesting/translucency references. Root SVG decoration
+opacity also interacts with Scene's existing image/block stacking guards.
+Reference: https://www.w3.org/TR/SVG2/render.html#ObjectAndGroupOpacityProperties.
+
+Component2cea6d3b pushed. Merged main ca0dcc77 via27bea606; combined
+workspace release passes in 1m 01s. Removed completed before binaries and
+owned Chrome profile; after binaries and raw evidence retained for the next
+component. Both owned screens stopped; goal active.

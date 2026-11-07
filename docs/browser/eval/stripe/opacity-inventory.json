@@ -1,0 +1,33 @@
+{
+  "scope": "Retained original Stripe source opacity inventory; not fresh computed style or proof of visibility",
+  "sha256": "614dc424ca90ddbdc2f3df8364c9d4f8d513fbade44326fed0b46a393e317c6d",
+  "count": 3,
+  "rows": [
+    {
+      "tag": "rect",
+      "attrs": {
+        "x": "0",
+        "y": "0",
+        "width": "100%",
+        "height": "100%",
+        "fill": "var(--hds-color-text-solid)",
+        "opacity": "0.10"
+      }
+    },
+    {
+      "tag": "g",
+      "attrs": {
+        "opacity": ".9",
+        "fill": "#fff"
+      }
+    },
+    {
+      "tag": "svg",
+      "attrs": {
+        "width": "100%",
+        "class": "newsletter-signup__buttons-fake-background",
+        "style": "opacity:1"
+      }
+    }
+  ]
+}
