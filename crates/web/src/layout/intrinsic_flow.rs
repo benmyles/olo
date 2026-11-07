@@ -15,8 +15,9 @@ impl Job<'_> {
     pub(super) fn measure_text(&mut self, source: u32, queries: QueryBasis, basis: f64) -> Result<inline::IntrinsicWidths> {
         let text = self.cache.texts.get(source as usize).ok_or(Error::Invalid)?.clone();
         // Equal paragraphs share one Text; with inline objects their widths
-        // still differ per paragraph, so those measure per source.
-        let key = if text.object_count() == 0 { Arc::as_ptr(&text) as usize } else { usize::MAX - source as usize };
+        // still differ per paragraph, so those measure per source (and are
+        // not kept for the next layout: the sources may not be the same).
+        let key = (text.serial(), if text.object_count() == 0 { 0 } else { source + 1 });
         if let Some(cached) = self.intrinsics.get(&key).or_else(|| self.cache.intrinsics.as_ref().and_then(|m| m.get(&key))) {
             return Ok(*cached);
         }

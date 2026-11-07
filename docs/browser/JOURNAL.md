@@ -5927,3 +5927,43 @@ redo only what changed.
   patched (they are full jobs), the canvas read back as BGRA and
   then shared with the GPU without a readback at all.
 
+## 2026-11-08, afternoon: incremental layout
+
+- **Subtrees from the previous layout.** A text change in stripe.com's
+  GDP counter was a full style, box, layout and scene job (17 ms for the
+  render, 13 for the measurement, twice a second). The layout job now
+  records, for every block laid out in normal flow by its own style,
+  what it was laid out under (its containing block's size and
+  direction, the container query basis) and what its placement
+  reported (`Stored`), and a later layout of the same document
+  (`Job::with_previous`, given the nodes changed since with their
+  ancestors) takes a block's whole subtree from it when none of its
+  nodes changed, its boxes, styles (by identity), prepared texts (by
+  Arc) and replaced sizes are the same, its inputs are the same, and
+  nothing in it reaches out: a float only inside a formatting context
+  root within, an absolute box only with its containing block within.
+  Geometry, text layouts and the stored records are copied over and
+  the block placed from its result. The counter's change relays out
+  1803 of 1983 boxes this way: layout 7.6 → 1.2 ms; the render is 9.5
+  ms (boxes 3.4, scene 3.2, style 1.2 remain), the measurement 6.2.
+- **Checked, not trusted.** `OLO_LAYOUT_CHECK` lays the same tree out
+  again without the previous layout (and once more, and once with
+  nothing remembered) and compares every box, naming the roots of any
+  difference and the reused block they lie under. It found two things.
+  The intrinsic-width cache carried between layouts was keyed by the
+  prepared text's address (reusable by the next text) or, for texts
+  with inline objects, by the source index (which shifts when a text
+  box comes or goes): texts carry a serial now, like images, and
+  object texts are measured again each layout. And the measurement
+  path patched the previous layout's styles in place before reading
+  the change log from their revision, so the changed nodes were
+  missed and a bento card kept a height from an older state (509 for
+  512 px): the revision is read before the patch. stripe.com (66
+  checks), its pricing page (54) and the Wikipedia article now lay
+  out identically with and without reuse.
+- **Result.** stripe.com at steady state: 12.7% of a core (page thread
+  11.3%). Next in the full job: the box tree (3.4 ms, rebuilt from the
+  whole document: copy the clean subtrees' boxes), the scene (3.2 ms)
+  and the style job (1.2 ms: a text change needs no restyle unless a
+  selector tests `:empty`).
+

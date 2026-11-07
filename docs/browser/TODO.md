@@ -96,12 +96,17 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   render instead of 4.9); an animating canvas is a surface layer (one
   image upload a frame, the tiles under it kept). stripe.com at steady
   state: Olo 13.9–14.9% of a core against Chrome's 15.6% (JOURNAL
-  2026-11-08 midday). Next, in order: incremental layout (a text change
-  in the GDP counter is a full style, layout and scene job twice a
-  second, 17 ms for the render and 13 ms for the measurement, 90 ms of
-  every 2 s; stripe.com/pricing's 4800 boxes relay out in 17 ms spread
-  evenly over per-box work, `layout profile:` under OLO_WEB_TIMING; lay
-  out only the block that changed, keep the rest); a V8 CPU profile of
+  2026-11-08 midday). Layout is incremental: a block subtree holding no
+  changed node, under the same inputs, is taken from the previous
+  layout (`layout::Job::with_previous`; checked against a full layout
+  by `OLO_LAYOUT_CHECK`; JOURNAL 2026-11-08 afternoon), so the counter's
+  text change relays out 180 of 1983 boxes (layout 7.6 → 1.2 ms) and
+  stripe.com runs at 12.7% of a core. Next, in order: the rest of that
+  full job (the box tree rebuilt from the whole document, 3.4 ms: copy
+  the clean subtrees' boxes; the scene rebuilt, 3.2 ms; the style job,
+  1.2 ms, where a text change needs no restyle unless a selector tests
+  `:empty`); flex and grid items from the previous layout too (only
+  blocks in normal flow are taken now); a V8 CPU profile of
   the live page (scripts are 85–130 ms per 2 s: the page's own work or
   our natives?); an animating transform as a moving layer placed by the
   window (the marquee repaints 4 tiles a frame); hover restyles patched

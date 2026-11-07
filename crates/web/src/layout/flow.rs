@@ -181,6 +181,8 @@ pub struct Progress {
     pub texts: usize,
     pub lines: usize,
     pub reused_texts: usize,
+    /// Boxes whose geometry came from the previous layout (`Job::reuse`).
+    pub reused: usize,
     pub work: usize,
     pub finished: bool,
 }
@@ -194,11 +196,24 @@ pub struct Cache {
     /// spacing), for the next preparation of a changed document to keep
     /// what is the same.
     shared: Arc<HashMap<TextKey, Arc<inline::Text>>>,
-    intrinsics: Option<Arc<HashMap<usize, inline::IntrinsicWidths>>>,
+    intrinsics: Option<Arc<HashMap<(u64, u32), inline::IntrinsicWidths>>>,
     glyph_geometry_bytes: usize,
     fallbacks: Fallbacks,
 }
 impl Cache {
+    /// This cache without the intrinsic widths carried from earlier
+    /// layouts (OLO_LAYOUT_CHECK: a layout from nothing remembered).
+    pub fn without_intrinsics(&self) -> Arc<Self> {
+        Arc::new(Self {
+            tree: self.tree.clone(),
+            texts: self.texts.clone(),
+            svg_texts: self.svg_texts.clone(),
+            shared: self.shared.clone(),
+            intrinsics: None,
+            glyph_geometry_bytes: self.glyph_geometry_bytes,
+            fallbacks: self.fallbacks.clone(),
+        })
+    }
     /// The shaped texts of an SVG viewport, cloned for its resolved geometry.
     pub(crate) fn svg_texts(&self, vector: u32) -> Vec<Option<tiny_skia::Path>> {
         self.svg_texts.get(vector as usize).map(|t| t.to_vec()).unwrap_or_default()
@@ -587,8 +602,41 @@ impl Sticky {
 pub struct Layout {
     cache: Arc<Cache>,
     geometry: Box<[Geometry]>,
-    texts: Arc<[Option<inline::Layout>]>,
+    texts: Arc<[Option<Arc<inline::Layout>>]>,
+    /// Each block laid out in normal flow by its own style: what it was
+    /// laid out under and what its placement reported, so a later layout
+    /// of the same document can take its subtree as it is (`Job::reuse`).
+    stored: Arc<[Option<Stored>]>,
+    /// The blocks whose subtrees came from the previous layout (for
+    /// checking the reuse, OLO_LAYOUT_CHECK).
+    reuse_roots: Arc<[BoxId]>,
     scale: f64,
+}
+/// What a block in normal flow was laid out under: its containing
+/// block's size and direction and the container query basis (the rest
+/// follows from its style).
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct Inputs {
+    width: f64,
+    height: Option<f64>,
+    rtl: bool,
+    queries: QueryBasis,
+}
+/// A block's inputs, whether it is a formatting context root, and what
+/// its placement reported.
+#[derive(Clone, Copy)]
+pub(super) struct Stored {
+    inputs: Inputs,
+    bfc: bool,
+    result: Option<Completed>,
+}
+/// The previous layout of the same document, less the nodes changed
+/// since (with their ancestors): what `Job::reuse` can take from.
+pub(super) struct Reuse<'a> {
+    layout: &'a Layout,
+    dirty: &'a std::collections::HashSet<crate::dom::NodeId>,
+    /// Its block boxes by node, in tree order.
+    by_node: HashMap<crate::dom::NodeId, smallvec::SmallVec<[BoxId; 2]>>,
 }
 impl Layout {
     pub fn device_scale(&self) -> f64 {
@@ -607,7 +655,11 @@ impl Layout {
             glyph_geometry_bytes: self.cache.glyph_geometry_bytes,
             fallbacks: self.cache.fallbacks.clone(),
         });
-        Self { cache, geometry: self.geometry.clone(), texts: self.texts.clone(), scale: self.scale }
+        Self { cache, geometry: self.geometry.clone(), texts: self.texts.clone(), stored: self.stored.clone(), reuse_roots: self.reuse_roots.clone(), scale: self.scale }
+    }
+    /// The blocks whose subtrees came from the previous layout.
+    pub fn reuse_roots(&self) -> &[BoxId] {
+        &self.reuse_roots
     }
     pub fn cache(&self) -> &Arc<Cache> {
         &self.cache
@@ -632,7 +684,7 @@ impl Layout {
     }
     pub fn text_layout(&self, id: BoxId) -> Option<&inline::Layout> {
         let BoxKind::InlineContent { source } = self.cache.tree.get(id)?.kind else { return None };
-        self.texts.get(source as usize)?.as_ref()
+        self.texts.get(source as usize)?.as_deref()
     }
     /// Walk ancestors on demand. A painter should traverse once carrying the
     /// content origin, rather than call this independently for every glyph.
@@ -801,6 +853,7 @@ struct FloatBox {
     left: bool,
     rect: Rect,
 }
+#[derive(Clone, Copy, Debug)]
 struct Completed {
     before: Strut,
     after: Strut,
@@ -843,7 +896,10 @@ pub struct Job<'a> {
     /// OLO_WEB_TIMING: the work profiled by kind.
     profiling: bool,
     geometry: Vec<Geometry>,
-    texts: Vec<Option<inline::Layout>>,
+    texts: Vec<Option<Arc<inline::Layout>>>,
+    stored: Vec<Option<Stored>>,
+    previous: Option<Reuse<'a>>,
+    reuse_roots: Vec<BoxId>,
     stack: Vec<Frame>,
     flex: Vec<flex_flow::Frame<'a>>,
     containers: Vec<container_flow::Container>,
@@ -852,7 +908,9 @@ pub struct Job<'a> {
     absolute_at: usize,
     absolute_indices: HashMap<BoxId, usize>,
     active_absolute: Option<absolute_flow::Active>,
-    intrinsics: HashMap<usize, inline::IntrinsicWidths>,
+    /// Measured min/max-content widths by text identity (and source, for
+    /// texts with inline objects, whose widths are per paragraph).
+    intrinsics: HashMap<(u64, u32), inline::IntrinsicWidths>,
     scratch: math::Scratch,
     progress: Progress,
     fallbacks: Fallbacks,
@@ -900,6 +958,9 @@ impl<'a> Job<'a> {
             limits,
             cancel,
             profiling: std::env::var_os("OLO_WEB_TIMING").is_some(),
+            stored: vec![None; geometry.len()],
+            previous: None,
+            reuse_roots: Vec::new(),
             geometry,
             texts,
             stack: vec![Frame {
@@ -946,6 +1007,122 @@ impl<'a> Job<'a> {
         let node = self.cache.tree.get(id).map(|b| b.node);
         self.fallbacks.note(what, node);
     }
+    /// The previous layout of the same document, to take the geometry
+    /// of every block subtree that holds none of the `dirty` nodes
+    /// (the changed ones and their ancestors) and is laid out under the
+    /// same inputs as before.
+    pub fn with_previous(mut self, previous: &'a Layout, dirty: &'a std::collections::HashSet<crate::dom::NodeId>) -> Self {
+        let mut by_node: HashMap<crate::dom::NodeId, smallvec::SmallVec<[BoxId; 2]>> = HashMap::new();
+        for (id, b) in previous.cache.tree.iter() {
+            if matches!(b.kind, BoxKind::Block { .. }) {
+                by_node.entry(b.node).or_default().push(id);
+            }
+        }
+        self.previous = Some(Reuse { layout: previous, dirty, by_node });
+        self
+    }
+    /// Lay out `child` (a block in the normal flow of the frame on top)
+    /// by taking its subtree from the previous layout: when none of its
+    /// nodes changed, its boxes, styles, texts and replaced sizes are
+    /// the same, its inputs are the same, and nothing in it reaches out
+    /// (no float but inside a formatting context root within, no
+    /// absolute box but with its containing block within), the geometry
+    /// is copied over and the box placed from its recorded result.
+    fn reuse(&mut self, child: BoxId) -> Result<bool> {
+        let Some(prev) = &self.previous else { return Ok(false) };
+        let frame = self.stack.last().ok_or(Error::Invalid)?;
+        if frame.atomic_host || self.containers.last().is_some_and(|c| c.id == frame.id) || self.active_absolute.as_ref().is_some_and(|a| a.id == child) {
+            return Ok(false);
+        }
+        if !self.stack[self.bfc_index()].floats.is_empty() {
+            return Ok(false);
+        }
+        let new_tree = &self.cache.tree;
+        let b = new_tree.get(child).ok_or(Error::Invalid)?;
+        if prev.dirty.contains(&b.node) {
+            return Ok(false);
+        }
+        let old_tree = &prev.layout.cache.tree;
+        // The old box for this one: the same ordinal among its node's blocks.
+        let Some(ordinal) = new_tree.boxes_of(b.node).filter(|&id| matches!(new_tree.boxes[id.index()].kind, BoxKind::Block { .. })).position(|id| id == child) else { return Ok(false) };
+        let Some(&old) = prev.by_node.get(&b.node).and_then(|v| v.get(ordinal)) else { return Ok(false) };
+        let inputs = Inputs { width: frame.used.width, height: frame.used.height.map(|h| frame.used.height(h)), rtl: frame.used.rtl, queries: frame.queries };
+        let Some(stored) = prev.layout.stored.get(old.index()).copied().flatten() else { return Ok(false) };
+        let Some(result) = stored.result else { return Ok(false) };
+        if stored.inputs != inputs {
+            return Ok(false);
+        }
+        let positioned = |s: &crate::css::style::Style| !matches!(s.value(P::Position), Value::Keyword(K::Static)) || matches!(s.value(P::Transform), Value::Transforms(_));
+        let style = new_tree.style(child).ok_or(Error::Invalid)?;
+        if self.float_side(style).is_some() {
+            return Ok(false);
+        }
+        // The subtrees side by side: the same in everything layout reads.
+        let mut pairs: Vec<(BoxId, BoxId, bool, bool)> = vec![(child, old, positioned(style), stored.bfc)];
+        let mut copied: Vec<(BoxId, BoxId)> = Vec::new();
+        while let Some((a, o, cb_inside, bfc_inside)) = pairs.pop() {
+            check(self.cancel)?;
+            let (Some(n), Some(ob)) = (new_tree.get(a), old_tree.get(o)) else { return Ok(false) };
+            if n.node != ob.node || prev.dirty.contains(&n.node) || n.absolute != ob.absolute || n.marker != ob.marker || n.span != ob.span {
+                return Ok(false);
+            }
+            let (Some(sn), Some(so)) = (new_tree.style(a), old_tree.style(o)) else { return Ok(false) };
+            if sn.identity() != so.identity() {
+                return Ok(false);
+            }
+            let same_kind = match (n.kind, ob.kind) {
+                (BoxKind::Block { flow_root: x, root: y, absolute: z }, BoxKind::Block { flow_root: x2, root: y2, absolute: z2 }) => x == x2 && y == y2 && z == z2,
+                (BoxKind::InlineContent { source: x }, BoxKind::InlineContent { source: y }) => match (self.cache.texts.get(x as usize), prev.layout.cache.texts.get(y as usize)) {
+                    (Some(t), Some(u)) => Arc::ptr_eq(t, u),
+                    _ => false,
+                },
+                (BoxKind::InlineImage { .. }, BoxKind::InlineImage { .. })
+                | (BoxKind::BlockImage { .. }, BoxKind::BlockImage { .. })
+                | (BoxKind::InlineVector { .. }, BoxKind::InlineVector { .. })
+                | (BoxKind::BlockVector { .. }, BoxKind::BlockVector { .. })
+                | (BoxKind::InlineReplaced { .. }, BoxKind::InlineReplaced { .. })
+                | (BoxKind::BlockReplaced { .. }, BoxKind::BlockReplaced { .. }) => new_tree.natural(a)? == old_tree.natural(o)?,
+                _ => false,
+            };
+            if !same_kind {
+                return Ok(false);
+            }
+            if n.absolute && !cb_inside {
+                return Ok(false);
+            }
+            if self.float_side(sn).is_some() && !bfc_inside {
+                return Ok(false);
+            }
+            let cb = cb_inside || positioned(sn);
+            let bfc = bfc_inside || prev.layout.stored.get(o.index()).copied().flatten().is_some_and(|s| s.bfc);
+            copied.push((a, o));
+            let (mut ca, mut co) = (n.first_child, ob.first_child);
+            loop {
+                match (ca, co) {
+                    (None, None) => break,
+                    (Some(x), Some(y)) => {
+                        pairs.push((x, y, cb, bfc));
+                        ca = new_tree.boxes[x.index()].next_sibling;
+                        co = old_tree.boxes[y.index()].next_sibling;
+                    }
+                    _ => return Ok(false),
+                }
+            }
+        }
+        let count = copied.len();
+        for (a, o) in copied {
+            self.geometry[a.index()] = prev.layout.geometry[o.index()];
+            self.stored[a.index()] = prev.layout.stored[o.index()];
+            if let (BoxKind::InlineContent { source: x }, BoxKind::InlineContent { source: y }) = (new_tree.boxes[a.index()].kind, old_tree.boxes[o.index()].kind) {
+                self.texts[x as usize] = prev.layout.texts.get(y as usize).cloned().flatten();
+            }
+        }
+        self.progress.boxes += count;
+        self.progress.reused += count;
+        self.reuse_roots.push(child);
+        self.place(child, result)?;
+        Ok(true)
+    }
     fn enter(&mut self, id: BoxId) -> Result<()> {
         if self.stack.len() >= self.limits.depth {
             return Err(Error::Limit);
@@ -955,6 +1132,7 @@ impl<'a> Job<'a> {
         let queries = frame.queries;
         let (parent_origin, parent_cursor, parent_pending, parent_collapsing) = (frame.bfc_origin, frame.cursor, frame.pending.value(), frame.at_start && frame.collapse_top);
         let parent_id = frame.id;
+        let parent_atomic_host = frame.atomic_host;
         let cache = self.cache.clone();
         let b = cache.tree.get(id).ok_or(Error::Invalid)?;
         let BoxKind::Block { flow_root, root, .. } = b.kind else { return Err(Error::Invalid) };
@@ -963,6 +1141,7 @@ impl<'a> Job<'a> {
             return Err(Error::Stale);
         }
         let mut float_left = None;
+        let mut plain = false;
         let mut used = if let Some(a) = self.active_absolute.as_ref().filter(|a| a.id == id) {
             a.used
         } else if let Some(used) = self.flex_child_used(id)? {
@@ -974,6 +1153,7 @@ impl<'a> Job<'a> {
         } else {
             let mut used = Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
             float_left = self.float_side(style);
+            plain = float_left.is_none() && !parent_atomic_host;
             // Legacy centring (<center>, align=center): a sized block in a
             // -webkit-center container is centred, as by auto margins.
             if float_left.is_none()
@@ -1010,6 +1190,11 @@ impl<'a> Job<'a> {
             used
         };
         used.bfc |= flow_root || root;
+        if plain {
+            // Laid out by its own style under these inputs: a later layout
+            // may take its subtree as it is (`reuse`).
+            self.stored[id.index()] = Some(Stored { inputs: Inputs { width: parent.width, height: parent.height.map(|h| parent.height(h)), rtl: parent.rtl, queries }, bfc: used.bfc, result: None });
+        }
         let prospective_y = if float_left.is_some() {
             parent_cursor + if parent_collapsing { 0. } else { parent_pending }
         } else if parent_collapsing {
@@ -1212,6 +1397,9 @@ impl<'a> Job<'a> {
         Ok(())
     }
     fn place(&mut self, id: BoxId, result: Completed) -> Result<()> {
+        if let Some(stored) = &mut self.stored[id.index()] {
+            stored.result = Some(result);
+        }
         if self.place_flex(id, result.relative_y)? || self.place_container(id)? {
             return Ok(());
         }
@@ -1316,7 +1504,7 @@ impl<'a> Job<'a> {
             self.geometry[child.index()] = g;
             self.progress.boxes += 1;
         }
-        self.texts[source as usize] = Some(l);
+        self.texts[source as usize] = Some(Arc::new(l));
         Ok(Completed { before: Strut::default(), after: Strut::default(), through, relative_y: 0. })
     }
     /// The atomic inlines of one text box in source order: their sizes for line
@@ -1514,6 +1702,7 @@ impl<'a> Job<'a> {
                 }
                 continue;
             }
+            let mut from_flow = false;
             let child = if self.flex.last().is_some_and(|f| self.stack.last().is_some_and(|parent| f.id == parent.id)) {
                 let t = self.profiling.then(std::time::Instant::now);
                 let tick = self.flex_tick()?;
@@ -1529,6 +1718,7 @@ impl<'a> Job<'a> {
                 if let Some(child) = child {
                     f.next = self.cache.tree.boxes[child.index()].next_sibling;
                 }
+                from_flow = true;
                 child
             };
             if let Some(child) = child {
@@ -1546,7 +1736,9 @@ impl<'a> Job<'a> {
                 match b.kind {
                     BoxKind::Block { .. } => {
                         let t = self.profiling.then(std::time::Instant::now);
-                        self.enter(child)?;
+                        if !(from_flow && self.previous.is_some() && self.reuse(child)?) {
+                            self.enter(child)?;
+                        }
                         profile(0, t);
                     }
                     BoxKind::InlineContent { source } => {
@@ -1685,13 +1877,15 @@ impl<'a> Job<'a> {
             let p = LAYOUT_PROFILE.with(|p| p.replace([(0, 0.); 7]));
             let names = ["enter", "text", "replaced", "finish", "flex", "absolute", "intrinsic"];
             let parts: Vec<String> = names.iter().zip(p).filter(|(_, (n, _))| *n > 0).map(|(name, (n, secs))| format!("{name} {n}×{:.1} ms", secs * 1000.)).collect();
-            eprintln!("layout profile: {}", parts.join(", "));
+            eprintln!("layout profile: {}; {} of {} boxes reused", parts.join(", "), self.progress.reused, self.cache.tree.boxes.len());
         }
         if !self.intrinsics.is_empty() {
             if let Some(previous) = &self.cache.intrinsics {
-                for (&source, &widths) in previous.iter() {
+                // Kept by the text's identity; a paragraph with objects is
+                // measured again (its objects may have changed).
+                for (&key, &widths) in previous.iter().filter(|(k, _)| k.1 == 0) {
                     check(self.cancel)?;
-                    self.intrinsics.entry(source).or_insert(widths);
+                    self.intrinsics.entry(key).or_insert(widths);
                 }
             }
             self.cache = Arc::new(Cache {
@@ -1704,6 +1898,13 @@ impl<'a> Job<'a> {
                 fallbacks: self.cache.fallbacks.clone(),
             });
         }
-        Ok(Layout { cache: self.cache, geometry: self.geometry.into_boxed_slice(), texts: Arc::from(self.texts), scale: self.scale })
+        Ok(Layout {
+            cache: self.cache,
+            geometry: self.geometry.into_boxed_slice(),
+            texts: Arc::from(self.texts),
+            stored: Arc::from(self.stored),
+            reuse_roots: Arc::from(self.reuse_roots),
+            scale: self.scale,
+        })
     }
 }

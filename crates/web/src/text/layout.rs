@@ -292,10 +292,19 @@ pub struct Text {
     monotonic: bool,
     complex: usize,
     objects: u32,
+    /// Its identity: unique to each prepared text ever made (an address
+    /// is not: the next text may land where a dropped one was), for
+    /// caches that outlive a layout.
+    serial: u64,
 }
+static SERIALS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 impl Text {
     pub fn object_count(&self) -> usize {
         self.objects as usize
+    }
+    /// Its identity (see the field).
+    pub fn serial(&self) -> u64 {
+        self.serial
     }
     pub fn prepared(&self) -> &Arc<Prepared> {
         &self.prepared
@@ -532,6 +541,7 @@ impl<'a> TextJob<'a> {
             monotonic: self.monotonic,
             complex: self.breaks.complex_context_scalars(),
             objects: self.objects,
+            serial: SERIALS.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }))
     }
 }

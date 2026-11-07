@@ -10,7 +10,7 @@ use crate::css::{
 /// Nearest eligible ancestor on each physical axis. In horizontal flow these
 /// are also the inline/block axes. Carried down the active layout stack rather
 /// than walking ancestors per length or retaining a second document index.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) struct QueryBasis {
     width: f64,
     height: f64,

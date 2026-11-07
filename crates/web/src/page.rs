@@ -434,6 +434,9 @@ impl Measurer {
         // (Another host, another scope: the previous styles and layout
         // hold fonts from the old one and are not reused.)
         let mut previous = previous.filter(|m| m.defaults.is_current(host));
+        // The document the previous layout was of, read before its styles
+        // are patched to this one (the patch advances their revision).
+        let previous_revision = previous.as_ref().map(|m| m.layout.cache().tree().styles().document_revision());
         let defaults = match &previous {
             Some(m) => m.defaults.clone(),
             None => Defaults::new(host, Default::default(), cancel)?,
@@ -488,6 +491,7 @@ impl Measurer {
             }
         } else {
             let previous = previous.as_ref();
+            let dirty = previous_revision.and_then(|revision| dirty_nodes(doc, revision));
             let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
             // The images were bound to the document before the scripts changed
             // it; while they still fit, boxes take their sizes.
@@ -506,9 +510,16 @@ impl Measurer {
             while !job.step(4)?.finished {}
             let cache = job.finish()?;
             phases[2] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1];
+            let checked = cache.clone();
             let mut job = layout::Job::new(shaper, &self.scope, cache, viewport, Default::default(), cancel)?;
+            if let (Some(p), Some(dirty)) = (previous, &dirty) {
+                job = job.with_previous(&p.layout, dirty);
+            }
             while !job.step(256)?.finished {}
-            Arc::new(job.finish()?)
+            let reused = job.progress().reused;
+            let layout = job.finish()?;
+            check_reuse(shaper, &self.scope, checked, viewport, &layout, doc, reused, cancel)?;
+            Arc::new(layout)
         };
         phases[3] = started.elapsed().as_secs_f64() * 1000. - phases[0] - phases[1] - phases[2];
         // The index stands with the layout.
@@ -1299,6 +1310,147 @@ impl Page {
         Ok(())
     }
 }
+/// OLO_LAYOUT_CHECK: lay `cache` out again without the previous layout
+/// and compare every box's geometry with `layout`'s (which took what it
+/// could from the previous one), printing the first differences: the
+/// reuse must be invisible.
+fn check_reuse(
+    shaper: &mut shaping::Engine,
+    scope: &Scope,
+    cache: Arc<layout::Cache>,
+    viewport: layout::Viewport,
+    layout: &layout::Layout,
+    doc: &Document,
+    reused: usize,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    if reused == 0 || std::env::var_os("OLO_LAYOUT_CHECK").is_none() {
+        return Ok(());
+    }
+    let mut job = layout::Job::new(shaper, scope, cache.clone(), viewport, Default::default(), cancel)?;
+    while !job.step(256)?.finished {}
+    let full = job.finish()?;
+    // Twice more: once again as is, once with nothing remembered, to tell
+    // a difference of the reuse from one of the layout's own state.
+    let mut job = layout::Job::new(shaper, scope, cache.clone(), viewport, Default::default(), cancel)?;
+    while !job.step(256)?.finished {}
+    let again = job.finish()?;
+    let mut job = layout::Job::new(shaper, scope, cache.without_intrinsics(), viewport, Default::default(), cancel)?;
+    while !job.step(256)?.finished {}
+    let fresh = job.finish()?;
+    let tree = layout.cache().tree();
+    let count_differing = |x: &layout::Layout, y: &layout::Layout| {
+        tree.iter()
+            .filter(|(id, _)| match (x.geometry(*id), y.geometry(*id)) {
+                (Some(a), Some(c)) => {
+                    (a.border_box.x - c.border_box.x).abs() >= 1e-6
+                        || (a.border_box.y - c.border_box.y).abs() >= 1e-6
+                        || (a.border_box.width - c.border_box.width).abs() >= 1e-6
+                        || (a.border_box.height - c.border_box.height).abs() >= 1e-6
+                }
+                _ => false,
+            })
+            .count()
+    };
+    eprintln!(
+        "layout check: full vs full again {} differ, full vs fresh (no carried intrinsics) {} differ, reused vs fresh {} differ",
+        count_differing(&full, &again),
+        count_differing(&full, &fresh),
+        count_differing(layout, &fresh)
+    );
+    let mut differing = std::collections::HashSet::new();
+    for (id, _) in tree.iter() {
+        let (Some(a), Some(c)) = (layout.geometry(id), full.geometry(id)) else { continue };
+        let close = |x: f64, y: f64| (x - y).abs() < 1e-6;
+        let same = close(a.border_box.x, c.border_box.x) && close(a.border_box.y, c.border_box.y) && close(a.border_box.width, c.border_box.width) && close(a.border_box.height, c.border_box.height);
+        if !same {
+            differing.insert(id);
+        }
+    }
+    // The roots of the differences: boxes differing under ones that do not,
+    // each with the reused block it lies under.
+    let mut shown = 0usize;
+    for (id, b) in tree.iter() {
+        if !differing.contains(&id) || b.parent.is_some_and(|p| differing.contains(&p)) {
+            continue;
+        }
+        if shown < 6 {
+            shown += 1;
+            let (Some(a), Some(c)) = (layout.geometry(id), full.geometry(id)) else { continue };
+            let mut at = Some(id);
+            let mut under = String::from("no reused block");
+            while let Some(n) = at {
+                if layout.reuse_roots().contains(&n) {
+                    let node = tree.get(n).map(|b| b.node);
+                    under = format!(
+                        "under reused <{} class={:?}> {:?}",
+                        node.and_then(|n| doc.name(n).ok().flatten()).unwrap_or("?"),
+                        node.and_then(|n| doc.attribute(n, "class").ok().flatten()).unwrap_or("").chars().take(40).collect::<String>(),
+                        layout.geometry(n).map(|g| g.border_box)
+                    );
+                    break;
+                }
+                at = tree.get(n).and_then(|b| b.parent);
+            }
+            eprintln!("  layout check: {under}");
+            eprintln!(
+                "  layout check: <{} class={:?}> {:?} reused {:?} full {:?}",
+                doc.name(b.node).ok().flatten().unwrap_or("?"),
+                doc.attribute(b.node, "class").ok().flatten().unwrap_or("").chars().take(50).collect::<String>(),
+                b.kind,
+                a.border_box,
+                c.border_box
+            );
+        }
+    }
+    // And everything that differs under the first root, with its parent's
+    // size: what in there was laid out another way.
+    let mut listed = 0usize;
+    for (id, b) in tree.iter() {
+        if !differing.contains(&id) || listed >= 14 {
+            continue;
+        }
+        listed += 1;
+        let (Some(a), Some(c)) = (layout.geometry(id), full.geometry(id)) else { continue };
+        eprintln!(
+            "    differs: <{} class={:?}> {:?} absolute={} reused {:?} full {:?}",
+            doc.name(b.node).ok().flatten().unwrap_or("?"),
+            doc.attribute(b.node, "class").ok().flatten().unwrap_or("").chars().take(40).collect::<String>(),
+            b.kind,
+            b.absolute,
+            a.border_box,
+            c.border_box
+        );
+    }
+    eprintln!("layout check: {} of {} boxes differ ({reused} reused)", differing.len(), tree.boxes().len());
+    Ok(())
+}
+/// The nodes whose layout the changes to `doc` since `revision` can have
+/// altered, with their ancestors (a block subtree under none of them lays
+/// out as before, see `layout::Job::with_previous`); None when the
+/// changes are not known.
+fn dirty_nodes(doc: &Document, revision: u64) -> Option<std::collections::HashSet<crate::dom::NodeId>> {
+    use crate::dom::Change;
+    let changes = doc.changes_since(revision)?;
+    if changes.len() > 4096 {
+        return None;
+    }
+    let mut dirty = std::collections::HashSet::new();
+    for (_, change) in changes {
+        let node = match change {
+            Change::Node(n) | Change::Attribute { node: n, .. } | Change::Style(n) | Change::Text(n) | Change::Children { node: n, .. } => *n,
+            Change::Unknown => return None,
+        };
+        let mut at = Some(node);
+        while let Some(n) = at {
+            if !dirty.insert(n) {
+                break;
+            }
+            at = doc.parent(n).ok().flatten();
+        }
+    }
+    Some(dirty)
+}
 /// The elements whose styles the changes to `doc` since `revision` (the
 /// styles' document revision) can be patched over, each with whether its
 /// rules must be matched again; or why the whole tree must be styled.
@@ -1380,6 +1532,7 @@ fn render(
     let timing = std::env::var_os("OLO_WEB_TIMING").map(|_| std::time::Instant::now());
     let previous = previous.filter(|p| p.cache().tree().styles().defaults().is_some_and(|d| d.is_current(host)));
     let previous_styles = previous.map(|p| p.cache().tree().styles().as_ref());
+    let previous_revision = previous_styles.map(|p| p.document_revision());
     let mut fallbacks = layout::Fallbacks::default();
     let mut stamps = [0f64; 6];
     let defaults = match previous_styles.and_then(|p| p.defaults()) {
@@ -1441,6 +1594,8 @@ fn render(
     };
     let kept = previous.filter(|p| styles.geometry_kept() && p.device_scale() == viewport.scale && same_bindings(p));
     let kept_layout = kept.is_some();
+    // What changed since the previous layout, for taking the rest from it.
+    let dirty = previous_revision.and_then(|revision| dirty_nodes(doc, revision));
     let why_not_kept = match previous {
         _ if kept_layout => "",
         None => "nothing before",
@@ -1489,12 +1644,19 @@ fn render(
             stamps[2] = t.elapsed().as_secs_f64() * 1000.;
         }
         progress(Phase::Layout, 0);
+        let checked = cache.clone();
         let mut job = layout::Job::new(shaper, scope, cache, viewport, Default::default(), cancel)?;
+        if let (Some(p), Some(dirty)) = (previous, &dirty) {
+            job = job.with_previous(p, dirty);
+        }
         while !job.step(64)?.finished {
             progress(Phase::Layout, job.progress().boxes)
         }
         fallbacks.merge(job.fallbacks());
-        Arc::new(job.finish()?)
+        let reused = job.progress().reused;
+        let layout = job.finish()?;
+        check_reuse(shaper, scope, checked, viewport, &layout, doc, reused, cancel)?;
+        Arc::new(layout)
     };
     if let Some(t) = timing {
         stamps[3] = t.elapsed().as_secs_f64() * 1000.;
