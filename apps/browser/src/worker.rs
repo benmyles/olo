@@ -291,7 +291,7 @@ fn render(
         && (key.width != r.key.width || key.height != r.key.height || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(input, page.interaction_mask))
     {
         proxy.send(Reply::Status(r.id, "Laying out…".into()));
-        if *viewport_dependent || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(input, page.interaction_mask) {
+        if *viewport_dependent || page.media_dependent || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(input, page.interaction_mask) {
             let previous = page.interaction;
             page.interaction = input;
             let host = PageHost::new(scope, &r.key);

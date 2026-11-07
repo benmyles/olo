@@ -62,6 +62,9 @@ pub struct SheetBuilder {
     work: usize,
     declarations: usize,
     selector_compiler: selectors::RuleCompiler,
+    /// What `@media` rules are evaluated against; without one they are issues.
+    media: Option<crate::css::media::Media>,
+    media_dependent: bool,
     failed: bool,
 }
 impl SheetBuilder {
@@ -75,6 +78,8 @@ impl SheetBuilder {
             work: 0,
             declarations: 0,
             selector_compiler: selectors::RuleCompiler::new(),
+            media: None,
+            media_dependent: false,
             failed: false,
         }
     }
@@ -89,6 +94,16 @@ impl SheetBuilder {
         check(cancelled)?;
         self.work = self.work.checked_add(n).ok_or(Error::Limit)?;
         if self.work > self.limits.work { Err(Error::Limit) } else { Ok(()) }
+    }
+    /// Evaluate `@media` and `@supports` rules for this medium. Rules under a
+    /// false condition are left out; `media_dependent` says whether any
+    /// `@media` rule was met, so a changed medium knows to recompile.
+    pub fn with_media(mut self, media: crate::css::media::Media) -> Self {
+        self.media = Some(media);
+        self
+    }
+    pub fn media_dependent(&self) -> bool {
+        self.media_dependent
     }
     pub fn add_sheet(&mut self, syntax: &Syntax, origin: Origin, cancelled: Option<&AtomicBool>) -> Result<()> {
         if self.failed {
@@ -269,6 +284,20 @@ impl SheetBuilder {
                     };
                     if rule.block().is_some() {
                         self.walk(rule.block_contents(cancelled).map_err(syntax_error)?, origin, layers[0], depth + 1, options, cancelled)?;
+                    }
+                }
+                StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("media")) && self.media.is_some() => {
+                    self.media_dependent = true;
+                    if let Some(media) = &self.media
+                        && crate::css::media::evaluate(rule.value(), media, cancelled)
+                        && rule.block().is_some()
+                    {
+                        self.walk(rule.block_contents(cancelled).map_err(syntax_error)?, origin, parent, depth + 1, options, cancelled)?;
+                    }
+                }
+                StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("supports")) => {
+                    if crate::css::media::supports(rule.value(), self.limits.properties, cancelled) && rule.block().is_some() {
+                        self.walk(rule.block_contents(cancelled).map_err(syntax_error)?, origin, parent, depth + 1, options, cancelled)?;
                     }
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("charset")) => {}

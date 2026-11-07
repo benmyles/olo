@@ -48,8 +48,26 @@ pub struct Page {
     /// agents and the eval, so a rendered page never passes as complete.
     pub fallbacks: layout::Fallbacks,
     rules: css::cascade::RuleSet,
+    /// Every stylesheet in document order (the UA sheet first), kept so a
+    /// changed medium (viewport, scheme) can recompile the `@media` rules.
+    sheets: Vec<(css::Syntax, Origin)>,
+    media: css::media::Media,
+    /// Whether any stylesheet has `@media` rules, so only such pages recompile.
+    pub media_dependent: bool,
     quirks: bool,
     resource_issues: usize,
+}
+fn media_for(host: &impl Host, viewport: layout::Viewport) -> css::media::Media {
+    css::media::Media::screen(viewport.width, viewport.height, viewport.scale, host.scheme() == css::color::Scheme::Dark)
+}
+/// Compile every sheet for one medium.
+fn compile(sheets: &[(css::Syntax, Origin)], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<(css::cascade::RuleSet, bool)> {
+    let mut builder = SheetBuilder::new(Default::default()).with_media(media);
+    for (syntax, origin) in sheets {
+        builder.add_sheet(syntax, *origin, cancel)?;
+    }
+    let dependent = builder.media_dependent();
+    Ok((builder.finish(cancel)?, dependent))
 }
 /// Initial normal-flow defaults, not the complete HTML rendering stylesheet.
 pub const UA: &str = "svg{overflow:hidden}html,body,article,section,nav,aside,header,footer,main,div,p,blockquote,pre,h1,h2,h3,h4,h5,h6{display:block}head,title,base,link,meta,style,script,template,[hidden]{display:none}body{margin:8px}html{color:CanvasText}p,blockquote,pre{margin-top:1em;margin-bottom:1em}h1{font-size:2em;font-weight:bold;margin-top:.67em;margin-bottom:.67em}h2{font-size:1.5em;font-weight:bold;margin-top:.83em;margin-bottom:.83em}a{color:LinkText}pre{white-space:pre}";
@@ -104,9 +122,7 @@ pub fn load_assets(
     let parsed = html::parse(source, html::ParseOptions { scripting: false, ..Default::default() }, cancel)?;
     let doc = parsed.document;
     progress(Phase::Styles, 0);
-    let mut sheets = SheetBuilder::new(Default::default());
-    let ua = css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?;
-    sheets.add_sheet(&ua, Origin::UserAgent, cancel)?;
+    let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent)];
     let mut next = Some(doc.root());
     let mut title = String::new();
     let mut scripts = 0;
@@ -171,8 +187,7 @@ pub fn load_assets(
                         text.push_str(value)
                     }
                 }
-                let syntax = css::Syntax::parse(Arc::from(text), Default::default(), cancel)?;
-                sheets.add_sheet(&syntax, Origin::Author, cancel)?;
+                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author));
             }
             Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
                 let rel = doc.attribute(node, "rel")?.unwrap_or("");
@@ -191,7 +206,7 @@ pub fn load_assets(
                         if css_bytes > 4 * 1024 * 1024 {
                             return Err(paint::Error::Limit.into());
                         }
-                        sheets.add_sheet(&syntax, Origin::Author, cancel)?;
+                        sheets.push((syntax, Origin::Author));
                     } else {
                         resource_issues += 1;
                     }
@@ -229,11 +244,29 @@ pub fn load_assets(
         }
     }
     let images = if image_bindings.is_empty() { None } else { Some(crate::image::Set::new(&doc, image_bindings, Default::default(), cancel)?) };
-    let rules = sheets.finish(cancel)?;
+    let media = media_for(host, viewport);
+    let (rules, media_dependent) = compile(&sheets, media, cancel)?;
     let interaction_mask = rules.state_mask();
     let quirks = parsed.quirks == html::QuirksMode::Quirks;
     let (scene, stylesheet_issues, fallbacks) = render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, scope, shaper, painter, viewport, cancel, &mut progress)?;
-    Ok(Page { images, document: doc, scene, title, scripts, base_href: base, interaction: Interaction::default(), interaction_mask, stylesheet_issues, fallbacks, rules, quirks, resource_issues })
+    Ok(Page {
+        images,
+        document: doc,
+        scene,
+        title,
+        scripts,
+        base_href: base,
+        interaction: Interaction::default(),
+        interaction_mask,
+        stylesheet_issues,
+        fallbacks,
+        rules,
+        sheets,
+        media,
+        media_dependent,
+        quirks,
+        resource_issues,
+    })
 }
 impl Page {
     /// Recompute viewport-dependent styles without network I/O or HTML parsing.
@@ -250,6 +283,14 @@ impl Page {
     ) -> Result<()> {
         for node in [self.interaction.hover, self.interaction.active, self.interaction.focus, self.interaction.target].into_iter().flatten() {
             self.document.node_type(node)?;
+        }
+        let media = media_for(host, viewport);
+        if self.media_dependent && media != self.media {
+            let (rules, dependent) = compile(&self.sheets, media, cancel)?;
+            self.rules = rules;
+            self.media_dependent = dependent;
+            self.interaction_mask = self.rules.state_mask();
+            self.media = media;
         }
         let (scene, issues, fallbacks) =
             render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, &mut progress)?;

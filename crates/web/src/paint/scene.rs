@@ -178,11 +178,24 @@ pub struct Progress {
 }
 struct State {
     origin: Point,
-    group: u32,
+    context: u32,
     clip: u32,
 }
+/// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
+/// (z-index: auto ones painted as if they were contexts), opacity groups and
+/// isolated boxes. Each paints at one point in its parent's order, decided
+/// by its z-index and tree position.
+struct Context {
+    parent: u32,
+    z: i32,
+    /// Where the context's own content falls in its parent's order.
+    path: Vec<u32>,
+}
 struct Draft {
-    group: u32,
+    context: u32,
+    /// 0: the context root's own background and borders; 2: in-flow content.
+    /// Negative child contexts take slot 1 and the rest slot 3 in `path`.
+    slot: u8,
     text: bool,
     command: Command,
 }
@@ -204,7 +217,7 @@ pub struct BuildJob<'a> {
     vector_clip_bytes: usize,
     svg_viewports: Option<std::collections::HashMap<crate::dom::NodeId, [f64; 2]>>,
     next: usize,
-    groups: u32,
+    contexts: Vec<Context>,
     progress: Progress,
     fallbacks: layout::Fallbacks,
     failed: bool,
@@ -262,7 +275,7 @@ impl<'a> BuildJob<'a> {
             vector_clip_bytes: 0,
             svg_viewports: None,
             next: 0,
-            groups: 0,
+            contexts: vec![Context { parent: NONE, z: 0, path: Vec::new() }],
             progress: Progress::default(),
             fallbacks: layout::Fallbacks::default(),
             failed: false,
@@ -279,7 +292,7 @@ impl<'a> BuildJob<'a> {
         let node = self.layout.cache().tree().get(id).map(|b| b.node);
         self.fallbacks.note(what, node);
     }
-    fn emit(&mut self, group: u32, text: bool, bounds: Rect, primitive: Primitive, clip: u32) -> Result<()> {
+    fn emit(&mut self, (context, slot): (u32, u8), text: bool, bounds: Rect, primitive: Primitive, clip: u32) -> Result<()> {
         if !valid(bounds) {
             return Err(Error::Invalid);
         }
@@ -290,11 +303,11 @@ impl<'a> BuildJob<'a> {
             return Err(Error::Limit);
         }
         self.extent = union(self.extent, if clip == NONE { bounds } else { intersection(bounds, self.clips[clip as usize]) });
-        self.draft.push(Draft { group, text, command: Command { bounds, primitive, clip } });
+        self.draft.push(Draft { context, slot, text, command: Command { bounds, primitive, clip } });
         Ok(())
     }
     #[allow(clippy::too_many_arguments)]
-    fn decorate(&mut self, id: BoxId, s: &Style, g: layout::Geometry, outer: Rect, group: u32, clip: u32, text: bool) -> Result<()> {
+    fn decorate(&mut self, id: BoxId, s: &Style, g: layout::Geometry, outer: Rect, group: (u32, u8), clip: u32, text: bool) -> Result<()> {
         let bg = color(s, P::BackgroundColor)?;
         if self.canvas_owner != Some(id) && bg[3] != 0 {
             self.emit(group, text, outer, Primitive::Fill { color: bg }, clip)?;
@@ -315,7 +328,7 @@ impl<'a> BuildJob<'a> {
         }
         Ok(())
     }
-    fn inline_replaced(&mut self, id: BoxId, at: Point, group: u32, clip: u32) -> Result<()> {
+    fn inline_replaced(&mut self, id: BoxId, at: Point, group: (u32, u8), clip: u32) -> Result<()> {
         let layout = self.layout.clone();
         let s = layout.cache().tree().style(id).ok_or(Error::Invalid)?;
         let primitive = match layout.cache().tree().get(id).ok_or(Error::Invalid)?.kind {
@@ -348,7 +361,7 @@ impl<'a> BuildJob<'a> {
     }
     /// Keep the raster transform anchored to the CSS viewport while the spatial
     /// index includes visible ink outside it. No path traversal during repaint.
-    fn vector(&mut self, id: BoxId, vector: u32, outer: Rect, group: u32, clip: u32) -> Result<()> {
+    fn vector(&mut self, id: BoxId, vector: u32, outer: Rect, group: (u32, u8), clip: u32) -> Result<()> {
         let g = self.layout.geometry(id).ok_or(Error::Invalid)?;
         let origin = Point { x: outer.x + g.border_width.left + g.padding.left, y: outer.y + g.border_width.top + g.padding.top };
         let content = g.content_box();
@@ -403,7 +416,7 @@ impl<'a> BuildJob<'a> {
         }
         self.emit(group, true, bounds, Primitive::Vector { owner: id, vector, origin }, clip)
     }
-    fn text<const HAS_IMAGES: bool>(&mut self, id: BoxId, source: u32, at: Point, group: u32, clip: u32) -> Result<()> {
+    fn text<const HAS_IMAGES: bool>(&mut self, id: BoxId, source: u32, at: Point, group: (u32, u8), clip: u32) -> Result<()> {
         // Layout is held outside self's mutable command builder borrow.
         let layout = self.layout.clone();
         let text = layout.text_layout(id).ok_or(Error::Invalid)?;
@@ -559,12 +572,15 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut group, mut clip) = if let Some(parent) = b.parent {
+            let (parent, mut context, mut clip) = if let Some(parent) = b.parent {
                 let p = &self.states[parent.index()];
-                (p.origin, p.group, p.clip)
+                (p.origin, p.context, p.clip)
             } else {
                 (Point::default(), 0, NONE)
             };
+            // In-flow content paints in slot 2 of its context; a box that
+            // starts a context paints its own decoration in slot 0 of the new one.
+            let mut group = (context, 2);
             if b.absolute {
                 let mut cb = b.parent.ok_or(Error::Invalid)?;
                 loop {
@@ -591,18 +607,30 @@ impl<'a> BuildJob<'a> {
                 BoxKind::Viewport => {}
                 BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
                     let s = tree.style(id).ok_or(Error::Invalid)?;
-                    if s.value(P::Opacity).scalar() != Some(1.) {
+                    let opacity = s.value(P::Opacity).scalar().unwrap_or(1.);
+                    if opacity != 1. {
                         self.fallbacks.note("opacity painted opaque", Some(b.node));
                     }
-                    if !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto)) && s.value(P::ZIndex).scalar() != Some(0.) {
-                        self.fallbacks.note("z-index painted in tree order", Some(b.node));
-                    }
-                    if !matches!(s.value(P::Isolation), Value::Keyword(K::Auto)) {
-                        self.fallbacks.note("isolation ignored", Some(b.node));
-                    }
-                    if matches!(s.value(P::Position), Value::Keyword(K::Relative | K::Absolute)) {
-                        self.groups = self.groups.checked_add(1).ok_or(Error::Limit)?;
-                        group = self.groups;
+                    let positioned = !matches!(s.value(P::Position), Value::Keyword(K::Static));
+                    let z = match s.value(P::ZIndex) {
+                        Value::Keyword(K::Auto) => None,
+                        value => Some(value.scalar().unwrap_or(0.).clamp(i32::MIN as f64, i32::MAX as f64) as i32),
+                    };
+                    let isolated = !matches!(s.value(P::Isolation), Value::Keyword(K::Auto));
+                    // z-index applies to positioned boxes (and flex/grid items; those
+                    // are blocks here, so their parent's display decides).
+                    let item = tree.get(id).and_then(|b| b.parent).and_then(|p| tree.style(p)).is_some_and(|p| {
+                        matches!(p.value(P::Display), Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flex | crate::css::properties::Inner::Grid, .. }))
+                    });
+                    let z = if positioned || item { z } else { None };
+                    if positioned || z.is_some() || opacity < 1. || isolated {
+                        if self.contexts.len() >= self.limits.commands {
+                            return Err(Error::Limit);
+                        }
+                        let index = self.contexts.len() as u32;
+                        self.contexts.push(Context { parent: context, z: z.unwrap_or(0), path: Vec::new() });
+                        context = index;
+                        group = (context, 0);
                     }
                     if visible(s) {
                         self.decorate(id, s, g, outer, group, clip, false)?;
@@ -641,7 +669,7 @@ impl<'a> BuildJob<'a> {
                     }
                 }
             }
-            self.states.push(State { origin, group, clip: children_clip });
+            self.states.push(State { origin, context, clip: children_clip });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
         }
@@ -656,7 +684,22 @@ impl<'a> BuildJob<'a> {
             return Err(Error::Incomplete);
         }
         self.layout.cache().tree().validate(self.doc)?;
-        self.draft.sort_by_key(|d| (d.group, d.text));
+        // CSS painting order: each context's own decoration, then its negative
+        // children, its in-flow content (block backgrounds before inline
+        // content), then its zero and positive children by z-index and tree
+        // order. Parents precede children, so one pass builds every path.
+        for i in 1..self.contexts.len() {
+            check(self.cancel)?;
+            let parent = self.contexts[i].parent as usize;
+            let z = self.contexts[i].z;
+            let mut path = Vec::with_capacity(self.contexts[parent].path.len() + 3);
+            path.extend_from_slice(&self.contexts[parent].path);
+            path.extend([if z < 0 { 1 } else { 3 }, (z as i64 - i64::from(i32::MIN)) as u32, i as u32]);
+            self.contexts[i].path = path;
+        }
+        let contexts = &self.contexts;
+        let key = |d: &Draft| contexts[d.context as usize].path.iter().copied().chain(std::iter::once(u32::from(d.slot)));
+        self.draft.sort_by(|a, b| key(a).cmp(key(b)).then(a.text.cmp(&b.text)));
         let commands: Box<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
         let index = index::Index::new(&commands, self.cancel)?;
         Ok(Arc::new(Scene {

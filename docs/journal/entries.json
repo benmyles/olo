@@ -3694,5 +3694,11 @@
   "title": "Browser: Stripe renders end to end",
   "caption": "The engine now renders what it understands and records what it substitutes (1,054 fallbacks on stripe.com) instead of refusing the page at the first unsupported feature. First native picture of a real website: hero text, buttons and the hero image; header, web fonts, stacking order and grid are the visible gaps.",
   "image": "2026-11-06/205059-browser-stripe-renders-end-to-end.png"
+ },
+ {
+  "time": "2026-11-06T21:04:42",
+  "title": "Browser: Stripe's desktop header, from @media",
+  "caption": "@media and @supports are evaluated against the viewport, scale and colour scheme (rules under a false query are left out; the medium is re-evaluated on resize), and paint follows CSS stacking order (stacking contexts, z-index), so the hero image sits behind its text. The desktop navigation appears; the heading is still drawn twice (its gradient copy shares a grid cell, and grid is laid out as blocks) and the web font is not loaded.",
+  "image": "2026-11-06/210442-browser-stripe-s-desktop-header-from-media.png"
  }
 ]

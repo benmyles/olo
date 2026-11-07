@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: Stripe's desktop header, from @media
+
+*21:04* — @media and @supports are evaluated against the viewport, scale and colour scheme (rules under a false query are left out; the medium is re-evaluated on resize), and paint follows CSS stacking order (stacking contexts, z-index), so the hero image sits behind its text. The desktop navigation appears; the heading is still drawn twice (its gradient copy shares a grid cell, and grid is laid out as blocks) and the web font is not loaded.
+
+![Browser: Stripe's desktop header, from @media](2026-11-06/210442-browser-stripe-s-desktop-header-from-media.png)
+
 ### Browser: Stripe renders end to end
 
 *20:50* — The engine now renders what it understands and records what it substitutes (1,054 fallbacks on stripe.com) instead of refusing the page at the first unsupported feature. First native picture of a real website: hero text, buttons and the hero image; header, web fonts, stacking order and grid are the visible gaps.
