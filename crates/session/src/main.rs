@@ -1,6 +1,9 @@
 //! olo-session (see lib.rs).
 
 fn main() {
+    olo_crash::install();
+    // (First, as in every program: in the trampoline below too, which the
+    // exec replaces, so its handlers go with it.)
     // `olo-session --exec PROGRAM ARGS…`: Olo's login screen starts the
     // person's session through this, the system's copy (an ordinary
     // program, `bin_t`), as GDM does through gdm-wayland-session: SELinux
@@ -14,6 +17,5 @@ fn main() {
         eprintln!("olo-session: {}: {e}", args[2].to_string_lossy());
         std::process::exit(127);
     }
-    olo_crash::install();
     olo_session::run();
 }
