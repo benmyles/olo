@@ -131,7 +131,7 @@ impl Tree {
         match self.get(id).ok_or(Error::Invalid)?.kind {
             BoxKind::InlineImage { image } | BoxKind::BlockImage { image } => {
                 let image = self.image(image).ok_or(Error::Invalid)?;
-                Ok((f64::from(image.width()), f64::from(image.height())))
+                Ok(image.natural())
             }
             BoxKind::InlineVector { vector } | BoxKind::BlockVector { vector } => Ok(self.vector(vector).ok_or(Error::Invalid)?.natural()),
             BoxKind::InlineReplaced { natural } | BoxKind::BlockReplaced { natural } => Ok((f64::from(natural[0]), f64::from(natural[1]))),

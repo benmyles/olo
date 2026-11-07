@@ -566,7 +566,7 @@ fn render(
     Ok((scene, stylesheet_issues, fallbacks))
 }
 
-fn next_node(doc: &Document, node: crate::dom::NodeId) -> Result<Option<crate::dom::NodeId>> {
+pub(crate) fn next_node(doc: &Document, node: crate::dom::NodeId) -> Result<Option<crate::dom::NodeId>> {
     if let Some(child) = doc.first_child(node)? {
         return Ok(Some(child));
     }

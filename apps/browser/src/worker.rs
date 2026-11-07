@@ -262,7 +262,16 @@ fn render(
                     return Err("Page exceeds the development resource request limit".into());
                 }
                 proxy.send(Reply::Status(r.id, "Loading image…".into()));
-                return match loader.image(document, url.clone(), (64usize << 20).saturating_sub(image_bytes), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "image")) {
+                let host = PageHost::new(scope, &r.key);
+                let svg = |bytes: &[u8]| olo_web::svg_image::rasterize(bytes, &host, scope, r.key.scale, Some(&r.cancel)).map_err(|e| format!("SVG image: {e}").into());
+                return match loader.image(
+                    document,
+                    url.clone(),
+                    (64usize << 20).saturating_sub(image_bytes),
+                    &r.cancel,
+                    crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "image"),
+                    &svg,
+                ) {
                     Ok(image) => {
                         image_bytes += image.payload_bytes();
                         images.insert(url, Some(image.clone()));

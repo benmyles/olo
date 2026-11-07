@@ -11,5 +11,6 @@ pub mod layout;
 pub mod page;
 pub mod paint;
 pub mod svg;
+pub mod svg_image;
 
 pub mod text;

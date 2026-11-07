@@ -451,7 +451,7 @@ fn image_layer(
     cancel: Option<&AtomicBool>,
 ) -> Result<()> {
     use crate::css::properties::{RepeatAxis, Size};
-    let (natural_w, natural_h) = (f64::from(image.width()), f64::from(image.height()));
+    let (natural_w, natural_h) = image.natural();
     if natural_w <= 0. || natural_h <= 0. || area.width <= 0. || area.height <= 0. {
         return Ok(());
     }

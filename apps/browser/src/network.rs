@@ -83,7 +83,17 @@ impl Loader {
         let encoding = resource.mime.as_ref().and_then(|m| m.get_param("charset")).map(|p| p.as_str());
         Ok(css::Syntax::parse_bytes(&resource.bytes, css::ByteOptions { protocol_encoding: encoding, environment_encoding: Some(document.encoding()) }, Default::default(), Some(cancel))?.syntax)
     }
-    pub fn image(&self, document: &Resource, url: Url, remaining: usize, cancel: &Cancel, mut progress: impl FnMut(usize)) -> page::Result<Arc<olo_web::image::Image>> {
+    /// An image: a raster format decoded here, or an SVG handed to `svg`
+    /// (the engine rasterises it).
+    pub fn image(
+        &self,
+        document: &Resource,
+        url: Url,
+        remaining: usize,
+        cancel: &Cancel,
+        mut progress: impl FnMut(usize),
+        svg: &dyn Fn(&[u8]) -> page::Result<Arc<olo_web::image::Image>>,
+    ) -> page::Result<Arc<olo_web::image::Image>> {
         let bytes = if url.scheme() == "data" {
             let data = data_url::DataUrl::process(url.as_str()).map_err(|_| "Malformed image data URL")?;
             let mut bytes = Vec::new();
@@ -112,6 +122,9 @@ impl Loader {
             }
             resource.bytes
         };
+        if looks_like_svg(&bytes) {
+            return svg(&bytes);
+        }
         let mut limits = olo_images::raster::Limits::default();
         limits.surface_bytes = limits.surface_bytes.min(remaining as u64);
         limits.pixels = limits.pixels.min((remaining / 4) as u64);
@@ -119,6 +132,16 @@ impl Loader {
         let (w, h) = raster.pixels.dimensions();
         Ok(olo_web::image::Image::from_rgba(w, h, raster.pixels.into_raw(), Default::default(), Some(cancel))?)
     }
+}
+/// An SVG document by its first bytes: XML or an `svg` root, possibly after
+/// a byte-order mark, comments or a doctype.
+fn looks_like_svg(bytes: &[u8]) -> bool {
+    let head = &bytes[..bytes.len().min(2048)];
+    let text = String::from_utf8_lossy(head);
+    let text = text.trim_start_matches('\u{feff}').trim_start();
+    text.starts_with("<?xml") || text.starts_with("<svg") || text.starts_with("<!DOCTYPE svg") || (text.starts_with("<!--") && text.contains("<svg"))
+}
+impl Loader {
     /// A web font's bytes (any container; the engine decodes WOFF itself).
     pub fn font(&self, document: &Resource, url: Url, cancel: &Cancel, mut progress: impl FnMut(usize)) -> page::Result<Arc<[u8]>> {
         if url.scheme() == "data" {
@@ -190,7 +213,7 @@ impl Loader {
                             match kind {
                                 Kind::Document => "text/html,text/plain;q=0.9,*/*;q=0.1",
                                 Kind::Stylesheet => "text/css,*/*;q=0.1",
-                                Kind::Image => "image/png,image/jpeg,image/webp,image/gif,*/*;q=0.1",
+                                Kind::Image => "image/png,image/jpeg,image/webp,image/gif,image/svg+xml,*/*;q=0.1",
                                 Kind::Font => "font/woff2,font/woff,font/ttf,font/otf,*/*;q=0.1",
                             },
                         )

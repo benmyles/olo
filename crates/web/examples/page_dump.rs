@@ -134,6 +134,11 @@ fn main() {
                     // are premultiplied, which the image type takes as straight:
                     // exact for opaque images).
                     let path = dir.join(name.trim_start_matches('/'));
+                    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("svg")) {
+                        let Ok(bytes) = std::fs::read(&path) else { return Ok(None) };
+                        let host = DumpHost(native_host::NativeHost(scope.clone()), viewport);
+                        return Ok(olo_web::svg_image::rasterize(&bytes, &host, &scope, 1., None).ok().map(page::Resource::Image));
+                    }
                     let Ok(pixmap) = tiny_skia::Pixmap::load_png(&path) else { return Ok(None) };
                     let image = olo_web::image::Image::from_rgba(pixmap.width(), pixmap.height(), pixmap.data().to_vec(), Default::default(), None).map_err(|_| olo_web::paint::Error::Limit)?;
                     Ok(Some(page::Resource::Image(image)))

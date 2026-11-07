@@ -41,8 +41,28 @@ pub struct Image {
     width: u32,
     height: u32,
     rgba: Box<[u8]>,
+    /// Device pixels per CSS pixel of its natural size (an SVG rasterised
+    /// for a scale is sharper than its CSS size).
+    density: f64,
 }
 impl Image {
+    /// Premultiplied RGBA8 as rasterised, `density` pixels per CSS pixel.
+    pub fn from_premultiplied(width: u32, height: u32, rgba: Vec<u8>, density: f64, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+        check(cancel)?;
+        let pixels = (width as usize).checked_mul(height as usize).ok_or(Error::Limit)?;
+        let bytes = pixels.checked_mul(4).ok_or(Error::Limit)?;
+        if pixels > limits.pixels || bytes > limits.bytes {
+            return Err(Error::Limit);
+        }
+        if width == 0 || height == 0 || rgba.len() != bytes || !(density.is_finite() && density > 0.) {
+            return Err(Error::Invalid);
+        }
+        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density }))
+    }
+    /// The natural size in CSS pixels.
+    pub fn natural(&self) -> (f64, f64) {
+        (f64::from(self.width) / self.density, f64::from(self.height) / self.density)
+    }
     /// Consume straight sRGB RGBA8, premultiplying in place once on the worker.
     pub fn from_rgba(width: u32, height: u32, mut rgba: Vec<u8>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
         check(cancel)?;
@@ -95,7 +115,7 @@ impl Image {
             }
         }
         check(cancel)?;
-        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice() }))
+        Ok(Arc::new(Self { width, height, rgba: rgba.into_boxed_slice(), density: 1. }))
     }
     pub fn width(&self) -> u32 {
         self.width
