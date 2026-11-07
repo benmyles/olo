@@ -444,6 +444,12 @@ impl PreviewView {
         self.video.as_ref().map(|v| v.decoding()).filter(|d| !d.is_empty())
     }
 
+    /// Which GPUs here decode the video showing (known with
+    /// [`PreviewView::decoding`]).
+    pub fn decoders(&self) -> video::Decoders {
+        self.video.as_ref().map(|v| v.decoders()).unwrap_or_default()
+    }
+
     /// The video decoded by `device` from now on: started again there, at
     /// the moment it's at, playing or not as it was.
     pub fn set_decode_with(&mut self, device: video::Device, cx: &mut Context<Self>) {
@@ -1307,7 +1313,6 @@ struct TransportAt {
 
 /// Play/pause, elapsed time, a seek bar and the time left, centred on
 /// `y` between `x` and `right`.
-#[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn paint_transport(
     window: &mut Window,

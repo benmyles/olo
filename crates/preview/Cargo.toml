@@ -7,11 +7,12 @@ license.workspace = true
 
 [features]
 # The views drawn with Olo's GPUI (the Viewer's and Quick Look's), and
-# video decoded on NVIDIA's GPU for them (olo-video's NVDEC).
-gpui = ["dep:olo-ui", "dep:futures", "dep:smallvec", "dep:olo-xdg", "dep:olo-video"]
+# video decoded on GPUs for them (olo-video's NVDEC, olo-vaapi's VA-API).
+gpui = ["dep:olo-ui", "dep:futures", "dep:smallvec", "dep:olo-xdg", "dep:olo-video", "dep:olo-vaapi"]
 
 [dependencies]
 olo-video = { workspace = true, optional = true }
+olo-vaapi = { workspace = true, optional = true }
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-ui = { workspace = true, optional = true }

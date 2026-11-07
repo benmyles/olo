@@ -1032,9 +1032,8 @@ impl Doc {
             let zoom = prev.read(cx).video_zoom();
             // What decodes it: the default (Preferences ▸ GPUs), or one
             // chosen for it; and what does now.
-            let (with, now) = (prev.read(cx).decode_with(), prev.read(cx).decoding());
+            let (with, now, gpus) = (prev.read(cx).decode_with(), prev.read(cx).decoding(), prev.read(cx).decoders());
             use olo_preview::video::Device;
-            let nvidia = olo_video::nvdec::available();
             let decode = Menu::new("Decode With")
                 .item(format!("Decoding on {}", now.unwrap_or("…")), "")
                 .enabled(false)
@@ -1045,7 +1044,10 @@ impl Doc {
                 .checked(with == Device::Automatic)
                 .item("NVIDIA GPU (NVDEC)", "decode-nvidia")
                 .checked(with == Device::Nvidia)
-                .enabled(nvidia)
+                .enabled(gpus.nvidia)
+                .item("Intel GPU (VA-API)", "decode-intel")
+                .checked(with == Device::Intel)
+                .enabled(gpus.intel)
                 .item("Processor", "decode-cpu")
                 .checked(with == Device::Processor);
             menus.push(

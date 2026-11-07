@@ -90,6 +90,8 @@ struct Shared {
     /// The GPUs whose VA-API driver encodes AV1 (Intel's, AMD's), by
     /// name: screen recordings can be made on them.
     av1: Vec<String>,
+    /// The GPU that decodes AV1 and VP9 through VA-API (its name).
+    decodes: Option<String>,
 }
 
 #[derive(Clone)]
@@ -125,6 +127,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
         s.follower = Follower::Current;
         s.mode = Some(olo_system::power_profile::Mode::Balanced);
         s.av1 = vec!["Intel Graphics".into()];
+        s.decodes = Some("Intel Graphics".into());
         s.gpus = Some(vec![
             Entry { gpu: gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "HDMI-A-1"]), caps: Some(xe), asleep: false },
             Entry { gpu: gpu("0000:01:00.0", "NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU", "nvidia", false, &["HDMI-A-2"]), caps: Some(nv), asleep: true },
@@ -150,11 +153,14 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_ui::Proxy, wake: Option<String>, 
                 .filter(|a| a.av1.is_some())
                 .map(|a| gpus.iter().find(|e| e.gpu.render.as_deref() == Some(a.node.as_path())).map_or_else(|| "The GPU".to_owned(), |e| e.gpu.name.clone()))
                 .collect();
+            let name_of = |node: &std::path::Path| gpus.iter().find(|e| e.gpu.render.as_deref() == Some(node)).map_or_else(|| "The GPU".to_owned(), |e| e.gpu.name.clone());
+            let decodes = olo_vaapi::decode::decoder_for(olo_vaapi::decode::Codec::Av1).or_else(|| olo_vaapi::decode::decoder_for(olo_vaapi::decode::Codec::Vp9)).map(|(node, _)| name_of(&node));
             {
                 let mut s = shared.lock().unwrap();
                 s.follower = follower;
                 s.mode = mode;
                 s.av1 = av1;
+                s.decodes = decodes;
                 // (What's being edited stays; a first read starts it.)
                 if s.gpus.is_none() || s.edited == s.kept {
                     s.edited = kept.clone();
@@ -270,22 +276,28 @@ fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String]) {
 /// efficient there is (NVIDIA's GPU on mains power, else the processor),
 /// NVIDIA's GPU (NVDEC) where there's one, or the processor
 /// (`Settings::video`, read by olo-preview's player).
-fn playback(ui: &mut Ui, gpus: &[Entry]) {
+fn playback(ui: &mut Ui, gpus: &[Entry], decodes: Option<&str>) {
     let nvidia = gpus.iter().find(|e| e.gpu.vendor == 0x10de).map(|e| e.gpu.name.clone());
     let current = ui.s.video.decoder.clone();
+    let on_intel = decodes.map(|n| format!("{n} (AV1 and VP9)"));
     let on_nvidia = nvidia.as_ref().map(|n| format!("{n} (NVDEC)"));
-    let mut choices: Vec<(String, &str)> = vec![("auto".into(), if nvidia.is_some() { "Automatic (NVIDIA on mains power)" } else { "Automatic (the processor)" })];
+    let mut choices: Vec<(String, &str)> = vec![("auto".into(), "Automatic")];
+    if let Some(n) = &on_intel {
+        choices.push(("intel".into(), n.as_str()));
+    }
     if let Some(n) = &on_nvidia {
         choices.push(("nvidia".into(), n.as_str()));
     }
     choices.push(("cpu".into(), "The processor"));
+    let note = match (decodes, &nvidia) {
+        (Some(i), Some(_)) => format!("Automatic: {i} for AV1 and VP9 (its driver has no H.264 or HEVC), NVIDIA's GPU for the rest on mains power (asleep on battery), else the processor. The Viewer's View ▸ Decode With chooses for the video it shows."),
+        (Some(i), None) => format!("Automatic: {i} for AV1 and VP9 (its driver has no H.264 or HEVC), else the processor. The Viewer's View ▸ Decode With chooses for the video it shows."),
+        (None, Some(_)) => "NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor; on battery, Automatic leaves it asleep. The Viewer's View ▸ Decode With chooses for the video it shows.".into(),
+        (None, None) => "Video is decoded on the processor. The Viewer's View ▸ Decode With chooses for the video it shows.".into(),
+    };
     ui.bbox("Video Playback", |ui| {
         ui.choose("video-decoder", &choices, &current, |f| f.label("Decode on:").divider(100.0), |s, v| s.video.decoder = v);
-        ui.note(if nvidia.is_some() {
-            "NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1 up to 8K, 4K at 60 frames a second with little of the processor; on battery, Automatic leaves it asleep. The Viewer's View ▸ Decode With chooses for the video it shows."
-        } else {
-            "Video is decoded on the processor. The Viewer's View ▸ Decode With chooses for the video it shows."
-        });
+        ui.note(note);
     });
 }
 
@@ -371,10 +383,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     // (Below Apply, a section of its own: it's taken at once, not applied
     // with the tuning. The commit row ends its group: `SECTION` under it.)
     ui.space(m::SECTION - 2.0 * m::STACK);
-    let av1 = st.shared.lock().unwrap().av1.clone();
+    let (av1, decodes) = {
+        let s = st.shared.lock().unwrap();
+        (s.av1.clone(), s.decodes.clone())
+    };
     // (Side by side: under each other, the pane is taller than the
     // smallest screen.)
-    ui.columns(|ui| recordings(ui, &gpus, &av1), |ui| playback(ui, &gpus));
+    ui.columns(|ui| recordings(ui, &gpus, &av1), |ui| playback(ui, &gpus, decodes.as_deref()));
 }
 
 /// Change GPU `pci`'s tuning by hand (its preset becomes Custom).
