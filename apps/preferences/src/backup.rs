@@ -1443,7 +1443,10 @@ fn part_row(id: String, part: String, detail: String, on: bool, enabled: bool, t
         |_, _, _| {},
         move |r, _, window, cx| {
             let p = theme::palette(cx);
-            style::label(window, cx, r.right(), r.center().y, style::Align::Right, detail.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
+            // On the check box's label's baseline (its size, centred in
+            // the row): centred itself, the smaller text sat a point high.
+            let baseline = style::baseline_at(window, r.center().y, style::PLAIN_SIZE);
+            style::label_on_baseline(window, cx, r.right(), baseline, style::Align::Right, detail.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
         },
     )
     .w(px(140.0))

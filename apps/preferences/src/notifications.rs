@@ -301,7 +301,7 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
     // The heading, the columns' names smaller on its line.
     let mut head = div().flex().flex_row().items_end().h(px(m::LIST_ROW)).child(div().flex_1().child(StringView::new("Applications").bold(true)));
     for name in NAMES {
-        head = head.child(div().w(px(COLUMN)).flex().justify_center().child(StringView::new(name).color(dim).small(true)));
+        head = head.child(div().w(px(COLUMN)).flex().justify_center().child(StringView::new(name).color(dim).small(true).beside(style::PLAIN_SIZE)));
     }
     ui.add(head.pr(px(2.0 + 14.0 - COLUMN / 2.0 + COLUMN / 2.0)));
     if apps.is_empty() {

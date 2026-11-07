@@ -1914,7 +1914,12 @@ event reaches it.
   around it (Activity Monitor's CPU section: 4.2 ms a frame to 1.4).
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
   `StringView::size(points)` (a title's or lead's size, its row grown to
-  fit), `widgets::KeyHint::new("Space", "Next")` (a key's cap and what
+  fit), `StringView::beside(points)` (on the baseline of the text of
+  that size beside it in its row: a small one centred by itself sits a
+  point higher than the plain text beside it; a table's small column
+  names on its heading's line, Preferences ▸ Notifications; drawn
+  directly, `style::baseline_at` with `style::label_on_baseline`, as
+  Backup's list rows' sizes beside their check boxes), `widgets::KeyHint::new("Space", "Next")` (a key's cap and what
   it does, `enabled(false)` dim: for views driven from the keyboard,
   where nothing needs the pointer; agents read "Space: Next"; the cap's
   text and what it does are drawn on one baseline, so they stay level at

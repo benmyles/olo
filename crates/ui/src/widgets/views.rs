@@ -18,11 +18,23 @@ pub struct StringView {
     height: f32,
     wrap: bool,
     size: f32,
+    /// The size of the text it sits beside, whose baseline it's drawn on.
+    beside: Option<f32>,
 }
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, size: style::PLAIN_SIZE }
+        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, size: style::PLAIN_SIZE, beside: None }
+    }
+
+    /// On the baseline of a line of `size` points centred in the same
+    /// height (the text beside it in its row, in another size: a table's
+    /// small column names on its heading's line). Centred itself, smaller
+    /// text sits higher than the larger beside it (a point at 13 against
+    /// 11: the layout review's "near-level").
+    pub fn beside(mut self, size: f32) -> Self {
+        self.beside = Some(size);
+        self
     }
 
     /// In the small size (a table's column names, a scale's ends).
@@ -88,13 +100,16 @@ impl RenderOnce for StringView {
         }
         let size = self.size;
         let w = f32::from(style::text_width(window, self.text.clone(), size, style::ui_font(weight))).ceil();
-        let (text, dim, color, height) = (self.text, self.dim, self.color, self.height);
+        let (text, dim, color, height, beside) = (self.text, self.dim, self.color, self.height, self.beside);
         canvas(
             |_, _, _| {},
             move |b, _, window, cx| {
                 let p = theme::palette(cx);
                 let ink = color.unwrap_or_else(|| if dim { style::disabled_text(&p) } else { style::c(p.panel_text) });
-                let r = style::label(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink);
+                let r = match beside {
+                    Some(of) => style::label_on_baseline(window, cx, b.left(), style::baseline_at(window, b.center().y, of), style::Align::Left, text.clone(), size, style::ui_font(weight), ink),
+                    None => style::label(window, cx, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink),
+                };
                 agent::record(window, cx, agent::Node::label(text.clone(), r));
             },
         )
