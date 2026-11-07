@@ -12,7 +12,7 @@
 //! `olo-screen tree` reads GTK and Qt programs there as before. With it
 //! come the services the person's session runs on their bus, for the
 //! screen's programs (`services`): its notification centre (shown on the
-//! screen) and Olo's portal (with GTK's, for Settings), behind
+//! screen) and Olo's portal, behind
 //! xdg-desktop-portal, whose permission store and document portal
 //! `olo-bus` stands in for.
 
@@ -44,9 +44,7 @@ pub fn start(address: &str) -> Option<Bus> {
     }
     // The portal's backends, which the session starts beside the
     // frontend (`services`): waited for when it asks.
-    for name in ["org.freedesktop.impl.portal.desktop.olo", "org.freedesktop.impl.portal.desktop.gtk"] {
-        argv.extend(["--expect".to_owned(), name.to_owned()]);
-    }
+    argv.extend(["--expect".to_owned(), "org.freedesktop.impl.portal.desktop.olo".to_owned()]);
     let program = crate::exe().parent().map(|d| d.join("olo-bus")).filter(|p| p.exists());
     let Some(program) = program else {
         log("olo-bus isn't installed: the screen shares the person's session bus");
@@ -104,6 +102,12 @@ pub fn start(address: &str) -> Option<Bus> {
     Some(Bus { address: address.to_owned(), argv, pid })
 }
 
+/// What xdg-desktop-portal is started with on a screen's bus: the
+/// desktop is Olo alone, so it reads Olo's portal configuration and not
+/// GNOME's too (`graphical::PORTAL_DROP_IN` does the same for a real
+/// session's).
+pub const PORTAL_FRONTEND_ENV: (&str, &str) = ("XDG_CURRENT_DESKTOP", "Olo");
+
 /// The services a screen with a bus of its own runs on it: Olo's
 /// notification centre and portal backend (each told the bus, as they
 /// otherwise serve only a real session), and xdg-desktop-portal in front
@@ -111,10 +115,10 @@ pub fn start(address: &str) -> Option<Bus> {
 pub fn services(address: &str) -> Vec<Vec<String>> {
     let mut out = vec![vec!["olo-notifications".to_owned(), "--bus".to_owned(), address.to_owned()], vec!["olo-portal".to_owned(), "--bus".to_owned(), address.to_owned()]];
     let found = |name: &str| ["/usr/libexec", "/usr/lib"].iter().map(|d| std::path::Path::new(d).join(name)).find(|p| p.exists());
-    // GTK's backend has what Olo's leaves to it (`graphical::PORTALS`:
-    // Settings, the colour scheme GTK 4 and Chrome read).
+    // (Olo's backend serves every interface the screen's programs ask
+    // for, Settings too: the frontend is told the desktop is Olo alone,
+    // `PORTAL_FRONTEND_ENV`, as a real session's is.)
     if let Some(frontend) = found("xdg-desktop-portal") {
-        out.extend(found("xdg-desktop-portal-gtk").map(|gtk| vec![gtk.display().to_string()]));
         out.push(vec![frontend.display().to_string()]);
     }
     out

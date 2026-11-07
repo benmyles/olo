@@ -505,6 +505,11 @@ impl Session {
                 if let Err(e) = olo_system::env::update_activation_environment(&desktop) {
                     log(format!("could not export the environment: {e}"));
                 }
+                // This version's portal setup (graphical.rs: written only
+                // where it changed, the portal service restarted only
+                // then; an upgrade waits while olo-portal shares), now
+                // rather than at the next login.
+                graphical::start();
             });
         }
         // A service this version adds starts now, not at the next login (a
@@ -1178,6 +1183,10 @@ fn describe(status: i32) -> String {
 /// Start `argv[0]` (preferring the binary next to ours, so a development
 /// build runs its own components).
 fn spawn(argv: &[String], env: &[(&str, String)]) -> Option<i32> {
+    // xdg-desktop-portal on an agent screen's bus (own_bus::services).
+    let portal_env = argv[0].ends_with("/xdg-desktop-portal").then(|| (own_bus::PORTAL_FRONTEND_ENV.0, own_bus::PORTAL_FRONTEND_ENV.1.to_owned()));
+    let env: Vec<(&str, String)> = env.iter().cloned().chain(portal_env).collect();
+    let env = env.as_slice();
     let sibling = exe().parent().map(|d| d.join(&argv[0]));
     let program: OsString = match sibling {
         Some(p) if p.exists() => p.into_os_string(),

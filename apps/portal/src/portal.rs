@@ -500,6 +500,8 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
     let shortcuts = crate::shortcuts::GlobalShortcuts::new(to_ui.clone());
     let print = crate::print::Print { to_ui: to_ui.clone(), tokens: Arc::default(), next: Default::default() };
     let remote = crate::remote::RemoteDesktop::new(shared.clone());
+    let settings = crate::settings::Settings::default();
+    let notification = crate::notification::Notification::default();
     let conn = builder
         .serve_at(PATH, ScreenCast { shared })?
         .serve_at(PATH, remote)?
@@ -514,7 +516,11 @@ pub fn serve(address: Option<&str>, to_ui: impl Fn(ToUi) + Send + Sync + 'static
         .serve_at(PATH, wallpaper)?
         .serve_at(PATH, shortcuts)?
         .serve_at(PATH, print)?
+        .serve_at(PATH, settings.clone())?
+        .serve_at(PATH, notification.clone())?
         .build()?;
+    crate::settings::follow(conn.clone(), settings);
+    crate::notification::follow(conn.clone(), notification);
     let flags = zbus::fdo::RequestNameFlags::DoNotQueue.into();
     match conn.request_name_with_flags(NAME, flags)? {
         zbus::fdo::RequestNameReply::PrimaryOwner | zbus::fdo::RequestNameReply::AlreadyOwner => {}

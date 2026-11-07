@@ -62,18 +62,18 @@ something nobody here has is in "Blocked", with what it waits for.
   gnome-* or gsd-* process that starts) and replace what's found; Olo
   Doctor says if any GNOME service is still running.
 
+## Done, waiting for Ben to try or confirm
+
 - **A window opened from a floating one opens on top of it** (Ben,
   2026-11-06: "if i'm in a floating window like prefs -> sound and click
   e.g. try it for the voice processing and that opens another window,
   that other window should open on top not under the one i launched it
-  from"). A window an app opens (Preferences ▸ Sound ▸ Voice Processing's
-  Try It, any dialog or panel opened from a floating window) is placed
-  and stacked above the window it was opened from, and has the focus:
-  app_server's new-window placement (shell/xdg.rs) raising a new
-  toplevel above its app's (or its parent's) floating windows, for
-  every app, not only Preferences.
-
-## Done, waiting for Ben to try or confirm
+  from"). Done (HACKING, "New windows"): on Ben's displays in Focus (and
+  the Dell in Auto-Tiling) a new window was zoomed or tiled, and floating
+  windows show above those, so it opened under the panel. Now a window
+  an app opens from one of its own floating windows floats too, in
+  front and focused. Tried in a tsession in Focus and Auto-Tiling: Try
+  It in front of Sound, focused. To try: Preferences ▸ Sound ▸ Try It.
 
 - **The start-up screen's sound says "olo"** (Ben, 2026-11-06: "a
   startup sound that is like \"ooollllooooo\" reminiscent of the mac
@@ -247,7 +247,19 @@ something nobody here has is in "Blocked", with what it waits for.
   started from then on have it. One already running keeps the stdio
   server it started with (Claude Code doesn't read its MCP settings
   again), so one whose tool is already gone, as this session's is, gets
-  it back when it's next started.
+  it back when it's next started. Ben, 2026-11-06, still seeing "MCP
+  server 'olo-terminal' has disconnected" ("i've asked you to come up
+  with a solution/fix like 10 times. what's the deal?"): the service was
+  answering; the session showing it began on 2026-11-05 at 09:18, before
+  the move to HTTP, and four running then still had the stdio server
+  they started with. Nothing in Claude Code reconnects those, so the
+  title no longer depends on the tool: `olo-terminal --tab-title
+  WORDS…` does the same from the agent's shell, and the hook (the
+  installed binary, run with every prompt) names it for when the tool
+  isn't there. Sessions already running pick that up from their next
+  prompt after the upgrade, with no /mcp. Tried from this session (its
+  tool gone): titled, from its folder and from another; outside a tab,
+  it says so and exits 1.
 
 - **Token Pool upgrades seamlessly** (Ben, 2026-11-06): "make it so that
   on an upgrade token pool app is seamless, i.e. it should serve new

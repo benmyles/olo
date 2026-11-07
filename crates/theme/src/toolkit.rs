@@ -26,6 +26,70 @@ pub fn gtk_theme_name(theme: &str, colors: &str, mode: crate::ThemeMode) -> Stri
     format!("{GTK_THEME_PREFIX}{t}-{c}{}", if mode == crate::ThemeMode::Dark { "-dark" } else { "" })
 }
 
+/// A desktop setting other toolkits read, as GNOME names it: GTK, Qt's
+/// GTK theme and Chrome read these through GSettings (dconf: app_server's
+/// toolkits.rs writes them) and, sandboxed or through the portal, from
+/// xdg-desktop-portal's Settings (olo-portal serves them), so both say
+/// the same.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DesktopSetting {
+    /// GSettings' schema, which the portal calls the namespace
+    /// (`org.gnome.desktop.interface`).
+    pub schema: &'static str,
+    pub key: &'static str,
+    pub value: DesktopValue,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DesktopValue {
+    Str(String),
+    Int(i32),
+}
+
+impl DesktopSetting {
+    /// Its dconf path (`/org/gnome/desktop/interface/color-scheme`).
+    pub fn path(&self) -> String {
+        format!("/{}/{}", self.schema.replace('.', "/"), self.key)
+    }
+}
+
+/// GNOME's accent blue (`accent-color` "blue"), as the portal gives an
+/// accent: red, green and blue from 0 to 1.
+pub const ACCENT_BLUE: (f64, f64, f64) = (0x35 as f64 / 255.0, 0x84 as f64 / 255.0, 0xe4 as f64 / 255.0);
+
+/// What Olo tells other toolkits for theme `theme` in colour set
+/// `colors`, in `mode`, with Olo's icon and pointer theme `icons` (the
+/// pointer `cursor_size` at 1×): the colour scheme, the GTK theme, the
+/// accent, Olo's fonts hinted as the kit hints them, the icons and the
+/// pointer, and BeOS's close-left, zoom-right title buttons.
+pub fn desktop_settings(theme: &str, colors: &str, mode: crate::ThemeMode, icons: &str, cursor_size: u32) -> Vec<DesktopSetting> {
+    use DesktopValue::{Int, Str};
+    let scheme = match mode {
+        crate::ThemeMode::Light => "default",
+        crate::ThemeMode::Dark => "prefer-dark",
+    };
+    // GTK sizes fonts in points (at 96 dpi), Olo in pixels.
+    let font = |faces: &[&str]| format!("{} {}", faces[0], (crate::fonts::PLAIN_SIZE * 0.75).round());
+    let (ui, mono) = (font(crate::fonts::UI), font(crate::fonts::MONO));
+    let interface = |key, value| DesktopSetting { schema: "org.gnome.desktop.interface", key, value };
+    vec![
+        interface("color-scheme", Str(scheme.into())),
+        interface("gtk-theme", Str(gtk_theme_name(theme, colors, mode))),
+        interface("accent-color", Str("blue".into())),
+        interface("font-name", Str(ui.clone())),
+        interface("document-font-name", Str(ui)),
+        interface("monospace-font-name", Str(mono)),
+        // Text as the kit draws it: hinted vertically only, grey edges
+        // (style.rs).
+        interface("font-hinting", Str("slight".into())),
+        interface("font-antialiasing", Str("grayscale".into())),
+        interface("icon-theme", Str(icons.into())),
+        interface("cursor-theme", Str(icons.into())),
+        interface("cursor-size", Int(cursor_size as i32)),
+        DesktopSetting { schema: "org.gnome.desktop.wm.preferences", key: "button-layout", value: Str("close:maximize".into()) },
+    ]
+}
+
 fn hex(c: Rgba) -> String {
     if c[3] == 255 { format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]) } else { format!("rgba({},{},{},{:.2})", c[0], c[1], c[2], c[3] as f32 / 255.0) }
 }

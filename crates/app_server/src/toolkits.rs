@@ -20,7 +20,7 @@
 
 use std::path::{Path, PathBuf};
 
-use olo_theme::{ThemeMode, fonts, looks, toolkit};
+use olo_theme::{ThemeMode, looks, toolkit};
 use tracing::warn;
 
 /// The stylesheet GTK 4 imports, while the session runs.
@@ -103,14 +103,6 @@ pub fn publish(theme: String, colors: String, mode: ThemeMode) {
         {
             warn!("could not write the GTK themes: {e}");
         }
-        let scheme = match mode {
-            ThemeMode::Light => "default",
-            ThemeMode::Dark => "prefer-dark",
-        };
-        let gtk_theme = toolkit::gtk_theme_name(&theme, &colors, mode);
-        // GTK sizes fonts in points (at 96 dpi), Olo in pixels.
-        let font = |faces: &[&str]| format!("{} {}", faces[0], (fonts::PLAIN_SIZE * 0.75).round());
-        let (ui, mono) = (font(fonts::UI), font(fonts::MONO));
         // Olo's icons in the look, and its pointer for programs that
         // draw their own (icon_theme.rs, xcursor.rs).
         if let Some(data) = &dirs.0
@@ -118,23 +110,23 @@ pub fn publish(theme: String, colors: String, mode: ThemeMode) {
         {
             warn!("could not write the icon theme: {e}");
         }
+        // (The same olo-portal serves through the portal's Settings.)
+        let settings = toolkit::desktop_settings(&theme, &colors, mode, crate::icon_theme::THEME, crate::xcursor::SIZE);
+        let paths: Vec<String> = settings.iter().map(|s| s.path()).collect();
         use olo_system::dconf::Setting::{Int, Str};
-        let keys = [
-            ("/org/gnome/desktop/interface/color-scheme", Str(scheme)),
-            ("/org/gnome/desktop/interface/gtk-theme", Str(gtk_theme.as_str())),
-            ("/org/gnome/desktop/interface/accent-color", Str("blue")),
-            ("/org/gnome/desktop/interface/font-name", Str(ui.as_str())),
-            ("/org/gnome/desktop/interface/document-font-name", Str(ui.as_str())),
-            ("/org/gnome/desktop/interface/monospace-font-name", Str(mono.as_str())),
-            // Text as the kit draws it: hinted vertically only, grey
-            // edges (style.rs).
-            ("/org/gnome/desktop/interface/font-hinting", Str("slight")),
-            ("/org/gnome/desktop/interface/font-antialiasing", Str("grayscale")),
-            ("/org/gnome/desktop/interface/icon-theme", Str(crate::icon_theme::THEME)),
-            ("/org/gnome/desktop/interface/cursor-theme", Str(crate::icon_theme::THEME)),
-            ("/org/gnome/desktop/interface/cursor-size", Int(crate::xcursor::SIZE as i32)),
-            ("/org/gnome/desktop/wm/preferences/button-layout", Str("close:maximize")),
-        ];
+        let keys: Vec<(&str, olo_system::dconf::Setting)> = settings
+            .iter()
+            .zip(&paths)
+            .map(|(s, p)| {
+                (
+                    p.as_str(),
+                    match &s.value {
+                        toolkit::DesktopValue::Str(v) => Str(v.as_str()),
+                        toolkit::DesktopValue::Int(v) => Int(*v),
+                    },
+                )
+            })
+            .collect();
         match olo_system::dconf::set(&keys) {
             Ok(()) => {
                 if let Some(data) = &dirs.0 {

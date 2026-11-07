@@ -7777,6 +7777,7 @@ dependencies = [
  "olo-print",
  "olo-protocol",
  "olo-sync",
+ "olo-theme",
  "olo-ui",
  "olo-xdg",
  "pipewire",

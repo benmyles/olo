@@ -4790,7 +4790,12 @@ apps, other programs, a portal's dialog, a program in the background):
 `new_toplevel` gives it the keyboard as it is made, on the display and
 workspace it opens on (the one showing), auto-tiled, zoomed in Focus or
 grouped as its tab in front; wm-fuzz fails a step whose new window
-doesn't have it. Windows coming back after an upgrade are the exception:
+doesn't have it. One an app opens from one of its own floating windows
+(Preferences ▸ Sound's Try It, from the Sound panel) floats too, over
+it, in Focus and Auto-Tiling (`new_toplevel`: the window that had the
+focus is its app's and `floats`; it's floated as by hand): zoomed or
+tiled, it was under the window it was opened from, floats being above
+tiles (Ben, 2026-11-06). Windows coming back after an upgrade are the exception:
 they come back as they were. Not an alert or a dialog of an app that
 was started again (a new process: the old one is gone): it is placed
 afresh, in the middle of the screen or over its parent, not where the
@@ -7307,6 +7312,54 @@ pause of a fraction of a second), libpipewire stays out of the
 compositor, and an upgrade waits while it shares or asks
 (`olo_ui::upgrade_waits_while`).
 
+No interface falls to another desktop's backends. `olo-portals.conf`
+names every one the portal has: Olo's for what olo-portal serves, the
+keyring for Secret, and `none` for the rest (Lockdown, Clipboard,
+InputCapture, Usb, DynamicLauncher: the portal says they aren't there),
+with `default=none`. xdg-desktop-portal reads the configuration of every
+desktop `XDG_CURRENT_DESKTOP` names, though, and the session's is
+`Olo:GNOME` (for Qt, "Other toolkits' programs" below): what Olo's left out went to
+GNOME's (`gnome-portals.conf`: `default=gnome;gtk`), and Settings was
+gathered from GNOME's and GTK's backends as well as Olo's, which kept
+xdg-desktop-portal-gnome, xdg-desktop-portal-gtk and
+gnome-control-center (GNOME's shortcuts dialog, under GNOME's portal)
+running. So while an Olo session runs the portal service alone is told
+the desktop is Olo: a drop-in in the runtime unit folder,
+`$XDG_RUNTIME_DIR/systemd/user/xdg-desktop-portal.service.d/olo.conf`
+(`Environment=XDG_CURRENT_DESKTOP=Olo`, `graphical::PORTAL_DROP_IN`),
+which `stop` removes and the end of the login takes with the runtime
+folder; an agent screen's frontend is started with the same
+(`own_bus::PORTAL_FRONTEND_ENV`). Its log (`xdg-desktop-portal -v`)
+then shows only Olo's, `none` and the keyring's.
+
+- **Settings** (`settings.rs`, `org.freedesktop.impl.portal.Settings`,
+  version 2): what sandboxed programs, and GTK 4, libadwaita, Chrome and
+  Firefox where they ask the portal, read for the desktop's look:
+  `org.freedesktop.appearance` (`color-scheme` 0 light or 1 dark,
+  `accent-color` GNOME's blue as (r, g, b), `contrast` 0) and, under
+  GNOME's names, the same list app_server writes to GSettings for
+  unsandboxed programs (`olo_theme::toolkit::desktop_settings`: the
+  colour scheme, GTK theme, accent, fonts and their hinting, icon and
+  pointer themes, `button-layout`), so the two can't disagree.
+  `ReadAll` takes the portal's patterns (a trailing `*`); `Read` says
+  `org.freedesktop.portal.Error.NotFound` for what it hasn't. It follows
+  app_server's settings (`settings::follow`, events, asked again when
+  app_server comes back) and signals `SettingChanged` only for what
+  changed (light to dark: the two colour schemes and the GTK theme).
+- **Notification** (`notification.rs`, version 1): a program's
+  notification handed to Olo's centre as a `Notify` (its title, body,
+  `priority` as urgency, a themed icon by name or a picture's bytes as
+  `image-path`, kept in `$XDG_RUNTIME_DIR/olo-portal-pictures` by its
+  contents; `desktop-entry` its app id; `default-action` as the
+  `default` action and each button as `button-N`), the centre's number
+  kept with the program's own id (the same id again replaces it; removed
+  by `CloseNotification`). The centre's `ActionInvoked` comes back as
+  the portal's, with the action and target the program gave
+  (`notification::follow`); `NotificationClosed` forgets it. Tried on a
+  test bus: a notification sent to the frontend shows in the centre with
+  its button, and invoking the button gives the program `app.open` and
+  its target.
+
 Its dialogs are on the GPUI kit, each over the window of the app that
 asked (`WindowOptions::foreign_parent`, xdg-foreign: the handle the app
 exported), each its own view answering its request once (`ui::Answer`):
@@ -9323,7 +9376,20 @@ socket are found in `olo_xdg::runtime_dir()` (`XDG_RUNTIME_DIR`, else
 and stdout (a line each way), for an agent whose settings named it
 before Terminal rewrote them; it stays as it is through upgrades
 (SIGURG ignored; olo-session leaves alone what an agent started) and
-notes its life in `~/.local/state/olo/terminal-mcp.log`. `tools/dev/agent-title-check` drives it both
+notes its life in `~/.local/state/olo/terminal-mcp.log`. Without the
+tool, an agent sets the title from its shell: `olo-terminal --tab-title
+WORDS…` (`agent_title::from_shell`, handled before anything is handed to
+a running Terminal, so it never opens a window) finds the tab as the
+service does, from its own ancestors (the agent's shell, the agent, the
+tab's shell) and its folder, and prints what the tool would say (exit 1
+outside a tab). The hook's words name it for when the tool isn't there,
+since nothing in an agent brings the tool back by itself: Claude Code
+keeps the MCP settings a session started with (one begun before
+Terminal moved it to HTTP still has the stdio server, and starts it
+again only through /mcp) and gives an HTTP server up after five tries
+(`mce`, about 15 s of the server away); the hook is the installed
+binary, so what it says reaches sessions already running from the next
+prompt. `tools/dev/agent-title-check` drives it both
 ways in a headless session: as Codex (a bare environment, outside the
 tab, by folder) and as Claude Code (from the tab's shell, across the
 server's file replaced and SIGURG). The tab shows it (`Tab::agent_title`,
@@ -9971,10 +10037,10 @@ or fitted whole), kept, and the windows drawn again as each comes.
   `org.freedesktop.Application.ActivateAction` (or `Activate`) on the
   app itself, on a thread, with the click's activation token in the
   platform data; D-Bus starts the app if it has quit. There is no closed
-  signal. Flatpak apps reach us through the portal: `olo-portals.conf`
-  leaves Notification to xdg-desktop-portal-gtk, which sends a plain
-  `Notify` (no app name: we take the `desktop-entry` hint's) and runs the
-  app's action itself when we signal `ActionInvoked`.
+  signal. Flatpak apps reach us through the portal: olo-portal's
+  Notification sends a `Notify` (the app's name, and its id as the
+  `desktop-entry` hint) and hands the action back to the portal when we
+  signal `ActionInvoked` ("Screen sharing", the portal's interfaces).
 - For agents: `com.olodesktop.Notifications1` at `/com/olodesktop/Notifications`
   (`List` → JSON: `unread`, `quiet` and each note with its `look`, `via`,
   `pinned`, `snoozed_until` and `strength`; `Invoke`, `Dismiss`,
@@ -10292,8 +10358,9 @@ one lever that reaches programs run in a toolbox or container too
 (`toolbox run` passes `XDG_CURRENT_DESKTOP` but not
 `QT_QPA_PLATFORMTHEME`); there the font is Olo's if the container has
 it, else fontconfig's stand-in (Liberation Sans for Nimbus Sans). What
-else reads the name: xdg-desktop-portal still takes `olo-portals.conf`
-(the first name with a file wins); `open.rs` reads
+else reads the name: xdg-desktop-portal would read GNOME's portal
+configuration too, so it alone is told the desktop is Olo (a runtime
+drop-in, "Screen sharing"); `open.rs` reads
 `gnome-mimeapps.list` after Olo's apps and before `mimeapps.list`, as
 GNOME would; Chrome keeps its keys where it did (it treats GNOME and an
 unknown desktop alike, libsecret, and asks the secret portal first
