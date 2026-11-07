@@ -715,6 +715,11 @@ impl Realm {
     /// Animating WebGL canvases that would draw their frames into textures
     /// of the window's renderer (shown with no copy): each with its size and
     /// its GPU's UUID (the window's must match). Each is asked for once.
+    /// The page's window shown or not: document.hidden, and visibilitychange
+    /// when it changes.
+    pub fn set_hidden(&mut self, hidden: bool) {
+        let _ = self.call_prelude_number("__olo_set_hidden", f64::from(u8::from(hidden)));
+    }
     /// The GPU time the page's WebGL took since last asked (milliseconds).
     pub fn take_gpu_ms(&mut self) -> f64 {
         let mut s = self.state.borrow_mut();

@@ -578,7 +578,7 @@
     URL: { get() { return N.url(); } }, documentURI: { get() { return N.url(); } }, referrer: { get() { return ''; } }, domain: { get() { return location.hostname; } },
     location: { get() { return global.location; } }, defaultView: { get() { return global; } },
     characterSet: { get() { return 'UTF-8'; } }, charset: { get() { return 'UTF-8'; } }, inputEncoding: { get() { return 'UTF-8'; } }, contentType: { get() { return 'text/html'; } }, compatMode: { get() { return 'CSS1Compat'; } },
-    hidden: { get() { return false; } }, visibilityState: { get() { return 'visible'; } }, hasFocus() { return true; },
+    hidden: { get() { return pageHidden; } }, visibilityState: { get() { return pageHidden ? 'hidden' : 'visible'; } }, hasFocus() { return !pageHidden; },
     activeElement: { get() { return activeElement && N.isConnected(activeElement) ? activeElement : this.body; } }, scrollingElement: { get() { return html(); } }, currentScript: { get() { return currentScript; } },
     doctype: { get() { for (const c of N.childNodes(documentNode)) if (N.nodeType(c) === 10) return c; return null; } },
     cookie: { get() { return [...cookies.entries()].map(([k, v]) => k + '=' + v).join('; '); }, set(v) { const s = String(v); const m = s.match(/^\s*([^=;]+)=([^;]*)/); if (m) { if (/max-age=0|expires=Thu, 01 Jan 1970/i.test(s)) cookies.delete(m[1].trim()); else cookies.set(m[1].trim(), m[2]); } } },
@@ -814,6 +814,16 @@
   // 0 between frames (they wait), -1 for none (frames every 16 ms of the
   // page's own clock).
   let frameDriven = false, frameNow = false;
+  // The page's window not shown (minimised, covered): document.hidden, its
+  // animation frames paused (the host stops them), and visibilitychange
+  // when it changes, as browsers do for a hidden tab.
+  let pageHidden = false;
+  global.__olo_set_hidden = (hidden) => {
+    const was = pageHidden;
+    pageHidden = !!hidden;
+    if (was !== pageHidden) { try { dispatch(documentNode, new Event('visibilitychange', { bubbles: true })); } catch (e) { reportError(e); } try { dispatch(global, new Event(pageHidden ? 'pagehide' : 'pageshow')); } catch (e) {} }
+    return 0;
+  };
   global.__olo_wants_frame = () => (rafs.length || (intersectionObservers.size && (intersectionsDue || scrollXY[1] !== intersectionScroll || layoutNow() !== intersectionLayout)) ? 1 : 0);
   global.__olo_tick = (clock, frame) => {
     frameDriven = frame === 0 || frame === 1;

@@ -194,6 +194,11 @@ struct Live {
     /// When the window last asked for a frame, and whether it asks now.
     paced_at: Option<Instant>,
     frame_requested: bool,
+    /// The page was told its window is hidden.
+    hidden: bool,
+    /// Since when the window was told the page wants frames and sent none
+    /// (cleared by a frame): past a quarter of a second, it is hidden.
+    waiting_since: Option<Instant>,
 }
 /// What a live page's frames cost (its scripts and renders on the CPU, its
 /// WebGL on the GPU), reviewed each second: over budget, it draws every
@@ -343,6 +348,18 @@ impl Drop for Live {
         }
     }
 }
+/// A page whose window stopped drawing (hidden, covered, minimised: it
+/// asked for frames and none came for a quarter of a second) draws once a
+/// second, as browsers pause a hidden tab's animation frames; the window
+/// drawing again asks for frames, and the page is paced by them at once.
+fn hidden(live: &Live) -> bool {
+    live.waiting_since.is_some_and(|t| t.elapsed() >= Duration::from_millis(250))
+}
+/// The page's own frame period (ms): a display frame, or a second while
+/// its window is hidden.
+fn frame_period_ms(live: &Live) -> f64 {
+    if hidden(live) { 1000. } else { FRAME.as_secs_f64() * 1000. }
+}
 /// A live page's frame: its animation frames run and it renders once a
 /// display frame (60 Hz), so animations are as smooth as the page draws
 /// them (at 100 ms they showed at 10 frames a second and stuttered).
@@ -450,7 +467,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     // one (animation frames, a change or a canvas to show).
                     let wait = cached.as_ref().and_then(|c| c.live.as_ref()).and_then(|l| {
                         let paced = l.paced_at.is_some_and(|t| t.elapsed() < Duration::from_millis(250));
-                        let frame = (!paced && (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty())).then_some(l.next_frame_ms);
+                        let frame = (!paced && (l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty())).then_some(l.next_frame_ms).filter(|_| !hidden(l));
                         let due = match (l.next_due_ms, frame) {
                             (Some(a), Some(b)) => Some(a.min(b)),
                             (a, b) => a.or(b),
@@ -517,6 +534,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             {
                                 live.paced_at = Some(Instant::now());
                                 live.frame_requested = true;
+                                live.waiting_since = None;
                                 live.next_due_ms = Some(0.);
                             }
                             continue;
@@ -649,9 +667,16 @@ fn render(
         // asks for the page's next: locked to the display, none dropped by a
         // timer drifting against it); by the page's own 60 Hz clock before.
         let paced = live.paced_at.is_some_and(|t| t.elapsed() < Duration::from_millis(250));
-        let mut frame = if paced { std::mem::take(&mut live.frame_requested) } else { now_ms + 0.5 >= live.next_frame_ms };
+        // Its window stopped drawing: the page is hidden (no animation
+        // frames, visibilitychange) until the window asks for frames again.
+        let is_hidden = hidden(live);
+        if is_hidden != live.hidden {
+            live.hidden = is_hidden;
+            live.realm.set_hidden(is_hidden);
+        }
+        let mut frame = if paced { std::mem::take(&mut live.frame_requested) } else { !is_hidden && now_ms + 0.5 >= live.next_frame_ms };
         if frame && !paced {
-            let period = FRAME.as_secs_f64() * 1000.;
+            let period = frame_period_ms(live);
             live.next_frame_ms += period;
             if live.next_frame_ms <= now_ms {
                 // Behind (a long task): the next frame from now, on the grid.
@@ -1045,6 +1070,8 @@ fn render(
                 usage: Usage::new(),
                 paced_at: None,
                 frame_requested: false,
+                hidden: false,
+                waiting_since: None,
             });
             eprintln!(
                 "Browser scripts: {} run, {} errors, {} console lines, {} timers, {} listeners, {} layouts ({:.0} ms), revision {} -> {}, {:.0} ms",
@@ -1666,7 +1693,13 @@ fn render(
         },
         fallbacks: page.fallbacks.to_string(),
         tiles,
-        animating: cached.live.as_ref().is_some_and(|l| l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty()),
+        animating: {
+            let animating = cached.live.as_ref().is_some_and(|l| l.wants_frame || l.render_due || l.render_again || l.realm.canvases_dirty());
+            if animating && let Some(live) = cached.live.as_mut() {
+                live.waiting_since.get_or_insert_with(Instant::now);
+            }
+            animating
+        },
     });
     Ok(())
 }

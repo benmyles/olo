@@ -6078,3 +6078,24 @@ redo only what changed.
 - **Found on the way.** `performance.now()` stood still inside a task (a
   busy-wait spun forever); intervals stopped after 50 runs.
 
+## 2026-11-08, night: cheaper than Chrome at the display's rate
+
+- **The display's rate.** The agent screen runs at 120 Hz and Chrome
+  animates stripe.com at 120 frames a second (rAF counted: 120.5); its
+  18% earlier was at 120, Olo's 16.5% at 60. Olo's page frames now come
+  with the window's (Window::on_next_frame asks the worker for each),
+  locked to the display.
+- **Per frame at 120 Hz**, the page thread went from about 2 ms to about
+  1 ms: shared canvas frames handed over by fence a frame later (no
+  glFinish wait); two shared-texture bugs fixed (a second set of textures
+  replaced a canvas's ring with nothing; a transform-patched scene had no
+  surface layer for a canvas that had just become live); the style tree
+  in copy-on-write chunks (its per-frame copy 0.18 -> 0.011 ms); the box
+  tree's vectors shared across restyles; tile signatures reused while
+  the scene paints the same; and the document in copy-on-write chunks
+  (its per-frame snapshot and drop, 0.25 ms, gone; the scripted load 3.2
+  -> 1.0 s).
+- **Result.** stripe.com, 30 s each, the same minute: Olo 18.0% of a core
+  at 117 frames a second (page thread 12.2%, window 5.8%); Chrome 22.4% at
+  120.
+
