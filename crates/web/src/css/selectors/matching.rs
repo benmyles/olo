@@ -240,6 +240,10 @@ impl Selectors {
     /// Highest specificity among matching branches, or None. Tree/state
     /// errors are explicit failures, not false matches or ignored branches.
     pub fn matches<T: Tree>(&self, tree: &T, node: T::Node, options: MatchOptions<'_, T::Node>, limits: MatchLimits, cancelled: Option<&AtomicBool>) -> Result<Option<Specificity>> {
+        // A stale scope is an error even when the node is no element.
+        if let Some(scope) = options.scope {
+            tree.content(scope)?;
+        }
         if !matches!(tree.content(node)?, Content::Element(_)) {
             return Ok(None);
         }
