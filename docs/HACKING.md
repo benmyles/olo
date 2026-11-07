@@ -6463,10 +6463,18 @@ configurable with reasonable defaults"), in three tabs:
   NVIDIA's as they were set, which its driver doesn't say back; Ben,
   2026-11-07: "changing the power mode in prefs -> power doesn't change
   the clock setting of the nvidia gpu?", its box showing only Custom's
-  slider), and its Custom settings, each knob not set showing what
-  Custom would set, the driver's own, so they never move with the mode
-  (xe's had shown what was in force, and moving its lowest clock with
-  no highest set pinned the highest to it):
+  slider), and its settings. On a preset they show what it runs at
+  now (`gpus::shown`: xe's clocks and profile as its driver says,
+  NVIDIA's as set; Ben, 2026-11-07: "it says nvidia is on cooler and
+  quieter but the slider hasn't changed?", they had been Custom's alone
+  under a heading of their own), and moving one makes it Custom where
+  it is now (`gpus::situation`: on battery when the plan has a choice
+  for it there, else the power mode), starting from those, so nothing
+  else jumps: "Custom in Performance once applied (on Cooler and
+  Quieter until then)", Revert back to the preset. On Custom they're
+  Custom's, a knob not set showing what Custom would set, the driver's
+  own (moving xe's lowest clock with no highest set had pinned the
+  highest to it):
   Intel's xe the render GT's lowest and highest clock, `freq0/min_freq`
   and `max_freq` within `rpn_freq`..`rp0_freq`, and every GT's power
   profile; NVIDIA's, through NVML in process, its highest GPU clock,
