@@ -5,9 +5,10 @@ mod catalog;
 mod matching;
 mod metrics;
 mod scope;
+pub mod woff;
 use crate::css::properties::{Family, GenericFamily};
 use crate::css::style::{FontMetrics, FontRequest, FontSlant};
-pub use catalog::{Builder, Catalog, Face, FaceId, LoadProgress};
+pub use catalog::{Builder, Catalog, Descriptor, Face, FaceId, LoadProgress};
 pub use matching::{Coordinate, MatchOptions, Selection, Slope, Synthesis};
 pub use metrics::{Fallbacks, ResolvedMetrics};
 pub use scope::CacheStats;
@@ -86,8 +87,11 @@ pub struct Span {
     pub max: f64,
 }
 impl Span {
-    fn point(value: f64) -> Self {
+    pub fn point(value: f64) -> Self {
         Self { min: value, max: value }
+    }
+    pub fn new(min: f64, max: f64) -> Self {
+        Self { min: min.min(max), max: max.max(min) }
     }
     fn contains(self, value: f64) -> bool {
         (self.min..=self.max).contains(&value)

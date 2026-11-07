@@ -5344,3 +5344,28 @@ fallbacks, led by word-break/overflow-wrap (485), letter-spacing (113),
 flattened inline typography (46), opacity (45). Visible gaps: the web
 font, the hero image's transform and size, gradient text, and sections
 below the fold not yet compared.
+
+## 2026-11-06 (late): web fonts
+
+`@font-face` rules are compiled into descriptors (`css/fonts.rs`: family,
+weight/width ranges, style, `unicode-range` re-tokenised from the
+declaration's text, the `src` list with formats), carrying their
+stylesheet's URL so relative sources resolve against it (the first
+attempt resolved them against the document and fetched Stripe's 404
+page). Loading is a new two-phase page API: `page::prepare` parses the
+document and fetches sheets, images and the first decodable source of
+each face; the worker then makes its style host for the prepared scope
+and `page::finish` styles, lays out and paints. `font/woff.rs` decodes
+WOFF 1.0 (zlib tables) and WOFF2 (one Brotli stream; transformed glyf/
+loca rebuilt from the contour, point, flag, triplet, composite, bbox and
+instruction streams; transformed hmtx from the glyph x-minimums;
+collections) into plain sfnt data, bounds-checked throughout.
+`Scope::with_faces` builds the page's font scope from the base catalog
+plus its web faces: the descriptor's family and ranges replace the
+file's names, a web family shadows an installed one, and face selection
+skips faces whose `unicode-range` excludes the character.
+
+stripe.com now renders in Sohne (journal screenshot): the heading,
+navigation and buttons match Chrome's typography. The same 759 fallbacks
+remain; letter-spacing and the superscript's vertical-align/font-size
+(flattened inline typography) are the next visible text differences.

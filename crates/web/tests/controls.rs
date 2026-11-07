@@ -117,6 +117,6 @@ fn page_css_uses_control_states_and_rebuilds_after_dom_changes() {
     assert_eq!(color(&page, "Exempt"), [0, 128, 0, 255]);
     assert_eq!(color(&page, "Disabled"), [255, 0, 0, 255]);
     page.document.remove_attribute(id(&page.document, "f"), "disabled").unwrap();
-    page.restyle(&host, &scope, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    page.restyle(&host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     assert_eq!(color(&page, "Disabled"), [0, 128, 0, 255]);
 }

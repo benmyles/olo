@@ -65,6 +65,9 @@ pub struct SheetBuilder {
     /// What `@media` rules are evaluated against; without one they are issues.
     media: Option<crate::css::media::Media>,
     media_dependent: bool,
+    faces: Vec<crate::css::fonts::FontFace>,
+    /// The URL of the sheet being added, for its `@font-face` sources.
+    base: Option<Arc<str>>,
     failed: bool,
 }
 impl SheetBuilder {
@@ -80,6 +83,8 @@ impl SheetBuilder {
             selector_compiler: selectors::RuleCompiler::new(),
             media: None,
             media_dependent: false,
+            faces: Vec::new(),
+            base: None,
             failed: false,
         }
     }
@@ -105,11 +110,21 @@ impl SheetBuilder {
     pub fn media_dependent(&self) -> bool {
         self.media_dependent
     }
+    /// The `@font-face` rules met so far, in order, under true conditions only.
+    pub fn font_faces(&self) -> &[crate::css::fonts::FontFace] {
+        &self.faces
+    }
     pub fn add_sheet(&mut self, syntax: &Syntax, origin: Origin, cancelled: Option<&AtomicBool>) -> Result<()> {
+        self.add_sheet_from(syntax, origin, None, cancelled)
+    }
+    /// A sheet fetched from `base`: its relative `url()`s resolve against it.
+    pub fn add_sheet_from(&mut self, syntax: &Syntax, origin: Origin, base: Option<Arc<str>>, cancelled: Option<&AtomicBool>) -> Result<()> {
         if self.failed {
             return Err(Error::Invalid);
         }
+        self.base = base;
         let result = self.sheet(syntax, origin, cancelled);
+        self.base = None;
         if result.is_err() {
             self.failed = true;
         }
@@ -157,7 +172,7 @@ impl SheetBuilder {
         }
         let borrowed: Vec<_> = namespaces.iter().map(|(a, b)| (a.as_ref(), b.as_ref())).collect();
         let options = selectors::CompileOptions { namespaces: &borrowed, default_namespace: default_namespace.as_deref() };
-        self.walk(kept, origin, origin as u32, 0, options, cancelled)
+        self.walk(syntax, kept, origin, origin as u32, 0, options, cancelled)
     }
     fn layer(&mut self, parent: u32, name: Option<Arc<str>>, cancelled: Option<&AtomicBool>) -> Result<u32> {
         self.tick(1 + name.as_ref().map_or(0, |s| s.len()), cancelled)?;
@@ -225,7 +240,8 @@ impl SheetBuilder {
         }
         Ok(layers)
     }
-    fn walk(&mut self, rules: Vec<Statement<'_>>, origin: Origin, parent: u32, depth: usize, options: selectors::CompileOptions<'_>, cancelled: Option<&AtomicBool>) -> Result<()> {
+    #[allow(clippy::too_many_arguments)] // The sheet, its rules and their cascade context.
+    fn walk(&mut self, syntax: &Syntax, rules: Vec<Statement<'_>>, origin: Origin, parent: u32, depth: usize, options: selectors::CompileOptions<'_>, cancelled: Option<&AtomicBool>) -> Result<()> {
         if depth > self.limits.depth.min(128) {
             return Err(Error::Limit);
         }
@@ -283,7 +299,7 @@ impl SheetBuilder {
                         }
                     };
                     if rule.block().is_some() {
-                        self.walk(rule.block_contents(cancelled).map_err(syntax_error)?, origin, layers[0], depth + 1, options, cancelled)?;
+                        self.walk(syntax, rule.block_contents(cancelled).map_err(syntax_error)?, origin, layers[0], depth + 1, options, cancelled)?;
                     }
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("media")) && self.media.is_some() => {
@@ -292,12 +308,20 @@ impl SheetBuilder {
                         && crate::css::media::evaluate(rule.value(), media, cancelled)
                         && rule.block().is_some()
                     {
-                        self.walk(rule.block_contents(cancelled).map_err(syntax_error)?, origin, parent, depth + 1, options, cancelled)?;
+                        self.walk(syntax, rule.block_contents(cancelled).map_err(syntax_error)?, origin, parent, depth + 1, options, cancelled)?;
                     }
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("supports")) => {
                     if crate::css::media::supports(rule.value(), self.limits.properties, cancelled) && rule.block().is_some() {
-                        self.walk(rule.block_contents(cancelled).map_err(syntax_error)?, origin, parent, depth + 1, options, cancelled)?;
+                        self.walk(syntax, rule.block_contents(cancelled).map_err(syntax_error)?, origin, parent, depth + 1, options, cancelled)?;
+                    }
+                }
+                StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("font-face")) => {
+                    if self.faces.len() >= 256 {
+                        self.issue(Issue::AtRule(Arc::from("font-face")))?;
+                    } else if let Some(mut face) = crate::css::fonts::parse(syntax, &rule, cancelled) {
+                        face.base = self.base.clone();
+                        self.faces.push(face);
                     }
                 }
                 StatementKind::AtRule if rule.name().is_some_and(|s| s.eq_ignore_ascii_case("charset")) => {}

@@ -175,6 +175,6 @@ fn real_style_pipeline_matches_chrome_safe_area_fallbacks_and_cycles_at_five_sca
     host.revision.set(2);
     let cascade = css::cascade::Builder::new(Default::default(), None).finish(false, None).unwrap();
     assert!(matches!(style::Style::compute(old, &cascade, None, None, &host, Default::default(), Default::default(), None), Err(style::Error::Stale)));
-    page.restyle(&host, &scope, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    page.restyle(&host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     assert_eq!(padding(&page), 12.);
 }

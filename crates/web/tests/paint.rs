@@ -409,11 +409,11 @@ fn document_input_restyles_link_states_and_keeps_equal_color_owners_separate() {
     let first = page.document.parent(first_text).unwrap().unwrap();
     page.interaction.hover = Some(first_text);
     assert!(olo_web::page::Interaction::default().changes_style(page.interaction, page.interaction_mask));
-    page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
+    page.restyle(&host, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
     assert!(page.scene.commands().iter().any(|c| matches!(c.primitive, paint::Primitive::Text { color: [0, 128, 0, 255], .. })));
     page.interaction.active = Some(first_text);
     page.interaction.focus = Some(first);
-    page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
+    page.restyle(&host, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).unwrap();
     assert!(page.scene.commands().iter().any(|c| matches!(c.primitive, paint::Primitive::Text { color: [128, 0, 128, 255], .. })));
     assert!(!olo_web::page::Interaction::default().changes_style(page.interaction, 0));
 }
@@ -440,7 +440,7 @@ fn cross_node_ligatures_and_clipped_ink_do_not_invent_click_targets() {
     assert!(page.scene.commands().iter().enumerate().any(|(i, c)| matches!(c.primitive, paint::Primitive::Text { .. }) && page.scene.text_node(i as u32).is_none()));
     let foreign = html::parse(Arc::from("<!doctype html><p>other"), Default::default(), None).unwrap().document;
     page.interaction.focus = Some(foreign.root());
-    assert!(page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).is_err());
+    assert!(page.restyle(&host, &mut shaper, &mut painter, layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {}).is_err());
     let s = scene("<div class=clip><p>A</p></div>", ".clip{height:5px;width:10px;overflow:hidden}p{position:relative;top:50px}", &mut painter);
     let text: Vec<_> = s.commands().iter().enumerate().filter(|(_, c)| matches!(c.primitive, paint::Primitive::Text { .. })).collect();
     assert!(!text.is_empty());

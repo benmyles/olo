@@ -30,7 +30,7 @@ fn main() {
         let start = Instant::now();
         for r in 0..rounds {
             page.interaction.hover = (r % 2 == 0).then_some(node);
-            page.restyle(&host, &scope, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+            page.restyle(&host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
             black_box(&page.scene);
         }
         assert_eq!(page.document.id(), identity);

@@ -70,17 +70,17 @@ fn changed_containment_and_viewport_recompute_descendant_box_lengths() {
     assert_eq!(geometry(&page, "host").height, 60.);
     let node = page.scene.layout().cache().tree().iter().find(|(_, b)| matches!(b.kind, BoxKind::Block { .. }) && page.document.attribute(b.node, "id").unwrap() == Some("host")).unwrap().1.node;
     page.document.set_attribute(node, "style", "container-type:size").unwrap();
-    page.restyle(&host, &scope, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    page.restyle(&host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     assert_eq!(geometry(&page, "host").height, 0.);
     assert_eq!(geometry(&page, "child").height, 0.);
     page.document.set_attribute(node, "style", "all:initial;display:block;width:400px").unwrap();
     viewport.width = 1000.;
     viewport.height = 400.;
-    page.restyle(&host, &scope, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    page.restyle(&host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     assert_eq!(geometry(&page, "child").width, 500.);
     assert_eq!(geometry(&page, "child").height, 40.);
     page.document.set_attribute(node, "style", "container-type:inline-size;width:50%").unwrap();
-    page.restyle(&host, &scope, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
+    page.restyle(&host, &mut shaper, &mut painter, viewport, None, |_, _| {}).unwrap();
     assert_eq!(geometry(&page, "child").width, 250.);
     // Browser's resize path reuses prepared styles/text when no eager viewport
     // unit was read. Query bases must follow the new layout without restyling.
@@ -91,7 +91,7 @@ fn changed_containment_and_viewport_recompute_descendant_box_lengths() {
     assert_eq!(bounds(&page.document, &resized, "host").width, 600.);
     assert_eq!(bounds(&page.document, &resized, "child").width, 300.);
     assert_eq!(bounds(&page.document, &resized, "child").height, 50.);
-    assert!(page.restyle(&host, &scope, &mut shaper, &mut painter, viewport, Some(&AtomicBool::new(true)), |_, _| {}).is_err());
+    assert!(page.restyle(&host, &mut shaper, &mut painter, viewport, Some(&AtomicBool::new(true)), |_, _| {}).is_err());
 }
 #[test]
 fn early_contexts_and_inherited_pending_lengths_render_with_recorded_fallbacks() {

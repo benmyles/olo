@@ -4,6 +4,7 @@ use std::{
     collections::{HashSet, VecDeque},
 };
 
+#[derive(Clone)]
 struct Binding {
     generic: GenericFamily,
     language: Arc<str>,
@@ -13,6 +14,7 @@ struct Binding {
 /// Explicit trusted UA policy. No environment/locale guessed from the process.
 /// Complete generics fall back to the configured default families; incomplete
 /// and script-specific generics can be absent and allow the next CSS family.
+#[derive(Clone)]
 pub struct GenericPolicy {
     default: Box<[Arc<str>]>,
     bindings: Vec<Binding>,
@@ -97,6 +99,32 @@ impl FontSet {
     /// worker-local and their bounded metric caches are not copied by Clone.
     pub fn scope(self: &Arc<Self>, language: &str) -> Result<Scope> {
         Ok(Scope { set: self.clone(), language: Arc::from(language_key(language)?), context: identity()?, cache: RefCell::new(Cache::default()), hits: Cell::new(0), misses: Cell::new(0) })
+    }
+    pub fn policy(&self) -> &GenericPolicy {
+        &self.policy
+    }
+}
+impl Scope {
+    /// This scope's fonts plus a page's web faces, as a new scope with its own
+    /// identity. Web families shadow installed ones of the same name.
+    pub fn with_faces(&self, faces: Vec<(Arc<[u8]>, super::Descriptor)>, cancelled: Option<&AtomicBool>) -> Result<Scope> {
+        let catalog = &self.set.catalog;
+        let mut builder = Builder::from_catalog(catalog);
+        let mut shadowed = Vec::new();
+        for (data, descriptor) in faces {
+            check(cancelled)?;
+            let folded = casefold::fold(&descriptor.family, catalog.limits, cancelled)?.into_owned();
+            if let Err(e) = builder.add_face(data, descriptor, cancelled) {
+                match e {
+                    Error::Cancelled | Error::Limit => return Err(e),
+                    _ => continue, // A broken file: that face is not available, as in other browsers.
+                }
+            }
+            shadowed.push(folded);
+        }
+        builder.shadow(&shadowed, cancelled)?;
+        let set = FontSet::new(builder.finish(cancelled)?, self.set.policy.clone(), self.set.options)?;
+        set.scope(&self.language)
     }
 }
 pub struct Scope {
@@ -211,6 +239,9 @@ impl Scope {
                 return Ok(true);
             }
             let f = catalog.face(s.face)?;
+            if !f.in_range(scalar) {
+                return Ok(false);
+            }
             Ok(match scalar {
                 '0' => f.zero.is_some(),
                 '水' => f.water.is_some(),
@@ -310,6 +341,7 @@ impl Scope {
             scalar,
             true,
             |s| {
+                let metadata = self.set.catalog.face(s.face)?;
                 let face = s.parsed()?;
                 let mut previous = None;
                 for c in text.chars() {
@@ -317,6 +349,9 @@ impl Scope {
                     work.set(work.get().saturating_add(1));
                     if work.get() > self.set.catalog.limits.work {
                         return Err(Error::Limit);
+                    }
+                    if !ignorable(c) && !metadata.in_range(c) {
+                        return Ok(false);
                     }
                     if variation_selector(c) {
                         if strict_variations && previous.is_some_and(|base| face.glyph_variation_index(base, c).is_none_or(|g| g.0 == 0)) {

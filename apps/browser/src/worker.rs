@@ -180,85 +180,97 @@ fn render(
             Some(document) => document.take_html(&r.cancel)?,
             None => Arc::from(ABOUT),
         };
-        let host = PageHost::new(scope, &r.key);
         let mut last = Instant::now();
         let mut phase = None;
         let mut resources = 0usize;
         let mut images: HashMap<url::Url, Option<Arc<olo_web::image::Image>>> = HashMap::new();
         let mut image_bytes = 0usize;
-        let page = page::load_assets(
-            source,
-            &host,
-            scope,
-            shaper,
-            painter,
-            layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale },
-            Some(&r.cancel),
-            |p, n| {
-                if phase != Some(p) || last.elapsed() > Duration::from_millis(120) {
-                    phase = Some(p);
-                    last = Instant::now();
-                    proxy.send(Reply::Status(
-                        r.id,
-                        format!(
-                            "{}… {n}",
-                            match p {
-                                page::Phase::Html => "Parsing",
-                                page::Phase::Styles => "Styling",
-                                page::Phase::Boxes => "Building boxes",
-                                page::Phase::Text => "Preparing text",
-                                page::Phase::Layout => "Laying out",
-                                page::Phase::Paint => "Painting",
-                            }
-                        ),
-                    ));
-                }
-            },
-            |kind, base, href| {
-                let Some(document) = &document else {
-                    return Ok(None);
-                };
-                if kind == page::ResourceKind::Image {
-                    let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
-                    url.set_fragment(None);
-                    if let Some(image) = images.get(&url) {
-                        return Ok(image.as_ref().map(|image| page::Resource::Image(image.clone())));
-                    }
-                    resources += 1;
-                    if resources > 128 {
-                        return Err("Page exceeds the development resource request limit".into());
-                    }
-                    proxy.send(Reply::Status(r.id, "Loading image…".into()));
-                    return match loader.image(document, url.clone(), (64usize << 20).saturating_sub(image_bytes), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "image"))
-                    {
-                        Ok(image) => {
-                            image_bytes += image.payload_bytes();
-                            images.insert(url, Some(image.clone()));
-                            Ok(Some(page::Resource::Image(image)))
+        let viewport = layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale };
+        let media = olo_web::css::media::Media::screen(viewport.width, viewport.height, viewport.scale, r.key.palette.is_dark());
+        let mut report = |p: page::Phase, n: usize| {
+            if phase != Some(p) || last.elapsed() > Duration::from_millis(120) {
+                phase = Some(p);
+                last = Instant::now();
+                proxy.send(Reply::Status(
+                    r.id,
+                    format!(
+                        "{}… {n}",
+                        match p {
+                            page::Phase::Html => "Parsing",
+                            page::Phase::Styles => "Styling",
+                            page::Phase::Boxes => "Building boxes",
+                            page::Phase::Text => "Preparing text",
+                            page::Phase::Layout => "Laying out",
+                            page::Phase::Paint => "Painting",
                         }
-                        Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
-                        Err(error) => {
-                            eprintln!("Browser image: {error}");
-                            images.insert(url, None);
-                            Ok(None)
-                        }
-                    };
-                }
+                    ),
+                ));
+            }
+        };
+        let prepared = page::prepare(source, scope, media, true, Some(&r.cancel), &mut report, |kind, base, href| {
+            let Some(document) = &document else {
+                return Ok(None);
+            };
+            if kind == page::ResourceKind::Font {
+                let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
+                url.set_fragment(None);
                 resources += 1;
-                if resources > 128 {
+                if resources > 256 {
                     return Err("Page exceeds the development resource request limit".into());
                 }
-                proxy.send(Reply::Status(r.id, "Loading stylesheet…".into()));
-                match loader.stylesheet(document, base, href, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "stylesheet")) {
-                    Ok(sheet) => Ok(Some(page::Resource::Stylesheet(sheet))),
+                proxy.send(Reply::Status(r.id, "Loading font…".into()));
+                return match loader.font(document, url, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "font")) {
+                    Ok(bytes) => Ok(Some(page::Resource::Font(bytes))),
                     Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
                     Err(error) => {
-                        eprintln!("Browser stylesheet: {error}");
+                        eprintln!("Browser font: {error}");
                         Ok(None)
                     }
+                };
+            }
+            if kind == page::ResourceKind::Image {
+                let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
+                url.set_fragment(None);
+                if let Some(image) = images.get(&url) {
+                    return Ok(image.as_ref().map(|image| page::Resource::Image(image.clone())));
                 }
-            },
-        )?;
+                resources += 1;
+                if resources > 256 {
+                    return Err("Page exceeds the development resource request limit".into());
+                }
+                proxy.send(Reply::Status(r.id, "Loading image…".into()));
+                return match loader.image(document, url.clone(), (64usize << 20).saturating_sub(image_bytes), &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "image")) {
+                    Ok(image) => {
+                        image_bytes += image.payload_bytes();
+                        images.insert(url, Some(image.clone()));
+                        Ok(Some(page::Resource::Image(image)))
+                    }
+                    Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
+                    Err(error) => {
+                        eprintln!("Browser image: {error}");
+                        images.insert(url, None);
+                        Ok(None)
+                    }
+                };
+            }
+            resources += 1;
+            if resources > 256 {
+                return Err("Page exceeds the development resource request limit".into());
+            }
+            proxy.send(Reply::Status(r.id, "Loading stylesheet…".into()));
+            let absolute = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href).ok().map(|u| Arc::<str>::from(u.as_str()));
+            match loader.stylesheet(document, base, href, &r.cancel, crate::network::progress(|s| proxy.send(Reply::Status(r.id, s)), "stylesheet")) {
+                Ok(sheet) => Ok(Some(page::Resource::Stylesheet(sheet, absolute))),
+                Err(error) if r.cancel.load(Ordering::Relaxed) => Err(error),
+                Err(error) => {
+                    eprintln!("Browser stylesheet: {error}");
+                    Ok(None)
+                }
+            }
+        })?;
+        // The host is made for the page's own fonts (its web faces included).
+        let host = PageHost::new(prepared.scope(), &r.key);
+        let page = page::finish(prepared, &host, shaper, painter, viewport, Some(&r.cancel), &mut report)?;
         let origin = document.as_ref().map(|d| d.url.clone()).unwrap_or(url::Url::parse("about:engine")?);
         let base = page.base_href.as_deref().and_then(|href| origin.join(href).ok()).unwrap_or_else(|| origin.clone());
         *cached = Some(Cached { key: r.key.clone(), page, viewport_dependent: host.viewport_used.get(), origin, base, links: HashMap::new(), navigation: 0, focus_targets: None, anchor_scroll: None });
@@ -294,16 +306,17 @@ fn render(
         if *viewport_dependent || page.media_dependent || key.scale != r.key.scale || key.palette != r.key.palette || page.interaction.changes_style(input, page.interaction_mask) {
             let previous = page.interaction;
             page.interaction = input;
-            let host = PageHost::new(scope, &r.key);
-            if let Err(error) = page.restyle(&host, scope, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {}) {
+            let host = PageHost::new(page.scope(), &r.key);
+            if let Err(error) = page.restyle(&host, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {}) {
                 page.interaction = previous;
                 return Err(error);
             }
             *viewport_dependent = host.viewport_used.get();
         } else {
+            let page_scope = page.scope().clone();
             let mut job = layout::Job::new(
                 shaper,
-                scope,
+                &page_scope,
                 page.scene.layout().cache().clone(),
                 layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale },
                 Default::default(),
@@ -576,7 +589,7 @@ mod tests {
         key.width = 600;
         key.height = 400;
         let host = PageHost::new(&scope, &key);
-        page.restyle(&host, &scope, &mut shaper, &mut painter, host.viewport, None, |_, _| {}).unwrap();
+        page.restyle(&host, &mut shaper, &mut painter, host.viewport, None, |_, _| {}).unwrap();
         assert_eq!((red(&page).width, red(&page).height), (150., 20.));
         assert_eq!(page.document.id(), identity);
         assert_eq!(fetched, 1);

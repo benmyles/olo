@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: Stripe in its own web font
+
+*21:44* — @font-face rules are parsed, their WOFF2/WOFF sources fetched relative to their stylesheet and decoded in Rust (Brotli stream, transformed glyf/loca and hmtx rebuilt), and the page is styled and shaped with a font scope that holds its web faces (unicode-range respected). Stripe's heading, navigation and buttons render in Sohne.
+
+![Browser: Stripe in its own web font](2026-11-06/214433-browser-stripe-in-its-own-web-font.png)
+
 ### Browser: Stripe's hero laid out by grid and flex
 
 *21:29* — Grid, column flex and atomic inlines (inline-block, inline-flex) are laid out for real: Stripe's heading is a single copy, its buttons take their content size, and the customer logos sit in a row. 759 fallbacks remain; the web font and the hero image's transform are the visible gaps.

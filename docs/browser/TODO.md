@@ -22,8 +22,10 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   alignment; areas, dense packing and column flow remain), column flex,
   atomic inlines (inline-block, inline-flex, inline-grid) laid out by
   fit-content inside their paragraph.
-- [ ] Web fonts: `@font-face` with WOFF2 (Brotli + glyf reconstruction),
-  `unicode-range`, font loading on the worker; Stripe uses Sohne.
+- [x] Web fonts: `@font-face` descriptors, WOFF2/WOFF decoding in Rust,
+  `unicode-range`, per-page font scopes; Stripe renders in Sohne.
+  Remaining: `local()` sources, `font-display` timing (fonts load before
+  first paint), system font discovery (the catalog holds Noto Sans only).
 - [ ] Styled inline runs: a paragraph shaped from several fonts/sizes
   (46 inlines flattened into their paragraph's typography).
 - [ ] Flex wrapping (8), vertical-align (23 images), opacity groups (45).

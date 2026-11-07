@@ -4,6 +4,7 @@ mod bytes;
 pub use bytes::{ByteDecoder, ByteOptions, ByteParseError, ByteSyntax, EncodingChoice, EncodingSource, encoding};
 pub mod cascade;
 pub mod color;
+pub mod fonts;
 pub mod math;
 pub mod media;
 mod parser;

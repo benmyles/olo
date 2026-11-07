@@ -8418,7 +8418,9 @@ dependencies = [
 name = "olo-web"
 version = "0.1.0"
 dependencies = [
+ "brotli-decompressor 6.2.0",
  "encoding_rs",
+ "flate2",
  "harfrust 0.15.0",
  "kurbo 0.11.3",
  "memchr",

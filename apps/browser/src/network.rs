@@ -17,8 +17,10 @@ enum Kind {
     Document,
     Stylesheet,
     Image,
+    Font,
 }
 const IMAGE_LIMIT: usize = 16 * 1024 * 1024;
+const FONT_LIMIT: usize = 32 * 1024 * 1024;
 const CSS_LIMIT: usize = 4 * 1024 * 1024;
 #[derive(Clone, Default)]
 pub struct Cancel {
@@ -117,6 +119,31 @@ impl Loader {
         let (w, h) = raster.pixels.dimensions();
         Ok(olo_web::image::Image::from_rgba(w, h, raster.pixels.into_raw(), Default::default(), Some(cancel))?)
     }
+    /// A web font's bytes (any container; the engine decodes WOFF itself).
+    pub fn font(&self, document: &Resource, url: Url, cancel: &Cancel, mut progress: impl FnMut(usize)) -> page::Result<Arc<[u8]>> {
+        if url.scheme() == "data" {
+            let data = data_url::DataUrl::process(url.as_str()).map_err(|_| "Malformed font data URL")?;
+            let mut bytes = Vec::new();
+            data.decode(|chunk| {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err("Cancelled");
+                }
+                if chunk.len() > FONT_LIMIT.saturating_sub(bytes.len()) {
+                    return Err("Font exceeds its encoded limit");
+                }
+                bytes.extend_from_slice(chunk);
+                Ok(())
+            })
+            .map_err(|_| "Font data URL rejected or cancelled")?;
+            progress(bytes.len());
+            return Ok(Arc::from(bytes));
+        }
+        let resource = self.fetch(url, Some(&document.url), FONT_LIMIT, cancel, &mut progress, Kind::Font)?;
+        if resource.status.is_some_and(|s| !(200..300).contains(&s)) {
+            return Err("Font returned an unsuccessful HTTP status".into());
+        }
+        Ok(Arc::from(resource.bytes))
+    }
     fn fetch(&self, mut url: Url, initiator: Option<&Url>, limit: usize, cancel: &Cancel, mut progress: impl FnMut(usize), kind: Kind) -> page::Result<Resource> {
         let allow_file = url.scheme() == "file";
         self.runtime.block_on(async {
@@ -149,7 +176,7 @@ impl Loader {
                             match kind {
                                 Kind::Document => "text/html",
                                 Kind::Stylesheet => "text/css",
-                                Kind::Image => "application/octet-stream",
+                                Kind::Image | Kind::Font => "application/octet-stream",
                             }
                             .parse()?,
                         );
@@ -164,6 +191,7 @@ impl Loader {
                                 Kind::Document => "text/html,text/plain;q=0.9,*/*;q=0.1",
                                 Kind::Stylesheet => "text/css,*/*;q=0.1",
                                 Kind::Image => "image/png,image/jpeg,image/webp,image/gif,*/*;q=0.1",
+                                Kind::Font => "font/woff2,font/woff,font/ttf,font/otf,*/*;q=0.1",
                             },
                         )
                         .send()

@@ -36,6 +36,7 @@ impl AsRef<[u8]> for Source {
 }
 /// Installed-face metadata. Names include localized typographic/legacy family
 /// aliases; subfamily/full/PostScript names are not mistaken for families.
+#[derive(Clone)]
 pub struct Face {
     pub families: Box<[Arc<str>]>,
     pub weight: Span,
@@ -44,14 +45,29 @@ pub struct Face {
     pub axes: Box<[Axis]>,
     pub units_per_em: u16,
     pub monospaced: bool,
+    /// `unicode-range` of a web face: the code points it is used for.
+    pub ranges: Option<Box<[(u32, u32)]>>,
     pub(super) source: usize,
     pub(super) collection_index: u32,
     pub(super) zero: Option<u16>,
     pub(super) water: Option<u16>,
 }
+/// What a `@font-face` rule says about its font, over what the file says.
+#[derive(Clone, Debug)]
+pub struct Descriptor {
+    pub family: Arc<str>,
+    pub weight: Span,
+    pub width: Span,
+    pub slopes: Slopes,
+    pub ranges: Option<Box<[(u32, u32)]>>,
+}
 impl Face {
     pub fn collection_index(&self) -> u32 {
         self.collection_index
+    }
+    /// Whether a web face covers this code point (an installed face covers all).
+    pub fn in_range(&self, c: char) -> bool {
+        self.ranges.as_ref().is_none_or(|ranges| ranges.iter().any(|&(lo, hi)| (lo..=hi).contains(&(c as u32))))
     }
     pub(super) fn axis(&self, tag: &[u8; 4]) -> Option<Axis> {
         self.axes.iter().copied().find(|a| &a.tag == tag)
@@ -109,6 +125,26 @@ impl Builder {
     }
     pub fn add_shared(&mut self, data: Arc<[u8]>, cancelled: Option<&AtomicBool>) -> Result<usize> {
         self.add(Bytes::Shared(data), cancelled)
+    }
+    /// Start from an existing catalog's faces and sources (shared, not copied).
+    pub fn from_catalog(catalog: &Catalog) -> Self {
+        Self { limits: catalog.limits, sources: catalog.sources.to_vec(), faces: catalog.faces.to_vec(), bytes: catalog.payload }
+    }
+    /// A web font: the descriptor names the family and the ranges it answers
+    /// for, over the file's own names. WOFF data is decoded first by the
+    /// caller; the first face of a collection is the one used.
+    pub fn add_face(&mut self, data: Arc<[u8]>, descriptor: Descriptor, cancelled: Option<&AtomicBool>) -> Result<()> {
+        let before = self.faces.len();
+        self.add(Bytes::Shared(data), cancelled)?;
+        let Some(face) = self.faces.get_mut(before) else { return Err(Error::Invalid) };
+        face.families = Box::new([descriptor.family]);
+        // A variable font's own range is only used within the descriptor's.
+        face.weight = descriptor.weight;
+        face.width = descriptor.width;
+        face.slopes = descriptor.slopes;
+        face.ranges = descriptor.ranges;
+        self.faces.truncate(before + 1);
+        Ok(())
     }
     /// Native bounded file I/O; call on a worker. Reads at most 64 KiB between
     /// cancel/progress checks. No source bytes are copied after loading.
@@ -277,6 +313,7 @@ impl Builder {
                 axes: axes.into_boxed_slice(),
                 units_per_em: parsed.units_per_em(),
                 monospaced: parsed.is_monospaced(),
+                ranges: None,
                 source: self.sources.len(),
                 collection_index: index as u32,
                 zero: reference('0'),
@@ -292,6 +329,27 @@ impl Builder {
         self.faces.extend(faces);
         self.bytes = retained;
         Ok(count)
+    }
+    /// Remove installed faces (those without ranges, from the original catalog)
+    /// whose family a web face declares, so `@font-face` wins by name.
+    pub(super) fn shadow(&mut self, families: &[String], cancelled: Option<&AtomicBool>) -> Result<()> {
+        if families.is_empty() {
+            return Ok(());
+        }
+        let limits = self.limits;
+        let mut keep = Vec::with_capacity(self.faces.len());
+        for face in &self.faces {
+            check(cancelled)?;
+            let web = face.families.len() == 1 && families.iter().any(|f| casefold::fold(&face.families[0], limits, cancelled).map(|n| n.as_ref() == f).unwrap_or(false));
+            let shadowed = !web && face.families.iter().any(|n| casefold::fold(n, limits, cancelled).map(|n| families.iter().any(|f| f == n.as_ref())).unwrap_or(false));
+            keep.push(!shadowed);
+        }
+        let mut i = 0;
+        self.faces.retain(|_| {
+            i += 1;
+            keep[i - 1]
+        });
+        Ok(())
     }
     pub fn finish(self, cancelled: Option<&AtomicBool>) -> Result<Arc<Catalog>> {
         check(cancelled)?;

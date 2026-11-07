@@ -69,6 +69,9 @@ triomphe = { version = "0.1.17", default-features = false, features = ["std"] }
 ttf-parser = "0.25.1"
 harfrust = "0.15.0"
 unicode-bidi = {version="0.3.18",default-features=false,features=["std"]}
+# Web fonts: WOFF2's Brotli stream and WOFF 1.0's zlib tables.
+brotli-decompressor = { version = "6", default-features = false, features = ["std"] }
+flate2 = "1"
 
 [dev-dependencies]
 serde_json.workspace = true

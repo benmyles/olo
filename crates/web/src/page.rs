@@ -29,10 +29,15 @@ pub enum Phase {
 pub enum ResourceKind {
     Stylesheet,
     Image,
+    /// A `@font-face` source: WOFF2, WOFF, TrueType or OpenType bytes.
+    Font,
 }
 pub enum Resource {
-    Stylesheet(css::Syntax),
+    /// A stylesheet and the absolute URL it was fetched from, which its
+    /// relative `url()`s resolve against.
+    Stylesheet(css::Syntax, Option<Arc<str>>),
     Image(Arc<crate::image::Image>),
+    Font(Arc<[u8]>),
 }
 pub struct Page {
     images: Option<Arc<crate::image::Set>>,
@@ -48,27 +53,55 @@ pub struct Page {
     /// agents and the eval, so a rendered page never passes as complete.
     pub fallbacks: layout::Fallbacks,
     rules: css::cascade::RuleSet,
-    /// Every stylesheet in document order (the UA sheet first), kept so a
-    /// changed medium (viewport, scheme) can recompile the `@media` rules.
-    sheets: Vec<(css::Syntax, Origin)>,
+    /// Every stylesheet in document order (the UA sheet first) with its URL,
+    /// kept so a changed medium (viewport, scheme) can recompile the `@media` rules.
+    sheets: Vec<(css::Syntax, Origin, Option<Arc<str>>)>,
     media: css::media::Media,
     /// Whether any stylesheet has `@media` rules, so only such pages recompile.
     pub media_dependent: bool,
+    /// The fonts this page styles and shapes with: the base scope plus its
+    /// web faces. Hosts for this page are made for this scope.
+    scope: Scope,
     quirks: bool,
     resource_issues: usize,
+}
+/// A document parsed, with its stylesheets, images and fonts loaded, ready
+/// to style for a host made for its `scope()`.
+pub struct Prepared {
+    document: Document,
+    sheets: Vec<(css::Syntax, Origin, Option<Arc<str>>)>,
+    rules: css::cascade::RuleSet,
+    media: css::media::Media,
+    media_dependent: bool,
+    images: Option<Arc<crate::image::Set>>,
+    title: String,
+    scripts: usize,
+    base: Option<String>,
+    resource_issues: usize,
+    quirks: bool,
+    scope: Scope,
+}
+impl Prepared {
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
 }
 fn media_for(host: &impl Host, viewport: layout::Viewport) -> css::media::Media {
     css::media::Media::screen(viewport.width, viewport.height, viewport.scale, host.scheme() == css::color::Scheme::Dark)
 }
-/// Compile every sheet for one medium.
-fn compile(sheets: &[(css::Syntax, Origin)], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<(css::cascade::RuleSet, bool)> {
+/// Compile every sheet for one medium, with the `@font-face` rules met.
+fn compile(sheets: &[(css::Syntax, Origin, Option<Arc<str>>)], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<(css::cascade::RuleSet, bool, Vec<css::fonts::FontFace>)> {
     let mut builder = SheetBuilder::new(Default::default()).with_media(media);
-    for (syntax, origin) in sheets {
-        builder.add_sheet(syntax, *origin, cancel)?;
+    for (syntax, origin, base) in sheets {
+        builder.add_sheet_from(syntax, *origin, base.clone(), cancel)?;
     }
     let dependent = builder.media_dependent();
-    Ok((builder.finish(cancel)?, dependent))
+    let faces = builder.font_faces().to_vec();
+    Ok((builder.finish(cancel)?, dependent, faces))
 }
+/// At most this many web fonts, and this many decoded bytes, per page.
+const FONT_FACES: usize = 64;
+const FONT_BYTES: usize = 64 * 1024 * 1024;
 /// Initial normal-flow defaults, not the complete HTML rendering stylesheet.
 pub const UA: &str = "svg{overflow:hidden}html,body,article,section,nav,aside,header,footer,main,div,p,blockquote,pre,h1,h2,h3,h4,h5,h6{display:block}head,title,base,link,meta,style,script,template,[hidden]{display:none}body{margin:8px}html{color:CanvasText}p,blockquote,pre{margin-top:1em;margin-bottom:1em}h1{font-size:2em;font-weight:bold;margin-top:.67em;margin-bottom:.67em}h2{font-size:1.5em;font-weight:bold;margin-top:.83em;margin-bottom:.83em}a{color:LinkText}pre{white-space:pre}";
 #[allow(clippy::too_many_arguments)] // Explicit worker resources, viewport, cancellation and progress.
@@ -100,12 +133,14 @@ pub fn load_resources(
     mut resource: impl FnMut(Option<&str>, &str) -> Result<Option<css::Syntax>>,
 ) -> Result<Page> {
     load_assets(source, host, scope, shaper, painter, viewport, cancel, progress, |kind, base, href| match kind {
-        ResourceKind::Stylesheet => resource(base, href).map(|s| s.map(Resource::Stylesheet)),
-        ResourceKind::Image => Ok(None),
+        ResourceKind::Stylesheet => resource(base, href).map(|s| s.map(|s| Resource::Stylesheet(s, None))),
+        ResourceKind::Image | ResourceKind::Font => Ok(None),
     })
 }
 /// Typed worker resources. Decoded image allocations are retained across restyle;
-/// the caller owns fetch/decode policy and can share repeated URLs.
+/// the caller owns fetch/decode policy and can share repeated URLs. Web fonts
+/// are not fetched here (the host is already bound to `scope`); a browser
+/// uses `prepare` and `finish` with a host made for the prepared scope.
 #[allow(clippy::too_many_arguments)]
 pub fn load_assets(
     source: Arc<str>,
@@ -116,13 +151,29 @@ pub fn load_assets(
     viewport: layout::Viewport,
     cancel: Option<&AtomicBool>,
     mut progress: impl FnMut(Phase, usize),
-    mut resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+    resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
 ) -> Result<Page> {
+    let prepared = prepare(source, scope, media_for(host, viewport), false, cancel, &mut progress, resource)?;
+    finish(prepared, host, shaper, painter, viewport, cancel, progress)
+}
+/// Parse the document and load its stylesheets, images and (when `fonts`)
+/// web fonts, through the resource callback. The result's scope has the
+/// web faces; make the host for it, then `finish`.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare(
+    source: Arc<str>,
+    scope: &Scope,
+    media: css::media::Media,
+    fonts: bool,
+    cancel: Option<&AtomicBool>,
+    mut progress: impl FnMut(Phase, usize),
+    mut resource: impl FnMut(ResourceKind, Option<&str>, &str) -> Result<Option<Resource>>,
+) -> Result<Prepared> {
     progress(Phase::Html, 0);
     let parsed = html::parse(source, html::ParseOptions { scripting: false, ..Default::default() }, cancel)?;
     let doc = parsed.document;
     progress(Phase::Styles, 0);
-    let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent)];
+    let mut sheets = vec![(css::Syntax::parse(Arc::from(UA), Default::default(), cancel)?, Origin::UserAgent, None)];
     let mut next = Some(doc.root());
     let mut title = String::new();
     let mut scripts = 0;
@@ -187,7 +238,7 @@ pub fn load_assets(
                         text.push_str(value)
                     }
                 }
-                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author));
+                sheets.push((css::Syntax::parse(Arc::from(text), Default::default(), cancel)?, Origin::Author, None));
             }
             Some("link") if doc.attribute(node, "rel")?.is_some_and(|r| r.split_ascii_whitespace().any(|p| p.eq_ignore_ascii_case("stylesheet"))) => {
                 let rel = doc.attribute(node, "rel")?.unwrap_or("");
@@ -201,12 +252,12 @@ pub fn load_assets(
                     resource_issues += 1;
                 } else if let Some(href) = doc.attribute(node, "href")? {
                     if let Some(resource) = resource(ResourceKind::Stylesheet, base.as_deref(), href)? {
-                        let Resource::Stylesheet(syntax) = resource else { return Err(paint::Error::Invalid.into()) };
+                        let Resource::Stylesheet(syntax, url) = resource else { return Err(paint::Error::Invalid.into()) };
                         css_bytes = css_bytes.checked_add(syntax.source().len()).ok_or(paint::Error::Limit)?;
                         if css_bytes > 4 * 1024 * 1024 {
                             return Err(paint::Error::Limit.into());
                         }
-                        sheets.push((syntax, Origin::Author));
+                        sheets.push((syntax, Origin::Author, url));
                     } else {
                         resource_issues += 1;
                     }
@@ -244,11 +295,73 @@ pub fn load_assets(
         }
     }
     let images = if image_bindings.is_empty() { None } else { Some(crate::image::Set::new(&doc, image_bindings, Default::default(), cancel)?) };
-    let media = media_for(host, viewport);
-    let (rules, media_dependent) = compile(&sheets, media, cancel)?;
-    let interaction_mask = rules.state_mask();
+    let (rules, media_dependent, faces) = compile(&sheets, media, cancel)?;
+    // Web fonts: the first decodable source of each face. A face whose file
+    // fails to load or decode is simply unavailable, as in other browsers.
+    let mut loaded = Vec::new();
+    let mut font_bytes = 0usize;
+    if fonts {
+        for face in faces.iter().take(FONT_FACES) {
+            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+                return Err(paint::Error::Cancelled.into());
+            }
+            let Some(css::fonts::Source::Url { url, .. }) = face.sources.iter().find(|s| s.decodable()) else {
+                resource_issues += 1;
+                continue;
+            };
+            match resource(ResourceKind::Font, face.base.as_deref().or(base.as_deref()), url)? {
+                Some(Resource::Font(bytes)) => {
+                    font_bytes = font_bytes.checked_add(bytes.len()).ok_or(paint::Error::Limit)?;
+                    if font_bytes > FONT_BYTES {
+                        return Err(paint::Error::Limit.into());
+                    }
+                    let data: Arc<[u8]> = if crate::font::woff::is_woff(&bytes) {
+                        match crate::font::woff::decode(&bytes, cancel) {
+                            Ok(sfnt) => {
+                                font_bytes = font_bytes.checked_add(sfnt.len()).ok_or(paint::Error::Limit)?;
+                                if font_bytes > FONT_BYTES {
+                                    return Err(paint::Error::Limit.into());
+                                }
+                                Arc::from(sfnt)
+                            }
+                            Err(crate::font::Error::Cancelled) => return Err(paint::Error::Cancelled.into()),
+                            Err(crate::font::Error::Limit) => return Err(paint::Error::Limit.into()),
+                            Err(_) => {
+                                resource_issues += 1;
+                                continue;
+                            }
+                        }
+                    } else {
+                        bytes
+                    };
+                    loaded.push((data, face.descriptor.clone()));
+                }
+                None => resource_issues += 1,
+                _ => return Err(paint::Error::Invalid.into()),
+            }
+        }
+        resource_issues += faces.len().saturating_sub(FONT_FACES);
+    }
+    let scope = if loaded.is_empty() { scope.clone() } else { scope.with_faces(loaded, cancel)? };
     let quirks = parsed.quirks == html::QuirksMode::Quirks;
-    let (scene, stylesheet_issues, fallbacks) = render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, scope, shaper, painter, viewport, cancel, &mut progress)?;
+    Ok(Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope })
+}
+/// Style, lay out and paint a prepared document for a host made for its scope.
+pub fn finish(
+    prepared: Prepared,
+    host: &impl Host,
+    shaper: &mut shaping::Engine,
+    painter: &mut paint::Engine,
+    viewport: layout::Viewport,
+    cancel: Option<&AtomicBool>,
+    mut progress: impl FnMut(Phase, usize),
+) -> Result<Page> {
+    let Prepared { document: doc, sheets, rules, media, media_dependent, images, title, scripts, base, resource_issues, quirks, scope } = prepared;
+    if host.font_context() != scope.context() {
+        return Err(style::Error::Stale.into());
+    }
+    let interaction_mask = rules.state_mask();
+    let (scene, stylesheet_issues, fallbacks) = render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, &scope, shaper, painter, viewport, cancel, &mut progress)?;
     Ok(Page {
         images,
         document: doc,
@@ -264,17 +377,20 @@ pub fn load_assets(
         sheets,
         media,
         media_dependent,
+        scope,
         quirks,
         resource_issues,
     })
 }
 impl Page {
+    /// The fonts this page is styled and shaped with.
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
     /// Recompute viewport-dependent styles without network I/O or HTML parsing.
-    #[allow(clippy::too_many_arguments)]
     pub fn restyle(
         &mut self,
         host: &impl Host,
-        scope: &Scope,
         shaper: &mut shaping::Engine,
         painter: &mut paint::Engine,
         viewport: layout::Viewport,
@@ -286,12 +402,13 @@ impl Page {
         }
         let media = media_for(host, viewport);
         if self.media_dependent && media != self.media {
-            let (rules, dependent) = compile(&self.sheets, media, cancel)?;
+            let (rules, dependent, _) = compile(&self.sheets, media, cancel)?;
             self.rules = rules;
             self.media_dependent = dependent;
             self.interaction_mask = self.rules.state_mask();
             self.media = media;
         }
+        let scope = &self.scope;
         let (scene, issues, fallbacks) =
             render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, &mut progress)?;
         self.scene = scene;

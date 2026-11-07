@@ -256,7 +256,7 @@ fn native_image_alpha_tiles_and_restyle_keep_the_same_asset() {
         }
         let differences: Vec<_> = tiles.iter().zip(whole.rgba()).enumerate().filter(|(_, (a, b))| a != b).map(|(i, (a, b))| (i / 4 % 64, i / 4 / 64, i % 4, *a, *b)).collect();
         assert!(differences.is_empty(), "tile seam at scale {scale}: {} differing channels; first {:?}", differences.len(), differences.iter().take(16).collect::<Vec<_>>());
-        page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 40., height: 24., scale }, None, |_, _| {}).unwrap();
+        page.restyle(&host, &mut shaper, &mut painter, layout::Viewport { width: 40., height: 24., scale }, None, |_, _| {}).unwrap();
         let set = page.scene.layout().cache().tree().images().unwrap();
         assert!(Arc::ptr_eq(set.get(node).unwrap(), &pixels));
         assert_eq!(calls, 1);
@@ -290,7 +290,7 @@ fn minified_alpha_tiles_are_seamless_cached_and_reclaimed() {
         assert_eq!(tiled.iter().zip(whole.rgba()).filter(|(a, b)| a != b).count(), 0, "minification seam at {scale}");
         assert_eq!(painter.image_cache_stats().generated_pixels, generated);
         assert!(painter.image_cache_stats().bytes <= paint::Limits::default().image_mip_bytes);
-        page.restyle(&host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 40., height: 24., scale }, None, |_, _| {}).unwrap();
+        page.restyle(&host, &mut shaper, &mut painter, layout::Viewport { width: 40., height: 24., scale }, None, |_, _| {}).unwrap();
         painter.raster(&page.scene, region, None).unwrap();
         assert_eq!(painter.image_cache_stats().generated_pixels, generated);
         assert_eq!(calls, 1);
