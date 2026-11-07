@@ -218,5 +218,11 @@
     "38 existing SVG pixel nonpasses remain"
   ],
   "stripe_configurations_passed": 0,
-  "sites_passed": 0
+  "sites_passed": 0,
+  "main_integration": {
+    "main": "53b1ba749c5a35247796fcdc9d27c889454c7380",
+    "merge": "f9f14a03",
+    "workspace_release_seconds": 47.69,
+    "passed": true
+  }
 }

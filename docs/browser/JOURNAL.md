@@ -5062,5 +5062,19 @@ hit testing or useful Stripe homepage yet. Stripe0/30; corpus0/100.
 Next: resolve referenced SVG clip geometry, preserving arbitrary IDs, CSS
 cascade/overrides and ancestor intersections, then connect inset painting and
 retry the real page. Main advanced again to53b1ba74 during this checkpoint;
-merge after committing the measured component. Goal active, Stripe remains the
-only selected site.
+committed/pushed measured component65d51d68, merged/pushed it via f9f14a03 and
+validated the combined release workspace47.69s. Removed14 completed owned
+profiles/binaries; latest inset after binaries and all raw evidence retained.
+Goal active, Stripe remains the only selected site.
+
+Next implementation notes: CSS Masking1 section5.1 specifies that an invalid
+URI target (missing or wrong element type) applies no clipping; a valid empty
+clip is different. SVG rectangle coordinates/radii must use computed CSS, not
+only attributes. Build a bounded/cancellable document ID index once per job,
+not one full-DOM scan per SVG/reference; preserve tree-order duplicate handling
+and decode fragment escapes once. Retain resolved geometry and ancestor clips;
+clipPath itself is never directly painted. Sources consulted:
+https://www.w3.org/TR/css-masking-1/#the-clip-path,
+https://www.w3.org/TR/SVG2/linking.html#processingURL-validity,
+https://www.w3.org/TR/SVG2/shapes.html#RectElement.
+
