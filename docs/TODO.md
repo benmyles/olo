@@ -15,6 +15,17 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **A window opened from a floating one opens on top of it** (Ben,
+  2026-11-06: "if i'm in a floating window like prefs -> sound and click
+  e.g. try it for the voice processing and that opens another window,
+  that other window should open on top not under the one i launched it
+  from"). A window an app opens (Preferences ▸ Sound ▸ Voice Processing's
+  Try It, any dialog or panel opened from a floating window) is placed
+  and stacked above the window it was opened from, and has the focus:
+  app_server's new-window placement (shell/xdg.rs) raising a new
+  toplevel above its app's (or its parent's) floating windows, for
+  every app, not only Preferences.
+
 - **The start-up screen's sound says "olo"** (Ben, 2026-11-06: "for
   the olo startup screen add a startup sound that is like
   \"ooollllooooo\" reminiscent of the mac startup sound but saying olo
