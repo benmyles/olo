@@ -252,12 +252,31 @@ pub struct TempFiles {
     pub runtime: PathBuf,
 }
 
+/// The session's `TMPDIR`: what systemd's user manager has (`manager`,
+/// what everything started from now on gets); if it couldn't be asked
+/// (busy past its 10 s), what Olo's file sets for the session (`file`),
+/// and only then this program's own (`own`). Doctor's watcher starts at
+/// login, before any fix, so its own has none: whenever the manager was
+/// slow to answer, the tray said "Temporary files take memory" while the
+/// window, started after the fix, said all was well (Ben, 2026-11-07:
+/// "seems like some of the checks are flaky").
+fn session_tmpdir(manager: Option<Vec<(String, String)>>, file: Option<String>, own: Option<String>) -> Option<String> {
+    let found = match manager {
+        Some(env) => env.into_iter().find(|(k, _)| k == "TMPDIR").map(|(_, v)| v),
+        None => file.or(own),
+    };
+    found.filter(|d| !d.is_empty())
+}
+
 impl TempFiles {
     fn real() -> TempFiles {
-        let manager = olo_system::env::manager_environment().unwrap_or_default();
-        let tmpdir = manager.iter().find(|(k, _)| k == "TMPDIR").map(|(_, v)| v.clone()).or_else(|| std::env::var("TMPDIR").ok()).filter(|d| !d.is_empty());
         let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
         let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".config"));
+        let manager = olo_system::env::manager_environment();
+        if let Err(e) = &manager {
+            tracing::info!("doctor: systemd's user manager didn't say its environment ({e}): going by Olo's file");
+        }
+        let tmpdir = session_tmpdir(manager.ok(), olo_system::env::tmpdir_in_file(&config), std::env::var("TMPDIR").ok());
         let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/share"));
         let runtime = olo_xdg::runtime_dir();
         TempFiles {
@@ -967,7 +986,9 @@ fn wifi(roots: &Roots, r: &mut Report) {
         // Not installed (a build tree): nothing to install it from.
         return;
     }
-    let state = (roots.units)("olo-wifi-heal.service").unwrap_or_default();
+    // (systemd not answering, busy: nothing said, not "stopped": what
+    // isn't known isn't a problem, and it flickered in the tray.)
+    let Ok(state) = (roots.units)("olo-wifi-heal.service") else { return };
     let installed = roots.fs.join(HEAL_BIN_PATH);
     let current = same_healer(&source, &installed)
         && read(&roots.fs.join(HEAL_UNIT_PATH)).as_deref() == Some(HEAL_UNIT.trim())
@@ -1008,7 +1029,9 @@ fn wifi(roots: &Roots, r: &mut Report) {
 fn rtkit(roots: &Roots, r: &mut Report) {
     let unit = "rtkit-daemon.service";
     match (roots.units)(unit) {
-        Err(e) => r.findings.push(Finding { id: "rtkit".into(), severity: Severity::Advice, title: "systemd couldn't be asked about rtkit".into(), detail: format!("{e}. The Performance supervisor raises Olo's threads through rtkit."), fix: None }),
+        // (Not answering, busy: nothing said this look; it said "systemd
+        // couldn't be asked" and was gone at the next.)
+        Err(e) => tracing::info!("doctor: systemd didn't say how rtkit is: {e}"),
         Ok(s) if !s.loaded => r.findings.push(Finding {
             id: "rtkit".into(),
             severity: Severity::Advice,
@@ -2800,6 +2823,26 @@ mod tests {
     /// without a restart, what uses it quit first, nvidia-powerd stopped
     /// and started; none offered while the session's display server has
     /// it open; nothing said once it answers again.
+    /// The session's TMPDIR: systemd's when it answers; else Olo's file,
+    /// never Doctor's own (the watcher's, from before the fix) over it.
+    #[test]
+    fn the_sessions_tmpdir() {
+        let set = || Some(vec![("TMPDIR".to_owned(), "/var/tmp".to_owned())]);
+        assert_eq!(session_tmpdir(set(), None, None).as_deref(), Some("/var/tmp"));
+        // (The manager says none: none, whatever this program has.)
+        assert_eq!(session_tmpdir(Some(vec![]), Some("/var/tmp".into()), Some("/var/tmp".into())), None);
+        // Not answering: the file's, then this program's own.
+        assert_eq!(session_tmpdir(None, Some("/var/tmp".into()), None).as_deref(), Some("/var/tmp"));
+        assert_eq!(session_tmpdir(None, None, Some("/srv/tmp".into())).as_deref(), Some("/srv/tmp"));
+        assert_eq!(session_tmpdir(None, None, None), None);
+        // The file as Doctor's fix writes it.
+        let dir = PathBuf::from(format!("/var/tmp/olo-tmpdir-file-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(dir.join("environment.d"));
+        std::fs::write(dir.join(olo_system::env::TMPDIR_FILE), "# Olo Doctor: …\nTMPDIR=/var/tmp\nTMP=/var/tmp\nTEMP=/var/tmp\n").unwrap();
+        assert_eq!(olo_system::env::tmpdir_in_file(&dir).as_deref(), Some("/var/tmp"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_stuck_nvidia_card_is_started_again() {
         let (fs, roots) = machine("stuck-gpu");

@@ -8473,7 +8473,15 @@ and `FromHelper::Done`), asked for only in the person's own session;
 `OLO_DOCTOR_HELPER=direct|off` as `OLO_ACTIVITY_HELPER`. After a fix the
 report is taken again; what was fixed and is gone is listed under Fixed.
 Scans run on a thread; nothing is polled: Check Again (⌘R), a fix, or
-the app opened again looks again.
+the app opened again looks again. What can't be found out says nothing,
+never a problem: systemd's user manager busy past its 10 s (as it was
+while memory ran low on 2026-11-07) left the watcher, started at login
+before Doctor's TMPDIR fix, judging by its own environment, and the
+tray said "Temporary files take memory" while the window said all was
+well (Ben: "seems like some of the checks are flaky"). The session's
+TMPDIR is the manager's, else what Olo's environment.d file sets, only
+then Doctor's own (`session_tmpdir`); a unit systemd didn't say the
+state of (the Wi-Fi healer's, rtkit's) is left until the next look.
 
 `olo-doctor --report` prints the report as JSON (agents, scripts).
 `olo-doctor --watch` is one of the real session's services
