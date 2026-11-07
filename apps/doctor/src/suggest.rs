@@ -42,6 +42,13 @@ const BRUSH_ID: &str = "brush-shell";
 /// What's suggested now, and what's applied. (`OLO_SUGGESTIONS_DEMO=
 /// applied`: everything applied, made up, to look at headless without
 /// changing the computer.)
+/// What Olo Suggestions suggests now, what's ignored set aside (ignored.rs).
+pub fn look() -> Report {
+    let mut report = scan();
+    report.set_aside(&crate::ignored::of(crate::app::Kind::Suggestions));
+    report
+}
+
 pub fn scan() -> Report {
     let mut r = Report::default();
     if std::env::var("OLO_SUGGESTIONS_DEMO").as_deref() == Ok("applied") {

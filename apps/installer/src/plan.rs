@@ -16,7 +16,7 @@ use std::{
 };
 
 use olo_doctor::{
-    fix::{Step, UnitAction},
+    fix::Step,
     helper::{FromHelper, Helper, ToHelper, Way},
 };
 
@@ -242,69 +242,6 @@ fn session_steps(c: &Computer, olo: &Path) -> Result<Vec<Step>, String> {
     Ok(steps)
 }
 
-/// SELinux's labels for Olo's login screen, as GDM's are: its program
-/// runs as a display manager (`xdm_t`, from which the person's session may
-/// start: as `bin_t` it was `unconfined_service_t`, which may not), its
-/// folders the display manager's own (tools/install-login.sh: the same).
-const SELINUX_LABELS: &[(&str, &str)] = &[("/usr/local/libexec/olo/olo-login", "xdm_exec_t"), ("/run/olo-login(/.*)?", "xdm_var_run_t"), ("/var/lib/olo-greeter(/.*)?", "xdm_var_lib_t")];
-
-/// The root steps for Olo's own login screen in GDM's place (as
-/// tools/install-login.sh --switch does), from the unpacked `olo`.
-fn login_screen_steps(olo: &Path) -> Result<Vec<Step>, String> {
-    let read = |p: PathBuf| std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()));
-    let libexec = PathBuf::from("/usr/local/libexec/olo");
-    let share = PathBuf::from("/usr/local/share/olo");
-    let mut steps = Vec::new();
-    for name in ["olo-login", "olo-greeter", "olo-session", "olo-app-server", "olo-wlproxy"] {
-        let from = olo.join("bin").join(name);
-        if from.is_file() {
-            steps.push(Step::CopyFile { from, to: libexec.join(name), mode: 0o755 });
-        }
-    }
-    for d in ["icons", "brand", "fonts", "wallpapers", "themes"] {
-        steps.push(Step::CopyTree { from: olo.join("share/olo").join(d), to: share.join(d), mode: 0o644 });
-    }
-    for e in std::fs::read_dir(olo.join("system/pam")).map_err(|e| e.to_string())?.flatten() {
-        steps.push(Step::WriteFile { path: PathBuf::from("/etc/pam.d").join(e.file_name()), content: read(e.path())?, mode: 0o644 });
-    }
-    // The login password opens Olo's keyring (olo-login's PAM names it).
-    steps.push(Step::CopyFile { from: olo.join("bin/pam_olo_keyring.so"), to: PathBuf::from("/usr/lib64/security/pam_olo_keyring.so"), mode: 0o755 });
-    steps.push(Step::WriteFile { path: "/etc/sysusers.d/olo-greeter.conf".into(), content: read(olo.join("system/sysusers/olo-greeter.conf"))?, mode: 0o644 });
-    let tmpfiles = read(olo.join("system/tmpfiles/olo-greeter.conf"))?;
-    steps.push(Step::WriteFile { path: "/etc/tmpfiles.d/olo-greeter.conf".into(), content: tmpfiles.clone(), mode: 0o644 });
-    // The login screen's user, made by systemd's own program; its folders
-    // made here (systemd won't start its tmpfiles service again by hand,
-    // and its sysusers service runs only after an update).
-    steps.push(Step::MakeSystemUsers { config: "/etc/sysusers.d/olo-greeter.conf".into() });
-    steps.extend(folders(&tmpfiles));
-    // A display manager to SELinux, as GDM is (its program, its folders).
-    steps.push(Step::SelinuxLabels {
-        rules: SELINUX_LABELS.iter().map(|(r, t)| ((*r).to_owned(), (*t).to_owned())).collect(),
-        restore: ["/usr/local/libexec/olo", "/run/olo-login", "/var/lib/olo-greeter"].map(PathBuf::from).to_vec(),
-    });
-    steps.push(Step::WriteFile { path: "/etc/systemd/system/olo-login.service".into(), content: read(olo.join("system/systemd/olo-login.service"))?, mode: 0o644 });
-    steps.push(Step::Unit { name: "olo-login.service".into(), action: UnitAction::Reload });
-    steps.push(Step::Unit { name: "gdm.service".into(), action: UnitAction::Disable });
-    steps.push(Step::Unit { name: "olo-login.service".into(), action: UnitAction::Enable });
-    Ok(steps)
-}
-
-/// The folders a tmpfiles.d file's `d` lines ask for (`d PATH MODE USER
-/// GROUP -`), as steps.
-fn folders(tmpfiles: &str) -> Vec<Step> {
-    tmpfiles
-        .lines()
-        .filter_map(|l| {
-            let f: Vec<&str> = l.split_whitespace().collect();
-            (f.len() >= 4 && f[0] == "d").then(|| Step::MakeDir {
-                path: PathBuf::from(f[1]),
-                mode: u32::from_str_radix(f[2], 8).unwrap_or(0o755),
-                owner: (f[3] != "root" && f[3] != "-").then(|| f[3].to_owned()),
-            })
-        })
-        .collect()
-}
-
 /// The root steps for Olo's boot splash, the theme made (as the person,
 /// at their screen's scale) into `theme`.
 fn boot_splash_steps(theme: &Path) -> Result<Vec<Step>, String> {
@@ -500,7 +437,11 @@ pub fn install(choices: Choices, given: Option<String>, stop: Arc<AtomicBool>, t
     let mut restart = false;
     if choices.login_screen {
         stage("Installing Olo's login screen");
-        match login_screen_steps(&olo).and_then(|s| root.run(s, &say)) {
+        // (Steps shared with Olo Doctor's "Use Olo's Login Screen", in
+        // place of whichever display manager the system starts.)
+        let instead = olo_doctor::login_screen::display_manager(Path::new("/")).or_else(|| Some("gdm.service".into()));
+        let steps = olo_doctor::login_screen::steps(&olo.join("bin"), &olo.join("share/olo"), instead.as_deref());
+        match root.run(steps, &say) {
             Ok(()) => restart = true,
             Err(e) => return say(fail("Installing Olo's login screen", e, "Try again, or leave it out: Olo is on GDM's session menu either way.")),
         }
@@ -575,7 +516,7 @@ mod tests {
 
     #[test]
     fn a_tmpfiles_file_s_folders() {
-        let steps = folders("# a comment\nd /var/lib/olo-greeter 0750 olo-greeter olo-greeter -\nd /run/olo-login 0755 root root -\nL /x - - - - /y\n");
+        let steps = olo_doctor::login_screen::folders("# a comment\nd /var/lib/olo-greeter 0750 olo-greeter olo-greeter -\nd /run/olo-login 0755 root root -\nL /x - - - - /y\n");
         assert_eq!(
             steps,
             [Step::MakeDir { path: "/var/lib/olo-greeter".into(), mode: 0o750, owner: Some("olo-greeter".into()) }, Step::MakeDir { path: "/run/olo-login".into(), mode: 0o755, owner: None },]

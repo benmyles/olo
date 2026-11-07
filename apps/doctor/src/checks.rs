@@ -92,13 +92,14 @@ const FOREIGN: &[(&str, &str)] = &[
 /// GNOME's services Olo has its own in place of: one running in an Olo
 /// session was started by something before Olo's took over (the start of
 /// the session, a program started before an upgrade) and isn't needed.
-/// GNOME Keyring only while Olo's keyring answers.
+/// GNOME Keyring only while Olo's keyring answers. (After a `|`: what
+/// follows its processes, as `by_program` says them.)
 const GNOME_SERVICES: &[(&str, &str)] = &[
-    ("dconf-service", "GNOME's dconf service (olo-dconf answers in its place)"),
-    ("xdg-desktop-portal-gnome", "GNOME's portal backend (olo-portal is the portals' backend)"),
-    ("xdg-desktop-portal-gtk", "GTK's portal backend (olo-portal is the portals' backend)"),
-    ("gnome-keyring-daemon", "GNOME Keyring (Olo's keyring answers in its place)"),
-    ("gvfsd", "gvfs (programs Olo starts use GIO's own files)"),
+    ("dconf-service", "GNOME's dconf service|, where olo-dconf answers"),
+    ("xdg-desktop-portal-gnome", "GNOME's portal backend|, where olo-portal is the backend"),
+    ("xdg-desktop-portal-gtk", "GTK's portal backend|, where olo-portal is the backend"),
+    ("gnome-keyring-daemon", "GNOME Keyring|, where Olo's keyring answers"),
+    ("gvfsd", "gvfs|, where programs Olo starts use GIO's own files"),
     ("gvfsd-fuse", "gvfs's FUSE folder"),
     ("gvfsd-metadata", "gvfs's metadata"),
     ("gvfs-udisks2-volume-monitor", "gvfs's disk monitor"),
@@ -169,6 +170,10 @@ pub struct Report {
     pub fine: Vec<Fine>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub undo: Vec<Undo>,
+    /// Found, but what the person said to ignore (ignored.rs): out of the
+    /// counts, Fix All, the tray and the notifications; still fixable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignored: Vec<Finding>,
 }
 
 impl Report {
@@ -180,8 +185,25 @@ impl Report {
         self.findings.iter().filter(|f| f.fix.is_some())
     }
 
+    /// A finding, ignored or not.
     pub fn find(&self, id: &str) -> Option<&Finding> {
-        self.findings.iter().find(|f| f.id == id)
+        self.findings.iter().chain(&self.ignored).find(|f| f.id == id)
+    }
+
+    /// The findings whose ids are in `ids` moved to `ignored`.
+    pub fn set_aside(&mut self, ids: &std::collections::BTreeSet<String>) {
+        let (ignored, kept) = std::mem::take(&mut self.findings).into_iter().partition(|f| ids.contains(&f.id));
+        self.findings = kept;
+        self.ignored = ignored;
+    }
+
+    /// Finding `id` ignored (`on`) or back among the rest, as the window
+    /// shows it at once (ignored.rs keeps it).
+    pub fn move_ignored(&mut self, id: &str, on: bool) {
+        let (from, to) = if on { (&mut self.findings, &mut self.ignored) } else { (&mut self.ignored, &mut self.findings) };
+        if let Some(i) = from.iter().position(|f| f.id == id) {
+            to.push(from.remove(i));
+        }
     }
 
     /// What the button `id` does: a finding's fix, or an undo.
@@ -455,7 +477,15 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 /// Look this computer over, and say what was found for Deskbar's tray
 /// (`olo_protocol::doctor::DoctorFound`).
 pub fn look() -> Report {
-    let report = scan(&Roots::real());
+    let mut report = scan(&Roots::real());
+    report.set_aside(&crate::ignored::of(crate::app::Kind::Doctor));
+    tell_tray(&report);
+    report
+}
+
+/// What Deskbar's tray shows (its bag) from `report`: what's ignored is
+/// left out.
+pub fn tell_tray(report: &Report) {
     let issues: Vec<&Finding> = report.findings.iter().filter(|f| f.severity == Severity::Problem || f.fix.is_some()).collect();
     let found = olo_protocol::doctor::DoctorFound {
         issues: issues.iter().map(|f| f.title.clone()).collect(),
@@ -465,7 +495,6 @@ pub fn look() -> Report {
     if let Err(e) = found.save() {
         tracing::warn!("doctor: what was found not saved: {e}");
     }
-    report
 }
 
 pub fn scan(roots: &Roots) -> Report {
@@ -498,6 +527,7 @@ pub fn scan(roots: &Roots) -> Report {
     stale(roots, &procs, &mut r);
     login_entry(roots, &mut r);
     login_screen_handed_over(roots, &mut r);
+    own_login_screen(roots, &mut r);
     temp_files(roots, &mut r);
     file_manager(roots, &mut r);
     r
@@ -695,15 +725,41 @@ fn foreign(roots: &Roots, procs: &[Proc], r: &mut Report) {
         r.fine.push(Fine { title: "No other desktop's daemons run in this session".into(), detail: "Nothing fights Olo for the keys or the power settings.".into() });
         return;
     }
-    let names: Vec<String> = mine.iter().map(|(p, what)| format!("{what} ({}, process {})", p.name, p.pid)).collect();
+    let names = by_program(&mine);
     let steps = mine.iter().map(|(p, _)| Step::Signal { pid: p.pid, signal: libc::SIGTERM }).collect();
     r.findings.push(Finding {
         id: "foreign".into(),
         severity: Severity::Problem,
-        title: if mine.len() == 1 { "A program of another desktop runs in this session".into() } else { format!("{} programs of another desktop run in this session", mine.len()) },
+        title: if names.len() == 1 { "A program of another desktop runs in this session".into() } else { format!("{} programs of another desktop run in this session", names.len()) },
         detail: format!("{}. They answer to keys and power events meant for Olo, and some grab devices. Olo does all of this itself; they aren't needed here and are quit.", names.join("; ")),
         fix: Some(Fix { label: "Quit Them".into(), root: false, steps }),
     });
+}
+
+/// Programs found running, each said once with its processes (a portal
+/// backend D-Bus started six times is one program, not six): "GTK's
+/// portal backend (xdg-desktop-portal-gtk, processes 1, 2 and 3)", and
+/// what follows a `|` in its description after them (", where olo-portal
+/// is the backend").
+fn by_program(found: &[(&Proc, &str)]) -> Vec<String> {
+    let mut programs: Vec<(&str, &str, Vec<i32>)> = Vec::new();
+    for (p, what) in found {
+        match programs.iter_mut().find(|(name, ..)| *name == p.name) {
+            Some((.., pids)) => pids.push(p.pid),
+            None => programs.push((&p.name, what, vec![p.pid])),
+        }
+    }
+    programs
+        .into_iter()
+        .map(|(name, what, pids)| {
+            let (what, then) = what.split_once('|').unwrap_or((what, ""));
+            match pids.as_slice() {
+                [pid] => format!("{what} ({name}, process {pid}){then}"),
+                [rest @ .., last] => format!("{what} ({name}, processes {} and {last}){then}", rest.iter().map(i32::to_string).collect::<Vec<_>>().join(", ")),
+                [] => String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Nothing of GNOME's needed: its services Olo has its own in place of
@@ -729,12 +785,12 @@ fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
         r.fine.push(Fine { title: "Nothing of GNOME's runs".into(), detail: "Olo answers for dconf, the portals and the keyring itself, and programs it starts use GIO's own files.".into() });
         return;
     }
-    let names: Vec<String> = found.iter().map(|(p, what)| format!("{what} ({}, process {})", p.name, p.pid)).collect();
+    let names = by_program(&found);
     let gvfs = found.iter().any(|(p, _)| p.name.starts_with("gvfs"));
     r.findings.push(Finding {
         id: "gnome:services".into(),
         severity: Severity::Advice,
-        title: if found.len() == 1 { "One of GNOME's services runs".into() } else { format!("{} of GNOME's services run", found.len()) },
+        title: if names.len() == 1 { "One of GNOME's services runs".into() } else { format!("{} of GNOME's services run", names.len()) },
         detail: format!(
             "{}. Olo has its own in their place; something started these before Olo's took over (the start of the session, or a program started before an upgrade), and they aren't needed. Quitting them is safe: what asks for dconf, a portal or the keyring reaches Olo's.{}",
             names.join("; "),
@@ -1827,6 +1883,70 @@ fn login_screen_handed_over(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// Olo's own login screen (login_screen.rs): offered while another is
+/// the login screen (Ben, 2026-11-07: "the login screen should come up in
+/// olo doctor as something it can do for me"), its copies brought up to
+/// date once an upgrade has left them older, and, in use, a way back to
+/// the one it took the place of.
+fn own_login_screen(roots: &Roots, r: &mut Report) {
+    use crate::login_screen as ls;
+    // (Not installed: a build tree's, or Olo without its login screen.)
+    if !roots.bin.join("olo-login").is_file() || !roots.bin.join("olo-greeter").is_file() {
+        return;
+    }
+    // (An atomic Fedora's /usr is its image's: tools/setup.sh's way there.)
+    if roots.fs.join("run/ostree-booted").exists() {
+        return;
+    }
+    let share = roots.bin.parent().map(|p| p.join("share/olo")).unwrap_or_default();
+    let dm = ls::display_manager(&roots.fs);
+    if dm.as_deref() == Some(ls::SERVICE) {
+        let old = ls::stale(&roots.fs, &roots.bin);
+        if !old.is_empty() {
+            r.findings.push(Finding {
+                id: "login:own-older".into(),
+                severity: Severity::Advice,
+                title: "Olo's login screen runs an older version".into(),
+                detail: format!(
+                    "It runs copies of Olo's programs of its own ({}), which an upgrade doesn't replace. The fix copies the installed ones over them, for the next time it shows.",
+                    old.join(", ")
+                ),
+                fix: Some(Fix { label: "Update the Login Screen".into(), root: true, steps: ls::steps(&roots.bin, &share, None) }),
+            });
+            return;
+        }
+        let title = "Olo's own login screen greets you";
+        r.fine.push(Fine { title: title.into(), detail: "In GDM's place, running the installed version of Olo.".into() });
+        // The way back, to the login screen it took the place of.
+        let units = |u: &str| ["usr/lib/systemd/system", "etc/systemd/system"].iter().any(|d| roots.fs.join(d).join(u).exists());
+        if let Some((other, name)) = [("gdm.service", "GDM"), ("sddm.service", "SDDM")].into_iter().find(|(u, _)| units(u)) {
+            r.undo.push(Undo {
+                id: "login:own-undo".into(),
+                title: title.into(),
+                fix: Fix {
+                    label: format!("Go Back to {name}"),
+                    root: true,
+                    steps: vec![Step::Unit { name: ls::SERVICE.into(), action: crate::fix::UnitAction::Disable }, Step::Unit { name: other.into(), action: crate::fix::UnitAction::Enable }],
+                },
+            });
+        }
+        return;
+    }
+    let now = match dm.as_deref() {
+        Some("gdm.service") => "GNOME's (GDM)".to_owned(),
+        Some(u) => u.trim_end_matches(".service").to_owned(),
+        None => "none of Olo's".to_owned(),
+    };
+    r.findings.push(Finding {
+        id: "login:own".into(),
+        severity: Severity::Advice,
+        title: format!("The login screen is {now}, not Olo's own"),
+        detail: "Olo has a login screen of its own: the people on this computer and their pictures, the password, fingerprint and face unlock, in Olo's look; your password there also opens Olo's keyring. The fix makes it the login screen from the next start. The one it replaces stays installed, and Olo Doctor offers to go back to it."
+            .into(),
+        fix: Some(Fix { label: "Use Olo's Login Screen".into(), root: true, steps: ls::steps(&roots.bin, &share, dm.as_deref()) }),
+    });
+}
+
 fn login_entry(roots: &Roots, r: &mut Report) {
     let atomic = roots.fs.join("run/ostree-booted").exists();
     let home = if atomic { SESSION_ENTRY_LOCAL_PATH } else { SESSION_ENTRY_PATH };
@@ -2027,6 +2147,72 @@ mod tests {
         assert!(r.fine.iter().any(|f| f.title == "The Thunderbolt 5 ports' USB is kept awake"));
     }
 
+    /// What's ignored is out of the counts and Fix All, still found and
+    /// fixable by its id, and back among the rest when no longer ignored.
+    #[test]
+    fn ignored_findings_are_set_aside() {
+        let (_fs, roots) = machine("ignored");
+        let mut r = scan(&roots);
+        let before = (r.problems(), r.fixable().count(), r.findings.len());
+        let id = r.fixable().next().expect("a finding with a fix").id.clone();
+        let problem = r.find(&id).unwrap().severity == Severity::Problem;
+        r.set_aside(&[id.clone()].into_iter().collect());
+        assert!(r.findings.iter().all(|f| f.id != id) && r.ignored.iter().any(|f| f.id == id));
+        assert_eq!((r.problems(), r.fixable().count(), r.findings.len()), (before.0 - usize::from(problem), before.1 - 1, before.2 - 1));
+        assert!(r.find(&id).is_some() && r.action(&id).is_some(), "still found, still fixable");
+        r.move_ignored(&id, false);
+        assert_eq!((r.problems(), r.fixable().count(), r.findings.len()), before);
+        assert!(r.ignored.is_empty());
+    }
+
+    /// Olo's login screen offered over GDM; in use and current, fine with
+    /// a way back; in use with an older copy, its update offered.
+    #[test]
+    fn olo_s_login_screen_is_offered() {
+        let (fs, roots) = machine("own-login");
+        let w = |p: &Path, c: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, c).unwrap();
+        };
+        // Not installed: nothing said.
+        assert!(scan(&roots).find("login:own").is_none());
+        for name in crate::login_screen::PROGRAMS {
+            w(&roots.bin.join(name), "program");
+        }
+        w(&fs.join("usr/lib/systemd/system/gdm.service"), "[Unit]\n");
+        std::fs::create_dir_all(fs.join("etc/systemd/system")).unwrap();
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/gdm.service", fs.join("etc/systemd/system/display-manager.service")).unwrap();
+        let r = scan(&roots);
+        let f = r.find("login:own").expect("offered");
+        assert_eq!(f.title, "The login screen is GNOME's (GDM), not Olo's own");
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root);
+        assert!(fix.steps.iter().any(|s| matches!(s, Step::WriteFile { path, .. } if path == Path::new("/etc/systemd/system/olo-login.service"))));
+        assert!(fix.steps.iter().any(|s| matches!(s, Step::Unit { name, action: crate::fix::UnitAction::Disable } if name == "gdm.service")));
+        assert!(matches!(fix.steps.last(), Some(Step::Unit { name, action: crate::fix::UnitAction::Enable }) if name == "olo-login.service"));
+        assert_eq!(fix.steps.iter().filter(|s| matches!(s, Step::CopyFile { to, .. } if to.starts_with(crate::login_screen::LIBEXEC))).count(), 5);
+        // Olo's in use, its copies made after the programs: fine, and the
+        // way back to GDM.
+        std::fs::remove_file(fs.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::os::unix::fs::symlink("/etc/systemd/system/olo-login.service", fs.join("etc/systemd/system/display-manager.service")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        for name in crate::login_screen::PROGRAMS {
+            w(&fs.join("usr/local/libexec/olo").join(name), "copy");
+        }
+        let r = scan(&roots);
+        assert!(r.find("login:own").is_none() && r.find("login:own-older").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Olo's own login screen greets you"));
+        let back = r.undo.iter().find(|u| u.id == "login:own-undo").expect("a way back");
+        assert_eq!(back.fix.label, "Go Back to GDM");
+        // An upgrade writes the programs again: the copies are older.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        w(&roots.bin.join("olo-greeter"), "newer");
+        let r = scan(&roots);
+        let f = r.find("login:own-older").expect("its update offered");
+        assert!(f.detail.contains("olo-greeter") && !f.detail.contains("olo-session"), "{}", f.detail);
+        assert_eq!(f.fix.as_ref().unwrap().label, "Update the Login Screen");
+    }
+
     #[test]
     fn a_login_screen_handed_over_is_said() {
         let (fs, roots) = machine("handed");
@@ -2048,13 +2234,15 @@ mod tests {
         // The user's services (no login's scope): dconf, gvfs, GNOME Keyring.
         w("proc/950/cmdline", "/usr/libexec/dconf-service\0");
         w("proc/951/cmdline", "/usr/libexec/gvfsd\0");
+        w("proc/954/cmdline", "/usr/libexec/gvfsd\0");
         w("proc/952/cmdline", "/usr/bin/gnome-keyring-daemon\0--start\0");
         w("proc/953/cmdline", "/usr/libexec/xdg-desktop-portal\0");
         let f = scan(&roots).find("gnome:services").cloned().unwrap();
         // (GNOME Keyring only while Olo's keyring answers.)
         assert_eq!(f.title, "2 of GNOME's services run", "{}", f.detail);
-        assert!(f.detail.contains("dconf-service, process 950") && f.detail.contains("network folders"), "{}", f.detail);
-        assert_eq!(f.fix.unwrap().steps, [Step::Signal { pid: 950, signal: libc::SIGTERM }, Step::Signal { pid: 951, signal: libc::SIGTERM }]);
+        // (A program running twice is said once, with both processes.)
+        assert!(f.detail.contains("(dconf-service, process 950)") && f.detail.contains("(gvfsd, processes 951 and 954)") && f.detail.contains("network folders"), "{}", f.detail);
+        assert_eq!(f.fix.unwrap().steps, [950, 951, 954].map(|pid| Step::Signal { pid, signal: libc::SIGTERM }));
         w(&format!("run/user/{}/olo-secrets.json", roots.uid), "{\"serving\": true}");
         assert_eq!(scan(&roots).find("gnome:services").unwrap().title, "3 of GNOME's services run");
     }

@@ -8,6 +8,8 @@ pub mod checks;
 pub mod crashes;
 pub mod fix;
 pub mod helper;
+pub mod ignored;
+pub mod login_screen;
 pub mod notify;
 pub mod releases;
 pub mod suggest;

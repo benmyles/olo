@@ -8330,6 +8330,23 @@ scan made for the sudo user). What it looks for:
 - **The login screen's entry** (/usr/share/wayland-sessions, or
   /usr/local/share's on an atomic system) missing or pointing at
   nothing.
+- **Olo's own login screen** (`own_login_screen`, where Olo's build has
+  olo-login and olo-greeter; not on an atomic Fedora, whose /etc and
+  /usr/local Setup doesn't change; Ben, 2026-11-07: "the login screen
+  should come up in olo doctor as something it can do for me"):
+  another display manager's (`display-manager.service`'s link,
+  `login_screen::display_manager`) is advice, "The login screen is
+  GNOME's (GDM), not Olo's own", and Use Olo's Login Screen runs what
+  Olo Setup's login-screen stage runs (`login_screen::steps`, the one
+  list both use: programs copied to /usr/local/libexec/olo, data to
+  /usr/local/share/olo, PAM, `pam_olo_keyring.so`, sysusers and
+  tmpfiles, its user and folders, SELinux's labels, its unit, the other
+  disabled and olo-login enabled), from the next start. Olo's already:
+  fine, with Go Back to GDM (or SDDM) beside it as its undo
+  (`login:own-undo`), unless a copy in libexec is older than the build
+  in ~/.local/bin (an upgrade replaces those, not the copies:
+  `login_screen::stale`), which is advice, Update the Login Screen
+  (`login:own-older`).
 - **Olo's Wi-Fi healer** (below) missing, out of date or stopped, on a
   machine whose Wi-Fi chip needs it (brcmfmac): installed as a root-owned
   copy, with its unit and NetworkManager's setting for the chip.
@@ -8407,6 +8424,26 @@ Deskbar follows it by inotify and shows Olo Doctor's bag in the tray
 while there is something, a click opening it. Tests build a
 machine in a folder (`Roots { fs, bin, uid, scope, units }`) and check
 the findings and their steps exactly.
+
+Any finding can be ignored (Ben, 2026-11-07: "each item can be ignored
+which puts it into an ignored section and also has a button for each
+ignored item to still fix it if the user changes their mind but it
+won't alert about ignored items or draw attention to them"): its
+Ignore button, before its fix, keeps its id in
+`~/.config/olo/doctor-ignored.json` (`ignored.rs`: `doctor` and
+`suggestions`, by id), and every look sets those aside
+(`checks::look`, `suggest::look`: `Report::set_aside` moves them from
+`findings` to `ignored`), so the count, Fix All (Apply All), the tray's
+bag, the watcher's notifications and `--fix all` leave them out. The
+window lists them last, under Ignored: each title dim, with Stop
+Ignoring and its own fix button, which fixes it as ever. From a
+terminal or an agent: `olo-doctor --ignore ID…` and `--unignore ID…`
+(`olo-suggestions` the same; with no ids, the ignored listed), and
+`--report`'s `ignored`; `--fix` lists them as "ignored" and fixes one
+only when it's named. A process list says each program once with its
+processes ("GTK's portal backend (xdg-desktop-portal-gtk, processes
+1625065 and 1625111)", `by_program`), and the title counts programs:
+D-Bus had started GTK's portal backend six times, said six times over.
 
 ## Olo Suggestions (apps/doctor, `olo-suggestions`)
 
@@ -8635,7 +8672,9 @@ told to look again by their `uevent`); and if chosen, Olo's login
 screen (tools/install-login.sh `--switch`'s work: its programs in
 /usr/local/libexec/olo, Olo's data in /usr/local/share/olo, the PAM
 services and `pam_olo_keyring.so`, its user and folders made by
-`systemd-sysusers` and Setup itself, its unit, GDM disabled and olo-login enabled) and boot splash
+`systemd-sysusers` and Setup itself, its unit, the display manager
+it replaces disabled (GDM's) and olo-login enabled: Olo Doctor's
+`login_screen::steps`, which its "Use Olo's Login Screen" runs too) and boot splash
 (the theme drawn by `olo-app-server --plymouth-theme` as the person,
 then put in /usr/share/plymouth/themes/olo with plymouthd.conf kept
 beside as `.before-olo`, and the start-up images made again:

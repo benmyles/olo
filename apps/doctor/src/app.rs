@@ -11,9 +11,11 @@
 //! once.
 //!
 //! `--report` prints the report as JSON and opens nothing (for agents
-//! and scripts); `--fix` (`--apply`) does what the buttons do; Doctor's
-//! `--watch` is the session's: the look at login and the Wi-Fi healer's
-//! news (notify.rs).
+//! and scripts); `--fix` (`--apply`) does what the buttons do,
+//! `--ignore` and `--unignore` what Ignore and Stop Ignoring do
+//! (ignored.rs: set aside, untold, listed last); Doctor's `--watch` is
+//! the session's: the look at login and the Wi-Fi healer's news
+//! (notify.rs).
 
 use std::sync::OnceLock;
 
@@ -81,7 +83,7 @@ impl Kind {
     fn scan(self) -> Report {
         match self {
             Kind::Doctor => checks::look(),
-            Kind::Suggestions => suggest::scan(),
+            Kind::Suggestions => suggest::look(),
         }
     }
 
@@ -244,6 +246,22 @@ impl Doctor {
                 self.queued.push((self.next_run, id, steps));
             }
             self.send_queued();
+        }
+        cx.notify();
+    }
+
+    /// Ignore finding `id` (`on`), or stop: kept (ignored.rs), the window
+    /// and the tray as it says at once.
+    fn ignore(&mut self, id: &str, on: bool, cx: &mut Context<Self>) {
+        if let Err(e) = crate::ignored::set(kind(), id, on) {
+            self.outcomes.insert(id.to_owned(), Outcome::Failed(format!("It couldn't be kept: {e}.")));
+            return cx.notify();
+        }
+        if let Some(r) = self.report.as_mut() {
+            r.move_ignored(id, on);
+            if kind() == Kind::Doctor {
+                checks::tell_tray(r);
+            }
         }
         cx.notify();
     }
@@ -475,6 +493,12 @@ impl Render for Doctor {
                     None => StringView::new("Suggested").dim(true),
                 };
                 let mut row = div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(status));
+                // Not wanted: set aside, quietly (ignored.rs).
+                {
+                    let (me, id) = (me.clone(), f.id.clone());
+                    row = row
+                        .child(Button::new("Ignore").id(format!("ignore-{}", f.id)).enabled(outcome != Some(&Outcome::Fixing)).on_click(move |_, cx| me.update(cx, |d, cx| d.ignore(&id, true, cx))));
+                }
                 match &f.fix {
                     Some(fix) => {
                         let (me, id) = (me.clone(), f.id.clone());
@@ -528,6 +552,40 @@ impl Render for Doctor {
                     list = list.child(line);
                 }
             }
+            // Last and quiet: what the person said to ignore, each still
+            // fixable (its own button) or to be shown again.
+            if !r.ignored.is_empty() {
+                list = list.child(div().pt(px(m::TIGHT)).child(heading("Ignored")));
+                for f in &r.ignored {
+                    let outcome = self.outcomes.get(&f.id);
+                    let mut line = div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(f.title.clone()).dim(true).wrap(true)));
+                    match outcome {
+                        Some(Outcome::Fixing) => {
+                            line = line.child(StringView::new(self.progress.get(&f.id).cloned().unwrap_or_else(|| kind().doing().to_owned())).dim(true));
+                        }
+                        Some(Outcome::Failed(e)) => line = line.child(StringView::new(e.clone()).wrap(true).color(style::c(p.failure))),
+                        _ => {}
+                    }
+                    let (unignore, id) = (me.clone(), f.id.clone());
+                    line = line.child(
+                        Button::new("Stop Ignoring")
+                            .id(format!("unignore-{}", f.id))
+                            .enabled(outcome != Some(&Outcome::Fixing))
+                            .on_click(move |_, cx| unignore.update(cx, |d, cx| d.ignore(&id, false, cx))),
+                    );
+                    if let Some(fix) = &f.fix {
+                        let (me, id) = (me.clone(), f.id.clone());
+                        let label = if matches!(outcome, Some(Outcome::Failed(_))) { "Try Again".to_owned() } else { fix.label.clone() };
+                        line = line.child(
+                            Button::new(label)
+                                .id(format!("fix-{}", f.id))
+                                .enabled(outcome != Some(&Outcome::Fixing))
+                                .on_click(move |_, cx| me.update(cx, |d, cx| d.fix(std::slice::from_ref(&id), cx))),
+                        );
+                    }
+                    list = list.child(line);
+                }
+            }
         }
         div().size_full().flex().flex_col().child(bar).child(
             div()
@@ -556,6 +614,7 @@ pub fn run(which: Kind) {
             return;
         }
         Some("--fix" | "--apply") => std::process::exit(fix_from_the_command_line(&args[1..])),
+        Some(flag @ ("--ignore" | "--unignore")) => std::process::exit(ignore_from_the_command_line(flag == "--ignore", &args[1..])),
         Some("--crashes") if which == Kind::Doctor => return crate::crashes::print(args.get(1).is_some_and(|a| a == "--json")),
         _ => {}
     }
@@ -615,6 +674,8 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
         .filter_map(|f| Some((f.id.as_str(), f.title.as_str(), f.fix.as_ref()?, false)))
         .chain(report.undo.iter().map(|u| (u.id.as_str(), u.title.as_str(), &u.fix, true)))
         .collect();
+    // (What's ignored is fixed only when named: listed apart, never in "all".)
+    let ignored: Vec<(&str, &str, &Fix, bool)> = report.ignored.iter().filter_map(|f| Some((f.id.as_str(), f.title.as_str(), f.fix.as_ref()?, false))).collect();
     if ids.is_empty() {
         if fixable.is_empty() {
             println!("Nothing to {}.", if kind() == Kind::Doctor { "fix" } else { "apply" });
@@ -622,10 +683,14 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
         for (id, title, fix, _) in &fixable {
             println!("{id}  {title} ({}{})", fix.label, if fix.root { ", as root" } else { "" });
         }
+        for (id, title, fix, _) in &ignored {
+            println!("{id}  {title} ({}{}; ignored)", fix.label, if fix.root { ", as root" } else { "" });
+        }
         return 0;
     }
     let all = ids.iter().any(|i| i == "all");
-    let chosen: Vec<(&str, &str, &Fix, bool)> = fixable.iter().copied().filter(|(id, _, _, undo)| (all && !undo) || ids.iter().any(|i| i == id)).collect();
+    let chosen: Vec<(&str, &str, &Fix, bool)> =
+        fixable.iter().copied().filter(|(id, _, _, undo)| (all && !undo) || ids.iter().any(|i| i == id)).chain(ignored.iter().copied().filter(|(id, ..)| ids.iter().any(|i| i == id))).collect();
     // One asked for that isn't there (mistyped, an option it doesn't
     // take): nothing is done.
     let unknown: Vec<&String> = ids.iter().filter(|i| *i != "all" && !chosen.iter().any(|(c, ..)| c == i)).collect();
@@ -686,4 +751,29 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
         }
     }
     i32::from(failed)
+}
+
+/// `olo-doctor --ignore ID…` (`--unignore`; `olo-suggestions` too): what
+/// the window's Ignore and Stop Ignoring do, for agents and scripts. No
+/// IDs: what's ignored, listed. Each ID is kept whether or not it's found
+/// now (a finding can come and go).
+fn ignore_from_the_command_line(on: bool, ids: &[String]) -> i32 {
+    if ids.is_empty() {
+        for id in crate::ignored::of(kind()) {
+            println!("{id}");
+        }
+        return 0;
+    }
+    for id in ids {
+        if let Err(e) = crate::ignored::set(kind(), id, on) {
+            eprintln!("{}: {id}: {e}", kind().program());
+            return 1;
+        }
+        println!("{id}: {}", if on { "ignored" } else { "no longer ignored" });
+    }
+    // (The tray's bag as it now says.)
+    if kind() == Kind::Doctor {
+        checks::look();
+    }
+    0
 }
