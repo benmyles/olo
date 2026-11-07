@@ -10903,7 +10903,17 @@ without `DISPLAY` (X programs would show on the person's screen), and on
 a D-Bus session bus of its own (below, "A screen's own bus"). Screens
 are listed in `$XDG_RUNTIME_DIR/olo-screens/NAME.json` (the session's
 pid, its sockets, the size); `screens.rs` checks the pid is still that
-session before trusting an entry. The rest is the screen's own app_server
+session before trusting an entry, by the `OLO_SCREEN=NAME` it was started
+with (`is_session_of`: kept across an upgrade's re-execution; its command
+line, which a session re-executed bare before 2026-11-07, isn't, so
+every upgrade had `list` drop each running screen, and starting it again
+by name made a second, ten left running unknown). An entry is dropped
+only once its session has ended (`running`), `stop` ends the session's
+whole process group if it hasn't ended 5 s after being asked (and keeps
+the entry while it runs), and `start` and `stop` end any screen's
+session nothing lists (`strays`: of that name whatever its age, others
+once two minutes old so one being started isn't; never a session
+inside a screen's). The rest is the screen's own app_server
 IPC (`Client::connect_to`): `run` (a program with the screen's
 `WAYLAND_DISPLAY`, `OLO_SOCKET` and `OLO_SCREEN`), `look` (a PNG,
 `--window ID` for one), `windows` (`Reply::Windows`, whose `WindowInfo`s
