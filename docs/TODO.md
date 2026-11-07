@@ -41,6 +41,16 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Display: a touch screen's touch turned off and on** (Ben,
+  2026-11-06: "in display prefs for touchscreen displays have an option
+  to enable/disable the touch functionality on the screen (enabled by
+  default)"). Preferences ▸ Display, for a display with a touch screen
+  (app_server's touch input matched to its output): "Touch" on by
+  default; off, app_server ignores that screen's touches (the pen too,
+  or its own switch), kept per display as its other settings are
+  (`DisplaySettings`, by its key), and agents read and set it like any
+  other display setting.
+
 - **Viewer: 4K60 video plays smoothly, decoded in hardware** (Ben,
   2026-11-06): "the viewer app can't even play 4k video at 60fps
   smoothly. idk if it's currently being hardware accelerated but it must
