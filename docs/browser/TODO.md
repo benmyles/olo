@@ -56,20 +56,24 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   a prelude, scripts that scripts insert, measurement from a layout of the
   page as it is (getBoundingClientRect, offset*/client*/scroll*,
   getComputedStyle), observers, custom elements, Web Animations' resting
-  states, MessageChannel, a 2D canvas stub. Stripe hydrates and mounts its
-  lazy graphics. Next: CSSOM (`insertRule`, `styleSheets`, CSS-in-JS in
-  production builds), modules (`import`), real canvas drawing, `fetch`
-  POST and headers, cookies from responses, events from the person
-  (clicks, keys, scroll) reaching scripts, `document.write` while
-  parsing, iframes.
-- [ ] Stripe's remaining gaps, in order: events from the person reaching
-  the scripts (hover opens its menus; clicks, keys, scrolling, focus),
-  canvas: its graphics are WebGL (the hero wave, the agentic and issuing
-  backgrounds, the globe; the carousel is 2D) — a GPU WebGL 1 over wgpu
-  with shaders translated by naga, textures, framebuffers, blending — and
-  a real 2D context; CSSOM (`insertRule`, `styleSheets`); then the
-  animated states (its payment-method carousel) checked against Chrome
-  at the same moment of the page's clock.
+  states, MessageChannel, the 2D canvas (tiny-skia) and WebGL 1/2 (the
+  GPU through OpenGL ES, a context per canvas, draws validated as WebGL
+  does), images loaded for scripts (`img.src`, textures, drawImage,
+  ImageBitmap) and fetch()/XMLHttpRequest, both fetched off the thread
+  and delivered to the live page, Web Workers (a thread and isolate
+  each, structured clones), blob URLs, events from the person. Next:
+  CSSOM (`insertRule`, `styleSheets`, CSS-in-JS in production builds),
+  modules (`import`), `fetch` POST and headers, cookies from responses,
+  `document.write` while parsing, iframes, OffscreenCanvas.
+- [x] Stripe's graphics: the hero wave, the agentic and issuing
+  backgrounds, the globe and the data-viz canvases are WebGL (three.js:
+  textures from the page's images, geometry from Web Workers, render
+  targets) and draw through the engine's OpenGL ES contexts, one per
+  canvas, read back when drawn (JOURNAL 2026-11-07 afternoon); the
+  carousel's 2D canvas draws. Events from the person reach the scripts
+  (hover opens the menus). Remaining on Stripe: the Sign in button (an
+  SVG mask with `<text>`), the animated states checked against Chrome at
+  the same moment of the page's clock, and the live page's cost (below).
 - [x] The page lives: after the static render (612 ms on stripe.com,
   prefetching subresources together) and the scripted one (3.6 s), the
   realm's timers and animation frames run on the page's clock, the

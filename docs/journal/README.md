@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Browser: stripe.com's hero wave live
+
+*04:54* — The hero wave is the page's own three.js scene (geometry from a worker, a palette texture, a post-processing render target), running on the page's clock; the Sign in button is an SVG mask with text, not drawn yet.
+
+![Browser: stripe.com's hero wave live](2026-11-07/045452-browser-stripe-com-s-hero-wave-live.png)
+
+### Browser: stripe.com's WebGL scenes drawn by the GPU
+
+*04:54* — The issuing card, the globe and the agentic ring are WebGL canvases (three.js) drawn through the engine's OpenGL ES contexts, one per canvas, with textures loaded through the page's image loads and geometry from Web Workers; read back into the page's images when drawn.
+
+![Browser: stripe.com's WebGL scenes drawn by the GPU](2026-11-07/045451-browser-stripe-com-s-webgl-scenes-drawn-by-the-g.png)
+
 ### Browser: stripe.com with JavaScript
 
 *02:15* — The browser now runs pages' scripts: V8 (the one C++ part) with a native DOM over the engine's document, the Web API surface in a prelude (events, timers on a virtual clock, fetch, storage, observers, custom elements, Web Animations' resting states, a 2D canvas stub), scripts that scripts insert (code splitting), and measurement: scripts read geometry and computed styles from a layout of the page as it is. Stripe's React app hydrates and mounts its lazily loaded graphics (the payment terminal, the checkout, the billing chart), as in Chrome. Styling got 3.4× faster on the way: pseudo-element rules indexed apart, an ancestor Bloom filter rejecting selectors before a walk, hashed id and class keys, root/attribute/:is() buckets, sparse computed values, custom-property dictionaries that chain to their parent instead of copying.

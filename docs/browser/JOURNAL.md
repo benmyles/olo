@@ -5651,3 +5651,40 @@ redo only what changed.
 - **Found on the way.** Stripe's bento graphics are WebGL canvases (the
   hero wave too); the carousel is a 2D canvas. Those draw nothing yet:
   WebGL over wgpu is on the list after events and the 2D canvas.
+
+## 2026-11-07, afternoon: WebGL, workers, Stripe's scenes draw
+
+- **WebGL on the GPU.** `getContext('webgl'/'webgl2')` canvases draw
+  through OpenGL ES: an EGL surfaceless display, one context per canvas
+  (WebGL contexts share nothing, and GL state is per context: sharing
+  one had a canvas draw with another's vertex array bound, a fault in
+  the driver), a framebuffer per canvas, the prelude's
+  WebGLRenderingContext forwarding each call by name to glow, the
+  drawing buffer read back as the canvas's image when drawn. Draws are
+  validated as WebGL requires (every enabled attribute reads a live
+  buffer; indexed draws have their index buffer), the constant table is
+  the full one, `alpha: false` reads back opaque. The test pages (a
+  three.js scene with textures, points, lines, a render target and a
+  sprite; WebGL2 textures through texStorage2D/texSubImage2D from
+  images and canvases; half-float targets) match Chrome pixel for pixel.
+- **Images, fetch and workers for scripts.** `img.src` loads through
+  the engine (the page's decoded images at once, others on threads,
+  delivered to the live page with load/error), drawImage and
+  texImage2D take images; fetch() and XMLHttpRequest no longer block
+  the scripts' thread and carry bytes; Web Workers are threads with
+  their own isolate and scope, messages structured clones. Stripe's
+  wave and globe compute their geometry in workers; without them they
+  waited forever.
+- **Stripe.** The hero wave (a worker's geometry, a palette texture,
+  a post-processing target), the issuing card, the globe, the agentic
+  ring and the data-viz canvases draw as in Chrome. Kept layouts
+  (paint-only restyles) now render: they adopt the document's revision
+  and the new images (every paint-only live render had failed Stale).
+- **Found on the way, open.** The Sign in button is an SVG `<mask>` with
+  `<text>`; SVG text, masks and `<use>` are next. The live page costs
+  ~25% of a core in scripts (five three.js loops at 60 Hz through
+  string-named calls) and ~23% in renders (full restyle/layout/paint
+  plus readback of every canvas each frame): next are numeric opcodes
+  and fewer allocations per GL call, damage-limited repaints, and
+  compositing canvases on the GPU without a readback.
+
