@@ -204,6 +204,9 @@ struct Context {
     numeric: bool,
     numeric_closed: bool,
     ri_odd: bool,
+    /// UAX #14 as it stands, without browsers' tailoring (its conformance
+    /// test): see `Job::untailored`.
+    untailored: bool,
 }
 impl Context {
     fn consume(&mut self, u: Unit) {
@@ -317,7 +320,10 @@ impl Context {
         if self.before_left.is_some_and(|u| u.class() == HL) && matches!(a, HY | HH) && b != HL {
             return None;
         }
-        if a == SY && b == HL {
+        // LB21b, and as browsers do: no break after a solidus before a
+        // letter (a URL's "https://example.com/a/path" stays whole, as in
+        // Chrome; UAX #14 alone would break after each "/").
+        if a == SY && (b == HL || (alpha(b) && !self.untailored)) {
             return None;
         }
         if b == IN {
@@ -421,6 +427,12 @@ pub struct Job<'a> {
     failed: bool,
 }
 impl<'a> Job<'a> {
+    /// UAX #14's default rules alone, without what browsers tailor (no
+    /// break after a solidus before a letter): for the conformance test.
+    pub fn untailored(mut self) -> Self {
+        self.context.untailored = true;
+        self
+    }
     pub fn new(source: Arc<str>, limits: Limits, cancel: Option<&'a AtomicBool>) -> Result<Self> {
         check(cancel)?;
         if source.len() > limits.text_bytes || source.len() >= REQUIRED as usize {

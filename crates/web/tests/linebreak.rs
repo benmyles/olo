@@ -1,7 +1,7 @@
 use olo_web::text::linebreak::{self as lb, Kind, Opportunity};
 use std::sync::Arc;
 fn breaks(text: &str, budget: usize) -> lb::Breaks {
-    let mut job = lb::Job::new(Arc::from(text), Default::default(), None).unwrap();
+    let mut job = lb::Job::new(Arc::from(text), Default::default(), None).unwrap().untailored();
     while !job.step(budget).unwrap().finished {}
     assert_eq!(job.progress().input_bytes, text.len());
     assert_eq!(job.step(0).unwrap(), job.progress());
