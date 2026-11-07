@@ -169,6 +169,7 @@ fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_
         p::Value::Display(display) => Value::Display(display),
         p::Value::Families(families) => Value::Families(families),
         p::Value::LocalUrl(url) => Value::LocalUrl(url),
+        p::Value::Inset(shape) => Value::Inset(shape.computed(&numeric, limits.math, cancelled).map_err(Error::property)?),
         p::Value::Keyword(k @ (Keyword::Thin | Keyword::Medium | Keyword::Thick))
             if matches!(property, Property::BorderTopWidth | Property::BorderRightWidth | Property::BorderBottomWidth | Property::BorderLeftWidth) =>
         {

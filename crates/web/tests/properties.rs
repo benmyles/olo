@@ -284,3 +284,67 @@ fn local_clip_urls_are_decoded_bounded_and_share_thin_storage() {
     assert!(matches!(Declaration::parse("clip-path", input.components(), false, p::Limits { bytes: 2, ..Default::default() }, None), Err(Error::Limit)));
     assert!(matches!(Declaration::parse("clip-path", input.components(), false, Default::default(), Some(&AtomicBool::new(true))), Err(Error::Cancelled)));
 }
+
+#[test]
+fn inset_shapes_expand_quads_and_reject_invalid_round_syntax() {
+    for (source, offsets, radii) in [
+        ("inset(3px)", [3., 3., 3., 3.], None),
+        ("inset(1px 2px)", [1., 2., 1., 2.], None),
+        ("inset(1px 2px 3px)", [1., 2., 3., 2.], None),
+        ("inset(-1px 2px 3px 4px round 10% / 5px 6px 7px)", [-1., 2., 3., 4.], Some([20., 20., 20., 20., 5., 6., 7., 6.])),
+        ("inset(0 round calc(-2px) 3px)", [0.; 4], Some([0., 3., 0., 3., 0., 3., 0., 3.])),
+    ] {
+        let a = values("clip-path", source);
+        let Value::Inset(s) = &a[0].value else { panic!("{source}") };
+        let resolve = |n: &p::Numeric| n.resolve(&NumericHost, &mut Default::default(), Default::default(), None).unwrap();
+        assert_eq!(s.offsets().into_iter().map(resolve).collect::<Vec<_>>(), offsets);
+        assert_eq!(s.radii().map(|r| r.into_iter().map(resolve).collect::<Vec<_>>()), radii.map(Vec::from));
+        assert_eq!(size_of_val(s), size_of::<usize>());
+        assert_eq!(s.offsets()[0] as *const _, s.clone().offsets()[0] as *const _);
+    }
+    for source in [
+        "inset()",
+        "inset(round 2px)",
+        "inset(0 round)",
+        "inset(0 / 1px)",
+        "inset(0 round / 1px)",
+        "inset(0 round 1px /)",
+        "inset(0 round 1px / 2px / 3px)",
+        "inset(0 round 1px round 2px)",
+        "inset(0 round -1px)",
+        "inset(0 round -2%)",
+        "inset(0 0 0 0 0)",
+        "inset(0 round 0 0 0 0 0)",
+        "inset(0,0)",
+        "inset(auto)",
+        "inset(2)",
+        "inset(1deg)",
+        "inset(0) none",
+        "none border-box",
+        "url(#a) content-box",
+        "inset(0) border-box padding-box",
+    ] {
+        assert!(matches!(parse("clip-path", source), Err(Error::Invalid)), "{source}: {:?}", parse("clip-path", source));
+    }
+    for b in [p::GeometryBox::Border, p::GeometryBox::Padding, p::GeometryBox::Content, p::GeometryBox::Margin, p::GeometryBox::Fill, p::GeometryBox::Stroke, p::GeometryBox::View] {
+        for text in [format!("{} inset(0)", b.as_str()), format!("inset(0) {}", b.as_str())] {
+            let a = values("clip-path", &text);
+            let Value::Inset(s) = &a[0].value else { panic!() };
+            assert_eq!(s.reference_box(), b);
+        }
+    }
+    let a = values("clip-path", "inset(0 round 6px)");
+    let Value::Inset(s) = &a[0].value else { panic!() };
+    let radii = s.radii().unwrap();
+    assert!(radii.iter().all(|n| std::ptr::eq(*n, radii[0])));
+    assert!(s.offsets().iter().all(|n| std::ptr::eq(*n, s.offsets()[0])));
+    assert!(s.reserved_bytes() < 3 * size_of::<p::Numeric>() + 32, "two unique scalars, not twelve expanded values");
+    let a = values("clip-path", "inset(calc(10% + 2em))");
+    assert!(a[0].value.dependencies().color.math.intersects(math::Dependencies::PERCENTAGE));
+    assert!(a[0].value.dependencies().color.math.contains(math::RelativeUnit::Em));
+    let input = syntax("inset(calc(10% + 2em) round 1px / 2px)");
+    for limits in [p::Limits { bytes: 1, ..Default::default() }, p::Limits { nodes: 2, ..Default::default() }, p::Limits { work: 2, ..Default::default() }] {
+        assert!(matches!(Declaration::parse("clip-path", input.components(), false, limits, None), Err(Error::Limit)));
+    }
+    assert!(matches!(Declaration::parse("clip-path", input.components(), false, Default::default(), Some(&AtomicBool::new(true))), Err(Error::Cancelled)));
+}

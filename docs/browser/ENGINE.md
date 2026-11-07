@@ -2544,8 +2544,8 @@ all reset. A CSS-decoded local URL is retained in a pointer-sized ThinArc;
 clones share its bytes, equality follows the decoded spelling, and style memory
 counts each shared allocation once. Percent escapes are retained for subsequent
 URL target resolution. Parsing accepts local url() syntax and none, plus the
-existing wide keywords/substitution/cascade. Non-local URLs and shape/box forms
-are explicit unsupported features; invalid names/functions remain invalid values.
+existing wide keywords/substitution/cascade. Non-local URLs and other shape/standalone-box forms
+are explicit unsupported features (inset support follows below); invalid names/functions remain invalid values.
 SVG clip-path presentation attributes participate in the normal cascade.
 
 29 original cases at five native Chrome scales match145 computed values, with
@@ -2558,3 +2558,31 @@ all list entry; it is fixed and independently checked. Native Stripe now fails
 shape grammar during computed style; its retained CSS contains rounded inset()
 forms with variables/math. That grammar and retained referenced clip geometry
 are next, with arbitrary IDs, cascade and ancestor intersections preserved.
+
+## Rounded inset style values
+
+ClipPath also accepts inset() with1–4 length-percentage offsets, optional round
+radii using1–4 values per axis, slash-separated elliptical radii and an optional
+geometry box before or after the shape. Offsets permit negatives; literal
+negative radii invalidate the declaration while calculated radii clamp when
+materialized. The existing typed math and variable pipeline supplies numeric
+semantics; element font context computes before inheritance, percentages remain
+for layout. Standalone geometry boxes and other basic shapes remain unsupported.
+
+Inset is one ThinArc pointer; a fixed header maps12 expanded positions to at most
+12 unique numeric slots. Repeated corners/offsets share storage and computation.
+Inherited values share the allocation. Style memory reports clip_shape_bytes
+separately and counts shared numeric programs once. No new field is added to
+ordinary DOM/layout nodes or paint commands. A release uniform math-inset
+workload retains80 bytes of shape headers/slots and256 bytes of numeric programs
+per styled element (not RSS); inheritance sharing does not imply a general
+cross-element computed-math cache.
+
+205 Chrome observations from41 cases/five native DPRs and independent numeric
+probes at three bases verify style values. The probe uses positioned lengths
+quantized to1/64px, so its comparison tolerance includes that quantization and
+.0005px CSSOM precision. Engine shape math stays unsnapped. Sources, driver and
+limitations: tests/inset-style-fixtures. This is not clipping geometry: reference
+box choice in layout, inset overlap reduction, radius fitting, hit testing,
+ancestor intersections and actual painting remain to connect. Non-none clips
+still stop layout explicitly. All prior pixel nonpasses remain open.

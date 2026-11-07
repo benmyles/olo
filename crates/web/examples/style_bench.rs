@@ -31,7 +31,7 @@ fn main() {
     let selected = std::env::args().nth(3);
     let mut cases = Vec::new();
     for n in sizes {
-        for scene in ["bare", "uniform", "varying"] {
+        for scene in ["bare", "uniform", "varying", "inset"] {
             if selected.as_ref().is_some_and(|s| s != scene) {
                 continue;
             }
@@ -48,6 +48,7 @@ fn main() {
             let css = match scene {
                 "bare" => "",
                 "uniform" => ".host{font-size:20px}.item{width:40px;padding:2px;color:red}",
+                "inset" => ".host{font-size:20px}.item{width:40px;padding:2px;color:red;clip-path:inset(calc(10% + 2em) round calc(20% + 1em))}",
                 _ => ".host{font-size:20px}.item{width:40px;padding:2em;opacity:0.5}",
             };
             let syntax = Syntax::parse(Arc::from(css), Default::default(), None).unwrap();
@@ -72,13 +73,28 @@ fn main() {
                 if scene == "bare" {
                     assert!(matches!(style.value(P::Width), Value::Keyword(Keyword::Auto)));
                 } else {
-                    assert_eq!(style.value(P::Width).scalar().unwrap(), if scene == "uniform" { 40. } else { (index % 100 + 1) as f64 });
+                    assert_eq!(style.value(P::Width).scalar().unwrap(), if matches!(scene, "uniform" | "inset") { 40. } else { (index % 100 + 1) as f64 });
+                }
+                if scene == "inset" {
+                    struct Basis;
+                    impl olo_web::css::math::Context for Basis {
+                        fn factor(&self, unit: olo_web::css::math::RelativeUnit) -> olo_web::css::math::Result<f64> {
+                            if unit == olo_web::css::math::RelativeUnit::Percentage { Ok(2.) } else { Err(olo_web::css::math::Error::ContextUnavailable) }
+                        }
+                    }
+                    let Value::Inset(shape) = style.value(P::ClipPath) else { panic!("missing inset") };
+                    for n in shape.offsets() {
+                        assert_eq!(n.resolve(&Basis, &mut Default::default(), Default::default(), None).unwrap(), 60.);
+                    }
+                    for n in shape.radii().unwrap() {
+                        assert_eq!(n.resolve(&Basis, &mut Default::default(), Default::default(), None).unwrap(), 60.);
+                    }
                 }
                 assert_eq!(
                     style.value(P::PaddingTop).scalar().unwrap(),
                     if scene == "bare" {
                         0.
-                    } else if scene == "uniform" {
+                    } else if matches!(scene, "uniform" | "inset") {
                         2.
                     } else {
                         40.
@@ -105,7 +121,7 @@ fn main() {
                 }
             }
             let three_queries_ns = start.elapsed().as_secs_f64() * 1e9 / (rounds * 100 * n) as f64;
-            cases.push(json!({"scene":scene,"elements":n,"styled_nodes":memory.styles,"defaults_us":defaults_us,"first_build_ms":first_build_ms,"first_max_step_us":first_max_step_us,"build_drop_ms":build_drop_ms,"max_step_us":max_step_us,"three_queries_ns":three_queries_ns,"style_headers_bytes":memory.styles_bytes,"shared_defaults_bytes":memory.defaults_bytes,"override_bytes":memory.overrides_bytes,"font_bytes":memory.fonts_bytes,"families_bytes":memory.families_bytes,"custom_bytes":memory.customs_bytes,"numeric_bytes":memory.numeric_bytes,"accounted_style_payload_bytes":memory.accounted_reserved_bytes,"tree_container_bytes":container_bytes,"accounted_style_tree_bytes":memory.accounted_reserved_bytes+container_bytes}));
+            cases.push(json!({"scene":scene,"elements":n,"styled_nodes":memory.styles,"defaults_us":defaults_us,"first_build_ms":first_build_ms,"first_max_step_us":first_max_step_us,"build_drop_ms":build_drop_ms,"max_step_us":max_step_us,"three_queries_ns":three_queries_ns,"style_headers_bytes":memory.styles_bytes,"shared_defaults_bytes":memory.defaults_bytes,"override_bytes":memory.overrides_bytes,"font_bytes":memory.fonts_bytes,"families_bytes":memory.families_bytes,"custom_bytes":memory.customs_bytes,"numeric_bytes":memory.numeric_bytes,"clip_shape_bytes":memory.clip_shape_bytes,"accounted_style_payload_bytes":memory.accounted_reserved_bytes,"tree_container_bytes":container_bytes,"accounted_style_tree_bytes":memory.accounted_reserved_bytes+container_bytes}));
         }
     }
     println!(

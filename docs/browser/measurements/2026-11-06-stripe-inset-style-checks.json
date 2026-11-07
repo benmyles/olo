@@ -1,0 +1,222 @@
+{
+  "scope": "Rounded inset computed values, no clip geometry or site acceptance",
+  "tests": {
+    "passed": 322,
+    "ignored": 2
+  },
+  "clippy": {
+    "passed": true,
+    "seconds": 4.35
+  },
+  "workspace": {
+    "passed": true,
+    "seconds": 13.71
+  },
+  "reference": {
+    "cases": 41,
+    "observations": 205,
+    "dprs": [
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "numeric_bases": [
+      80,
+      200,
+      350.5
+    ],
+    "numeric_tolerance": "1/64px plus .0005px for independently positioned-probe used-value quantization and CSSOM serialization; engine shape values remain unsnapped"
+  },
+  "native": {
+    "pid": 838023,
+    "exe": "/var/tmp/olo-browser-stripe/inset/browser-after",
+    "sha256": "18c310051d30487d502d7b94437c0d2ead2b60a138803263aeb46e0342fec9dc",
+    "labels": [
+      "flow layout Unsupported(\"SVG clip-path\")"
+    ],
+    "tree": [
+      {
+        "window": 3,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "focused": true,
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "nodes": [
+          {
+            "id": 1,
+            "role": "Window",
+            "name": "Browser",
+            "x": 53.0,
+            "y": 66.0,
+            "width": 1000.0,
+            "height": 700.0,
+            "enabled": true
+          },
+          {
+            "id": 2,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "File",
+            "x": 61.0,
+            "y": 67.0,
+            "width": 35.188,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 3,
+            "parent": 1,
+            "role": "MenuBarItem",
+            "name": "Navigate",
+            "x": 96.188,
+            "y": 67.0,
+            "width": 66.256,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true,
+            "selected": false
+          },
+          {
+            "id": 4,
+            "parent": 1,
+            "role": "Button",
+            "name": "Back",
+            "x": 65.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 5,
+            "parent": 1,
+            "role": "Button",
+            "name": "Forward",
+            "x": 157.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": false
+          },
+          {
+            "id": 6,
+            "parent": 1,
+            "role": "TextInput",
+            "name": "Address",
+            "value": "https://stripe.com/",
+            "x": 249.0,
+            "y": 104.0,
+            "width": 608.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 7,
+            "parent": 1,
+            "role": "Button",
+            "name": "Go",
+            "x": 869.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 8,
+            "parent": 1,
+            "role": "Button",
+            "name": "Stop",
+            "x": 961.0,
+            "y": 104.0,
+            "width": 80.0,
+            "height": 24.0,
+            "enabled": true,
+            "clickable": true
+          },
+          {
+            "id": 9,
+            "parent": 1,
+            "role": "Document",
+            "name": "Page",
+            "x": 53.0,
+            "y": 140.0,
+            "width": 1000.0,
+            "height": 578.0,
+            "enabled": true
+          },
+          {
+            "id": 10,
+            "parent": 1,
+            "role": "Label",
+            "name": "flow layout Unsupported(\"SVG clip-path\")",
+            "x": 69.0,
+            "y": 733.672,
+            "width": 231.132,
+            "height": 16.343994,
+            "enabled": true
+          }
+        ]
+      }
+    ],
+    "windows": [
+      {
+        "id": 3,
+        "app_id": "olo.browser",
+        "title": "Browser",
+        "pid": 838023,
+        "workspace": 0,
+        "minimized": false,
+        "focused": true,
+        "kept": false,
+        "groupable": true,
+        "output": "HEADLESS-1",
+        "frame": {
+          "x": 48,
+          "y": 40,
+          "width": 1010,
+          "height": 731
+        },
+        "content": {
+          "x": 53,
+          "y": 66,
+          "width": 1000,
+          "height": 700
+        },
+        "least": [
+          650,
+          511
+        ],
+        "tab_frame": {
+          "x": 48,
+          "y": 40,
+          "width": 100,
+          "height": 21
+        },
+        "stack": 0,
+        "surface": 32
+      }
+    ],
+    "scope": "Final native HTTPS startup with inset computed values; no site acceptance."
+  },
+  "baseline": "178e1dc1 engine frozen binary; after includes main integration b78a8b01",
+  "limitations": [
+    "No clip geometry, overlap reduction, corner fitting, hit testing or clipping pixels",
+    "Latest Stripe reaches SVG clip-path box construction; still no useful homepage or own absolute geometry",
+    "Ordinary retained scene +4.0% small/+0.6% large observation retained",
+    "Compiler processes present9/28 ordinary cost observations; clocks/load uncontrolled; no broad causal performance claim",
+    "38 existing SVG pixel nonpasses remain"
+  ],
+  "stripe_configurations_passed": 0,
+  "sites_passed": 0
+}

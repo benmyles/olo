@@ -5017,3 +5017,50 @@ computed declaration fails. Next implement inset values and geometry as well as
 referenced SVG clips; preserve CSS cascade and geometry overrides. Existing38
 SVG pixel nonpasses and all other gaps remain. Stripe0/30; corpus0/100; goal
 active, no second site selected.
+
+### 2026-11-06 — Rounded inset values
+
+Committed/pushed local clip cascade178e1dc1 and merged origin/main ca5d5ee3 via
+b78a8b01. Combined workspace release build109s passed. This goal turn clears
+Stripe's now-visible rounded inset grammar. Typed inset values retain reference
+box selection, deduplicated numeric slots and byte indices for quad expansion;
+ordinary style values stay pointer-sized, inherited shape storage is shared,
+font context freezes before inheritance and percentages remain deferred.
+
+41 original Chrome cases/five native DPRs capture205 observations, with three
+numeric percentage probes per non-none observation. Captured through owned
+Olo Chrome, restored settings, closed/awaited and stopped reference screen.
+First comparison exposed Chrome positioned-probe1/64px quantization
+(35.05→35.0469); reference tolerance reflects that plus .0005px CSSOM precision,
+while engine shape math remains unsnapped. A test initially named nonexistent
+Dependencies::FONT; fixed to contains(Em). Final322 release web/browser tests
+pass (two ignored), strict scoped clippy4.35s, release workspace13.71s.
+
+Seven alternating CPU0 ordinary pairs:100/1000 pipeline874.514/9753.724→
+872.079/9724.747µs; scene187.329/3580.512→194.807/3600.714µs (+4.0%/+0.6%).
+Source/geometry/pixel hashes and commands unchanged. Compiler processes appear
+in9/28 observations; retain all samples, no causal explanation or broad speed
+claim. Before binaries freeze178e1dc1; after also includes main integration.
+New inset-only style jobs (no supported prior baseline):100/1000 meanbuild/drop
+medians.313/3.116ms, seven runs30 rounds. Unique shape headers/slots80B/element,
+numeric programs256B/element. Inherited values share but no general computed
+math cache across unrelated elements is claimed.
+
+Native ordinary1000-paragraph fixture: RSS111744→109224KiB, idle3s zeroCPU/
+wakeups both; median drag9.138→8.939ms, flick9.180→9.065ms, wheel.434→.387ms.
+Report-to-first-moving-client submissions, not presentation/optical latency.
+No compiler processes in native sampling contexts; clocks/load uncontrolled.
+Evidence: measurements/2026-11-06-stripe-inset-style-*.json.
+
+Fresh frozen-binary native HTTPS retry now clears shape computation and reaches
+flow layout Unsupported("SVG clip-path") during box construction. Process,
+executable hash and window validated. Closed/awaited Browser and stopped own
+screen. No personal-session changes. No new visual acceptance; all prior38 SVG
+pixel nonpasses remain. No clip geometry, overlap reduction, radius fitting,
+hit testing or useful Stripe homepage yet. Stripe0/30; corpus0/100.
+
+Next: resolve referenced SVG clip geometry, preserving arbitrary IDs, CSS
+cascade/overrides and ancestor intersections, then connect inset painting and
+retry the real page. Main advanced again to53b1ba74 during this checkpoint;
+merge after committing the measured component. Goal active, Stripe remains the
+only selected site.

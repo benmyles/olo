@@ -7,7 +7,7 @@ mod numeric;
 mod parse;
 mod registry;
 use super::{Component, Components, Kind, Statement, StatementKind, color, math, variables};
-pub use clip::LocalUrl;
+pub use clip::{GeometryBox, Inset, LocalUrl};
 pub use display::{Display, Inner, Internal, Outer};
 pub use font::{Families, Family, GenericFamily};
 pub use numeric::{Numeric, NumericKind, Range};
@@ -88,6 +88,7 @@ pub enum Value {
     FitContent(Numeric),
     Families(Families),
     LocalUrl(LocalUrl),
+    Inset(Inset),
     Pending(Arc<Pending>),
 }
 
@@ -95,6 +96,7 @@ impl Value {
     pub fn dependencies(&self) -> Dependencies {
         match self {
             Self::Numeric(v) | Self::FitContent(v) => Dependencies { color: color::Dependencies { math: v.expression().dependencies(), ..Default::default() }, substitution: false },
+            Self::Inset(v) => Dependencies { color: color::Dependencies { math: v.dependencies(), ..Default::default() }, substitution: false },
             Self::Color(v) => Dependencies { color: v.dependencies(), substitution: false },
             Self::Pending(_) => Dependencies { substitution: true, ..Default::default() },
             _ => Dependencies::default(),
@@ -107,6 +109,7 @@ impl Value {
             Self::Numeric(v) | Self::FitContent(v) => v.expression().memory().accounted_reserved_bytes,
             Self::Families(f) => f.reserved_bytes(),
             Self::LocalUrl(u) => u.reserved_bytes(),
+            Self::Inset(s) => s.reserved_bytes(),
             Self::Color(v) => v.expression_reserved_bytes(),
             Self::Pending(v) => size_of::<Pending>() + 2 * size_of::<usize>() + v.tokens.arena_reserved_bytes(),
             _ => 0,

@@ -1,0 +1,452 @@
+{
+  "scope": "New inset style jobs only; baseline does not support these values. No layout/paint/website acceptance. CPU0 seven runs30 rounds; source-generated scalar checks outside timing.",
+  "binary_sha256": "99fe2791408bc7529d32c44a7e332079f683c5bd5bcb99b75356ab235f305594",
+  "summary": {
+    "100": {
+      "build_drop_ms": 0.3126586,
+      "clip_shape_bytes": 8000,
+      "numeric_bytes": 25600
+    },
+    "1000": {
+      "build_drop_ms": 3.116290166666667,
+      "clip_shape_bytes": 80000,
+      "numeric_bytes": 256000
+    }
+  },
+  "observations": [
+    {
+      "repeat": 0,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 83240,
+          "accounted_style_tree_bytes": 88744,
+          "build_drop_ms": 0.30312039999999996,
+          "clip_shape_bytes": 8000,
+          "custom_bytes": 40,
+          "defaults_us": 54.841,
+          "elements": 100,
+          "families_bytes": 32,
+          "first_build_ms": 0.36551999999999996,
+          "first_max_step_us": 364.846,
+          "font_bytes": 256,
+          "max_step_us": 347.32300000000004,
+          "numeric_bytes": 25600,
+          "override_bytes": 33728,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 8320,
+          "styled_nodes": 104,
+          "three_queries_ns": 15.062266666666666,
+          "tree_container_bytes": 5504
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 1,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 83240,
+          "accounted_style_tree_bytes": 88744,
+          "build_drop_ms": 0.3208640666666667,
+          "clip_shape_bytes": 8000,
+          "custom_bytes": 40,
+          "defaults_us": 46.135,
+          "elements": 100,
+          "families_bytes": 32,
+          "first_build_ms": 0.388995,
+          "first_max_step_us": 388.59700000000004,
+          "font_bytes": 256,
+          "max_step_us": 352.841,
+          "numeric_bytes": 25600,
+          "override_bytes": 33728,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 8320,
+          "styled_nodes": 104,
+          "three_queries_ns": 15.13764,
+          "tree_container_bytes": 5504
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 2,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 83240,
+          "accounted_style_tree_bytes": 88744,
+          "build_drop_ms": 0.31630416666666666,
+          "clip_shape_bytes": 8000,
+          "custom_bytes": 40,
+          "defaults_us": 45.052,
+          "elements": 100,
+          "families_bytes": 32,
+          "first_build_ms": 0.36851,
+          "first_max_step_us": 368.123,
+          "font_bytes": 256,
+          "max_step_us": 355.062,
+          "numeric_bytes": 25600,
+          "override_bytes": 33728,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 8320,
+          "styled_nodes": 104,
+          "three_queries_ns": 15.399806666666667,
+          "tree_container_bytes": 5504
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 3,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 83240,
+          "accounted_style_tree_bytes": 88744,
+          "build_drop_ms": 0.3126586,
+          "clip_shape_bytes": 8000,
+          "custom_bytes": 40,
+          "defaults_us": 46.032000000000004,
+          "elements": 100,
+          "families_bytes": 32,
+          "first_build_ms": 0.386992,
+          "first_max_step_us": 386.591,
+          "font_bytes": 256,
+          "max_step_us": 341.58000000000004,
+          "numeric_bytes": 25600,
+          "override_bytes": 33728,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 8320,
+          "styled_nodes": 104,
+          "three_queries_ns": 15.170263333333333,
+          "tree_container_bytes": 5504
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 4,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 83240,
+          "accounted_style_tree_bytes": 88744,
+          "build_drop_ms": 0.3094406,
+          "clip_shape_bytes": 8000,
+          "custom_bytes": 40,
+          "defaults_us": 47.132999999999996,
+          "elements": 100,
+          "families_bytes": 32,
+          "first_build_ms": 0.365157,
+          "first_max_step_us": 364.74199999999996,
+          "font_bytes": 256,
+          "max_step_us": 348.828,
+          "numeric_bytes": 25600,
+          "override_bytes": 33728,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 8320,
+          "styled_nodes": 104,
+          "three_queries_ns": 15.251306666666666,
+          "tree_container_bytes": 5504
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 5,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 83240,
+          "accounted_style_tree_bytes": 88744,
+          "build_drop_ms": 0.32042813333333336,
+          "clip_shape_bytes": 8000,
+          "custom_bytes": 40,
+          "defaults_us": 53.99,
+          "elements": 100,
+          "families_bytes": 32,
+          "first_build_ms": 0.370409,
+          "first_max_step_us": 369.88800000000003,
+          "font_bytes": 256,
+          "max_step_us": 357.093,
+          "numeric_bytes": 25600,
+          "override_bytes": 33728,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 8320,
+          "styled_nodes": 104,
+          "three_queries_ns": 15.310113333333334,
+          "tree_container_bytes": 5504
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 6,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 83240,
+          "accounted_style_tree_bytes": 88744,
+          "build_drop_ms": 0.3076972,
+          "clip_shape_bytes": 8000,
+          "custom_bytes": 40,
+          "defaults_us": 46.868,
+          "elements": 100,
+          "families_bytes": 32,
+          "first_build_ms": 0.373674,
+          "first_max_step_us": 373.279,
+          "font_bytes": 256,
+          "max_step_us": 350.749,
+          "numeric_bytes": 25600,
+          "override_bytes": 33728,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 8320,
+          "styled_nodes": 104,
+          "three_queries_ns": 15.166596666666667,
+          "tree_container_bytes": 5504
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 0,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 760040,
+          "accounted_style_tree_bytes": 790312,
+          "build_drop_ms": 3.094100933333334,
+          "clip_shape_bytes": 80000,
+          "custom_bytes": 40,
+          "defaults_us": 45.604,
+          "elements": 1000,
+          "families_bytes": 32,
+          "first_build_ms": 3.344913,
+          "first_max_step_us": 452.986,
+          "font_bytes": 256,
+          "max_step_us": 412.665,
+          "numeric_bytes": 256000,
+          "override_bytes": 336128,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 80320,
+          "styled_nodes": 1004,
+          "three_queries_ns": 16.838073666666666,
+          "tree_container_bytes": 30272
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 1,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 760040,
+          "accounted_style_tree_bytes": 790312,
+          "build_drop_ms": 3.1189421999999998,
+          "clip_shape_bytes": 80000,
+          "custom_bytes": 40,
+          "defaults_us": 49.171,
+          "elements": 1000,
+          "families_bytes": 32,
+          "first_build_ms": 3.2775920000000003,
+          "first_max_step_us": 452.122,
+          "font_bytes": 256,
+          "max_step_us": 415.945,
+          "numeric_bytes": 256000,
+          "override_bytes": 336128,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 80320,
+          "styled_nodes": 1004,
+          "three_queries_ns": 16.976835666666666,
+          "tree_container_bytes": 30272
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 2,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 760040,
+          "accounted_style_tree_bytes": 790312,
+          "build_drop_ms": 3.106912766666667,
+          "clip_shape_bytes": 80000,
+          "custom_bytes": 40,
+          "defaults_us": 47.036,
+          "elements": 1000,
+          "families_bytes": 32,
+          "first_build_ms": 3.392935,
+          "first_max_step_us": 493.54200000000003,
+          "font_bytes": 256,
+          "max_step_us": 412.53,
+          "numeric_bytes": 256000,
+          "override_bytes": 336128,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 80320,
+          "styled_nodes": 1004,
+          "three_queries_ns": 17.099193666666668,
+          "tree_container_bytes": 30272
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 3,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 760040,
+          "accounted_style_tree_bytes": 790312,
+          "build_drop_ms": 3.116290166666667,
+          "clip_shape_bytes": 80000,
+          "custom_bytes": 40,
+          "defaults_us": 47.568999999999996,
+          "elements": 1000,
+          "families_bytes": 32,
+          "first_build_ms": 3.202134,
+          "first_max_step_us": 423.981,
+          "font_bytes": 256,
+          "max_step_us": 418.418,
+          "numeric_bytes": 256000,
+          "override_bytes": 336128,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 80320,
+          "styled_nodes": 1004,
+          "three_queries_ns": 17.00062,
+          "tree_container_bytes": 30272
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 4,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 760040,
+          "accounted_style_tree_bytes": 790312,
+          "build_drop_ms": 3.1072973333333334,
+          "clip_shape_bytes": 80000,
+          "custom_bytes": 40,
+          "defaults_us": 45.916,
+          "elements": 1000,
+          "families_bytes": 32,
+          "first_build_ms": 3.1664950000000003,
+          "first_max_step_us": 431.887,
+          "font_bytes": 256,
+          "max_step_us": 425.186,
+          "numeric_bytes": 256000,
+          "override_bytes": 336128,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 80320,
+          "styled_nodes": 1004,
+          "three_queries_ns": 17.714416666666665,
+          "tree_container_bytes": 30272
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 5,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 760040,
+          "accounted_style_tree_bytes": 790312,
+          "build_drop_ms": 3.8896890666666666,
+          "clip_shape_bytes": 80000,
+          "custom_bytes": 40,
+          "defaults_us": 47.904,
+          "elements": 1000,
+          "families_bytes": 32,
+          "first_build_ms": 3.3309699999999998,
+          "first_max_step_us": 465.87100000000004,
+          "font_bytes": 256,
+          "max_step_us": 10436.036,
+          "numeric_bytes": 256000,
+          "override_bytes": 336128,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 80320,
+          "styled_nodes": 1004,
+          "three_queries_ns": 16.789742333333333,
+          "tree_container_bytes": 30272
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    },
+    {
+      "repeat": 6,
+      "baseline_style_dense": false,
+      "cases": [
+        {
+          "accounted_style_payload_bytes": 760040,
+          "accounted_style_tree_bytes": 790312,
+          "build_drop_ms": 3.1374112666666667,
+          "clip_shape_bytes": 80000,
+          "custom_bytes": 40,
+          "defaults_us": 47.002,
+          "elements": 1000,
+          "families_bytes": 32,
+          "first_build_ms": 3.249136,
+          "first_max_step_us": 452.616,
+          "font_bytes": 256,
+          "max_step_us": 447.458,
+          "numeric_bytes": 256000,
+          "override_bytes": 336128,
+          "scene": "inset",
+          "shared_defaults_bytes": 7264,
+          "style_headers_bytes": 80320,
+          "styled_nodes": 1004,
+          "three_queries_ns": 16.87003,
+          "tree_container_bytes": 30272
+        }
+      ],
+      "method": "Mean full build/drop, retained-style three-property lookup mean, cold first calls and maximum observed 128-node worker step. Literal generated scalars verified outside timings. Shared allocations counted once; Arc controls included; allocator/hash controls and borrowed DOM/rules excluded. Tree container capacities included. Not process RSS.",
+      "rounds": 30,
+      "scope": "Original document style jobs from prebuilt HTML/RuleSet/Defaults; inline declaration parsing included. Supplied fixed numeric font/palette context, no font selection/shaping, UA sheet, layout, rasterization, JS/network/UI/website/Chrome evidence."
+    }
+  ]
+}

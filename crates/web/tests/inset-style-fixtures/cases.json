@@ -1,0 +1,207 @@
+[
+  {
+    "id": "one",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(2px)}"
+  },
+  {
+    "id": "two",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(1px 2px)}"
+  },
+  {
+    "id": "three",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(1px 2px 3px)}"
+  },
+  {
+    "id": "four",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(1px 2px 3px 4px)}"
+  },
+  {
+    "id": "percent",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(10% 20% 30% 40%)}"
+  },
+  {
+    "id": "negative",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(0 -60px 100% -60px)}"
+  },
+  {
+    "id": "overlap",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(75% 0 50% 0)}"
+  },
+  {
+    "id": "round-one",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(0 round 6px)}"
+  },
+  {
+    "id": "round-two",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(0 round 2px 4px)}"
+  },
+  {
+    "id": "round-three",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(0 round 2px 4px 6px)}"
+  },
+  {
+    "id": "round-four",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(0 round 2px 4px 6px 8px)}"
+  },
+  {
+    "id": "ellipse",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(0 round 2px 4px / 6px 8px)}"
+  },
+  {
+    "id": "percent-radii",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(10% round 20% 30% / 40% 50%)}"
+  },
+  {
+    "id": "calc",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(calc(10% + 2px) calc(20% - 8px))}"
+  },
+  {
+    "id": "clamp",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(clamp(-5px, 10% - 12px, 16px) max(0px, 30% - 30px) min(20px, 50%))}"
+  },
+  {
+    "id": "negative-calc-radius",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(0 round calc(-3px) calc(10% - 10px))}"
+  },
+  {
+    "id": "em",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(1em 2em round .5em / 1em)}"
+  },
+  {
+    "id": "rem",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(1rem round 2rem)}"
+  },
+  {
+    "id": "case",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:InSeT(0 RoUnD 2PX / 4px)}"
+  },
+  {
+    "id": "eof",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{font-size:20px;clip-path:inset(1px round 2px"
+  },
+  {
+    "id": "border-box",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:border-box inset(10% round 5px)}"
+  },
+  {
+    "id": "padding-box",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:padding-box inset(10% round 5px)}"
+  },
+  {
+    "id": "content-box",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:content-box inset(10% round 5px)}"
+  },
+  {
+    "id": "margin-box",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:margin-box inset(10% round 5px)}"
+  },
+  {
+    "id": "fill-box",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:fill-box inset(10% round 5px)}"
+  },
+  {
+    "id": "stroke-box",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:stroke-box inset(10% round 5px)}"
+  },
+  {
+    "id": "view-box",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:view-box inset(10% round 5px)}"
+  },
+  {
+    "id": "stripe-nav",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{--radius:8px;clip-path:inset(0 -60px 100% -60px round 0 0 var(--radius) var(--radius))}"
+  },
+  {
+    "id": "stripe-card",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{--x:-2px;--y:-3px;--r:12px;clip-path:inset(var(--y) var(--x) var(--y) var(--x) round calc(var(--r) - 1px))}"
+  },
+  {
+    "id": "stripe-toggle",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{--i:1;--a:2;--gap:4px;clip-path:inset(0 max(0px,calc((var(--i) - var(--a)) * (100% + var(--gap)))) 0 max(0px,calc((var(--a) - var(--i)) * (100% + var(--gap)))))}"
+  },
+  {
+    "id": "fallback",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:var(--missing,inset(0 round 2px))}"
+  },
+  {
+    "id": "invalid-computed",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{--shape:inset(0 round -1px);clip-path:inset(8px);clip-path:var(--shape)}"
+  },
+  {
+    "id": "inherit-font",
+    "html": "<div style=\"font-size:10px;clip-path:inset(2em 10% round 1em)\"><div id=probe></div></div>",
+    "css": "html{font-size:16px}#probe{font-size:40px;clip-path:inherit}"
+  },
+  {
+    "id": "not-inherited",
+    "html": "<div style=\"clip-path:inset(2px)\"><div id=probe></div></div>",
+    "css": "html{font-size:16px}#probe{clip-path:unset}"
+  },
+  {
+    "id": "attribute",
+    "html": "<svg><g id=probe clip-path=\"inset(8px)\" /></svg>",
+    "css": "html{font-size:16px}#probe{clip-path:inset(4px round 2px)}"
+  },
+  {
+    "id": "invalid-0",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:inset(7px);clip-path:inset(0 round -1px)}"
+  },
+  {
+    "id": "invalid-1",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:inset(7px);clip-path:inset(0 round 1px /)}"
+  },
+  {
+    "id": "invalid-2",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:inset(7px);clip-path:inset(0,0)}"
+  },
+  {
+    "id": "invalid-3",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:inset(7px);clip-path:inset(1 2)}"
+  },
+  {
+    "id": "invalid-4",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:inset(7px);clip-path:inset(0 round 1px / 2px / 3px)}"
+  },
+  {
+    "id": "invalid-5",
+    "html": "<div id=probe></div>",
+    "css": "html{font-size:16px}#probe{clip-path:inset(7px);clip-path:inset(0) border-box padding-box}"
+  }
+]

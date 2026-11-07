@@ -774,3 +774,75 @@ fn inherited_local_clip_storage_is_counted_once() {
         memory.styles_bytes + memory.defaults_bytes + memory.overrides_bytes + memory.fonts_bytes + memory.families_bytes + memory.customs_bytes + memory.numeric_bytes + memory.local_url_bytes
     );
 }
+
+#[test]
+fn inset_computed_values_match_independent_chrome_numeric_probes() {
+    use sha2::{Digest, Sha256};
+    let cases: serde_json::Value = serde_json::from_str(include_str!("inset-style-fixtures/cases.json")).unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("inset-style-fixtures/chrome.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(include_bytes!("inset-style-fixtures/cases.json"))), reference["cases_sha256"]);
+    struct Basis(f64);
+    impl math::Context for Basis {
+        fn factor(&self, unit: math::RelativeUnit) -> math::Result<f64> {
+            if unit == math::RelativeUnit::Percentage { Ok(self.0 / 100.) } else { Err(math::Error::ContextUnavailable) }
+        }
+    }
+    for row in reference["rows"].as_array().unwrap() {
+        let case = cases.as_array().unwrap().iter().find(|c| c["id"] == row["id"]).unwrap();
+        let host = Snapshot { scale: row["scale"].as_f64().unwrap(), ..Default::default() };
+        let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+        let doc = olo_web::html::parse(Arc::from(format!("<!doctype html>{}", case["html"].as_str().unwrap())), Default::default(), None).unwrap().document;
+        let sheet = rules(case["css"].as_str().unwrap());
+        let mut job = style::Job::new(&doc, &sheet, defaults, Default::default(), Default::default(), None).unwrap();
+        while !job.step(1, |_| &host).unwrap().finished {}
+        let tree = job.finish().unwrap();
+        let (_, probe) = tree.iter().find(|(n, _)| doc.attribute(*n, "id").unwrap() == Some("probe")).unwrap();
+        if row["value"] == "none" {
+            assert!(matches!(probe.value(P::ClipPath), Value::Keyword(K::None)), "{}", case["id"]);
+            continue;
+        }
+        let Value::Inset(shape) = probe.value(P::ClipPath) else { panic!("{}: {:?}", case["id"], probe.value(P::ClipPath)) };
+        assert_eq!(shape.reference_box().as_str(), row["reference"], "{}", case["id"]);
+        for sample in row["samples"].as_array().unwrap() {
+            let basis = Basis(sample["basis"].as_f64().unwrap());
+            let mut actual: Vec<_> =
+                shape.offsets().into_iter().chain(shape.radii().into_iter().flatten()).map(|n| n.resolve(&basis, &mut Default::default(), Default::default(), None).unwrap()).collect();
+            actual.resize(12, 0.);
+            for (index, (actual, want)) in actual.iter().zip(sample["values"].as_array().unwrap()).enumerate() {
+                let want = want.as_f64().unwrap();
+                // Chrome positioned-probe used lengths quantize to 1/64px; CSSOM
+                // serialization adds up to .0005px here. Keep shape math unsnapped.
+                assert!((actual - want).abs() < 1. / 64. + 0.0005, "{} @{} basis{} component{index}: {actual} != {want}", case["id"], row["scale"], basis.0);
+            }
+        }
+    }
+    assert_eq!(reference["rows"].as_array().unwrap().len(), 205);
+}
+
+#[test]
+fn inherited_inset_storage_and_programs_are_shared_and_counted_once() {
+    let host = Snapshot::default();
+    let defaults = Defaults::new(&host, Default::default(), None).unwrap();
+    let parent = compute(&defaults, &host, "clip-path:inset(calc(10% + 2em) round calc(20% + 1em))", None, None, Options { root: true, ..Default::default() });
+    let child = compute(&defaults, &host, "font-size:40px;clip-path:inherit", Some(&parent), Some(&parent), Default::default());
+    let Value::Inset(p) = parent.value(P::ClipPath) else { panic!() };
+    let Value::Inset(c) = child.value(P::ClipPath) else { panic!() };
+    assert_eq!(p.offsets()[0] as *const _, c.offsets()[0] as *const _);
+    let one = style::Memory::for_styles([&parent]);
+    let both = style::Memory::for_styles([&parent, &child]);
+    assert_eq!(one.clip_shape_bytes, both.clip_shape_bytes);
+    assert_eq!(one.numeric_bytes, both.numeric_bytes);
+    assert_eq!(one.clip_shape_bytes + one.numeric_bytes, p.reserved_bytes());
+    assert_eq!(
+        both.accounted_reserved_bytes,
+        both.styles_bytes
+            + both.defaults_bytes
+            + both.overrides_bytes
+            + both.fonts_bytes
+            + both.families_bytes
+            + both.customs_bytes
+            + both.numeric_bytes
+            + both.local_url_bytes
+            + both.clip_shape_bytes
+    );
+}

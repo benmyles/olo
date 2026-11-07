@@ -191,6 +191,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
         return Err(Error::Unsupported("SVG paint server/context paint"));
     }
     match grammar {
+        Grammar::ClipPath => super::clip::parse(parts, limits, cancelled),
         Grammar::FontStyle => font::style(parts, limits, cancelled),
         Grammar::Keywords(_) if property == Property::TextAlign && parts.len() == 1 && parts[0].kind() == Kind::Ident && parts[0].text().unwrap().eq_ignore_ascii_case("-webkit-match-parent") => {
             Ok(Value::Keyword(Keyword::MatchParent))
@@ -216,7 +217,7 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
 pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     check(cancelled)?;
     match grammar {
-        Grammar::ClipPath => super::clip::parse(c),
+        Grammar::ClipPath => super::clip::parse(&[c], limits, cancelled),
         Grammar::FontWidth => font::width(c, limits, cancelled),
         Grammar::Overflow => {
             if c.kind() == Kind::Ident && c.text().unwrap().eq_ignore_ascii_case("overlay") {

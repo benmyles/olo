@@ -14,10 +14,10 @@ without a dedicated eval environment; no personal account is part of this run.
 
 ## Latest startup checkpoint
 
-The latest fresh owned native HTTPS retry stops at **CSS style
-Unsupported("clip-path shape or geometry box")** after ClipPath became a typed
-property. This exposes an additional required grammar during computed style;
-the prior build reached SVG clip-path during box construction. Stripe's actual
+The latest fresh owned native HTTPS retry passes the rounded inset style
+values and stops at **flow layout Unsupported("SVG clip-path")** during box
+construction. Inset values now match205 independent Chrome observations across
+41 cases/five DPRs; clipping geometry is not yet connected. Stripe's actual
 absolute geometry has still not run.
 There is no useful native Stripe homepage and no accepted configuration.
 Initial deferred absolute blocks match 545 independent Chrome rectangles across

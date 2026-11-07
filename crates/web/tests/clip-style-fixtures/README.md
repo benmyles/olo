@@ -16,10 +16,11 @@ Chrome and case SHA-256. The earlier28-case capture is superseded by this
 
 These are computed style comparisons, not URL resolution, clipping, geometry,
 pixels, CSSOM completeness or site acceptance. Identifiers in the reference
-cases need no CSS string serialization escapes. Non-local URLs and shape/box
-forms remain explicitly unsupported. Rendering known local CSS clips still
+cases need no CSS string serialization escapes. Non-local URLs and other shape/standalone-box
+forms remain explicitly unsupported; inset values are now covered separately in
+../inset-style-fixtures. Rendering known local CSS clips still
 fails until geometry/paint is connected; existing SVG attribute guards remain.
-Native Stripe now exposes a shape/box failure during computed style, before
-layout. Its retained CSS includes variable-dependent rounded inset() shapes.
+At this checkpoint native Stripe exposed a shape/box failure during computed
+style, before layout. Subsequent inset value work is recorded in the journal.
 
 Specification: https://www.w3.org/TR/css-masking-1/#the-clip-path.

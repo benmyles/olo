@@ -14,6 +14,7 @@ pub struct Memory {
     pub customs_bytes: usize,
     pub numeric_bytes: usize,
     pub local_url_bytes: usize,
+    pub clip_shape_bytes: usize,
     pub accounted_reserved_bytes: usize,
 }
 impl Memory {
@@ -64,11 +65,26 @@ impl Account {
         if let Value::Families(f) = value {
             self.families(f);
         }
-        if let Value::Numeric(n) | Value::FitContent(n) = value
-            && let math::Value::Expression(program) = n.expression()
+        if let Value::Inset(shape) = value {
+            self.inset(shape);
+        }
+        if let Value::Numeric(n) | Value::FitContent(n) = value {
+            self.number(n);
+        }
+    }
+    fn number(&mut self, n: &p::Numeric) {
+        if let math::Value::Expression(program) = n.expression()
             && self.seen.insert(Arc::as_ptr(program) as usize)
         {
             self.memory.numeric_bytes += n.expression().memory().accounted_reserved_bytes;
+        }
+    }
+    fn inset(&mut self, shape: &p::Inset) {
+        if self.seen.insert(shape.identity()) {
+            self.memory.clip_shape_bytes += shape.own_bytes();
+            for n in shape.numerics() {
+                self.number(n);
+            }
         }
     }
     pub fn add(&mut self, style: &Style) {
@@ -84,6 +100,8 @@ impl Account {
             for value in &style.defaults.specified {
                 if let p::Value::Families(f) = value {
                     self.families(f);
+                } else if let p::Value::Inset(shape) = value {
+                    self.inset(shape);
                 } else if let p::Value::LocalUrl(u) = value {
                     self.local_url(u);
                 } else {
@@ -122,6 +140,7 @@ impl Account {
             + self.memory.families_bytes
             + self.memory.customs_bytes
             + self.memory.numeric_bytes
-            + self.memory.local_url_bytes;
+            + self.memory.local_url_bytes
+            + self.memory.clip_shape_bytes;
     }
 }

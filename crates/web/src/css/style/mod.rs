@@ -232,6 +232,7 @@ pub enum Value {
     FitContent(p::Numeric),
     Families(Families),
     LocalUrl(p::LocalUrl),
+    Inset(p::Inset),
     /// Explicit nonzero oblique angle in degrees; bare oblique is a keyword.
     Oblique(f64),
 }
@@ -244,6 +245,7 @@ impl Value {
             (Self::Display(a), Self::Display(b)) => a == b,
             (Self::Families(a), Self::Families(b)) => a == b,
             (Self::LocalUrl(a), Self::LocalUrl(b)) => a == b,
+            (Self::Inset(a), Self::Inset(b)) => a.same(b),
             (Self::Oblique(a), Self::Oblique(b)) => a.to_bits() == b.to_bits(),
             _ => false,
         }
@@ -256,6 +258,7 @@ impl Value {
             Self::Numeric(n) | Self::FitContent(n) => n.expression().memory().accounted_reserved_bytes,
             Self::Families(f) => f.reserved_bytes(),
             Self::LocalUrl(u) => u.reserved_bytes(),
+            Self::Inset(s) => s.reserved_bytes(),
             _ => 0,
         }
     }
