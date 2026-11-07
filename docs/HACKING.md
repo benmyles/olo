@@ -3177,6 +3177,16 @@ module's comment.
 
 ## Testing: headless sessions
 
+Every crate's tests at once: `cargo test --release --workspace --exclude
+gpui-macros --no-fail-fast` (1,459 pass, 2026-11-07). Left out and known
+to fail are vendored code's own tests needing features Olo doesn't build:
+gpui-macros' `derive_inspector_reflection` (its inspector; it doesn't
+compile, and would stop the whole run) and six of Smithay's doc examples
+(its `renderer_test`, which its own CI turns on); Smithay's 82 unit
+tests pass in the same run (not alone: `-p smithay` builds it without
+the features the workspace gives it). Run it after a change that crosses
+crates, and before saying a change is done.
+
 Never open windows on the user's screen. `tools/dev/tsession` runs a
 headless app_server (GPU, offscreen, 2560×1600 device pixels at 2× by
 default, i.e. 1280×800 logical) and drives it:
