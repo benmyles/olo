@@ -61,7 +61,8 @@ impl StateSource for Snapshot<'_> {
     fn state(&self, node: NodeId, pseudo: Option<PseudoElement>, state: State) -> selectors::Result<bool> {
         self.doc.node_type(node)?; // Reject foreign/stale identities even for false states.
         if pseudo.is_some() {
-            return Err(selectors::Error::StateUnavailable);
+            // Pseudo-element states (::before:hover) never match until pseudo-elements exist.
+            return Ok(false);
         }
         Ok(match state {
             State::AnyLink | State::Link => self.doc.namespace(node)? == Some(Namespace::Html) && matches!(self.doc.name(node)?, Some("a" | "area")) && self.doc.attribute(node, "href")?.is_some(),
@@ -75,7 +76,9 @@ impl StateSource for Snapshot<'_> {
             State::Target => self.input.target == Some(node),
             State::Disabled => self.disabled(node)? == Some(true),
             State::Enabled => self.disabled(node)? == Some(false),
-            _ => return Err(selectors::Error::UnsupportedState(state)),
+            // States the engine does not track yet (:checked, :invalid, …)
+            // do not match, as in a document where nothing has that state.
+            _ => false,
         })
     }
 }

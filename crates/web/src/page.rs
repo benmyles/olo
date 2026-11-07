@@ -44,6 +44,9 @@ pub struct Page {
     pub interaction: Interaction,
     pub interaction_mask: u64,
     pub stylesheet_issues: usize,
+    /// What the engine substituted while rendering this page: structured for
+    /// agents and the eval, so a rendered page never passes as complete.
+    pub fallbacks: layout::Fallbacks,
     rules: css::cascade::RuleSet,
     quirks: bool,
     resource_issues: usize,
@@ -229,8 +232,8 @@ pub fn load_assets(
     let rules = sheets.finish(cancel)?;
     let interaction_mask = rules.state_mask();
     let quirks = parsed.quirks == html::QuirksMode::Quirks;
-    let (scene, stylesheet_issues) = render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, scope, shaper, painter, viewport, cancel, &mut progress)?;
-    Ok(Page { images, document: doc, scene, title, scripts, base_href: base, interaction: Interaction::default(), interaction_mask, stylesheet_issues, rules, quirks, resource_issues })
+    let (scene, stylesheet_issues, fallbacks) = render(&doc, images.as_ref(), &rules, quirks, resource_issues, Interaction::default(), host, scope, shaper, painter, viewport, cancel, &mut progress)?;
+    Ok(Page { images, document: doc, scene, title, scripts, base_href: base, interaction: Interaction::default(), interaction_mask, stylesheet_issues, fallbacks, rules, quirks, resource_issues })
 }
 impl Page {
     /// Recompute viewport-dependent styles without network I/O or HTML parsing.
@@ -248,10 +251,11 @@ impl Page {
         for node in [self.interaction.hover, self.interaction.active, self.interaction.focus, self.interaction.target].into_iter().flatten() {
             self.document.node_type(node)?;
         }
-        let (scene, issues) =
+        let (scene, issues, fallbacks) =
             render(&self.document, self.images.as_ref(), &self.rules, self.quirks, self.resource_issues, self.interaction, host, scope, shaper, painter, viewport, cancel, &mut progress)?;
         self.scene = scene;
         self.stylesheet_issues = issues;
+        self.fallbacks = fallbacks;
         Ok(())
     }
 }
@@ -270,7 +274,8 @@ fn render(
     viewport: layout::Viewport,
     cancel: Option<&AtomicBool>,
     mut progress: impl FnMut(Phase, usize),
-) -> Result<(Arc<paint::Scene>, usize)> {
+) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
+    let mut fallbacks = layout::Fallbacks::default();
     let defaults = Defaults::new(host, Default::default(), cancel)?;
     let snapshot = interaction::Snapshot::new(doc, input, cancel);
     let mut job = style::Job::new(doc, rules, defaults, style::JobOptions { quirks, states: Some(&snapshot), ..Default::default() }, Default::default(), cancel)?;
@@ -278,6 +283,9 @@ fn render(
         progress(Phase::Styles, job.progress().styled)
     }
     let styles = Arc::new(job.finish()?);
+    for _ in 0..styles.report().value_fallbacks.min(u32::MAX as usize) {
+        fallbacks.note("declaration dropped at computed-value time", None);
+    }
     let stylesheet_issues = resource_issues
         + styles.report().stylesheet_issues
         + styles.report().inline_unsupported
@@ -292,18 +300,21 @@ fn render(
     while !job.step(128)?.finished {
         progress(Phase::Boxes, job.progress().boxes)
     }
+    fallbacks.merge(job.fallbacks());
     let tree = job.finish()?;
     progress(Phase::Text, 0);
     let mut job = layout::PrepareJob::new(shaper, scope, tree, Default::default(), cancel)?;
     while !job.step(1)?.finished {
         progress(Phase::Text, job.progress().texts)
     }
+    fallbacks.merge(job.fallbacks());
     let cache = job.finish()?;
     progress(Phase::Layout, 0);
     let mut job = layout::Job::new(shaper, scope, cache, viewport, Default::default(), cancel)?;
     while !job.step(64)?.finished {
         progress(Phase::Layout, job.progress().boxes)
     }
+    fallbacks.merge(job.fallbacks());
     let layout = Arc::new(job.finish()?);
     progress(Phase::Paint, 0);
     let canvas = host.system_color(css::color::SystemColor::Canvas, host.scheme())?.srgb8_clipped();
@@ -311,8 +322,9 @@ fn render(
     while !job.step(32)?.finished {
         progress(Phase::Paint, job.progress().boxes)
     }
+    fallbacks.merge(job.fallbacks());
     let scene = job.finish()?;
-    Ok((scene, stylesheet_issues))
+    Ok((scene, stylesheet_issues, fallbacks))
 }
 
 fn next_node(doc: &Document, node: crate::dom::NodeId) -> Result<Option<crate::dom::NodeId>> {

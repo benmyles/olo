@@ -206,6 +206,7 @@ pub struct BuildJob<'a> {
     next: usize,
     groups: u32,
     progress: Progress,
+    fallbacks: layout::Fallbacks,
     failed: bool,
 }
 fn color(s: &Style, p: P) -> Result<[u8; 4]> {
@@ -263,11 +264,20 @@ impl<'a> BuildJob<'a> {
             next: 0,
             groups: 0,
             progress: Progress::default(),
+            fallbacks: layout::Fallbacks::default(),
             failed: false,
         })
     }
     pub fn progress(&self) -> Progress {
         self.progress
+    }
+    /// What this paint substituted (dashed borders solid, stacking in tree order, …).
+    pub fn fallbacks(&self) -> &layout::Fallbacks {
+        &self.fallbacks
+    }
+    fn note(&mut self, what: &'static str, id: BoxId) {
+        let node = self.layout.cache().tree().get(id).map(|b| b.node);
+        self.fallbacks.note(what, node);
     }
     fn emit(&mut self, group: u32, text: bool, bounds: Rect, primitive: Primitive, clip: u32) -> Result<()> {
         if !valid(bounds) {
@@ -295,7 +305,7 @@ impl<'a> BuildJob<'a> {
             if widths[i] > 0. {
                 let p = [P::BorderTopStyle, P::BorderRightStyle, P::BorderBottomStyle, P::BorderLeftStyle][i];
                 if !matches!(s.value(p), Value::Keyword(K::Solid)) {
-                    return Err(Error::Unsupported("non-solid border painting"));
+                    self.note("border style painted solid", id);
                 }
                 colors[i] = color(s, [P::BorderTopColor, P::BorderRightColor, P::BorderBottomColor, P::BorderLeftColor][i])?;
             }
@@ -313,23 +323,28 @@ impl<'a> BuildJob<'a> {
                 if !visible(s) {
                     return Ok(());
                 }
-                Primitive::Image { owner: id, image }
+                Some(Primitive::Image { owner: id, image })
             }
-            BoxKind::InlineVector { vector } => Primitive::Vector { owner: id, vector, origin: Point::default() },
+            BoxKind::InlineVector { vector } => Some(Primitive::Vector { owner: id, vector, origin: Point::default() }),
+            BoxKind::InlineReplaced { .. } => None,
             _ => return Err(Error::Invalid),
         };
         if s.value(P::Opacity).scalar() != Some(1.)
             || !matches!(s.value(P::Isolation), Value::Keyword(K::Auto))
             || !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto)) && s.value(P::ZIndex).scalar() != Some(0.)
         {
-            return Err(Error::Unsupported("image stacking"));
+            self.note("opacity/z-index on an atomic inline ignored", id);
         }
         let g = *layout.geometry(id).ok_or(Error::Invalid)?;
         let outer = Rect { x: at.x + g.border_box.x, y: at.y + g.border_box.y, ..g.border_box };
         if visible(s) {
             self.decorate(id, s, g, outer, group, clip, true)?;
         }
-        if let Primitive::Vector { vector, .. } = primitive { self.vector(id, vector, outer, group, clip) } else { self.emit(group, true, outer, primitive, clip) }
+        match primitive {
+            Some(Primitive::Vector { vector, .. }) => self.vector(id, vector, outer, group, clip),
+            Some(primitive) => self.emit(group, true, outer, primitive, clip),
+            None => Ok(()),
+        }
     }
     /// Keep the raster transform anchored to the CSS viewport while the spatial
     /// index includes visible ink outside it. No path traversal during repaint.
@@ -361,10 +376,9 @@ impl<'a> BuildJob<'a> {
                 ink.y = origin.y;
                 ink.height = content.height;
             }
-            if !valid(ink) {
-                return Err(Error::Unsupported("SVG overflow bounds precision"));
+            if valid(ink) {
+                bounds = union(bounds, ink);
             }
-            bounds = union(bounds, ink);
         }
         if !source.clip_nodes().is_empty() && !self.vector_clips.contains_key(&vector) {
             if self.svg_viewports.is_none() {
@@ -400,18 +414,8 @@ impl<'a> BuildJob<'a> {
             check(self.cancel)?;
             let s = layout.cache().tree().styles().snapshot(b.node).ok_or(Error::Stale)?;
             if visible(s) && color(s, P::BackgroundColor)?[3] != 0 {
-                return Err(Error::Unsupported("inline backgrounds"));
-            }
-        }
-        for c in controls {
-            check(self.cancel)?;
-            if c.kind == crate::text::prepare::ControlKind::Object {
-                continue;
-            }
-            let span = layout.cache().tree().text_source(source).and_then(|s| s.span_at(c.offset)).ok_or(Error::Invalid)?;
-            let s = layout.cache().tree().styles().snapshot(span.style_node).ok_or(Error::Stale)?;
-            if visible(s) && color(s, P::BackgroundColor)?[3] != 0 {
-                return Err(Error::Unsupported("inline break backgrounds"));
+                self.fallbacks.note("inline background not painted", Some(b.node));
+                break;
             }
         }
         let source = layout.cache().tree().text_source(source).ok_or(Error::Invalid)?;
@@ -426,7 +430,7 @@ impl<'a> BuildJob<'a> {
             while let Some(id) = child {
                 let b = layout.cache().tree().get(id).ok_or(Error::Invalid)?;
                 child = b.next_sibling;
-                if !matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. }) {
+                if !matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. }) {
                     return Err(Error::Invalid);
                 }
                 image_owners.push((b.node.slot(), id));
@@ -452,7 +456,8 @@ impl<'a> BuildJob<'a> {
                 }
                 let run = text.run(f).ok_or(Error::Invalid)?;
                 if !matches!(run.direction, Direction::LeftToRight | Direction::RightToLeft) {
-                    return Err(Error::Unsupported("vertical glyph painting"));
+                    self.note("vertical glyphs not painted", id);
+                    continue;
                 }
                 let factor = size / f64::from(run.font.units_per_em());
                 let mut pen = 0i64;
@@ -501,20 +506,8 @@ impl<'a> BuildJob<'a> {
                     let hi = source.spans.partition_point(|s| s.range.start < input_end);
                     // A shared cluster spanning DOM nodes needs glyph caret
                     // ownership. Keep it readable, but do not invent a click target.
+                    // A ligature across two colours takes its first span's colour.
                     let hit_span = if hi - lo == 1 { mapping.span } else { u32::MAX };
-                    for (offset, next) in source.spans[lo..hi].iter().enumerate() {
-                        if lo + offset == mapping.span as usize || controls.binary_search_by_key(&next.range.start, |c| c.offset).is_ok() {
-                            continue;
-                        }
-                        let ns = layout.cache().tree().styles().snapshot(next.style_node).ok_or(Error::Stale)?;
-                        let mut nc = color(ns, P::Color)?;
-                        if !visible(ns) {
-                            nc[3] = 0
-                        }
-                        if nc != c {
-                            return Err(Error::Unsupported("paint boundary inside a glyph cluster"));
-                        }
-                    }
                     let origin = Point { x: at.x + f.x + pen as f64 * factor, y: baseline };
                     let ink = self.engine.ink(&run.font, g.id, self.cancel)?;
                     pen += i64::from(g.x_advance);
@@ -561,7 +554,7 @@ impl<'a> BuildJob<'a> {
             check(self.cancel)?;
             let layout = self.layout.clone();
             let tree = layout.cache().tree();
-            let Some((id, b)) = tree.iter().nth(self.next) else {
+            let Some((id, b)) = tree.at(self.next) else {
                 self.progress.finished = true;
                 break;
             };
@@ -572,7 +565,7 @@ impl<'a> BuildJob<'a> {
             } else {
                 (Point::default(), 0, NONE)
             };
-            if matches!(b.kind, BoxKind::Block { absolute: true, .. }) {
+            if b.absolute {
                 let mut cb = b.parent.ok_or(Error::Invalid)?;
                 loop {
                     check(self.cancel)?;
@@ -596,14 +589,16 @@ impl<'a> BuildJob<'a> {
             let mut children_clip = clip;
             match b.kind {
                 BoxKind::Viewport => {}
-                BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } => {
+                BoxKind::Block { .. } | BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
                     let s = tree.style(id).ok_or(Error::Invalid)?;
-                    if s.value(P::Opacity).scalar() != Some(1.)
-                        || !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto) | Value::Numeric(_))
-                        || s.value(P::ZIndex).scalar().is_some_and(|v| v != 0.)
-                        || !matches!(s.value(P::Isolation), Value::Keyword(K::Auto))
-                    {
-                        return Err(Error::Unsupported("opacity/z-index/isolation stacking"));
+                    if s.value(P::Opacity).scalar() != Some(1.) {
+                        self.fallbacks.note("opacity painted opaque", Some(b.node));
+                    }
+                    if !matches!(s.value(P::ZIndex), Value::Keyword(K::Auto)) && s.value(P::ZIndex).scalar() != Some(0.) {
+                        self.fallbacks.note("z-index painted in tree order", Some(b.node));
+                    }
+                    if !matches!(s.value(P::Isolation), Value::Keyword(K::Auto)) {
+                        self.fallbacks.note("isolation ignored", Some(b.node));
                     }
                     if matches!(s.value(P::Position), Value::Keyword(K::Relative | K::Absolute)) {
                         self.groups = self.groups.checked_add(1).ok_or(Error::Limit)?;
@@ -636,7 +631,7 @@ impl<'a> BuildJob<'a> {
                         self.clips.push(clip_rect);
                     }
                 }
-                BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } => {}
+                BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. } => {}
                 BoxKind::InlineContent { source } => {
                     let at = Point { x: outer.x, y: outer.y };
                     if layout.text_layout(id).ok_or(Error::Invalid)?.text().object_count() == 0 {

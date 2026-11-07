@@ -55,6 +55,17 @@ impl Path {
     pub fn malformed(&self) -> bool {
         self.malformed
     }
+    pub(crate) fn from_geometry(geometry: Option<tiny_skia::Path>) -> Self {
+        Self { geometry, malformed: false }
+    }
+    /// The same path in another coordinate space; geometry a transform cannot
+    /// represent in f32 is dropped rather than drawn somewhere wrong.
+    pub(crate) fn transformed(self, transform: Option<tiny_skia::Transform>) -> Self {
+        match transform {
+            Some(t) => Self { geometry: self.geometry.and_then(|g| g.transform(t)), malformed: self.malformed },
+            None => self,
+        }
+    }
     /// Occupied verbs and points, excluding allocator capacity and headers.
     pub fn payload_bytes(&self) -> usize {
         self.geometry.as_ref().map_or(0, |p| std::mem::size_of_val(p.verbs()) + std::mem::size_of_val(p.points()))

@@ -452,7 +452,8 @@ fn computed_styles_bind_scope_direction_whitespace_and_line_metrics() {
         let style = tree.iter().find(|(n, _)| doc.attribute(*n, "id").unwrap() == Some("target")).unwrap().1;
         let options = layout::Options::for_style(style, &sc, 50., None);
         if unsupported {
-            assert!(matches!(options, Err(layout::Error::Unsupported(_))), "{declarations}");
+            // Typography the options cannot express is left out and named.
+            assert!(!options.unwrap().ignored.is_empty(), "{declarations}");
             continue;
         }
         let p = prepared("abc abc abc", WhiteSpace::for_style(style).unwrap());

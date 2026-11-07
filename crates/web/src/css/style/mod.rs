@@ -364,6 +364,9 @@ pub struct Dependencies {
     pub substitution: bool,
     pub color: color::Dependencies,
     pub layout_parent: bool,
+    /// Declarations whose value could not be computed in this context and
+    /// were dropped as invalid, leaving the inherited or initial value.
+    pub fallbacks: u16,
 }
 /// A coherent generation's computed values; logical aliases are queried using
 /// this element's axes. No parent/cascade/source tree is retained. Sparse

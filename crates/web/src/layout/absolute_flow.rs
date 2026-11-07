@@ -6,6 +6,9 @@ use crate::css::style::{Direction, Style};
 pub(super) struct Deferred {
     pub id: BoxId,
     pub queries: QueryBasis,
+    /// Where normal flow would have put the box, in its parent's content box:
+    /// the static position an auto inset falls back to.
+    pub static_position: Point,
 }
 pub(super) struct Active {
     pub id: BoxId,
@@ -15,7 +18,20 @@ pub(super) struct Active {
     pub offset_y: f64,
 }
 #[allow(clippy::too_many_arguments)] // Explicit immutable geometry and worker resources.
-fn input(s: &Style, axis: Axis, width: f64, height: f64, u: Used, queries: QueryBasis, scratch: &mut math::Scratch, cancel: Option<&AtomicBool>, scale: f64) -> Result<Input> {
+fn input(
+    s: &Style,
+    axis: Axis,
+    width: f64,
+    height: f64,
+    u: Used,
+    size_override: Option<f64>,
+    intrinsic: [f64; 2],
+    static_position: f64,
+    queries: QueryBasis,
+    scratch: &mut math::Scratch,
+    cancel: Option<&AtomicBool>,
+    scale: f64,
+) -> Result<Input> {
     let horizontal = matches!(axis, Axis::Horizontal { .. });
     let basis = if horizontal { width } else { height };
     let props = if horizontal {
@@ -28,13 +44,10 @@ fn input(s: &Style, axis: Axis, width: f64, height: f64, u: Used, queries: Query
     let content = |v: f64| (v - if border_box { extra } else { 0. }).max(0.);
     let mut len = |p, b, f| used::length(s, p, Some(b), f, queries, scratch, cancel, scale);
     let inset = [len(props[0], basis, None)?, len(props[1], basis, None)?];
-    if inset.iter().all(Option::is_none) {
-        return Err(Error::Unsupported("absolute static-position discovery"));
-    }
-    let size = len(props[2], basis, None)?.map(content);
-    if horizontal && size.is_none() && inset.iter().any(Option::is_none) {
-        return Err(Error::Unsupported("absolute shrink-to-fit intrinsic sizing"));
-    }
+    let size = match size_override {
+        Some(size) => Some(size),
+        None => len(props[2], basis, None)?.map(content),
+    };
     Ok(Input {
         axis,
         containing: basis,
@@ -44,24 +57,29 @@ fn input(s: &Style, axis: Axis, width: f64, height: f64, u: Used, queries: Query
         decoration: extra,
         minimum: len(props[3], basis, Some(0.))?.map(content).unwrap(),
         maximum: len(props[4], basis, None)?.map(content),
-        intrinsic: [0., 0.],
-        static_position: 0.,
+        intrinsic,
+        static_position,
     })
 }
 impl Job<'_> {
     pub(super) fn positioned(&self, id: BoxId) -> Result<bool> {
-        Ok(matches!(self.cache.tree.get(id).ok_or(Error::Invalid)?.kind, BoxKind::Block { absolute: true, .. }))
+        Ok(self.cache.tree.get(id).ok_or(Error::Invalid)?.absolute)
     }
     pub(super) fn defer_absolute(&mut self, id: BoxId) -> Result<()> {
         if self.absolute.len() >= self.limits.boxes {
             return Err(Error::Limit);
         }
         let parent = self.stack.last().ok_or(Error::Invalid)?;
+        // The next block would start at the cursor plus the pending margin; in a
+        // flex row it would start where the row's cursor is. Both are the
+        // static position's block-axis estimate for a hypothetical block box.
+        let static_position = Point { x: 0., y: parent.cursor + parent.pending.value() };
         if let Some(&at) = self.absolute_indices.get(&id) {
             self.absolute[at].queries = parent.queries;
+            self.absolute[at].static_position = static_position;
         } else {
             self.absolute_indices.insert(id, self.absolute.len());
-            self.absolute.push(Deferred { id, queries: parent.queries });
+            self.absolute.push(Deferred { id, queries: parent.queries, static_position });
         }
         Ok(())
     }
@@ -85,11 +103,9 @@ impl Job<'_> {
     pub(super) fn begin_absolute(&mut self) -> Result<()> {
         let d = *self.absolute.get(self.absolute_at).ok_or(Error::Invalid)?;
         self.absolute_at += 1;
-        let tree = &self.cache.tree;
+        let cache = self.cache.clone();
+        let tree = &cache.tree;
         let node = tree.get(d.id).ok_or(Error::Invalid)?;
-        if !matches!(node.kind, BoxKind::Block { .. }) {
-            return Err(Error::Unsupported("positioned replaced box"));
-        }
         let parent = node.parent.ok_or(Error::Invalid)?;
         let mut cb = parent;
         let mut depth = 0;
@@ -108,9 +124,43 @@ impl Job<'_> {
         let height = content.height + cg.padding.vertical();
         let s = tree.style(d.id).ok_or(Error::Stale)?;
         let rtl = tree.style(cb).is_some_and(|s| s.axes().direction == Direction::Rtl);
+        // Static positions relative to the containing block's padding box.
+        let static_x = parent_content.x + d.static_position.x - (content.x - cg.padding.left);
+        let static_y = parent_content.y + d.static_position.y - (content.y - cg.padding.top);
+        if node.kind.is_replaced() {
+            // Replaced boxes have their size before placement (CSS 2.2 10.3.8/10.6.5).
+            let natural = tree.natural(d.id)?;
+            let mut u = super::images::used(s, width, Some(height), natural, false, rtl, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+            let h = u.height.ok_or(Error::Invalid)?;
+            let x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, Some(u.width), [u.width, u.width], static_x, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+            let y = input(s, Axis::Vertical, width, height, u, Some(h), [h, h], static_y, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+            let horizontal = positioned::solve(x, self.scale)?;
+            let vertical = positioned::solve(y, self.scale)?;
+            u.margin = Edges { left: horizontal.margin[0], right: horizontal.margin[1], top: vertical.margin[0], bottom: vertical.margin[1] };
+            let mut g = super::images::geometry(u);
+            g.border_box.x = content.x - cg.padding.left - parent_content.x + horizontal.border_start();
+            g.border_box.y = content.y - cg.padding.top - parent_content.y + vertical.border_start();
+            self.geometry[d.id.index()] = g;
+            self.progress.boxes += 1;
+            return Ok(());
+        }
+        if !matches!(node.kind, BoxKind::Block { .. }) {
+            return Err(Error::Invalid);
+        }
         let mut u = Used::flex(s, width, Some(height), d.queries, &mut self.scratch, self.cancel, self.scale)?;
-        let x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, d.queries, &mut self.scratch, self.cancel, self.scale)?;
-        let y = input(s, Axis::Vertical, width, height, u, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+        // Shrink-to-fit needs the content's intrinsic widths only when the
+        // width is auto and an inset is auto; other boxes never measure.
+        let width_auto = used::length(s, P::Width, Some(width), None, d.queries, &mut self.scratch, self.cancel, self.scale)?.is_none();
+        let left = used::length(s, P::Left, Some(width), None, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+        let right = used::length(s, P::Right, Some(width), None, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+        let intrinsic = if width_auto && (left.is_none() || right.is_none()) {
+            let (w, _) = self.intrinsic_content(d.id, d.queries, width, 0)?;
+            [w.min_content, w.max_content]
+        } else {
+            [0., 0.]
+        };
+        let x = input(s, Axis::Horizontal { rtl, static_rtl: rtl }, width, height, u, None, intrinsic, static_x, d.queries, &mut self.scratch, self.cancel, self.scale)?;
+        let y = input(s, Axis::Vertical, width, height, u, None, [0., 0.], static_y, d.queries, &mut self.scratch, self.cancel, self.scale)?;
         let horizontal = positioned::solve(x, self.scale)?;
         let vertical = positioned::solve(y, self.scale)?;
         u.width = horizontal.size;

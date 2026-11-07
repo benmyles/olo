@@ -24,7 +24,10 @@ pub(super) fn length(s: &Style, p: P, basis: Option<f64>, fallback: Option<f64>,
             }
             Ok(Some(grid(n.resolve(&Basis(basis, queries), scratch, Default::default(), cancel)?, scale)))
         }
-        _ => Err(Error::Unsupported("intrinsic/fit-content box sizing")),
+        // min-content, max-content, fit-content and stretch keywords size from
+        // the box's content; until block layout measures that, they behave as
+        // auto. Flex items and absolutes resolve them from intrinsic widths.
+        _ => Ok(fallback),
     }
 }
 pub(super) fn has_inline_edge(s: &Style, start: bool) -> bool {
@@ -166,10 +169,10 @@ impl Used {
         }
         let mut bfc = contained;
         for p in [P::OverflowX, P::OverflowY] {
-            match s.value(p) {
-                Value::Keyword(K::Hidden) => bfc = true,
-                Value::Keyword(K::Visible | K::Clip) => {}
-                _ => return Err(Error::Unsupported("scrollbar-dependent layout")),
+            // Scrollable overflow clips like hidden; scrollbars take no space
+            // (as overlay scrollbars do) until scrollable boxes scroll.
+            if !matches!(s.value(p), Value::Keyword(K::Visible | K::Clip)) {
+                bfc = true;
             }
         }
         let out =

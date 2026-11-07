@@ -94,17 +94,38 @@ fn changed_containment_and_viewport_recompute_descendant_box_lengths() {
     assert!(page.restyle(&host, &scope, &mut shaper, &mut painter, viewport, Some(&AtomicBool::new(true)), |_, _| {}).is_err());
 }
 #[test]
-fn early_contexts_and_inherited_pending_lengths_do_not_rebind_to_children() {
+fn early_contexts_and_inherited_pending_lengths_render_with_recorded_fallbacks() {
     let scope = scope();
     let host = paint_host::Scaled::new(scope.clone(), 1.);
     let mut shaper = shaping::Engine::default();
     let mut painter = paint::Engine::default();
-    for (source, error) in [
-        ("<style>div{font-size:10cqi}</style><div></div>", "ContextUnavailable"),
-        ("<style>#parent{width:10cqi}#child{width:inherit}</style><div id=parent><div id=child></div></div>", "inherited container-dependent box length"),
-    ] {
-        let result = page::load(Arc::from(format!("<!doctype html>{source}")), &host, &scope, &mut shaper, &mut painter, layout::Viewport { width: 800., height: 600., scale: 1. }, None, |_, _| {});
-        assert!(result.is_err());
-        assert!(result.err().unwrap().to_string().contains(error));
-    }
+    // A container unit on a property computed before layout knows its container
+    // cannot be computed: the declaration is dropped, recorded, and the page renders.
+    let page = page::load(
+        Arc::from("<!doctype html><style>div{font-size:10cqi}</style><div>text</div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 800., height: 600., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    assert!(page.fallbacks.counts().iter().any(|(what, n)| *what == "declaration dropped at computed-value time" && *n >= 1), "{}", page.fallbacks);
+    // An inherited container-relative box length keeps its expression and
+    // resolves against the inheritor's own container at layout.
+    let page = page::load(
+        Arc::from("<!doctype html><style>#parent{width:10cqi}#child{width:inherit}</style><div id=parent><div id=child></div></div>"),
+        &host,
+        &scope,
+        &mut shaper,
+        &mut painter,
+        layout::Viewport { width: 800., height: 600., scale: 1. },
+        None,
+        |_, _| {},
+    )
+    .unwrap();
+    assert_eq!(bounds(&page.document, page.scene.layout(), "parent").width, 80.);
+    assert_eq!(bounds(&page.document, page.scene.layout(), "child").width, 80.);
 }

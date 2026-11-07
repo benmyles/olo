@@ -2233,7 +2233,7 @@
       "height": 800,
       "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
       "css": "#p{font-size:0;line-height:0;}#image{vertical-align:top}",
-      "unsupported": "aligned/positioned image",
+      "unsupported": "vertical-align on image",
       "layoutViewport": {
         "width": 200,
         "height": 800
@@ -2272,7 +2272,7 @@
       "height": 800,
       "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
       "css": "#p{font-size:0;line-height:0;}#image{vertical-align:middle}",
-      "unsupported": "aligned/positioned image",
+      "unsupported": "vertical-align on image",
       "layoutViewport": {
         "width": 200,
         "height": 800
@@ -2311,7 +2311,7 @@
       "height": 800,
       "body": "<div id=p><img id=image alt=\"Reference image\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8Dwn4HhfwMAD3oDfgvLLrEAAAAASUVORK5CYII=\" ></div>",
       "css": "#p{font-size:0;line-height:0;}#image{vertical-align:bottom}",
-      "unsupported": "aligned/positioned image",
+      "unsupported": "vertical-align on image",
       "layoutViewport": {
         "width": 200,
         "height": 800

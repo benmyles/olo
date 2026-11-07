@@ -281,6 +281,11 @@ fn evaluate_case(dir: &Path, case: &Json) -> Result<()> {
         return Err(mismatch("known-valid inline declaration rejected"));
     }
     let style = tree.get(&parsed.document, target, 0).map_err(error)?.ok_or_else(|| error("missing computed target"))?;
+    if style.dependencies().fallbacks != 0 {
+        // A declaration this context cannot compute (a container unit before
+        // layout) is dropped and recorded; the page renders without it.
+        return Err(unsupported("declaration dropped at computed-value time"));
+    }
     let expected = &case["expected"];
     if let Some(values) = expected.as_array() {
         for v in values {

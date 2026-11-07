@@ -7,16 +7,31 @@ While working, fetch and merge `origin/main` at regular working checkpoints,
 revalidate the merged workspace and push the integration with browser work.
 
 **Active website: [Stripe](eval/stripe/README.md), selected by the user.**
-Finish its real pages/journeys and all30 configurations before choosing another
-site. Component work follows observed Stripe blockers. The latest fresh HTTPS
-retry passes non-root SVG opacity and stops at UnsupportedForeign Svg rect
-(node slot317) during box construction. The new opacity corpus has140 matching
-bounds,65 exact crops and75 explicit pixel nonpasses. Earlier SVG corpora retain
-38 path/overflow and48 clip pixel nonpasses. Native component reviews pass15
-theme/scale combinations. Stripe's actual absolute geometry has not run, and no
-useful native homepage/configuration is accepted. Next implement visible SVG
-rectangle geometry/painting, keep opacity/clipping raster gaps open, complete
-root decoration/stacking and inset painting, then retry Stripe. No other site.
+Finish its real pages/journeys and all 30 configurations before choosing
+another site. The engine renders every page end to end and records what it
+substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
+chosen by what is visibly wrong against Chrome and by the fallback counts,
+not by the first refusal. Stripe's homepage currently renders with 1,054
+fallbacks; no configuration is accepted yet.
+
+Next, in impact order (each removes a fallback kind or a visible gap):
+
+- [ ] Stacking order: paint stacking contexts and z-index in CSS order
+  (83 boxes on Stripe paint in tree order; the hero image covers its text).
+- [ ] Column flex formatting (120 containers lay out as blocks).
+- [ ] Web fonts: `@font-face` with WOFF2 (Brotli + glyf reconstruction),
+  `unicode-range`, font loading on the worker; Stripe uses Sohne.
+- [ ] Styled inline runs: a paragraph shaped from several fonts/sizes
+  (55 inlines flattened into their paragraph's typography).
+- [ ] Grid formatting (35 containers as blocks), inline-block/inline-flex as
+  atomic inlines (38), flex wrapping (10), vertical-align (33 images).
+- [ ] Paint: background images and gradients, border-radius, box-shadow,
+  transforms, opacity groups, dashed/dotted borders, inline backgrounds.
+- [ ] Text: letter-spacing/word-spacing (95), word-break/overflow-wrap (525),
+  text-decoration, text-transform.
+- [ ] Form controls drawn with the kit's look; canvas/iframe placeholders.
+- [ ] JavaScript: V8 with DOM bindings, so the parts of Stripe scripts draw
+  appear (the GDP counter, menus).
 
 - [x] Inspect Olo's kit, browser history, agent protocol, keychain and rules.
 - [x] Record architecture, acceptance criteria and honest compatibility gates.

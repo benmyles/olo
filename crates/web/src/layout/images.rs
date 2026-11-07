@@ -19,9 +19,6 @@ pub(super) fn used(
     scale: f64,
 ) -> Result<Used> {
     check(cancel)?;
-    if !matches!(s.value(P::ContainerType), Value::Keyword(K::Normal)) {
-        return Err(Error::Unsupported("query container replaced-element containment"));
-    }
     let padding = Edges {
         top: length(s, P::PaddingTop, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap().max(0.),
         right: length(s, P::PaddingRight, Some(width), Some(0.), queries, scratch, cancel, scale)?.unwrap().max(0.),
@@ -44,16 +41,18 @@ pub(super) fn used(
     let maxw = length(s, P::MaxWidth, Some(width), None, queries, scratch, cancel, scale)?.map(x).unwrap_or(f64::MAX).max(minw);
     let minh = y(length(s, P::MinHeight, height, Some(0.), queries, scratch, cancel, scale)?.unwrap());
     let maxh = length(s, P::MaxHeight, height, None, queries, scratch, cancel, scale)?.map(y).unwrap_or(f64::MAX).max(minh);
-    let ratio = natural.0 / natural.1;
+    // A box without a natural ratio (an empty placeholder) keeps its natural
+    // size on the automatic axis, as a replaced element without a ratio does.
+    let ratio = if natural.0 > 0. && natural.1 > 0. { Some(natural.0 / natural.1) } else { None };
     let (mut w, mut h) = match (sw, sh) {
         (Some(w), Some(h)) => (w.clamp(minw, maxw), h.clamp(minh, maxh)),
         (Some(w), None) => {
             let w = w.clamp(minw, maxw);
-            (w, (w / ratio).clamp(minh, maxh))
+            (w, ratio.map_or(natural.1, |r| w / r).clamp(minh, maxh))
         }
         (None, Some(h)) => {
             let h = h.clamp(minh, maxh);
-            ((h * ratio).clamp(minw, maxw), h)
+            (ratio.map_or(natural.0, |r| h * r).clamp(minw, maxw), h)
         }
         (None, None) => {
             // CSS2 replaced-element intrinsic-ratio constraint table.

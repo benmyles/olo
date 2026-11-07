@@ -50,7 +50,7 @@ impl Geometry {
             if shape == source.shapes.len() {
                 break;
             }
-            if let Source::Rectangle { slot, source } = &source.shapes[shape].geometry {
+            if let Source::Rectangle { slot, source, transform } = &source.shapes[shape].geometry {
                 if *slot as usize != result.rectangles.len() {
                     return Err(Error::Invalid);
                 }
@@ -58,7 +58,10 @@ impl Geometry {
                 source.append(&mut builder, viewport, &mut scratch, work.min(left / 32), cancel)?;
                 // Charge a bounded amount of geometry work even for empty rectangles.
                 work = work.checked_sub(10).ok_or(Error::Limit)?;
-                let path = builder.finish();
+                let path = match transform {
+                    Some(t) => builder.finish().and_then(|p| p.transform(*t)),
+                    None => builder.finish(),
+                };
                 left = left.checked_sub(path.as_ref().map_or(0, |p| size_of_val(p.verbs()) + size_of_val(p.points()))).ok_or(Error::Limit)?;
                 let b = path.as_ref().map(|p| p.bounds());
                 join(&mut result.ink_bounds, b)?;

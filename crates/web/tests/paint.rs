@@ -104,7 +104,7 @@ fn a_shared_ligature_can_be_read_without_an_internal_optional_break_marker() {
     assert_eq!(page.document.value(first).unwrap(), Some("f"));
     assert_eq!(page.document.value(wbr).unwrap(), None);
     assert_eq!(page.document.value(last).unwrap(), Some("i"));
-    let error = olo_web::page::load(
+    let page = olo_web::page::load(
         format!("<!doctype html><style>{BASE}html{{font-family:'Olo Inline ligature'}}</style><div>f<span style='color:red'>i</span></div>").into(),
         &host,
         &scope,
@@ -114,9 +114,12 @@ fn a_shared_ligature_can_be_read_without_an_internal_optional_break_marker() {
         None,
         |_, _| {},
     )
-    .err()
     .unwrap();
-    assert!(error.to_string().contains("paint boundary inside a glyph cluster"), "{error}");
+    // The shared ligature paints once, in its first span's colour, and reads back whole.
+    let scene = &page.scene;
+    let texts: Vec<_> = (0..scene.commands().len() as u32).filter_map(|c| scene.text_content(c).map(|t| t.into_owned())).collect();
+    assert_eq!(texts.concat(), "fi");
+    assert!(page.fallbacks.is_empty(), "{}", page.fallbacks);
 }
 
 #[test]
@@ -141,11 +144,9 @@ fn unimplemented_inline_backgrounds_cannot_disappear_on_empty_or_nested_boxes() 
     let host = native_host::NativeHost(scope.clone());
     for body in ["<span></span>", "<span><span style='background-color:transparent'>A</span></span>"] {
         let source = format!("<!doctype html><style>{BASE}span{{padding-left:5px;background-color:red}}</style>{body}");
-        let error =
-            olo_web::page::load(source.into(), &host, &scope, &mut Shaper::default(), &mut paint::Engine::default(), layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {})
-                .err()
-                .unwrap();
-        assert!(error.to_string().contains("inline backgrounds"), "{error}");
+        let page = olo_web::page::load(source.into(), &host, &scope, &mut Shaper::default(), &mut paint::Engine::default(), layout::Viewport { width: 100., height: 100., scale: 1. }, None, |_, _| {})
+            .unwrap();
+        assert_eq!(page.fallbacks.counts(), vec![("inline background not painted", 1)], "{body}");
     }
 }
 #[test]

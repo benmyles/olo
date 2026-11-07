@@ -59,8 +59,24 @@ pub struct Label {
 pub enum Reply {
     Status(u64, String),
     Location(u64, String),
-    Ready { id: u64, title: String, tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)> },
-    Content { id: u64, labels: Vec<Label>, extent: f64, scroll: i32, interaction_mask: u64, document: u64, target: Option<olo_web::dom::NodeId>, focus_targets: Arc<crate::navigation::FocusTargets> },
+    /// `fallbacks` lists what the engine substituted on this page (empty when
+    /// it rendered everything it was asked to), for the status line and agents.
+    Ready {
+        id: u64,
+        title: String,
+        fallbacks: String,
+        tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)>,
+    },
+    Content {
+        id: u64,
+        labels: Vec<Label>,
+        extent: f64,
+        scroll: i32,
+        interaction_mask: u64,
+        document: u64,
+        target: Option<olo_web::dom::NodeId>,
+        focus_targets: Arc<crate::navigation::FocusTargets>,
+    },
     Batch(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
     Error(u64, String),
 }
@@ -416,8 +432,12 @@ fn render(
             if page.scripts > 0 || page.stylesheet_issues > 0 {
                 short.push_str(&format!(" · {} inert scripts · {} stylesheet issues", page.scripts, page.stylesheet_issues));
             }
+            if !page.fallbacks.is_empty() {
+                short.push_str(&format!(" · {} fallbacks", page.fallbacks.total()));
+            }
             short
         },
+        fallbacks: page.fallbacks.to_string(),
         tiles,
     });
     Ok(())

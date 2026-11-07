@@ -58,6 +58,18 @@ impl<'a> Sources<'a> {
         }
         Ok(())
     }
+    /// The element with this id, through the same bounded index clip
+    /// references use. Paint servers and `use` targets resolve here.
+    pub(crate) fn lookup(&mut self, doc: &'a Document, id: &str, work_limit: usize, bytes_limit: usize, cancel: Option<&AtomicBool>) -> Result<Option<NodeId>> {
+        if self.failed {
+            return Err(Error::Failed);
+        }
+        if let Err(e) = self.index(doc, work_limit, bytes_limit, cancel) {
+            self.failed = true;
+            return Err(e);
+        }
+        Ok(self.ids.get(id).copied())
+    }
     fn index(&mut self, doc: &'a Document, work_limit: usize, bytes_limit: usize, cancel: Option<&AtomicBool>) -> Result<()> {
         if let Some(version) = self.document {
             return if version == (doc.id(), doc.revision()) { Ok(()) } else { Err(Error::Stale) };
@@ -160,10 +172,12 @@ impl<'a> Sources<'a> {
             }
             ancestor = doc.parent(at)?;
         }
-        if doc.attribute(node, "clipPathUnits")?.is_some_and(|v| v != "userSpaceOnUse") {
-            return Err(Error::Unsupported("SVG object-bounding-box clip"));
+        if doc.attribute(node, "clipPathUnits")?.is_some_and(|v| v != "userSpaceOnUse") || !effects(doc, styles, node)? {
+            // Object-bounding-box units, transformed or nested clips: the
+            // reference records a fallback and clips nothing.
+            self.cache(node, None, bytes_limit)?;
+            return Ok(None);
         }
-        effects(doc, styles, node)?;
         let mut rectangles = Vec::new();
         let mut child = doc.first_child(node)?;
         while let Some(node) = child {
@@ -173,7 +187,7 @@ impl<'a> Sources<'a> {
                 continue;
             }
             if doc.namespace(node)? != Some(Namespace::Svg) {
-                return Err(Error::Unsupported("SVG clip foreign content"));
+                continue;
             }
             let name = doc.name(node)?.ok_or(Error::Invalid)?;
             if matches!(name, "title" | "desc" | "metadata") {
@@ -183,17 +197,27 @@ impl<'a> Sources<'a> {
             if matches!(style.value(P::Display), Value::Display(Display::None)) || !matches!(style.value(P::Visibility), Value::Keyword(K::Visible)) {
                 continue;
             }
-            effects(doc, styles, node)?;
-            if name != "rect" {
-                return Err(Error::Unsupported("SVG clip child shape"));
+            if name != "rect" || !effects(doc, styles, node)? {
+                // A clip with a shape the engine cannot resolve clips nothing,
+                // so the clipped content stays visible rather than vanishing.
+                self.cache(node, None, bytes_limit)?;
+                return Ok(None);
             }
-            rectangles.push(super::rect::Rectangle::read(style)?);
+            let Ok(rectangle) = super::rect::Rectangle::read(style) else {
+                self.cache(node, None, bytes_limit)?;
+                return Ok(None);
+            };
+            rectangles.push(rectangle);
             let payload = rectangles.capacity() * size_of::<super::rect::Rectangle>();
             if self.bytes.saturating_add(payload) > bytes_limit {
                 return Err(Error::Limit);
             }
         }
-        let definition = Arc::new(Definition { viewport: viewport.ok_or(Error::Unsupported("SVG clip without viewport"))?, rectangles });
+        let Some(viewport) = viewport else {
+            self.cache(node, None, bytes_limit)?;
+            return Ok(None);
+        };
+        let definition = Arc::new(Definition { viewport, rectangles });
         self.bytes = self.bytes.checked_add(definition.payload_bytes() + size_of::<Definition>() + 2 * size_of::<usize>()).ok_or(Error::Limit)?;
         if self.bytes > bytes_limit {
             return Err(Error::Limit);
@@ -211,14 +235,12 @@ impl<'a> Sources<'a> {
         Ok(())
     }
 }
-fn effects(doc: &Document, styles: &StyleTree, node: NodeId) -> Result<()> {
+/// Whether a clip element is plain enough to resolve: untransformed and not itself clipped.
+fn effects(doc: &Document, styles: &StyleTree, node: NodeId) -> Result<bool> {
     if doc.attribute(node, "transform")?.is_some() {
-        return Err(Error::Unsupported("SVG clip transform"));
+        return Ok(false);
     }
-    if !matches!(styles.snapshot(node).ok_or(Error::Stale)?.value(P::ClipPath), Value::Keyword(K::None)) {
-        return Err(Error::Unsupported("SVG recursively clipped definition"));
-    }
-    Ok(())
+    Ok(matches!(styles.snapshot(node).ok_or(Error::Stale)?.value(P::ClipPath), Value::Keyword(K::None)))
 }
 impl Definition {
     pub fn payload_bytes(&self) -> usize {

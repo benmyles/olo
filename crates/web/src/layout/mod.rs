@@ -36,6 +36,79 @@ pub enum Error {
     Break(text::linebreak::Error),
     Text(text::layout::Error),
 }
+/// One thing the engine does not implement yet, and the node it met it on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fallback {
+    pub what: &'static str,
+    pub node: Option<dom::NodeId>,
+}
+/// What this page needed that the engine does not implement yet, and that it
+/// rendered with a substitute instead (a fixed box as absolute, an unknown
+/// SVG element skipped, a dashed border solid). A browser renders what it
+/// understands and keeps going; refusing the page would hide everything else.
+/// Counts are complete; the sample of nodes is bounded. Agents and the eval
+/// read these, so a page that looks right while listing fallbacks is suspect,
+/// and a page that lists none rendered with what the engine knows.
+#[derive(Clone, Debug, Default)]
+pub struct Fallbacks {
+    counts: Vec<(&'static str, u32)>,
+    sample: Vec<Fallback>,
+}
+impl Fallbacks {
+    pub const SAMPLE: usize = 64;
+    pub fn note(&mut self, what: &'static str, node: Option<dom::NodeId>) {
+        match self.counts.iter_mut().find(|(w, _)| std::ptr::eq(*w, what) || *w == what) {
+            Some((_, n)) => *n = n.saturating_add(1),
+            None => self.counts.push((what, 1)),
+        }
+        if self.sample.len() < Self::SAMPLE {
+            self.sample.push(Fallback { what, node });
+        }
+    }
+    pub fn merge(&mut self, other: &Fallbacks) {
+        for &(what, n) in &other.counts {
+            match self.counts.iter_mut().find(|(w, _)| *w == what) {
+                Some((_, m)) => *m = m.saturating_add(n),
+                None => self.counts.push((what, n)),
+            }
+        }
+        for f in &other.sample {
+            if self.sample.len() >= Self::SAMPLE {
+                break;
+            }
+            self.sample.push(*f);
+        }
+    }
+    pub fn total(&self) -> u32 {
+        self.counts.iter().fold(0u32, |a, (_, n)| a.saturating_add(*n))
+    }
+    pub fn is_empty(&self) -> bool {
+        self.counts.is_empty()
+    }
+    /// Each distinct fallback with how often it was taken, most frequent first.
+    pub fn counts(&self) -> Vec<(&'static str, u32)> {
+        let mut counts = self.counts.clone();
+        counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        counts
+    }
+    pub fn sample(&self) -> &[Fallback] {
+        &self.sample
+    }
+    pub fn payload_bytes(&self) -> usize {
+        self.counts.len() * size_of::<(&'static str, u32)>() + self.sample.len() * size_of::<Fallback>()
+    }
+}
+impl std::fmt::Display for Fallbacks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, (what, n)) in self.counts().into_iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{what} ×{n}")?;
+        }
+        Ok(())
+    }
+}
 /// Allocated only on failure, so adding diagnostic context does not enlarge
 /// every successful layout/paint Result or worker state containing one.
 #[derive(Debug)]

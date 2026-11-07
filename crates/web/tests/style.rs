@@ -653,12 +653,11 @@ fn carousel_flex_basis_retains_query_lengths_until_its_layout_context_exists() {
     let mut b = Builder::new(Default::default(), None);
     b.add(&ds[0], Default::default()).unwrap();
     let cascade = b.finish(true, Some(&style)).unwrap();
-    let inherited = Style::compute(defaults, &cascade, Some(&style), Some(&style), &host, Default::default(), Default::default(), None);
-    match inherited {
-        Err(style::Error::Unsupported("inherited container-dependent box length")) => {}
-        Err(e) => panic!("unexpected inherited error: {e}"),
-        Ok(s) => panic!("unexpected inherited basis: {:?}", s.value(P::FlexBasis)),
-    }
+    let inherited = Style::compute(defaults, &cascade, Some(&style), Some(&style), &host, Default::default(), Default::default(), None).unwrap();
+    // The inherited expression keeps its container dependency for the
+    // inheritor's own layout context, and nothing was dropped.
+    assert!(matches!(inherited.value(P::FlexBasis), Value::Numeric(_)), "{:?}", inherited.value(P::FlexBasis));
+    assert_eq!(inherited.dependencies().fallbacks, 0);
 }
 
 #[test]
@@ -746,13 +745,9 @@ fn local_clip_sources_match_owned_chrome_cascade() {
         assert_eq!(tree.report().presentation_invalid, usize::from(matches!(case["id"].as_str().unwrap(), "invalid-attribute" | "invalid-important")));
         if case["id"] == "html-css" {
             let mut layout = olo_web::layout::BuildJob::new(&doc, Arc::new(tree), Default::default(), None).unwrap();
-            loop {
-                match layout.step(1) {
-                    Ok(p) => assert!(!p.finished, "Unpainted clip must not silently disappear"),
-                    Err(olo_web::layout::Error::Unsupported("CSS clip-path")) => break,
-                    Err(e) => panic!("unexpected clip failure: {e}"),
-                }
-            }
+            while !layout.step(1).unwrap().finished {}
+            // An unpainted clip never disappears silently: the page records it.
+            assert_eq!(layout.fallbacks().counts(), vec![("clip-path on HTML ignored", 1)]);
         }
     }
     assert_eq!(reference["rows"].as_array().unwrap().len(), cases.as_array().unwrap().len() * 5);

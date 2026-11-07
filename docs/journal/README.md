@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-06
 
+### Browser: Stripe renders end to end
+
+*20:50* — The engine now renders what it understands and records what it substitutes (1,054 fallbacks on stripe.com) instead of refusing the page at the first unsupported feature. First native picture of a real website: hero text, buttons and the hero image; header, web fonts, stacking order and grid are the visible gaps.
+
+![Browser: Stripe renders end to end](2026-11-06/205059-browser-stripe-renders-end-to-end.png)
+
 ### Browser: SVG object and group opacity
 
 *19:59* — Individual opacity blends overlapping objects separately; group opacity composites the children first. Authored component at 1.75x; 15 native theme/scale reviews pass. 65/140 Chrome crops exact,75 pixel nonpasses remain. Stripe now reaches visible SVG rect; no site accepted.

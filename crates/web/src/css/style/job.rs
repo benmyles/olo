@@ -67,6 +67,8 @@ pub struct Report {
     pub inline_unsupported: usize,
     pub presentation_invalid: usize,
     pub presentation_unsupported: usize,
+    /// Declarations dropped at computed-value time (see `Dependencies::fallbacks`).
+    pub value_fallbacks: usize,
 }
 struct Styled {
     node: NodeId,
@@ -369,6 +371,7 @@ impl<'a> Job<'a> {
             self.cancelled,
         )?;
         let index = self.tree.styles.len();
+        self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
         self.tree.styles.push(Styled { node, style, parent_box });
         if self.root.is_none() {
             self.root = Some(index);

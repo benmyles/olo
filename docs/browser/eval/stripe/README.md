@@ -12,41 +12,18 @@ public interactive example. Inspect the actual reference before specifying
 that example's executable steps. Authenticated workflows remain blocked
 without a dedicated eval environment; no personal account is part of this run.
 
-## Latest startup checkpoint
+## Latest checkpoint
 
-The latest fresh owned native HTTPS process clears non-root SVG opacity and
-stops at **UnsupportedForeign Svg rect** (node slot317) during box construction.
-Process/executable hash/window evidence is retained in
-`../../measurements/2026-11-06-stripe-svg-opacity-startup*.json`.
-There is no useful native Stripe homepage and no accepted configuration;
-Stripe's actual absolute geometry has still not run.
-
-The opacity component matches140 independent Chrome bounds and65/140 exact crops
-across28 cases/five native DPRs;75 pixel nonpasses remain. Earlier clipping
-retains185 matching bounds,137 exact crops and48 nonpasses; path/overflow retain
-38 nonpasses. Strict pixel gates fail. Its15 native theme/scale reviews have no
-findings. These are component results, not site passes. Typed inset values match
-205 Chrome observations, but inset painting remains unconnected. Initial deferred
-absolute blocks match545 Chrome rectangles across125 authored pages. Continue
-with visible SVG rectangle geometry/painting, full root stacking and fidelity.
-
-The retained-source [foreign inventory](foreign-inventory.json) contains154 SVG
-roots,307 paths,135 rectangles,61 clip paths,13 linear gradients and4 filters.
-The first root is the60×25 Stripe logo; navigation chevrons follow. These are
-source counts, not proof that all shapes are visible or supported. Strokes,
-other shapes, transforms, paint servers, masks and filters remain open.
-
-The retained-source [clip inventory](clip-inventory.json) has61 local references
-on g elements and61 clipPath definitions. Their children are identical12×9
-rectangles at0,0, with no other geometry/transform/units attributes. This is
-source evidence for the initial clip component, not computed cascade, a frozen replay
-or proof that all references are visible.
-
-The retained-source [opacity inventory](opacity-inventory.json) has explicit
-opacity on one rect (.10), one g (.9) and one root svg (1). It does not identify
-the winning computed value at the current startup failure. The existing
-"SVG group opacity" diagnostic covers graphics elements as well as groups.
-Implement object/group compositing without assuming only a g can trigger it.
+The native browser renders the homepage end to end (2026-11-06 evening):
+hero heading, buttons and the hero image, with 1,054 recorded fallbacks
+(`Page::fallbacks`; the list is in the agent Document node and in the
+JOURNAL). Against Chrome at 1000 × 700, 1×: the header is missing, the
+heading is drawn twice, the hero image paints over the text (z-index in
+tree order), the buttons stretch (column flex as block), the web font is
+not loaded, and backgrounds, gradients, radii, shadows and transforms are
+absent. Earlier component results (SVG paths, clips, opacity, rectangles)
+stand; they are component results, not site passes. No configuration is
+accepted. Work follows the TODO's impact order.
 
 ## Current evidence
 

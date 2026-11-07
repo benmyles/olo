@@ -42,6 +42,8 @@ struct Browser {
     focus_targets: Arc<navigation::FocusTargets>,
     document_snapshot: gpui::SharedString,
     snapshot_identity: (u64, u64),
+    /// What the engine substituted on the current page, as the worker reported it.
+    fallbacks: String,
     cwd: Option<std::path::PathBuf>,
     revision: u64,
     _address_events: gpui::Subscription,
@@ -114,6 +116,7 @@ impl Browser {
             focus_targets: Arc::default(),
             document_snapshot: Default::default(),
             snapshot_identity: (0, 0),
+            fallbacks: String::new(),
             cwd,
             tx: worker::start(olo_ui::proxy(cx)),
             cancel: network::Cancel::default(),
@@ -377,10 +380,13 @@ impl Browser {
             }
             worker::Reply::Status(id, s) if id == self.id => self.status = s,
             worker::Reply::Error(id, s) if id == 0 || id == self.id => self.status = s,
-            worker::Reply::Ready { id, title, tiles } if id == self.id => {
+            worker::Reply::Ready { id, title, fallbacks, tiles } if id == self.id => {
                 self.document_ready = true;
                 self.merge_tiles(tiles);
                 self.status = self.blocked_action.map_or(title, str::to_owned);
+                self.fallbacks = fallbacks;
+                let (document, navigation) = self.snapshot_identity;
+                self.document_snapshot = serde_json::json!({"url":self.history.current().url,"navigation":navigation,"document":document,"fallbacks":self.fallbacks}).to_string().into();
             }
             worker::Reply::Content { id, labels, extent, scroll, interaction_mask, document, target, focus_targets } if id == self.id => {
                 self.labels = labels;
@@ -396,7 +402,7 @@ impl Browser {
                 }
                 if self.snapshot_identity != (document, self.navigation) {
                     self.snapshot_identity = (document, self.navigation);
-                    self.document_snapshot = serde_json::json!({"url":self.history.current().url,"navigation":self.navigation,"document":document}).to_string().into();
+                    self.document_snapshot = serde_json::json!({"url":self.history.current().url,"navigation":self.navigation,"document":document,"fallbacks":self.fallbacks}).to_string().into();
                 }
             }
             worker::Reply::Batch(id, tiles) if id == self.id => {

@@ -22,21 +22,55 @@ impl BoxId {
         Ok(Self(NonZeroU32::new(u32::try_from(i + 1).map_err(|_| Error::Limit)?).ok_or(Error::Limit)?))
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BoxKind {
     Viewport,
-    Block { flow_root: bool, root: bool, absolute: bool },
-    InlineContent { source: u32 },
-    InlineImage { image: u32 },
-    BlockImage { image: u32 },
-    InlineVector { vector: u32 },
-    BlockVector { vector: u32 },
+    Block {
+        flow_root: bool,
+        root: bool,
+        absolute: bool,
+    },
+    InlineContent {
+        source: u32,
+    },
+    InlineImage {
+        image: u32,
+    },
+    BlockImage {
+        image: u32,
+    },
+    InlineVector {
+        vector: u32,
+    },
+    BlockVector {
+        vector: u32,
+    },
+    /// A replaced element the engine cannot render yet (a form control, a
+    /// frame, a canvas, a broken image): it takes its natural CSS-pixel size
+    /// and paints only its own decoration.
+    InlineReplaced {
+        natural: [f32; 2],
+    },
+    BlockReplaced {
+        natural: [f32; 2],
+    },
+}
+impl BoxKind {
+    pub fn is_inline_level(self) -> bool {
+        matches!(self, Self::InlineContent { .. } | Self::InlineImage { .. } | Self::InlineVector { .. } | Self::InlineReplaced { .. })
+    }
+    /// Images, vectors and placeholders: boxes sized by content they do not lay out.
+    pub fn is_replaced(self) -> bool {
+        matches!(self, Self::InlineImage { .. } | Self::BlockImage { .. } | Self::InlineVector { .. } | Self::BlockVector { .. } | Self::InlineReplaced { .. } | Self::BlockReplaced { .. })
+    }
 }
 #[derive(Clone, Debug)]
 pub struct BoxNode {
     pub node: NodeId,
     pub style_node: NodeId,
     pub kind: BoxKind,
+    /// Absolutely positioned: laid out after its containing block, out of flow.
+    pub absolute: bool,
     pub parent: Option<BoxId>,
     pub first_child: Option<BoxId>,
     pub next_sibling: Option<BoxId>,
@@ -97,6 +131,7 @@ impl Tree {
                 Ok((f64::from(image.width()), f64::from(image.height())))
             }
             BoxKind::InlineVector { vector } | BoxKind::BlockVector { vector } => Ok(self.vector(vector).ok_or(Error::Invalid)?.natural()),
+            BoxKind::InlineReplaced { natural } | BoxKind::BlockReplaced { natural } => Ok((f64::from(natural[0]), f64::from(natural[1]))),
             _ => Err(Error::Invalid),
         }
     }
@@ -114,6 +149,10 @@ impl Tree {
     }
     pub fn iter(&self) -> impl Iterator<Item = (BoxId, &BoxNode)> {
         self.boxes.iter().enumerate().map(|(i, b)| (BoxId::new(i).unwrap(), b))
+    }
+    /// The box at a preorder index, without walking the ones before it.
+    pub fn at(&self, index: usize) -> Option<(BoxId, &BoxNode)> {
+        self.boxes.get(index).map(|b| (BoxId::new(index).unwrap(), b))
     }
     pub fn root(&self) -> BoxId {
         BoxId::new(0).unwrap()
@@ -221,9 +260,11 @@ pub struct BuildJob<'a> {
     clip_sources: crate::svg::clip::Sources<'a>,
     vectors: Vec<crate::svg::Viewport>,
     vector_nodes: std::collections::HashMap<NodeId, u32>,
+    replaced_nodes: std::collections::HashMap<NodeId, [f32; 2]>,
     vector_bytes: usize,
     vector_work: usize,
     images: Option<Arc<crate::image::Set>>,
+    fallbacks: Fallbacks,
     document: &'a Document,
     styles: Arc<StyleTree>,
     limits: BuildLimits,
@@ -251,13 +292,24 @@ impl<'a> BuildJob<'a> {
             clip_sources: Default::default(),
             vectors: Vec::new(),
             vector_nodes: Default::default(),
+            replaced_nodes: Default::default(),
             vector_bytes: 0,
             vector_work: 0,
+            fallbacks: Fallbacks::default(),
             document,
             styles,
             limits,
             cancel,
-            boxes: vec![BoxNode { node: document.root(), style_node: document.root(), kind: BoxKind::Viewport, parent: None, first_child: None, last_child: None, next_sibling: None }],
+            boxes: vec![BoxNode {
+                node: document.root(),
+                style_node: document.root(),
+                kind: BoxKind::Viewport,
+                absolute: false,
+                parent: None,
+                first_child: None,
+                last_child: None,
+                next_sibling: None,
+            }],
             sources: Vec::new(),
             inlines: Vec::new(),
             controls: Vec::new(),
@@ -280,6 +332,13 @@ impl<'a> BuildJob<'a> {
     pub fn progress(&self) -> BuildProgress {
         self.progress
     }
+    /// What the engine substituted while building this tree.
+    pub fn fallbacks(&self) -> &Fallbacks {
+        &self.fallbacks
+    }
+    fn note(&mut self, what: &'static str, node: NodeId) {
+        self.fallbacks.note(what, Some(node));
+    }
     fn add(&mut self, node: NodeId, style_node: NodeId, kind: BoxKind, parent: BoxId) -> Result<BoxId> {
         if self.boxes.len() >= self.limits.boxes {
             return Err(Error::Limit);
@@ -291,7 +350,8 @@ impl<'a> BuildJob<'a> {
             self.boxes[parent.index()].first_child = Some(id)
         }
         self.boxes[parent.index()].last_child = Some(id);
-        self.boxes.push(BoxNode { node, style_node, kind, parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
+        let absolute = matches!(kind, BoxKind::Block { absolute: true, .. });
+        self.boxes.push(BoxNode { node, style_node, kind, absolute, parent: Some(parent), first_child: None, last_child: None, next_sibling: None });
         self.progress.boxes = self.boxes.len();
         Ok(id)
     }
@@ -319,6 +379,8 @@ impl<'a> BuildJob<'a> {
                 let span = p.spans.get(p.spans.partition_point(|s| s.range.end <= at)).filter(|s| s.range.start == at).ok_or(Error::Invalid)?;
                 let kind = if let Some(&vector) = self.vector_nodes.get(&span.node) {
                     BoxKind::InlineVector { vector }
+                } else if let Some(&natural) = self.replaced_nodes.get(&span.node) {
+                    BoxKind::InlineReplaced { natural }
                 } else {
                     let image = self.images.as_ref().and_then(|images| images.index(span.node)).ok_or(Error::Invalid)?;
                     BoxKind::InlineImage { image }
@@ -388,7 +450,10 @@ impl<'a> BuildJob<'a> {
             return Ok(());
         }
         if self.styles.snapshot(style).is_none() {
-            return if value.bytes().all(|b| b.is_ascii_whitespace()) { Ok(()) } else { Err(Error::Unsupported("text outside a styled element")) };
+            if !value.bytes().all(|b| b.is_ascii_whitespace()) {
+                self.note("text outside a styled element dropped", node);
+            }
+            return Ok(());
         }
         self.progress.source_bytes = self.progress.source_bytes.checked_add(value.len()).ok_or(Error::Limit)?;
         self.progress.spans += 1;
@@ -447,46 +512,53 @@ impl<'a> BuildJob<'a> {
             }
             match self.document.node_type(node)? {
                 NodeType::Element => {
-                    let s = self.styles.snapshot(node).ok_or(Error::Stale)?;
+                    let styles = self.styles.clone();
+                    let s = styles.snapshot(node).ok_or(Error::Stale)?;
                     let Value::Display(display) = s.value(Property::Display) else { return Err(Error::Invalid) };
-                    if *display == Display::None {
+                    let display = *display;
+                    if display == Display::None {
                         continue;
                     }
+                    let name = self.document.name(node)?;
+                    let namespace = self.document.namespace(node)?;
                     if s.axes().writing_mode != WritingMode::HorizontalTb {
-                        return Err(Error::Unsupported("vertical box layout"));
+                        self.note("vertical writing mode laid out horizontally", node);
                     }
-                    if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static | Keyword::Relative | Keyword::Absolute))
-                        || !matches!(s.value(Property::Float), Value::Keyword(Keyword::None))
-                        || !matches!(s.value(Property::Clear), Value::Keyword(Keyword::None))
-                    {
-                        let property = if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static | Keyword::Relative | Keyword::Absolute)) {
-                            Property::Position
-                        } else if !matches!(s.value(Property::Float), Value::Keyword(Keyword::None)) {
-                            Property::Float
-                        } else {
-                            Property::Clear
-                        };
-                        return Err(Error::UnsupportedProperty(Box::new(UnsupportedProperty {
-                            node,
-                            name: self.document.name(node)?.ok_or(Error::Invalid)?.into(),
-                            property,
-                            value: s.value(property).clone(),
-                        })));
+                    // Fixed boxes follow the viewport's containing block; at the
+                    // initial scroll that is where absolute places them. Sticky
+                    // boxes sit where relative would until they would scroll off.
+                    let position = match s.value(Property::Position) {
+                        Value::Keyword(Keyword::Absolute) => Keyword::Absolute,
+                        Value::Keyword(Keyword::Fixed) => {
+                            self.note("position: fixed as absolute", node);
+                            Keyword::Absolute
+                        }
+                        Value::Keyword(Keyword::Relative) => Keyword::Relative,
+                        Value::Keyword(Keyword::Sticky) => {
+                            self.note("position: sticky as relative", node);
+                            Keyword::Relative
+                        }
+                        _ => Keyword::Static,
+                    };
+                    let absolute = position == Keyword::Absolute;
+                    if !matches!(s.value(Property::Float), Value::Keyword(Keyword::None)) {
+                        self.note("float in normal flow", node);
                     }
-                    if matches!(s.value(Property::Position), Value::Keyword(Keyword::Absolute)) && (self.pending.as_ref().is_some_and(|p| !p.source.is_empty()) || !self.open.is_empty()) {
-                        return Err(Error::Unsupported("positioned inline interruption"));
+                    if !matches!(s.value(Property::Clear), Value::Keyword(Keyword::None)) {
+                        self.note("clear ignored", node);
                     }
-                    if self.document.namespace(node)? == Some(crate::dom::Namespace::Svg) && self.document.name(node)? == Some("svg") {
-                        if *display == Display::Contents {
+                    if namespace == Some(crate::dom::Namespace::Svg) && name == Some("svg") {
+                        if display == Display::Contents {
                             continue;
                         }
-                        if matches!(*display, Display::Box { outer: Outer::Inline, .. }) && !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle))
-                            || !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static))
-                        {
-                            return Err(Error::Unsupported("aligned/positioned SVG"));
+                        if matches!(display, Display::Box { outer: Outer::Inline, .. }) && !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle)) {
+                            self.note("vertical-align on SVG", node);
+                        }
+                        if position == Keyword::Relative {
+                            self.note("relative offset on SVG ignored", node);
                         }
                         let vector = u32::try_from(self.vectors.len()).map_err(|_| Error::Limit)?;
-                        let source = crate::svg::Viewport::load_with_sources(
+                        let loaded = crate::svg::Viewport::load_with_sources(
                             self.document,
                             &self.styles,
                             node,
@@ -494,8 +566,20 @@ impl<'a> BuildJob<'a> {
                             self.limits.vector_work.saturating_sub(self.vector_work),
                             self.limits.vector_bytes.saturating_sub(self.vector_bytes),
                             &mut self.clip_sources,
+                            &mut self.fallbacks,
                             self.cancel,
-                        )?;
+                        );
+                        let source = match loaded {
+                            Ok(source) => source,
+                            Err(e @ (Error::Cancelled | Error::Limit | Error::Stale | Error::Dom(_))) => return Err(e),
+                            Err(_) => {
+                                // Keep its space: the viewport's attribute size, else SVG's default object size.
+                                self.note("SVG not rendered", node);
+                                let natural = replaced_natural(self.document, node, [300., 150.])?;
+                                self.replaced(node, display, container, natural, absolute)?;
+                                continue;
+                            }
+                        };
                         self.vector_bytes = self.vector_bytes.checked_add(source.payload_bytes()).ok_or(Error::Limit)?;
                         if self.vector_bytes.saturating_add(self.clip_sources.bytes) > self.limits.vector_bytes {
                             return Err(Error::Limit);
@@ -504,105 +588,177 @@ impl<'a> BuildJob<'a> {
                         self.progress.visited += source.visited.saturating_sub(1);
                         self.vectors.push(source);
                         self.vector_nodes.insert(node, vector);
-                        match *display {
-                            Display::Box { outer: Outer::Inline, list_item: false, .. } => self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))?,
-                            Display::Box { outer: Outer::Block, list_item: false, .. } => {
+                        match display {
+                            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))?,
+                            _ => {
                                 self.flush()?;
-                                self.add(node, node, BoxKind::BlockVector { vector }, container)?;
+                                let id = self.add(node, node, BoxKind::BlockVector { vector }, container)?;
+                                self.boxes[id.index()].absolute = absolute;
                             }
-                            _ => return Err(Error::Unsupported("SVG formatting context")),
                         }
                         continue;
                     }
-                    if let Some(namespace @ (crate::dom::Namespace::Svg | crate::dom::Namespace::MathMl)) = self.document.namespace(node)? {
-                        return Err(Error::UnsupportedForeign(Box::new(ForeignElement { node, namespace, name: self.document.name(node)?.ok_or(Error::Invalid)?.into() })));
+                    if matches!(namespace, Some(crate::dom::Namespace::Svg | crate::dom::Namespace::MathMl)) {
+                        // SVG children outside a root and MathML have no boxes yet.
+                        self.note(if namespace == Some(crate::dom::Namespace::MathMl) { "MathML skipped" } else { "SVG element outside svg skipped" }, node);
+                        continue;
                     }
                     if !matches!(s.value(Property::ClipPath), Value::Keyword(Keyword::None)) {
-                        return Err(Error::Unsupported("CSS clip-path"));
+                        self.note("clip-path on HTML ignored", node);
                     }
-                    let name = self.document.name(node)?;
                     if let Some(name @ ("br" | "wbr")) = name {
-                        if *display == Display::Contents {
+                        if display == Display::Contents {
                             continue;
                         }
-                        if !matches!(*display, Display::Box { outer: Outer::Inline, inner: Inner::Flow, list_item: false })
-                            && !(name == "br" && matches!(*display, Display::Box { outer: Outer::Block, inner: Inner::Flow, list_item: false }))
-                        {
-                            return Err(Error::Unsupported("non-inline break control"));
-                        }
-                        if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static))
+                        if !matches!(display, Display::Box { inner: Inner::Flow, list_item: false, .. })
+                            || position != Keyword::Static
                             || !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline))
                             || [Property::MarginLeft, Property::MarginRight, Property::PaddingLeft, Property::PaddingRight]
                                 .into_iter()
                                 .any(|p| !matches!(s.value(p), Value::Keyword(Keyword::Auto)) && s.value(p).scalar() != Some(0.))
+                            || [Property::BorderLeftWidth, Property::BorderRightWidth, Property::BorderTopWidth, Property::BorderBottomWidth]
+                                .into_iter()
+                                .any(|p| s.used_border_width(p).unwrap_or(0.) != 0.)
                         {
-                            return Err(Error::Unsupported("styled inline break control"));
-                        }
-                        for p in [Property::BorderLeftWidth, Property::BorderRightWidth, Property::BorderTopWidth, Property::BorderBottomWidth] {
-                            if s.used_border_width(p)? != 0. {
-                                return Err(Error::Unsupported("inline break borders"));
-                            }
+                            self.note("styled line break", node);
                         }
                         let kind = if name == "br" { ControlKind::Break } else { ControlKind::Opportunity };
                         self.append(node, container, node, kind.carrier(), Some(kind))?;
                         continue;
                     }
                     if name == Some("img") {
-                        if *display == Display::Contents {
+                        if display == Display::Contents {
                             continue;
                         }
-                        if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline)) || !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static)) {
-                            return Err(Error::Unsupported("aligned/positioned image"));
+                        if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline)) {
+                            self.note("vertical-align on image", node);
                         }
-                        let image = self.images.as_ref().and_then(|images| images.index(node)).ok_or(Error::Unsupported("missing decoded image"))?;
-                        match *display {
-                            Display::Box { outer: Outer::Inline, list_item: false, .. } => self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))?,
-                            Display::Box { outer: Outer::Block, list_item: false, .. } => {
+                        if position == Keyword::Relative {
+                            self.note("relative offset on image ignored", node);
+                        }
+                        let Some(image) = self.images.as_ref().and_then(|images| images.index(node)) else {
+                            // Not decoded (blocked, failed, unsupported format): Chrome
+                            // reserves the attribute size and otherwise shows nothing.
+                            self.note("image not decoded", node);
+                            let natural = replaced_natural(self.document, node, [0., 0.])?;
+                            self.replaced(node, display, container, natural, absolute)?;
+                            continue;
+                        };
+                        match display {
+                            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))?,
+                            _ => {
                                 self.flush()?;
-                                self.add(node, node, BoxKind::BlockImage { image }, container)?;
+                                let id = self.add(node, node, BoxKind::BlockImage { image }, container)?;
+                                self.boxes[id.index()].absolute = absolute;
                             }
-                            _ => return Err(Error::Unsupported("image formatting context")),
                         }
                         continue;
                     }
-                    if matches!(name, Some("input" | "textarea" | "select" | "button" | "video" | "audio" | "iframe" | "object" | "embed" | "canvas")) {
-                        return Err(Error::Unsupported("replaced/control/forced-break inline object"));
+                    if let Some(name @ ("input" | "textarea" | "select" | "video" | "audio" | "iframe" | "object" | "embed" | "canvas")) = name {
+                        if display == Display::Contents {
+                            continue;
+                        }
+                        self.note(
+                            match name {
+                                "input" | "textarea" | "select" => "form control as an empty box",
+                                "video" | "audio" => "media as an empty box",
+                                "iframe" | "object" | "embed" => "embedded document as an empty box",
+                                _ => "canvas as an empty box",
+                            },
+                            node,
+                        );
+                        let default = match name {
+                            "input" => match self.document.attribute(node, "type")?.map(str::trim) {
+                                Some(t) if t.eq_ignore_ascii_case("checkbox") || t.eq_ignore_ascii_case("radio") => [13., 13.],
+                                Some(t) if t.eq_ignore_ascii_case("hidden") => [0., 0.],
+                                Some(t) if t.eq_ignore_ascii_case("submit") || t.eq_ignore_ascii_case("button") || t.eq_ignore_ascii_case("reset") => [64., 21.],
+                                Some(t) if t.eq_ignore_ascii_case("range") => [129., 21.],
+                                Some(t) if t.eq_ignore_ascii_case("color") => [50., 27.],
+                                _ => [153., 21.],
+                            },
+                            "textarea" => [184., 54.],
+                            "select" => [120., 19.],
+                            "audio" => [300., 54.],
+                            _ => [300., 150.],
+                        };
+                        let natural = if name == "input" || name == "textarea" || name == "select" { default } else { replaced_natural(self.document, node, default)? };
+                        self.replaced(node, display, container, natural, absolute)?;
+                        continue;
                     }
-                    match *display {
+                    match display {
                         Display::Contents => self.push(node, container, node, false)?,
-                        Display::Box { outer: Outer::Inline, inner: Inner::Flow, list_item: false } => {
-                            if !matches!(s.value(Property::Position), Value::Keyword(Keyword::Static)) || !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline)) {
-                                return Err(Error::Unsupported("positioned/vertically aligned inline box"));
+                        Display::Box { outer: Outer::Inline, inner, list_item } => {
+                            // Inline-level boxes that are not plain inlines (inline-block,
+                            // inline-flex, inline-grid, inline-table) flow their content
+                            // inline until atomic inlines exist.
+                            if inner != Inner::Flow || list_item {
+                                self.note(
+                                    match inner {
+                                        Inner::FlowRoot => "inline-block as inline",
+                                        Inner::Flex => "inline-flex as inline",
+                                        Inner::Grid => "inline-grid as inline",
+                                        Inner::Table => "inline-table as inline",
+                                        Inner::Ruby => "ruby as inline",
+                                        Inner::Flow => "inline list item as inline",
+                                    },
+                                    node,
+                                );
+                            }
+                            if position != Keyword::Static {
+                                self.note("positioned inline", node);
+                            }
+                            if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline)) {
+                                self.note("vertical-align on inline", node);
                             }
                             // Block-axis padding does not change line fitting
                             // or line height. Its decoration is handled by paint.
                             for property in [Property::BorderLeftWidth, Property::BorderRightWidth, Property::BorderTopWidth, Property::BorderBottomWidth] {
                                 if s.used_border_width(property)? != 0. {
-                                    return Err(Error::Unsupported("inline box borders"));
+                                    self.note("inline borders ignored", node);
+                                    break;
                                 }
                             }
                             self.open_inline(node, container)?;
                             self.push(node, container, node, false)?;
                             self.stack.last_mut().unwrap().inline = true;
                         }
-                        Display::Box { outer: Outer::Block, inner: inner @ (Inner::Flow | Inner::FlowRoot | Inner::Flex), list_item: false } => {
-                            let absolute = matches!(s.value(Property::Position), Value::Keyword(Keyword::Absolute));
+                        Display::Box { outer: Outer::Block | Outer::RunIn, inner, list_item } => {
+                            if matches!(display, Display::Box { outer: Outer::RunIn, .. }) {
+                                self.note("run-in as block", node);
+                            }
+                            match inner {
+                                Inner::Flow | Inner::FlowRoot | Inner::Flex => {}
+                                Inner::Grid => self.note("grid as block", node),
+                                Inner::Table => self.note("table as block", node),
+                                Inner::Ruby => self.note("ruby as block", node),
+                            }
+                            if list_item {
+                                self.note("list marker not drawn", node);
+                            }
                             self.flush()?;
                             let root = self.boxes[container.index()].kind == BoxKind::Viewport;
                             let id = self.add(node, node, BoxKind::Block { flow_root: inner != Inner::Flow, root, absolute }, container)?;
                             self.push(node, id, node, true)?;
                         }
-                        _ => {
-                            return Err(Error::Unsupported(match display {
-                                Display::Box { list_item: true, .. } => "list-item box formatting",
-                                Display::Box { inner: Inner::Flex, .. } => "flex box formatting",
-                                Display::Box { inner: Inner::Grid, .. } => "grid box formatting",
-                                Display::Box { inner: Inner::Table, .. } | Display::Internal(_) => "table/internal box formatting",
-                                Display::Box { inner: Inner::Ruby, .. } => "ruby box formatting",
-                                Display::Box { outer: Outer::Inline, inner: Inner::FlowRoot, .. } => "inline-block box formatting",
-                                _ => "non-flow box formatting",
-                            }));
+                        Display::Internal(internal) => {
+                            use crate::css::properties::Internal as I;
+                            match internal {
+                                I::TableColumn | I::TableColumnGroup => continue, // No box of their own.
+                                I::RubyBase | I::RubyText | I::RubyBaseContainer | I::RubyTextContainer => {
+                                    self.note("ruby as inline", node);
+                                    self.open_inline(node, container)?;
+                                    self.push(node, container, node, false)?;
+                                    self.stack.last_mut().unwrap().inline = true;
+                                }
+                                _ => {
+                                    self.note("table part as block", node);
+                                    self.flush()?;
+                                    let id = self.add(node, node, BoxKind::Block { flow_root: true, root: false, absolute }, container)?;
+                                    self.push(node, id, node, true)?;
+                                }
+                            }
                         }
+                        Display::None => unreachable!(),
                     }
                 }
                 NodeType::Text => self.text(node, container, parent_style)?,
@@ -633,5 +789,44 @@ impl<'a> BuildJob<'a> {
             boxes: self.boxes.into_boxed_slice(),
             sources: self.sources.into_boxed_slice(),
         }))
+    }
+}
+/// The natural CSS-pixel size of a replaced element the engine does not
+/// render: its width/height attributes (whole CSS pixels, as HTML's
+/// dimension rules read them) over the given default.
+fn replaced_natural(document: &Document, node: NodeId, default: [f32; 2]) -> Result<[f32; 2]> {
+    let mut natural = default;
+    for (i, attribute) in ["width", "height"].into_iter().enumerate() {
+        let Some(value) = document.attribute(node, attribute)? else { continue };
+        let value = value.trim_start();
+        let digits: String = value.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+        if digits.is_empty() || value[digits.len()..].trim_start().starts_with('%') {
+            continue;
+        }
+        if let Ok(v) = digits.parse::<f32>()
+            && v.is_finite()
+            && v >= 0.
+        {
+            natural[i] = v.min(1e6);
+        }
+    }
+    Ok(natural)
+}
+impl BuildJob<'_> {
+    /// Add an unrendered replaced element with the given natural size as an
+    /// atomic inline or a block, following its display.
+    fn replaced(&mut self, node: NodeId, display: Display, container: BoxId, natural: [f32; 2], absolute: bool) -> Result<()> {
+        match display {
+            Display::Box { outer: Outer::Inline, .. } if !absolute => {
+                self.replaced_nodes.insert(node, natural);
+                self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))
+            }
+            _ => {
+                self.flush()?;
+                let id = self.add(node, node, BoxKind::BlockReplaced { natural }, container)?;
+                self.boxes[id.index()].absolute = absolute;
+                Ok(())
+            }
+        }
     }
 }

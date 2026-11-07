@@ -5255,3 +5255,55 @@ Browser checks:30 passed,5 ignored; web image/object/SVG checks:
 raster/pixel regressions stay open. Removed9 completed owned profiles/binaries;
 current evidence and after binaries retained. Full goal active; Stripe remains
 the only selected site. Next visible rectangle geometry/painting.
+
+## 2026-11-06 (evening): the engine renders what it can, and says what it could not
+
+Strategy change. Until now any feature the engine lacked (a `position: fixed`
+box, `display: inline-block`, a dashed border, an SVG `circle`, a `:checked`
+selector, a `cqi` unit it could not resolve) aborted the whole page, so no
+real website had ever produced a pixel; Stripe stopped at the first SVG
+`rect`. Browsers do the opposite: they render what they understand and
+ignore the rest, which is why the web works at all. Every such refusal in
+box construction, text preparation, layout, paint, SVG loading and style
+computation now takes a sensible substitute (fixed → absolute, sticky →
+relative, floats in flow, inline-block/inline-flex → inline, grid/table →
+block, column flex → block, unknown SVG elements skipped, dashed → solid,
+z-index → tree order, uncomputable declarations dropped as invalid, unknown
+selector states never match) and records it in `layout::Fallbacks`: counts
+per kind plus a bounded sample of nodes, merged across the pipeline into
+`Page::fallbacks`. The browser's status line shows the count and the agent
+Document node carries the list, so a rendered page never passes as
+complete: the eval and agents can read exactly what was substituted.
+
+What became real along the way, not fallbacks: intrinsic (min/max-content)
+widths of whole box trees from measured text geometry
+(`layout/intrinsic_flow.rs`), so nested flex items, `flex-basis: content`,
+shrink-to-fit absolutes and replaced flex items size correctly; absolute
+boxes with auto insets take their static position; absolutely positioned
+replaced boxes; form controls, iframes, canvas and undecoded images as
+replaced boxes of their natural size; SVG transforms (composed down the
+tree, applied to paths and rectangles), strokes (width, caps, joins,
+miter), `circle`/`ellipse`/`line`/`polyline`/`polygon`, gradient fills
+painted as their first stop, malformed paths drawn up to the error; a
+paint builder that indexes boxes directly instead of walking from the
+start for each one.
+
+First picture of stripe.com in the native browser (journal screenshot
+"Browser: Stripe renders end to end", 1000 × 700 at 1×): the hero's
+heading, its gradient image and both buttons render; status says
+"92 inert scripts · 2288 stylesheet issues · 1054 fallbacks". The
+fallbacks, by count: word-break/overflow-wrap ignored 525, column flex as
+block 120, letter-spacing ignored 95, z-index in tree order 83, inline
+typography flattened 55, opacity opaque 39, grid as block 35,
+vertical-align on image 33, inline-block as inline 32, flex-wrap as nowrap
+10, inline-flex as inline 6, then single digits (SVG filters/masks, inline
+borders, positioned inlines, clip-path, form controls, canvas). Visible
+against Chrome: the header is missing, the heading is drawn twice (its
+gradient-clipped copy), the hero image paints over the text (z-index), the
+buttons stretch (column flex), Stripe's web font is not loaded, and
+backgrounds, gradients, radii, shadows and transforms are absent.
+
+Those are the next work items in impact order: stacking order (z-index),
+column flex, web fonts (WOFF2), styled inline runs, grid, inline-block,
+and the painting of background images, gradients, border radius and
+shadows. Tests that asserted refusals now assert the recorded fallbacks.

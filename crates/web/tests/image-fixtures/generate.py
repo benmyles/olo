@@ -20,6 +20,6 @@ for value in ['37','23.5','23.','+23','-23','.5','0','50%','50 %','50px',' 50.5%
 for name,attrs,css in [('height-attribute','height=7',''),('both-attributes','width=37 height=9',''),('author-auto','width=37','width:auto'),('inline-auto','width=37 style="width:auto"',''),('author-zero','width=37','width:0'),('author-revert','width=37','width:revert')]:
  case(name,css,attrs)
 for align in ['top','middle','bottom']:
- case('alignment-'+align,'vertical-align:'+align,unsupported='aligned/positioned image')
+ case('alignment-'+align,'vertical-align:'+align,unsupported='vertical-align on image')
 (here/'inputs.json').write_text(json.dumps(rows,indent=2)+'\n')
 print(len(rows),'authored cases')

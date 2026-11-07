@@ -387,8 +387,10 @@ fn independent_chrome_intrinsic_constraints_display_and_dimension_hints() {
                 },
             );
             if let Some(reason) = case["unsupported"].as_str() {
-                let error = page.err().expect("unsupported image alignment unexpectedly accepted");
-                assert!(error.to_string().contains(reason), "{}: {error}", case["name"]);
+                // Alignment the engine does not lay out yet: the image still
+                // renders at the baseline, and the page records the substitute.
+                let page = page.unwrap_or_else(|error| panic!("{} at{scale}: {error}", case["name"]));
+                assert!(page.fallbacks.counts().iter().any(|(what, _)| *what == reason), "{}: {}", case["name"], page.fallbacks);
                 unsupported += 1;
                 continue;
             }

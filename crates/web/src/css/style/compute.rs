@@ -116,11 +116,8 @@ fn snap_border(value: f64, scale: f64) -> Result<f64> {
 fn ordinary(source: Source<'_>, property: Property, numeric: context::Numeric<'_, impl Host>, parent: Option<&Style>, limits: Limits, cancelled: Option<&AtomicBool>) -> Result<Value> {
     let Source::Specified(value) = source else {
         let Source::Inherited(value) = source else { unreachable!() };
-        if let Value::Numeric(n) = value
-            && n.expression().dependencies().intersects(math::Dependencies::CONTAINERS)
-        {
-            return Err(Error::Unsupported("inherited container-dependent box length"));
-        }
+        // An inherited container-relative length keeps its expression; the
+        // inheritor's layout resolves it against its own container.
         return Ok(value.clone());
     };
     Ok(match value {
@@ -292,12 +289,31 @@ pub(super) fn values(
     let use_baseline = !defaults.values.is_empty() && !cfg!(feature = "baseline-style-dense");
     let parent_font = parent.map_or(defaults.initial_font.as_ref(), |p| p.font.as_ref());
     let mut dependencies = Dependencies { layout_parent: options.layout_parent.is_some(), ..Default::default() };
-    let fs = source(defaults, &mut resolver, Property::FontSize, axes, parent, options, &mut dependencies)?;
+    // Font values that cannot be computed in this context (a container unit
+    // before layout) are dropped as invalid, counted, and inherit.
+    let fatal = |e: &Error| matches!(e, Error::Cancelled | Error::Limit | Error::Stale | Error::Dom(_));
     let numeric = context::numeric(host, Property::FontSize, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes);
-    let size = font_size(fs, host, &numeric, parent_font.request.size, limits, cancelled)?;
-    let fw = source(defaults, &mut resolver, Property::FontWeight, axes, parent, options, &mut dependencies)?;
+    let size =
+        match source(defaults, &mut resolver, Property::FontSize, axes, parent, options, &mut dependencies).and_then(|fs| font_size(fs, host, &numeric, parent_font.request.size, limits, cancelled)) {
+            Ok(size) => size,
+            Err(e) if fatal(&e) => return Err(e),
+            Err(_) => {
+                dependencies.fallbacks = dependencies.fallbacks.saturating_add(1);
+                dependencies.inherited = true;
+                parent_font.request.size
+            }
+        };
     let numeric = context::numeric(host, Property::FontWeight, defaults, parent, root, parent_font, parent.map_or(parent_font.metrics.normal_line_height, |p| p.line_height), axes);
-    let weight = font_weight(fw, &numeric, parent_font.request.weight, limits, cancelled)?;
+    let weight =
+        match source(defaults, &mut resolver, Property::FontWeight, axes, parent, options, &mut dependencies).and_then(|fw| font_weight(fw, &numeric, parent_font.request.weight, limits, cancelled)) {
+            Ok(weight) => weight,
+            Err(e) if fatal(&e) => return Err(e),
+            Err(_) => {
+                dependencies.fallbacks = dependencies.fallbacks.saturating_add(1);
+                dependencies.inherited = true;
+                parent_font.request.weight
+            }
+        };
     let mut font_value = |property| -> Result<Entry> {
         if use_baseline && !declared[property as usize] {
             let value = if let Some(parent) = parent {
@@ -340,9 +356,21 @@ pub(super) fn values(
     } else {
         Arc::new(Font::new(host, request)?)
     };
-    let lh = source(defaults, &mut resolver, Property::LineHeight, axes, parent, options, &mut dependencies)?;
     let numeric = context::numeric(host, Property::LineHeight, defaults, parent, root, &font, font.metrics.normal_line_height, axes);
-    let line = ordinary(lh, Property::LineHeight, numeric, parent, limits, cancelled)?;
+    let line =
+        match source(defaults, &mut resolver, Property::LineHeight, axes, parent, options, &mut dependencies).and_then(|lh| ordinary(lh, Property::LineHeight, numeric, parent, limits, cancelled)) {
+            Ok(line) => line,
+            Err(e) if fatal(&e) => return Err(e),
+            Err(_) => {
+                dependencies.fallbacks = dependencies.fallbacks.saturating_add(1);
+                if let Some(parent) = parent {
+                    dependencies.inherited = true;
+                    parent.value(Property::LineHeight).clone()
+                } else {
+                    defaults.value(Property::LineHeight).clone()
+                }
+            }
+        };
     let line_height = match &line {
         Value::Keyword(Keyword::Normal) => font.metrics.normal_line_height,
         Value::Numeric(n) => {
@@ -382,8 +410,30 @@ pub(super) fn values(
                 }
             }
             _ => {
-                let source = source(defaults, &mut resolver, property, axes, parent, options, &mut dependencies)?;
-                ordinary(source, property, context::numeric(host, property, defaults, parent, root, &font, line_height, axes), parent, limits, cancelled)?
+                // A declaration whose value cannot be computed here (an unsupported
+                // substitution, a unit without context) is invalid at computed-value
+                // time: dropped, leaving the inherited or initial value, and counted.
+                let fallback = |dependencies: &mut Dependencies| {
+                    dependencies.fallbacks = dependencies.fallbacks.saturating_add(1);
+                    if property.inherited()
+                        && let Some(parent) = parent
+                    {
+                        dependencies.inherited = true;
+                        parent.value(property).clone()
+                    } else {
+                        record(&defaults.specified[property as usize], dependencies);
+                        defaults.value(property).clone()
+                    }
+                };
+                match source(defaults, &mut resolver, property, axes, parent, options, &mut dependencies) {
+                    Ok(source) => match ordinary(source, property, context::numeric(host, property, defaults, parent, root, &font, line_height, axes), parent, limits, cancelled) {
+                        Ok(value) => value,
+                        Err(e @ (Error::Cancelled | Error::Limit | Error::Stale | Error::Dom(_))) => return Err(e),
+                        Err(_) => fallback(&mut dependencies),
+                    },
+                    Err(e @ (Error::Cancelled | Error::Limit | Error::Stale | Error::Dom(_))) => return Err(e),
+                    Err(_) => fallback(&mut dependencies),
+                }
             }
         };
         let value = if property == Property::Color {

@@ -18,8 +18,15 @@ use std::{
 mod absolute_flow;
 #[path = "flex_flow.rs"]
 mod flex_flow;
+#[path = "intrinsic_flow.rs"]
+mod intrinsic_flow;
 pub(super) fn is_flex(style: &crate::css::style::Style) -> bool {
     matches!(style.value(crate::css::style::Property::Display), crate::css::style::Value::Display(crate::css::properties::Display::Box { inner: crate::css::properties::Inner::Flex, .. }))
+}
+/// Flex containers whose main axis is horizontal get flex formatting; column
+/// containers stack their items like blocks until column layout exists.
+pub(super) fn is_row_flex(style: &crate::css::style::Style) -> bool {
+    is_flex(style) && matches!(style.value(P::FlexDirection), Value::Keyword(K::Row | K::RowReverse))
 }
 /// Project an original-source box boundary through whitespace preparation.
 fn boundary(prepared: &prepare::Prepared, at: u32) -> Result<u32> {
@@ -78,10 +85,15 @@ pub struct Cache {
     texts: Arc<[Arc<inline::Text>]>,
     intrinsics: Option<Arc<HashMap<usize, inline::IntrinsicWidths>>>,
     glyph_geometry_bytes: usize,
+    fallbacks: Fallbacks,
 }
 impl Cache {
     pub fn tree(&self) -> &Arc<Tree> {
         &self.tree
+    }
+    /// What text preparation substituted (typography flattened into its paragraph).
+    pub fn fallbacks(&self) -> &Fallbacks {
+        &self.fallbacks
     }
     pub fn text(&self, source: u32) -> Option<&Arc<inline::Text>> {
         self.texts.get(source as usize)
@@ -109,6 +121,7 @@ pub struct PrepareJob<'a> {
     texts: Vec<Arc<inline::Text>>,
     shared: HashMap<(usize, Arc<str>, u64), Arc<inline::Text>>,
     glyph_geometry_bytes: usize,
+    fallbacks: Fallbacks,
     cancel: Option<&'a AtomicBool>,
     limits: Limits,
     progress: Progress,
@@ -120,7 +133,22 @@ impl<'a> PrepareJob<'a> {
         if tree.boxes.len() > limits.boxes || tree.text_bytes() > limits.text_bytes {
             return Err(Error::Limit);
         }
-        Ok(Self { engine, scope, tree, texts: Vec::new(), shared: HashMap::new(), glyph_geometry_bytes: 0, cancel, limits, progress: Progress::default(), failed: false })
+        Ok(Self {
+            engine,
+            scope,
+            tree,
+            texts: Vec::new(),
+            shared: HashMap::new(),
+            glyph_geometry_bytes: 0,
+            fallbacks: Fallbacks::default(),
+            cancel,
+            limits,
+            progress: Progress::default(),
+            failed: false,
+        })
+    }
+    pub fn fallbacks(&self) -> &Fallbacks {
+        &self.fallbacks
     }
     fn one(&mut self, index: usize) -> Result<Arc<inline::Text>> {
         let source = &self.tree.sources[index];
@@ -142,8 +170,11 @@ impl<'a> PrepareJob<'a> {
         }
         raw_breaks.sort_unstable();
         raw_breaks.dedup();
-        // The paragraph shaper currently owns one font request/size. Refuse to
-        // flatten a differently styled inline into the surrounding typography.
+        // The paragraph shaper owns one font request/size. A differently
+        // styled inline (bold, another size, another white-space) is shaped
+        // with its paragraph's typography until styled runs exist; that is
+        // recorded, never silent.
+        let mut flattened = false;
         for span in &source.spans {
             check(self.cancel)?;
             let s = self.tree.styles.snapshot(span.style_node).ok_or(Error::Stale)?;
@@ -151,15 +182,22 @@ impl<'a> PrepareJob<'a> {
                 continue;
             }
             let control = !source_controls.is_empty() && source_controls.binary_search_by_key(&span.range.start, |c| c.offset).is_ok();
-            if s.font().request != style.font().request
-                || s.font().context() != style.font().context()
-                || s.axes() != style.axes()
-                || s.line_height() != style.line_height()
-                || (!control && prepare::WhiteSpace::for_style(s)? != whitespace)
-            {
-                return Err(Error::Unsupported("mixed inline typography/whitespace"));
+            if !flattened && (s.font().request != style.font().request || s.font().context() != style.font().context() || s.axes() != style.axes() || s.line_height() != style.line_height()) {
+                flattened = true;
+                self.fallbacks.note("inline typography flattened into its paragraph", Some(span.node));
             }
-            inline::Options::for_style(s, self.scope, 0., self.cancel)?;
+            if !flattened && !control && prepare::WhiteSpace::for_style(s)? != whitespace {
+                flattened = true;
+                self.fallbacks.note("inline white-space flattened into its paragraph", Some(span.node));
+            }
+            let options = inline::Options::for_style(s, self.scope, 0., self.cancel)?;
+            for what in options.ignored.names() {
+                self.fallbacks.note(what, Some(span.node));
+            }
+        }
+        let container_node = self.tree.get(container).map(|b| b.node);
+        for what in inline::Options::for_style(style, self.scope, 0., self.cancel)?.ignored.names() {
+            self.fallbacks.note(what, container_node);
         }
         let key = (self.limits.cached_texts > 0).then(|| {
             let mut hash = DefaultHasher::new();
@@ -235,7 +273,7 @@ impl<'a> PrepareJob<'a> {
         if !self.progress.finished {
             return Err(Error::Incomplete);
         }
-        Ok(Arc::new(Cache { tree: self.tree, texts: Arc::from(self.texts), intrinsics: None, glyph_geometry_bytes: self.glyph_geometry_bytes }))
+        Ok(Arc::new(Cache { tree: self.tree, texts: Arc::from(self.texts), intrinsics: None, glyph_geometry_bytes: self.glyph_geometry_bytes, fallbacks: self.fallbacks }))
     }
 }
 #[derive(Clone, Copy, Debug, Default)]
@@ -336,6 +374,17 @@ struct Completed {
     through: bool,
     relative_y: f64,
 }
+/// The sizes of a text box's atomic inlines for line layout, and their
+/// geometry with the prepared-text offset each sits at.
+type InlineObjects = (Vec<inline::Object>, Vec<(BoxId, Geometry, u32)>);
+/// The containing frame's values a text box needs, copied so layout can
+/// borrow itself mutably while sizing the text's atomic inlines.
+#[derive(Clone, Copy)]
+struct ParentFrame {
+    id: BoxId,
+    used: Used,
+    queries: QueryBasis,
+}
 pub struct Job<'a> {
     engine: &'a mut shaping::Engine,
     scope: &'a Scope,
@@ -353,6 +402,7 @@ pub struct Job<'a> {
     intrinsics: HashMap<usize, inline::IntrinsicWidths>,
     scratch: math::Scratch,
     progress: Progress,
+    fallbacks: Fallbacks,
     failed: bool,
     scale: f64,
 }
@@ -419,12 +469,21 @@ impl<'a> Job<'a> {
             intrinsics: HashMap::new(),
             scratch: math::Scratch::default(),
             progress: Progress::default(),
+            fallbacks: Fallbacks::default(),
             failed: false,
             scale: viewport.scale,
         })
     }
     pub fn progress(&self) -> Progress {
         self.progress
+    }
+    /// What this layout substituted (column flex as blocks, baseline alignment as start, …).
+    pub fn fallbacks(&self) -> &Fallbacks {
+        &self.fallbacks
+    }
+    pub(super) fn note(&mut self, what: &'static str, id: BoxId) {
+        let node = self.cache.tree.get(id).map(|b| b.node);
+        self.fallbacks.note(what, node);
     }
     fn enter(&mut self, id: BoxId) -> Result<()> {
         if self.stack.len() >= self.limits.depth {
@@ -433,9 +492,10 @@ impl<'a> Job<'a> {
         let frame = self.stack.last().ok_or(Error::Invalid)?;
         let parent = frame.used;
         let queries = frame.queries;
-        let b = self.cache.tree.get(id).ok_or(Error::Invalid)?;
+        let cache = self.cache.clone();
+        let b = cache.tree.get(id).ok_or(Error::Invalid)?;
         let BoxKind::Block { flow_root, root, .. } = b.kind else { return Err(Error::Invalid) };
-        let style = self.cache.tree.style(id).ok_or(Error::Invalid)?;
+        let style = cache.tree.style(id).ok_or(Error::Invalid)?;
         if style.font().context() != self.scope.context() {
             return Err(Error::Stale);
         }
@@ -457,7 +517,12 @@ impl<'a> Job<'a> {
             margin: used.margin,
         };
         if is_flex(style) {
-            self.flex.push(flex_flow::Frame::new(id, b.first_child, style, used, queries, &mut self.scratch, self.cancel, self.scale)?);
+            if is_row_flex(style) {
+                let frame = flex_flow::Frame::new(id, b.first_child, style, used, queries, &mut self.scratch, &mut self.fallbacks, self.cancel, self.scale)?;
+                self.flex.push(frame);
+            } else {
+                self.note("column flex as block", id);
+            }
         }
         let queries = queries.descendants(style, used.width, used.height(0.))?;
         self.stack.push(Frame {
@@ -506,10 +571,12 @@ impl<'a> Job<'a> {
         Ok(())
     }
     fn text(&mut self, id: BoxId, source: u32) -> Result<Completed> {
+        let cache = self.cache.clone();
         let parent = self.stack.last().ok_or(Error::Invalid)?;
-        let style = self.cache.tree.style(parent.id).ok_or(Error::Invalid)?;
+        let parent = ParentFrame { id: parent.id, used: parent.used, queries: parent.queries };
+        let style = cache.tree.style(parent.id).ok_or(Error::Invalid)?;
         let available = self.flex_child_used(id)?.map_or(parent.used.width, |u| u.width);
-        let mut text = self.cache.texts[source as usize].clone();
+        let mut text = cache.texts[source as usize].clone();
         let mut spacing = Vec::new();
         let mut breaks = Vec::new();
         for b in self.cache.tree.inline_boxes(source).ok_or(Error::Invalid)? {
@@ -554,46 +621,12 @@ impl<'a> Job<'a> {
             // width-independent cache, but shape the actual used boundaries.
             text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), self.limits.text, self.cancel)?;
         }
-        let prepared = (text.object_count() != 0).then(|| text.prepared().clone());
-        let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text, style, self.scope, available, self.scale, self.limits.text, self.cancel, spacing)?;
-        let mut image_geometry = Vec::new();
-        let mut objects = Vec::new();
-        let mut next = self.cache.tree.get(id).ok_or(Error::Invalid)?.first_child;
-        let mut image_controls = self.cache.tree.controls(source).iter().filter(|c| c.kind == prepare::ControlKind::Object);
-        while let Some(child) = next {
-            let b = self.cache.tree.get(child).ok_or(Error::Invalid)?;
-            next = b.next_sibling;
-            if !matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. }) {
-                return Err(Error::Invalid);
-            }
-            check(self.cancel)?;
-            let natural = self.cache.tree.natural(child)?;
-            let s = self.cache.tree.style(child).ok_or(Error::Stale)?;
-            let used = super::images::used(
-                s,
-                parent.used.width,
-                parent.used.height.map(|h| parent.used.height(h)),
-                natural,
-                false,
-                parent.used.rtl,
-                parent.queries,
-                &mut self.scratch,
-                self.cancel,
-                self.scale,
-            )?;
-            let source = self.cache.tree.text_source(source).ok_or(Error::Invalid)?;
-            let raw = image_controls.next().ok_or(Error::Invalid)?.offset;
-            if source.span_at(raw).ok_or(Error::Invalid)?.node != b.node {
-                return Err(Error::Invalid);
-            }
-            let at = boundary(prepared.as_deref().ok_or(Error::Invalid)?, raw)?;
-            let g = super::images::geometry(used);
-            let height = g.border_box.height + used.margin.vertical();
-            let ascent =
-                if matches!(b.kind, BoxKind::InlineVector { .. }) && matches!(s.value(P::VerticalAlign), Value::Keyword(K::Middle)) { (height + style.font().metrics.ex) / 2. } else { height };
-            objects.push(inline::Object { at, advance: g.border_box.width + used.margin.horizontal(), ascent, descent: height - ascent });
-            image_geometry.push((child, g, at));
-        }
+        let (objects, image_geometry) = if text.object_count() != 0 {
+            self.inline_objects(id, source, &text, parent.used.width, parent.used.height.map(|h| parent.used.height(h)), parent.queries)?
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text.clone(), style, self.scope, available, self.scale, self.limits.text, self.cancel, spacing)?;
         if !objects.is_empty() {
             j = j.with_objects(objects)?;
         }
@@ -618,6 +651,42 @@ impl<'a> Job<'a> {
         }
         self.texts[source as usize] = Some(l);
         Ok(Completed { before: Strut::default(), after: Strut::default(), through, relative_y: 0. })
+    }
+    /// The atomic inlines of one text box in source order: their sizes for line
+    /// layout and their geometry, resolved against the containing block.
+    pub(super) fn inline_objects(&mut self, id: BoxId, source: u32, text: &Arc<inline::Text>, width: f64, height: Option<f64>, queries: QueryBasis) -> Result<InlineObjects> {
+        let cache = self.cache.clone();
+        let container = cache.tree.get(id).ok_or(Error::Invalid)?.parent.ok_or(Error::Invalid)?;
+        let style = cache.tree.style(container).ok_or(Error::Invalid)?;
+        let prepared = text.prepared();
+        let mut image_geometry = Vec::new();
+        let mut objects = Vec::new();
+        let mut next = cache.tree.get(id).ok_or(Error::Invalid)?.first_child;
+        let mut image_controls = cache.tree.controls(source).iter().filter(|c| c.kind == prepare::ControlKind::Object);
+        while let Some(child) = next {
+            let b = cache.tree.get(child).ok_or(Error::Invalid)?;
+            next = b.next_sibling;
+            if !matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. }) {
+                return Err(Error::Invalid);
+            }
+            check(self.cancel)?;
+            let natural = cache.tree.natural(child)?;
+            let s = cache.tree.style(child).ok_or(Error::Stale)?;
+            let used = super::images::used(s, width, height, natural, false, false, queries, &mut self.scratch, self.cancel, self.scale)?;
+            let text_source = cache.tree.text_source(source).ok_or(Error::Invalid)?;
+            let raw = image_controls.next().ok_or(Error::Invalid)?.offset;
+            if text_source.span_at(raw).ok_or(Error::Invalid)?.node != b.node {
+                return Err(Error::Invalid);
+            }
+            let at = boundary(prepared, raw)?;
+            let g = super::images::geometry(used);
+            let height = g.border_box.height + used.margin.vertical();
+            let ascent =
+                if matches!(b.kind, BoxKind::InlineVector { .. }) && matches!(s.value(P::VerticalAlign), Value::Keyword(K::Middle)) { (height + style.font().metrics.ex) / 2. } else { height };
+            objects.push(inline::Object { at, advance: g.border_box.width + used.margin.horizontal(), ascent, descent: height - ascent });
+            image_geometry.push((child, g, at));
+        }
+        Ok((objects, image_geometry))
     }
     pub fn step(&mut self, budget: usize) -> Result<Progress> {
         if self.failed {
@@ -675,18 +744,28 @@ impl<'a> Job<'a> {
                         self.place(child, r)?;
                         self.progress.boxes += 1
                     }
-                    BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } => {
+                    BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
                         let frame = self.stack.last().ok_or(Error::Invalid)?;
                         let parent = frame.used;
                         let queries = frame.queries;
                         let s = self.cache.tree.style(child).ok_or(Error::Invalid)?;
                         let natural = self.cache.tree.natural(child)?;
-                        let used = super::images::used(s, parent.width, parent.height.map(|h| parent.height(h)), natural, true, parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
+                        let mut used = super::images::used(s, parent.width, parent.height.map(|h| parent.height(h)), natural, true, parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
+                        if let Some(flexed) = self.flex_child_used(child)? {
+                            // The flex line decided the main size; an auto height keeps the ratio.
+                            let ratio = if natural.0 > 0. && natural.1 > 0. { natural.0 / natural.1 } else { 0. };
+                            if matches!(s.value(P::Height), Value::Keyword(K::Auto)) && ratio > 0. && flexed.width != used.width {
+                                used.height = Some(used::grid(flexed.width / ratio, self.scale));
+                            }
+                            used.width = flexed.width;
+                            used.margin.left = flexed.margin.left;
+                            used.margin.right = flexed.margin.right;
+                        }
                         self.geometry[child.index()] = super::images::geometry(used);
                         self.place(child, Completed { before: Strut::new(used.margin.top), after: Strut::new(used.margin.bottom), through: false, relative_y: 0. })?;
                         self.progress.boxes += 1;
                     }
-                    BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::Viewport => return Err(Error::Invalid),
+                    BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. } | BoxKind::Viewport => return Err(Error::Invalid),
                 }
             } else {
                 let f = self.stack.pop().ok_or(Error::Invalid)?;
@@ -728,8 +807,13 @@ impl<'a> Job<'a> {
                     self.intrinsics.entry(source).or_insert(widths);
                 }
             }
-            self.cache =
-                Arc::new(Cache { tree: self.cache.tree.clone(), texts: self.cache.texts.clone(), intrinsics: Some(Arc::new(self.intrinsics)), glyph_geometry_bytes: self.cache.glyph_geometry_bytes });
+            self.cache = Arc::new(Cache {
+                tree: self.cache.tree.clone(),
+                texts: self.cache.texts.clone(),
+                intrinsics: Some(Arc::new(self.intrinsics)),
+                glyph_geometry_bytes: self.cache.glyph_geometry_bytes,
+                fallbacks: self.cache.fallbacks.clone(),
+            });
         }
         Ok(Layout { cache: self.cache, geometry: self.geometry.into_boxed_slice(), texts: self.texts.into_boxed_slice(), scale: self.scale })
     }

@@ -197,28 +197,30 @@ fn flex_reflow_keeps_intrinsics_and_rejects_unimplemented_contexts() {
     for (id, _) in fresh.cache().tree().iter() {
         assert_eq!(fresh.bounds(id), reused.bounds(id));
     }
-    for (input, css, reason) in [
-        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;flex-wrap:wrap}", "wrapping flex formatting"),
-        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;direction:rtl}", "non-LTR-row flex formatting"),
-        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;align-items:baseline}", "flex baseline alignment"),
-        ("<div id=probe><div style='order:1'>AB</div></div>", "#probe{display:flex}", "ordered flex items"),
-        ("<div id=probe><div><div>AB</div></div></div>", "#probe{display:flex}", "nested flex item intrinsic contributions"),
-        ("<div id=probe><div>AB</div></div>", "#probe{display:flex}#probe>div{box-sizing:border-box;flex:1;min-width:0;padding:5px}", "negative border-box flex inner basis"),
+    // Flex contexts the engine does not lay out yet render with a recorded
+    // substitute; nested items and negative border-box bases need none.
+    for (input, css, fallback) in [
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;flex-wrap:wrap}", Some("flex-wrap as nowrap")),
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;direction:rtl}", Some("right-to-left flex as left-to-right")),
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex;align-items:baseline}", Some("flex baseline alignment as flex-start")),
+        ("<div id=probe><div style='order:1'>AB</div></div>", "#probe{display:flex}", Some("flex order ignored")),
+        ("<div id=probe><div><div>AB</div></div></div>", "#probe{display:flex}", None),
+        ("<div id=probe><div>AB</div></div>", "#probe{display:flex}#probe>div{box-sizing:border-box;flex:1;min-width:0;padding:5px}", None),
     ] {
-        let (_, t) = tree(input, css, &s, 1);
+        let (d, t) = tree(input, css, &s, 1);
         let c = cache(&mut e, &s, t);
         let mut j = layout::Job::new(&mut e, &s, c, layout::Viewport { width: 400., height: 800., scale: 1. }, Default::default(), None).unwrap();
-        loop {
-            match j.step(1) {
-                Ok(p) => assert!(!p.finished, "unexpected support: {reason}"),
-                Err(error) => {
-                    assert!(matches!(error,layout::Error::Unsupported(r) if r==reason), "{error:?}");
-                    break;
-                }
-            }
-        }
-        assert!(matches!(j.finish(), Err(layout::Error::Failed)));
+        while !j.step(1).unwrap().finished {}
+        let recorded: Vec<_> = j.fallbacks().counts().into_iter().map(|(what, _)| what).collect();
+        assert_eq!(recorded, fallback.into_iter().collect::<Vec<_>>(), "{css}");
+        let l = j.finish().unwrap();
+        assert_eq!(rect(&d, &l, "probe").width, 400.);
     }
+    // A nested item's contribution is its content's measured width.
+    let (d, t) = tree("<div id=probe><div id=item><div>AB</div></div><div>CD</div></div>", "#probe{display:flex}", &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "item").width, 40.);
 }
 
 #[test]
@@ -690,15 +692,26 @@ fn stale_contexts_cancellation_quotas_and_poisoning() {
 }
 
 #[test]
-fn unsupported_layout_never_silently_flattens_inline_typography() {
+fn flattened_inline_typography_is_always_recorded() {
     let s = scope();
     let mut e = Engine::default();
-    for css in ["span{font-size:30px}", "span{direction:rtl}", "span{white-space:pre}", "span{line-height:30px}"] {
+    for (css, fallback) in [
+        ("span{font-size:30px}", "inline typography flattened into its paragraph"),
+        ("span{direction:rtl}", "inline typography flattened into its paragraph"),
+        ("span{white-space:pre}", "inline white-space flattened into its paragraph"),
+        ("span{line-height:30px}", "inline typography flattened into its paragraph"),
+    ] {
         let (_, t) = tree("<div>A <span>B</span> C</div>", css, &s, 1);
         let mut j = layout::PrepareJob::new(&mut e, &s, t, Default::default(), None).unwrap();
-        assert!(matches!(j.step(1), Err(layout::Error::Unsupported(_))));
-        assert!(matches!(j.finish(), Err(layout::Error::Failed)));
+        while !j.step(1).unwrap().finished {}
+        assert_eq!(j.fallbacks().counts(), vec![(fallback, 1)], "{css}");
+        let cache = j.finish().unwrap();
+        assert_eq!(cache.fallbacks().total(), 1);
     }
+    let (_, t) = tree("<div>A <span>B</span> C</div>", "span{color:red}", &s, 1);
+    let mut j = layout::PrepareJob::new(&mut e, &s, t, Default::default(), None).unwrap();
+    while !j.step(1).unwrap().finished {}
+    assert!(j.fallbacks().is_empty());
 }
 
 #[test]
@@ -741,12 +754,13 @@ fn semantic_opportunities_cannot_reuse_literal_unicode_nowrap_cache_entries() {
 }
 
 #[test]
-fn rejected_placement_reports_actual_node_property_and_computed_value() {
-    use olo_web::css::style::{Keyword as K, Property as P, Value};
+fn unimplemented_placement_renders_in_flow_and_records_the_node() {
     let scope = scope();
     let host = native_host::NativeHost(scope);
-    for (declaration, property, value) in [("position:fixed", P::Position, K::Fixed), ("float:left", P::Float, K::Left), ("clear:both", P::Clear, K::Both)] {
-        let doc = html::parse(Arc::from(format!("<!doctype html><div style='{declaration}'>content</div>")), Default::default(), None).unwrap().document;
+    for (declaration, fallback) in
+        [("position:fixed", "position: fixed as absolute"), ("float:left", "float in normal flow"), ("clear:both", "clear ignored"), ("position:sticky", "position: sticky as relative")]
+    {
+        let doc = html::parse(Arc::from(format!("<!doctype html><div style='{declaration}'>A</div>")), Default::default(), None).unwrap().document;
         let mut sheets = SheetBuilder::new(Default::default());
         sheets.add_sheet(&Syntax::parse(Arc::from(olo_web::page::UA), Default::default(), None).unwrap(), Origin::UserAgent, None).unwrap();
         let rules = sheets.finish(None).unwrap();
@@ -754,19 +768,12 @@ fn rejected_placement_reports_actual_node_property_and_computed_value() {
         let mut styles = style::Job::new(&doc, &rules, defaults, Default::default(), Default::default(), None).unwrap();
         while !styles.step(64, |_| &host).unwrap().finished {}
         let mut job = layout::BuildJob::new(&doc, Arc::new(styles.finish().unwrap()), Default::default(), None).unwrap();
-        loop {
-            match job.step(1) {
-                Ok(p) => assert!(!p.finished),
-                Err(layout::Error::UnsupportedProperty(context)) => {
-                    assert_eq!(doc.name(context.node).unwrap(), Some("div"));
-                    assert_eq!(&*context.name, "div");
-                    assert_eq!(context.property, property);
-                    assert!(matches!(context.value, Value::Keyword(k) if k == value));
-                    break;
-                }
-                Err(e) => panic!("{e:?}"),
-            }
-        }
-        assert!(matches!(job.step(1), Err(layout::Error::Failed)));
+        while !job.step(1).unwrap().finished {}
+        let recorded = job.fallbacks();
+        assert_eq!(recorded.counts(), vec![(fallback, 1)], "{declaration}");
+        let node = recorded.sample()[0].node.unwrap();
+        assert_eq!(doc.name(node).unwrap(), Some("div"));
+        let tree = job.finish().unwrap();
+        assert!(tree.iter().any(|(_, b)| b.node == node && matches!(b.kind, BoxKind::Block { .. })));
     }
 }

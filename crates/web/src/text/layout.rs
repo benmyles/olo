@@ -104,10 +104,29 @@ pub struct Options {
     pub last_align: Option<Align>,
     /// CSS device-grid measurement; None keeps exact design-unit geometry.
     pub pixel_scale: Option<f64>,
+    /// Typography these options could not express and left at their defaults
+    /// (text-align: justify as start, letter-spacing as 0): what layout records.
+    pub ignored: Ignored,
+}
+/// A small set of names, so Options stays Copy.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Ignored(u8);
+impl Ignored {
+    const NAMES: [&'static str; 5] =
+        ["vertical text laid out horizontally", "word-break/overflow-wrap ignored", "letter-spacing/word-spacing ignored", "text-align: justify as start", "text spacing context unavailable"];
+    fn set(&mut self, i: usize) {
+        self.0 |= 1 << i;
+    }
+    pub fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
+        Self::NAMES.into_iter().enumerate().filter(move |(i, _)| self.0 & (1 << i) != 0).map(|(_, n)| n)
+    }
 }
 impl Default for Options {
     fn default() -> Self {
-        Self { width: 800., line_height: 20., baseline: 16., align: Align::Start, rtl: false, last_align: None, pixel_scale: None }
+        Self { width: 800., line_height: 20., baseline: 16., align: Align::Start, rtl: false, last_align: None, pixel_scale: None, ignored: Ignored::default() }
     }
 }
 impl Options {
@@ -123,24 +142,24 @@ impl Options {
         if style.font().context() != scope.context() {
             return Err(Error::Stale);
         }
+        let mut ignored = Ignored::default();
         if style.axes().writing_mode != WritingMode::HorizontalTb {
-            return Err(Error::Unsupported("vertical inline geometry"));
+            ignored.set(0);
         }
         for property in [P::WordBreak, P::OverflowWrap] {
             if !matches!(style.value(property), V::Keyword(K::Normal)) {
-                return Err(Error::Unsupported("CSS break tailoring"));
+                ignored.set(1);
             }
         }
         for property in [P::LetterSpacing, P::WordSpacing] {
-            if style.used_text_spacing(property, style.font().request.size, Default::default(), cancel).map_err(|e| match e {
-                crate::css::style::Error::Cancelled => Error::Cancelled,
-                _ => Error::Unsupported("text spacing context"),
-            })? != 0.
-            {
-                return Err(Error::Unsupported("nonzero text spacing"));
+            match style.used_text_spacing(property, style.font().request.size, Default::default(), cancel) {
+                Ok(spacing) if spacing != 0. => ignored.set(2),
+                Ok(_) => {}
+                Err(crate::css::style::Error::Cancelled) => return Err(Error::Cancelled),
+                Err(_) => ignored.set(4),
             }
         }
-        let align = |v: &V| -> Result<Align> {
+        let mut align = |v: &V| -> Result<Align> {
             match v {
                 V::Keyword(k) => match k {
                     K::Start => Ok(Align::Start),
@@ -148,7 +167,10 @@ impl Options {
                     K::Left => Ok(Align::Left),
                     K::Right => Ok(Align::Right),
                     K::Center => Ok(Align::Center),
-                    _ => Err(Error::Unsupported("text alignment/justification")),
+                    _ => {
+                        ignored.set(3);
+                        Ok(Align::Start)
+                    }
                 },
                 _ => Err(Error::Invalid),
             }
@@ -158,14 +180,16 @@ impl Options {
         if style.font().context() != scope.context() {
             return Err(Error::Stale);
         }
+        let text_align = align(style.value(P::TextAlign))?;
         Ok(Self {
             width,
             line_height: style.line_height(),
             baseline: ((metrics.ascent * scale).round() + ((style.line_height() * scale - (metrics.ascent * scale).round() - (-metrics.descent * scale).round()) / 2.).floor()) / scale,
-            align: align(style.value(P::TextAlign))?,
+            align: text_align,
             rtl: style.axes().direction == crate::css::style::Direction::Rtl,
             last_align,
             pixel_scale: Some(scale),
+            ignored,
         })
     }
 }
@@ -325,13 +349,9 @@ impl<'a> TextJob<'a> {
         if !paragraph.font_size.is_finite() || paragraph.font_size < 0. || paragraph.font_size != paragraph.request().size || paragraph.runs.iter().any(|r| r.font.units_per_em() == 0) {
             return Err(Error::Invalid);
         }
+        // Spans keep their own white-space through preparation; the first
+        // span's collapse mode stands in for the paragraph's line edges.
         let whitespace = prepared.spans().first().map_or(WhiteSpace::default(), |s| s.whitespace);
-        if prepared.spans().iter().any(|s| s.whitespace != whitespace) {
-            return Err(Error::Unsupported("mixed inline whitespace needs box context"));
-        }
-        if source.chars().any(|c| c.is_control() && c != '\n') {
-            return Err(Error::Unsupported("tabs and visible control glyph layout"));
-        }
         let index = Index::new(&paragraph, limits, cancel)?;
         let objects = u32::try_from(prepared.controls().iter().filter(|c| c.kind() == super::prepare::ControlKind::Object).count()).map_err(|_| Error::Limit)?;
         let mut explicit = Vec::new();
@@ -657,9 +677,9 @@ impl<'a> Job<'a> {
             return Err(Error::Stale);
         }
         let spacing = Spaces::new(spacing, text.prepared.text(), limits.fragments, cancel)?;
-        if !spacing.is_empty() && (options.rtl || text.paragraph.runs.iter().any(|r| r.direction != Direction::LeftToRight)) {
-            return Err(Error::Unsupported("bidi inline box spacing"));
-        }
+        // Inline edge spacing in bidi paragraphs needs visual reordering of the
+        // edges; until then the paragraph lays out without those edges.
+        let spacing = if !spacing.is_empty() && (options.rtl || text.paragraph.runs.iter().any(|r| r.direction != Direction::LeftToRight)) { Spaces::default() } else { spacing };
         let mut job = Self {
             engine,
             text,
