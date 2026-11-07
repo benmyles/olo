@@ -1499,6 +1499,11 @@ fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
         let dims = vec2<f32>(textureDimensions(t_sprite, 0));
         color = textureLoad(t_sprite, vec2<i32>(floor(input.tile_position * dims)), 0);
     }
+    // Olo: premultiplied colours (bit 3), sampled as they are (blending
+    // premultiplied texels is the right blend), made straight here.
+    if ((sprite.nearest & 8u) != 0u && color.a > 0.0) {
+        color = vec4<f32>(color.rgb / color.a, color.a);
+    }
     if ((sprite.grayscale & 0xFFu) != 0u) {
         let grayscale = dot(color.rgb, GRAYSCALE_FACTORS);
         color = vec4<f32>(vec3<f32>(grayscale), sample.a);

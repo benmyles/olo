@@ -62,6 +62,7 @@ pub enum Message {
     Recycle(Vec<Arc<RenderImage>>),
     RecycleTargets(Arc<crate::navigation::FocusTargets>),
 }
+#[derive(Clone)]
 pub struct Label {
     pub image: bool,
     pub text: olo_ui::gpui::SharedString,
@@ -166,22 +167,21 @@ struct Live {
     wants_frame: bool,
     render_due: bool,
 }
-/// Premultiplied RGBA (the engine's tiles and images) into straight BGRA
-/// (what the kit's image shader composites: it multiplies by alpha
-/// itself, so a premultiplied translucent white showed grey). Opaque
-/// pixels only swap; `opaque` says every pixel is.
-fn to_straight_bgra(bytes: &mut [u8], opaque: bool) {
-    for p in bytes.as_chunks_mut::<4>().0 {
+/// RGBA (the engine's tiles and images, premultiplied) as BGRA, for the
+/// kit's premultiplied pictures (`from_premultiplied_bgra`: the GPU makes
+/// them straight; composited as straight, a translucent white was grey).
+/// Four pixels a step: the red and blue bytes of each swapped in place.
+fn to_bgra(bytes: &mut [u8]) {
+    let (quads, rest) = bytes.as_chunks_mut::<16>();
+    for q in quads {
+        let mut v = u128::from_le_bytes(*q);
+        let rb = v & 0x00ff00ff_00ff00ff_00ff00ff_00ff00ff;
+        let ga = v & 0xff00ff00_ff00ff00_ff00ff00_ff00ff00;
+        v = ga | ((rb << 16) & 0x00ff0000_00ff0000_00ff0000_00ff0000) | ((rb >> 16) & 0x000000ff_000000ff_000000ff_000000ff);
+        *q = v.to_le_bytes();
+    }
+    for p in rest.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
-        if opaque {
-            continue;
-        }
-        let a = u16::from(p[3]);
-        if a != 0 && a != 255 {
-            for c in &mut p[..3] {
-                *c = ((u16::from(*c) * 255 + a / 2) / a).min(255) as u8;
-            }
-        }
     }
 }
 /// The overlap of two rectangles, if any.
@@ -293,6 +293,9 @@ struct Cached {
     /// The scene and document revision the focus targets were found in.
     targets_scene: Option<Arc<olo_web::paint::Scene>>,
     targets_revision: u64,
+    /// The last labels: the scene they were made from, when, at which
+    /// scroll and size.
+    label_cache: Option<(Arc<olo_web::paint::Scene>, Instant, i32, (u32, u32), Vec<Label>)>,
     navigation: u64,
     focus_targets: Option<Arc<crate::navigation::FocusTargets>>,
     anchor_scroll: Option<f64>,
@@ -1034,6 +1037,7 @@ fn render(
             focus_targets: None,
             targets_scene: None,
             targets_revision: 0,
+            label_cache: None,
             anchor_scroll: None,
         });
         cache.clear();
@@ -1139,79 +1143,92 @@ fn render(
     let extent = scene.content_extent().height;
     let scroll = sought.map_or(r.scroll, |y| (y * r.key.scale).round().max(0.) as i32).clamp(0, max_scroll(&r.key, extent));
     let visible = layout::Rect { x: 0., y: f64::from(scroll) / r.key.scale, width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale };
-    let mut hits = Vec::new();
-    scene.query(visible, &mut hits, Some(&r.cancel))?;
-    // The fixed layer's content lies in the viewport at the initial scroll.
-    let viewport_rect = layout::Rect { x: 0., y: 0., width: visible.width, height: visible.height };
-    let mut fixed_hits = Vec::new();
-    for (i, stratum) in scene.strata().iter().enumerate() {
-        if stratum.kind == paint::LayerKind::Fixed {
-            let mut ids = Vec::new();
-            scene.query_stratum(i, viewport_rect, &mut ids, Some(&r.cancel))?;
-            fixed_hits.extend(ids);
-        }
-    }
-    // Sticky boxes' content, each with its box (shifted by the scroll).
-    let stickies = scene.layout().sticky();
-    let mut sticky_hits: Vec<(u32, layout::Sticky)> = Vec::new();
-    for (i, stratum) in scene.strata().iter().enumerate() {
-        if let paint::LayerKind::Sticky(root) = stratum.kind
-            && let Some(st) = stickies.iter().find(|s| s.root == root)
-            && let Some(extent) = scene.stratum_extent(i)
-        {
-            let mut ids = Vec::new();
-            scene.query_stratum(i, extent, &mut ids, Some(&r.cancel))?;
-            sticky_hits.extend(ids.into_iter().map(|id| (id, *st)));
-        }
-    }
-    // Moved layers' content where it shows now, with the layer's translation.
-    let mut moved_hits: Vec<(u32, [f64; 2])> = Vec::new();
-    for i in 0..scene.strata().len() {
-        if let Some(m) = scene.moved(i) {
-            let shown = match m.clip {
-                Some(c) => intersect(visible, c),
-                None => Some(visible),
-            };
-            if let Some(shown) = shown {
-                let region = layout::Rect { x: shown.x - m.translate[0], y: shown.y - m.translate[1], width: shown.width, height: shown.height };
+    // The labels (what agents read of the page) are kept for a tenth of a
+    // second while frames only move things (the same commands, scroll and
+    // size): an animation does not make them again sixty times a second.
+    let labels_stand = cached
+        .label_cache
+        .as_ref()
+        .is_some_and(|(scene, at, s, k, _)| scene.same_commands(&cached.page.scene) && at.elapsed() < Duration::from_millis(100) && *s == scroll && *k == (r.key.width, r.key.height));
+    let labels = if labels_stand {
+        cached.label_cache.as_ref().map(|c| c.4.clone()).unwrap_or_default()
+    } else {
+        let mut hits = Vec::new();
+        scene.query(visible, &mut hits, Some(&r.cancel))?;
+        // The fixed layer's content lies in the viewport at the initial scroll.
+        let viewport_rect = layout::Rect { x: 0., y: 0., width: visible.width, height: visible.height };
+        let mut fixed_hits = Vec::new();
+        for (i, stratum) in scene.strata().iter().enumerate() {
+            if stratum.kind == paint::LayerKind::Fixed {
                 let mut ids = Vec::new();
-                scene.query_stratum(i, region, &mut ids, Some(&r.cancel))?;
-                moved_hits.extend(ids.into_iter().map(|id| (id, m.translate)));
+                scene.query_stratum(i, viewport_rect, &mut ids, Some(&r.cancel))?;
+                fixed_hits.extend(ids);
             }
         }
-    }
-    let mut labels = Vec::new();
-    for (id, fixed, sticky, offset) in hits
-        .into_iter()
-        .map(|id| (id, false, None, [0., 0.]))
-        .chain(fixed_hits.into_iter().map(|id| (id, true, None, [0., 0.])))
-        .chain(sticky_hits.into_iter().map(|(id, st)| (id, false, Some(st), [0., 0.])))
-        .chain(moved_hits.into_iter().map(|(id, t)| (id, false, None, t)))
-    {
-        let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
-        let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
-        let node = scene.node(id);
-        let text = if image {
-            std::borrow::Cow::Borrowed(node.map(|n| page.document.attribute(n, if vector { "aria-label" } else { "alt" })).transpose()?.flatten().filter(|s| !s.is_empty()).unwrap_or(if vector {
-                "Graphic"
+        // Sticky boxes' content, each with its box (shifted by the scroll).
+        let stickies = scene.layout().sticky();
+        let mut sticky_hits: Vec<(u32, layout::Sticky)> = Vec::new();
+        for (i, stratum) in scene.strata().iter().enumerate() {
+            if let paint::LayerKind::Sticky(root) = stratum.kind
+                && let Some(st) = stickies.iter().find(|s| s.root == root)
+                && let Some(extent) = scene.stratum_extent(i)
+            {
+                let mut ids = Vec::new();
+                scene.query_stratum(i, extent, &mut ids, Some(&r.cancel))?;
+                sticky_hits.extend(ids.into_iter().map(|id| (id, *st)));
+            }
+        }
+        // Moved layers' content where it shows now, with the layer's translation.
+        let mut moved_hits: Vec<(u32, [f64; 2])> = Vec::new();
+        for i in 0..scene.strata().len() {
+            if let Some(m) = scene.moved(i) {
+                let shown = match m.clip {
+                    Some(c) => intersect(visible, c),
+                    None => Some(visible),
+                };
+                if let Some(shown) = shown {
+                    let region = layout::Rect { x: shown.x - m.translate[0], y: shown.y - m.translate[1], width: shown.width, height: shown.height };
+                    let mut ids = Vec::new();
+                    scene.query_stratum(i, region, &mut ids, Some(&r.cancel))?;
+                    moved_hits.extend(ids.into_iter().map(|id| (id, m.translate)));
+                }
+            }
+        }
+        let mut labels = Vec::new();
+        for (id, fixed, sticky, offset) in hits
+            .into_iter()
+            .map(|id| (id, false, None, [0., 0.]))
+            .chain(fixed_hits.into_iter().map(|id| (id, true, None, [0., 0.])))
+            .chain(sticky_hits.into_iter().map(|(id, st)| (id, false, Some(st), [0., 0.])))
+            .chain(moved_hits.into_iter().map(|(id, t)| (id, false, None, t)))
+        {
+            let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
+            let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
+            let node = scene.node(id);
+            let text = if image {
+                std::borrow::Cow::Borrowed(node.map(|n| page.document.attribute(n, if vector { "aria-label" } else { "alt" })).transpose()?.flatten().filter(|s| !s.is_empty()).unwrap_or(if vector {
+                    "Graphic"
+                } else {
+                    "Image"
+                }))
             } else {
-                "Image"
-            }))
-        } else {
-            let Some(text) = scene.text_content(id).filter(|s| !s.is_empty()) else { continue };
-            text
-        };
-        let Some(mut rect) = scene.visible_bounds(id) else {
-            continue;
-        };
-        rect.x += offset[0];
-        rect.y += offset[1];
-        let link = match node {
-            Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
-            None => None,
-        };
-        labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed, sticky });
-    }
+                let Some(text) = scene.text_content(id).filter(|s| !s.is_empty()) else { continue };
+                text
+            };
+            let Some(mut rect) = scene.visible_bounds(id) else {
+                continue;
+            };
+            rect.x += offset[0];
+            rect.y += offset[1];
+            let link = match node {
+                Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
+                None => None,
+            };
+            labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed, sticky });
+        }
+        cached.label_cache = Some((cached.page.scene.clone(), Instant::now(), scroll, (r.key.width, r.key.height), labels.clone()));
+        labels
+    };
     if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
         eprintln!("  content: focus targets {targets_ms:.2} ms, labels {:.2} ms ({} labels)", before_labels.elapsed().as_secs_f64() * 1000., labels.len());
     }
@@ -1225,6 +1242,7 @@ fn render(
         target: page.interaction.target,
         focus_targets: cached.focus_targets.as_ref().unwrap().clone(),
     });
+    let stickies = scene.layout().sticky();
     let mut tiles = Vec::new();
     let mut last = Instant::now();
     let mut repainted = 0usize;
@@ -1272,8 +1290,8 @@ fn render(
                 shown.clone()
             } else {
                 let mut bytes = image.rgba().to_vec();
-                to_straight_bgra(&mut bytes, image.opaque());
-                let shown = olo_ui::widgets::image_view::from_bgra(image.width(), image.height(), bytes).ok_or("Surface upload failed")?;
+                to_bgra(&mut bytes);
+                let shown = olo_ui::widgets::image_view::from_premultiplied_bgra(image.width(), image.height(), bytes).ok_or("Surface upload failed")?;
                 cache.insert(key, (shown.clone(), *clock, signature));
                 repainted += 1;
                 shown
@@ -1403,9 +1421,8 @@ fn render(
                 } else {
                     let tile = painter.raster_stratum(scene, si, region, si == 0, Some(&r.cancel))?;
                     let mut bytes = tile.into_rgba();
-                    // The base is opaque; a layer above it is not.
-                    to_straight_bgra(&mut bytes, si == 0);
-                    let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
+                    to_bgra(&mut bytes);
+                    let image = olo_ui::widgets::image_view::from_premultiplied_bgra(256, 256, bytes).ok_or("Tile upload failed")?;
                     if cache.len() >= 512 {
                         let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
                         cache.remove(&key);

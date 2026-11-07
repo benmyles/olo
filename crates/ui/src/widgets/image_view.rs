@@ -550,6 +550,12 @@ pub fn resampled(src: &dyn Rgba, (w, h): (u32, u32)) -> Option<Arc<RenderImage>>
 pub fn from_bgra(w: u32, h: u32, bgra: Vec<u8>) -> Option<Arc<RenderImage>> {
     Some(Arc::new(RenderImage::new([image::Frame::new(image::RgbaImage::from_raw(w, h, bgra)?)])))
 }
+/// A picture from BGRA bytes whose colours are premultiplied by alpha (a
+/// renderer's output): shown as it is, the GPU making them straight, so
+/// nothing need convert them first.
+pub fn from_premultiplied_bgra(w: u32, h: u32, bgra: Vec<u8>) -> Option<Arc<RenderImage>> {
+    Some(Arc::new(RenderImage::new([image::Frame::new(image::RgbaImage::from_raw(w, h, bgra)?)]).premultiplied()))
+}
 
 /// The tile at `(tx, ty)` (of [`TILE`] source pixels a side) as it is.
 fn tile(src: &dyn Rgba, (tx, ty): (usize, usize)) -> Option<Arc<RenderImage>> {

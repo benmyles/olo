@@ -4407,7 +4407,9 @@ impl Window {
                     crate::Gamut::DisplayP3 => 2,
                     crate::Gamut::Hdr10 => 4,
                     crate::Gamut::Srgb => 0,
-                },
+                }
+                // (Bit 3: its colours are premultiplied by alpha.)
+                | if data.premultiplied { 8 } else { 0 },
             grayscale,
             bounds: bounds
                 .map_origin(|origin| origin.floor())

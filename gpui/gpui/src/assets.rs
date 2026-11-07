@@ -67,6 +67,9 @@ pub struct RenderImage {
     data: SmallVec<[Frame; 1]>,
     /// Olo: what its numbers are in (sRGB unless said).
     pub(crate) color_space: Gamut,
+    /// Olo: its colours are premultiplied by alpha (a renderer's output:
+    /// the shader recovers them, so the CPU need not).
+    pub(crate) premultiplied: bool,
     /// Olo: a deep picture instead (`deep`): its size, and its RGBA as
     /// half floats, eight bytes a pixel.
     deep: Option<(Size<DevicePixels>, Vec<u8>)>,
@@ -90,6 +93,7 @@ impl RenderImage {
             scale_factor: 1.0,
             data: data.into(),
             color_space: Gamut::Srgb,
+            premultiplied: false,
             deep: None,
         }
     }
@@ -121,6 +125,12 @@ impl RenderImage {
     /// as they are in a window drawing in it, converted in one that isn't.
     pub fn with_gamut(mut self, space: Gamut) -> Self {
         self.color_space = space;
+        self
+    }
+
+    /// Olo: its colours are premultiplied by alpha (see the field).
+    pub fn premultiplied(mut self) -> Self {
+        self.premultiplied = true;
         self
     }
 
