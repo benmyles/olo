@@ -48,7 +48,6 @@ NEEDS=(
     "glob:/usr/share/vulkan/icd.d/*.json mesa-vulkan-drivers" "py:PIL python3-pillow"
     "file:/usr/libexec/fprintd fprintd" "cmd:pipewire pipewire"
     "cmd:wireplumber wireplumber" "file:/usr/libexec/xdg-desktop-portal xdg-desktop-portal"
-    "file:/usr/libexec/xdg-desktop-portal-gtk xdg-desktop-portal-gtk" "cmd:gnome-keyring-daemon gnome-keyring"
     "cmd:pkexec polkit" "cmd:NetworkManager NetworkManager" "file:/usr/libexec/bluetooth/bluetoothd bluez"
     "font:Nimbus_Sans urw-base35-nimbus-sans-fonts" "font:Noto_Sans google-noto-sans-fonts"
     "font:Noto_Sans_Mono google-noto-sans-mono-fonts" "font:Noto_Sans_CJK_JP google-noto-sans-cjk-fonts"

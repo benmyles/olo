@@ -13,7 +13,9 @@
 # need first (olo-login, olo-session, olo-app-server, olo-wlproxy,
 # olo-greeter) into /usr/local/libexec/olo, Olo's data (icons, fonts,
 # themes, wallpapers) into /usr/local/share/olo, its PAM services
-# (data/pam: password, fingerprint, face, and its own session's), its
+# (data/pam: password, fingerprint, face, and its own session's) and the
+# PAM module the password one names (pam_olo_keyring: the password
+# unlocks Olo's keyring), its
 # user and folders (data/sysusers, data/tmpfiles) and its unit
 # (data/systemd/olo-login.service, display-manager.service when
 # switched). The person's session still runs their own programs (the
@@ -79,7 +81,7 @@ case "${1:-}" in
     ;;
 esac
 
-cargo build --release -p olo-login -p olo-greeter -p olo-session -p app_server -p olo-wlproxy
+cargo build --release -p olo-login -p olo-greeter -p olo-session -p app_server -p olo-wlproxy -p olo-pam-keyring
 LIBEXEC=/usr/local/libexec/olo
 SHARE=/usr/local/share/olo
 as_root install -d -m 755 "$LIBEXEC" "$SHARE"
@@ -95,6 +97,8 @@ for theme in data/themes/*/; do
     as_root mkdir -p "$SHARE/themes/${theme##*/}"
     as_root cp -r "$theme/icons" "$theme/brand" "$SHARE/themes/${theme##*/}/"
 done
+# The login password unlocks Olo's keyring (olo-login's PAM service names it).
+as_root install -D -m 755 target/release/libpam_olo_keyring.so /usr/lib64/security/pam_olo_keyring.so
 for service in olo-login olo-login-fingerprint olo-login-face olo-login-greeter; do
     as_root install -D -m 644 "data/pam/$service" "/etc/pam.d/$service"
 done

@@ -193,7 +193,92 @@ impl State {
         for a in aliases {
             server.at(alias_path(&a), CollectionObj { state: self.clone(), id: None, alias: Some(a) }).await?;
         }
+        server.at(PORTAL_PATH, Portal { state: self.clone() }).await?;
         Ok(())
+    }
+}
+
+/// Where xdg-desktop-portal asks a Secret backend (its `.portal` file
+/// names `org.freedesktop.secrets`: olo-session's `olo-secrets.portal`).
+pub const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
+/// What GNOME Keyring's portal keeps each program's secret as (so those
+/// copied from it are found).
+const PORTAL_SCHEMA: &str = "org.freedesktop.portal.Secret";
+
+/// The attributes program `app_id`'s portal secret is kept under.
+pub fn portal_attributes(app_id: &str) -> BTreeMap<String, String> {
+    BTreeMap::from([("app_id".to_owned(), app_id.to_owned()), ("xdg:schema".to_owned(), PORTAL_SCHEMA.to_owned())])
+}
+
+/// The Secret portal's backend (`org.freedesktop.impl.portal.Secret`):
+/// each program gets a secret of its own (sandboxed programs, and Chrome
+/// and Electron apps, which ask the portal first), the same one each
+/// time: kept in the login collection as GNOME Keyring's portal keeps
+/// it, made (64 random bytes) the first time a program asks. It's
+/// written to the file descriptor the portal gives, then that is closed.
+struct Portal {
+    state: Arc<State>,
+}
+
+#[zbus::interface(name = "org.freedesktop.impl.portal.Secret")]
+impl Portal {
+    async fn retrieve_secret(
+        &self,
+        _handle: OwnedObjectPath,
+        app_id: String,
+        fd: zbus::zvariant::OwnedFd,
+        _options: HashMap<String, OwnedValue>,
+        #[zbus(object_server)] server: &ObjectServer,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        if self.state.is_locked(store::LOGIN) {
+            return (2, HashMap::new());
+        }
+        let wanted = portal_attributes(&app_id);
+        let (secret, made) = {
+            let mut store = self.state.store();
+            match store.collection(store::LOGIN).and_then(|c| c.items.iter().find(|i| i.matches(&wanted))) {
+                Some(item) => (item.secret.clone(), None),
+                None => {
+                    let mut bytes = Zeroizing::new(vec![0u8; 64]);
+                    getrandom::fill(bytes.as_mut_slice()).expect("random");
+                    let t = store::now();
+                    let item = Item {
+                        id: 0,
+                        label: format!("Application key for {app_id}"),
+                        attributes: wanted,
+                        secret: bytes.clone(),
+                        content_type: "application/octet-stream".into(),
+                        created: t,
+                        modified: t,
+                    };
+                    let n = store.put(store::LOGIN, item, true);
+                    if let Some(n) = n {
+                        store.note_changed(store::LOGIN, n);
+                    }
+                    (bytes, n)
+                }
+            }
+        };
+        if let Some(n) = made {
+            self.state.save();
+            let _ = server.at(item_path(store::LOGIN, n), ItemObj { state: self.state.clone(), collection: store::LOGIN.to_owned(), id: n }).await;
+            tracing::info!("secrets: a portal secret made for {}", if app_id.is_empty() { "a program outside a sandbox" } else { app_id.as_str() });
+        }
+        let mut file = std::fs::File::from(std::os::fd::OwnedFd::from(fd));
+        let written = std::io::Write::write_all(&mut file, &secret);
+        drop(file);
+        match written {
+            Ok(()) => (0, HashMap::new()),
+            Err(e) => {
+                tracing::warn!("secrets: the portal's secret for {app_id} couldn't be written: {e}");
+                (2, HashMap::new())
+            }
+        }
+    }
+
+    #[zbus(property, name = "version")]
+    fn version(&self) -> u32 {
+        1
     }
 }
 

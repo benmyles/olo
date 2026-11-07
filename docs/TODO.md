@@ -38,31 +38,56 @@ something nobody here has is in "Blocked", with what it waits for.
   stopped and run again (each step checks what's done), and says what to
   do when something fails. Its About (and a line on its last page):
   that Olo is a work of love, dedicated to the late Samwise, an English
-  Labrador. Tested whole in a VM (QEMU with KVM: a fresh Fedora 45
+  Labrador (Ben, 2026-11-07: "it should say dedicated to sir samwise, the
+  bestest english labrador that ever walked the earth or something nice
+  like that": it says "Olo is a work of love, dedicated to Sir Samwise,
+  the bestest English Labrador that ever walked the earth."). Tested whole in a VM (QEMU with KVM: a fresh Fedora 45
   Workstation install, the installer downloaded and run, a reboot into
   Olo, Olo used: its apps opened, a file opened, Preferences changed),
   screenshots of every step kept, at the VM's screen's scale and 2×.
 
+## Done, waiting for Ben to try or confirm
+
 - **Nothing of GNOME's needed: Olo's own in its place** (Ben, 2026-11-06:
   "if we are still reliant on any gnome services or settings, create olo
-  replacements for it so we don't need any gnome stuff"). What Olo still
-  leans on (a look on 2026-11-06): GDM (olo-login replaces it once Ben
-  switches over); GNOME Keyring at login (`pam_gnome_keyring` in
-  olo-login's PAM services, the session finishing the keyring's start,
-  `crates/session/src/keyring.rs`, and the Secret portal pointed at it
-  in `graphical.rs`'s portals.conf: olo-secrets takes over from it after
-  the fact, `apps/secrets/src/gnome.rs`), to be olo-secrets unlocked by
-  the login password itself (a PAM module of Olo's, as pam_olo_face is)
-  and serving the Secret portal; and dconf (dconf-service running; Olo
-  writes GTK's theme, fonts and cursor as `org.gnome.desktop.interface`
-  keys, `olo_system::dconf`, which unsandboxed GTK apps read), to be a
-  settings source of Olo's that GTK reads (its GSettings backend, or the
-  settings portal for what reads it). Audit the rest (autostart's
-  GNOME-only entries, `toolkits.rs`, the portal's GNOME interfaces, any
-  gnome-* or gsd-* process that starts) and replace what's found; Olo
-  Doctor says if any GNOME service is still running.
-
-## Done, waiting for Ben to try or confirm
+  replacements for it so we don't need any gnome stuff"). Done. Running
+  in Ben's session were GNOME's portal (and gnome-control-center under
+  it), GTK's portal, dconf-service and gvfs; GNOME Keyring started at
+  each login. Each now has Olo's own:
+  - **Portals** (2efac51d; HACKING, "Screen sharing"): olo-portal serves
+    Settings (the look, from the same list app_server writes to dconf)
+    and Notification (into Olo's centre, actions back to the program);
+    `olo-portals.conf` names every interface (`default=none`); the
+    portal service is told the desktop is Olo alone (it read GNOME's
+    configuration too, as the session says `Olo:GNOME`).
+  - **dconf** (da712c2f; HACKING, "Other toolkits' programs"):
+    `olo-dconf` answers `ca.desrt.dconf` with dconf's own interface and
+    file (GNOME's `dconf dump` of a rewritten copy of Ben's database is
+    byte for byte the same), named for D-Bus in the runtime folder while
+    Olo runs; GNOME's stopped if it was answering.
+  - **Keyring** (d8565a6a; HACKING, "Programs' secrets"): the login
+    password opens Olo's keyring (`pam_olo_keyring` in olo-login's PAM,
+    in `pam_gnome_keyring`'s place; olo-secrets keeps its key sealed by
+    it, asking once after a face or fingerprint login or a password
+    change); olo-secrets serves the Secret portal too (it didn't: Flatpak
+    apps, Chrome and Slack asking the portal got nothing while it
+    answered); Programs' Secrets is on by default; GNOME Keyring is read
+    only when it's running or its keyrings changed.
+  - **gvfs**: what Olo starts uses GIO's own files
+    (`GIO_USE_VFS=local`), never exported, so GNOME keeps it.
+  - **Olo Doctor** says when any of GNOME's services still runs, and
+    quits them.
+  Kept: `XDG_CURRENT_DESKTOP=Olo:GNOME` (a name, not a service: Qt
+  follows Olo's look only by it, toolbox programs too; the portal service
+  alone sees `Olo`), the accessibility bus (at-spi, freedesktop's, which
+  Olo reads programs through), and GDM until Ben switches to olo-login.
+  Seen on Ben's machine: `gnome-browser-connector-host` runs while
+  Chrome does, from Chrome's "GNOME Shell integration" extension (his to
+  remove). To try: upgrade (the new portal setup and dconf take over at
+  the upgrade; gvfs from programs started after it), then Olo Doctor
+  should say "Nothing of GNOME's runs" (or offer to quit what started
+  before). The keyring's login module comes with `tools/install-login.sh`
+  and works at Olo's login screen; under GDM nothing changes.
 
 - **A window opened from a floating one opens on top of it** (Ben,
   2026-11-06: "if i'm in a floating window like prefs -> sound and click

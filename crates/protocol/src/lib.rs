@@ -1595,13 +1595,14 @@ pub struct PasswordsSecurity {
     /// passwords, …): olo-secrets answers the Secret Service
     /// (`org.freedesktop.secrets`) in GNOME Keyring's place, its items
     /// copied over first and changes handed back when this is turned
-    /// off. Off by default.
+    /// off. On by default (Olo needs nothing of GNOME's: the login
+    /// password opens Olo's keyring, `pam_olo_keyring`).
     pub secret_service: bool,
 }
 
 impl Default for PasswordsSecurity {
     fn default() -> Self {
-        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true, ssh_agent: true, secret_service: false }
+        PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true, ssh_agent: true, secret_service: true }
     }
 }
 

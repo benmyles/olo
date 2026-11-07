@@ -385,7 +385,10 @@ socket.
 | `crates/system` | `olo-system`: the system over its own protocols, in process: logind (`power`: reboot, power off, suspend, inhibitor locks), NetworkManager (`network`: status, join including 802.1X, forget), the sound server (`audio`: volume, mute, `watch` change feed), dconf writes, the D-Bus/systemd activation environment. All blocking: call from worker threads. |
 | `apps/airpods` | `olo-airpods`: AirPods, natively (see "AirPods"): the session's service and its command line. |
 | `apps/voice` | `olo-voice`: the voice service (see "The voice service"): every microphone through voice processing, and its command line. |
-| `apps/secrets` | `olo-secrets`: Olo's own Secret Service, programs' secrets kept in place of GNOME Keyring when Preferences ▸ Security says so (see "Programs' secrets"). |
+| `apps/installer` | `olo-installer`: Olo Setup, a stock Fedora Workstation made Olo in one full-screen program (see "Olo Setup"). |
+| `apps/dconf` | `olo-dconf`: Olo's dconf service (`ca.desrt.dconf`), GSettings programs' settings written into dconf's own database in place of GNOME's dconf-service (see "Other toolkits' programs"). |
+| `apps/secrets` | `olo-secrets`: Olo's own Secret Service and Secret portal, programs' secrets kept in place of GNOME Keyring unless Preferences ▸ Security says otherwise, its store opened by the login password (see "Programs' secrets"). |
+| `crates/pam-keyring`, `crates/login-key` | `pam_olo_keyring.so`: the login password opens Olo's keyring, the key it gives handed to olo-secrets in the login's kernel keyring; `olo-login-key`: that key's derivation, shared (see "Programs' secrets"). |
 | `crates/camera` | `olo-camera`: cameras in process: listed from sysfs (nothing opened till one is asked for), a V4L2 stream (MJPEG decoded by zune-jpeg, or YUYV converted) as BGRA frames; `OLO_CAMERA_FAKE=1` puts a stand-in first ("Test Camera", a moving pattern at 30 frames a second) for tests and headless sessions, which never open a real camera. For a recording's camera bubble (Screenshot's `bubble.rs`), later face sign-in. |
 | `crates/face` | `olo-face`: face unlock natively: the infrared camera over V4L2, its emitter through its UVC extension unit, YuNet and SFace run in process (tract), and `olo-faced`, the root service on the system bus. See "Face unlock". |
 | `crates/pam-face` | `pam_olo_face.so`: face unlock in sudo's and polkit's PAM stacks (asks `olo-faced`). See "Face unlock". |
@@ -8192,6 +8195,13 @@ scan made for the sudo user). What it looks for:
   KWin, gsd-*): quit. Never another login's: a desktop shell of this user
   in another `session-N.scope` means that desktop is logged in there, and
   everything of it is its own.
+- **GNOME's services Olo has its own in place of** (`GNOME_SERVICES`:
+  dconf-service, GNOME's and GTK's portal backends, gvfs's daemons and
+  volume monitors, GNOME Online Accounts, and GNOME Keyring while Olo's
+  keyring answers), running in this session or as the user's services
+  (not when GNOME is logged in elsewhere): advice, quit by the fix (what
+  asks for dconf, a portal or the keyring reaches Olo's). None, and
+  nothing of another desktop either: "Nothing of GNOME's runs".
 - **USB input devices allowed to sleep** (an interface of class 03 with
   an input node under it, a receiver's paired devices a level down;
   `power/control` not `on`), and **Olo's udev rules** (71-olo-input,
@@ -8475,6 +8485,97 @@ ones it knows.
     fine-tune 5 to 11 ms, a quick one about 2 ms; idle 0% of a core, 0
     wakeups a second; while Activity Monitor's AI shows, one a second
     in the daemon and 3 in Activity Monitor's poller (0.1% of a core).
+
+## Olo Setup (apps/installer, tools/release.sh)
+
+One program a person downloads from Olo's releases and runs on a stock
+Fedora Workstation (Ben, 2026-11-06: "a full screen gui app that
+\"olo-fies\" their fedora … windows 95 setup.exe vibes but windows 95
+crossed with beos"). `olo-installer`, full screen, is Windows 95's
+Setup in BeOS's look (`ui.rs`): the deep blue backdrop fading to black
+with "Olo Setup" in big white bold italic serif and its shadow at the
+top left (Liberation Serif, Times New Roman's metric twin, as Windows
+95's), and on it one window at a time drawn as BeOS draws them (the
+yellow tab with its title, the grey panel and its frame, from the
+palette), each a page: a picture panel down the left (a sunken well,
+the backdrop's gradient, the page's icon), the words on the right, `<
+Back`, `Next >` and `Cancel` along the bottom. Welcome (what it does,
+the password asked once, Windows 95's "it is strongly recommended";
+why this computer can't, in red, if it can't: `plan::unsuitable`, not
+Fedora 44 or newer, an atomic Fedora, root, under 6 GB free), Licence
+Agreement (`licence.txt`: Olo's MIT terms, as Cargo.toml says, and the
+others' work it carries, in a scroll box; Next only once "I accept"),
+Choose What to Install (Olo Desktop always; Olo's login screen, its
+boot splash and RPM Fusion, each with its words under it), Installing
+(a BeOS status bar, the stage over it and "n of m" at its right, what
+it's doing under it, the stages and notes so far; a failure says what
+and why in red, what to do, and Try Again), and Olo Is Installed (Log
+Out, or Restart when the login screen or splash changed; and "Olo is a
+work of love, dedicated to Sir Samwise, the bestest English Labrador
+that ever walked the earth." in Ben's words).
+About, from Welcome, says what Olo is and the dedication. None of Olo
+is installed when it starts, so it carries what the kit draws with
+(build.rs: Olo's fonts, its pages' icons at every size, the wordmark),
+unpacks it into the runtime folder and points the kit there
+(`OLO_DATA`).
+
+The work (`plan.rs`) runs on a worker, each stage told to the window
+(`Event`), each doing only what isn't done, so it can be stopped
+(Cancel) and run again: checking the computer; what Olo needs from
+Fedora (`PACKAGES`: what its programs link, `ldd` on every program,
+22 packages, and the services and fonts a session uses) through
+PackageKit; RPM Fusion's two repositories if chosen (Olo Doctor's
+`InstallRepository`); Olo itself (`bundle.rs`: the newest GitHub
+release's `olo-VERSION-ARCH.tar.zst` of `benmyles/olo`, or `--bundle
+URL|FILE`, downloaded into `~/.cache/olo-installer` and kept, its
+published SHA-256 checked, unpacked (zstd, tar; nothing outside `olo/`)
+and put in place as tools/install-session.sh does: each program beside
+its old self then renamed over it, the data copied over, `op`, `pbcopy`
+and `pbpaste` linked, the version in `~/.local/share/olo/version`);
+Olo on the login screen's menu (its session entry naming
+`~/.local/bin/olo-session`, Olo's udev rules, the devices they're for
+told to look again by their `uevent`); and if chosen, Olo's login
+screen (tools/install-login.sh `--switch`'s work: its programs in
+/usr/local/libexec/olo, Olo's data in /usr/local/share/olo, the PAM
+services and `pam_olo_keyring.so`, its user and folders made by
+systemd's own `systemd-sysusers` and `systemd-tmpfiles-setup` started
+again, its unit, GDM disabled and olo-login enabled) and boot splash
+(the theme drawn by `olo-app-server --plymouth-theme` as the person,
+then put in /usr/share/plymouth/themes/olo with plymouthd.conf kept
+beside as `.before-olo`, and the start-up images made again:
+`Step::RebuildInitramfs`, dracut, the one program a step runs). What
+needs root is Olo Doctor's privileged helper (`helper.rs`, the same
+`Step`s, two added for Setup: `CopyTree` and `RebuildInitramfs`), this
+program run again through pkexec (`--helper`), asked for once: the
+password goes to the desktop's own polkit agent, GNOME's on a stock
+Fedora; `OLO_SETUP_HELPER=direct` runs it as the person (tests: what
+needs root then fails, safely). PackageKit's lookups now find what is
+installed first and only look for the rest in this architecture
+(`olo_system::packages::resolve`: asked for the newest alone, an update
+waiting showed as not installed, and installing what was missing
+became an update, which asked for a password). `--yes` goes through the
+pages by itself, a page every four seconds (`--login-screen`,
+`--boot-splash`, `--rpm-fusion` choose), for tests and agents; `--check`
+says as JSON whether this computer can have Olo and opens nothing.
+
+The release (`tools/release.sh [OUT]`, from a release build): every
+`olo-*` program stripped (300 MB with line tables to 30 MB; a third of
+that compressed), `pam_olo_keyring.so`, Olo's data as
+install-session.sh copies it and what goes outside the home folder
+(`system/`: the session entry, udev rules, PAM services, the login
+screen's unit, user and folders), and `VERSION` (the date and the
+commit) in `olo-VERSION-ARCH.tar.zst` (zstd -19), and the installer
+stripped beside it, each with its `.sha256`. Publishing them (a GitHub
+release) is a separate step.
+
+`tools/dev/installer-check` tries it all in a virtual machine (KVM, a
+virtio GPU, no window, driven through QEMU's monitor): `install` puts a
+fresh Fedora Workstation on a disk from Fedora's own network installer
+(a kickstart choosing Workstation's package set; for the test alone,
+GDM logs the tester in and GNOME's first-run tour is skipped), `boot
+--serve DIR` starts it with the release served to it at
+`http://10.0.2.2:8642/`, and `shot`, `type`, `key` and `click` look and
+act. Everything is kept in /var/tmp/olo-installer-check.
 
 ## The Wi-Fi healer (apps/wifi-heal)
 
@@ -9670,9 +9771,10 @@ a Secret Service client calling `Unlock` and `Prompt`.
 
 `olo-secrets` is Olo's own Secret Service (`org.freedesktop.secrets`, the
 freedesktop API 0.2): with Preferences ▸ Security ▸ Programs' Secrets on
-(`security.passwords.secret_service`, off by default), the secrets
+(`security.passwords.secret_service`, on by default), the secrets
 Chrome, Slack, NetworkManager's applets, `gh` and Olo itself keep through
-libsecret live in Olo's store rather than GNOME Keyring's. olo-session
+libsecret live in Olo's store rather than GNOME Keyring's, and the
+Secret portal is Olo's too. olo-session
 starts it in a real session (`REAL_SHELL`, and on an upgrade that adds
 it); while off it waits on app_server's settings events (no CPU, no
 wakeups) and follows the switch live.
@@ -9683,14 +9785,45 @@ wakeups) and follows the switch live.
   at 0600 after each change. Collections (`login`, the `default` alias's,
   made first; others by `CreateCollection`) of items (label, attributes,
   secret, content type, times); the `session` collection in memory only.
-  Its key is 32 random bytes in GNOME Keyring's login keyring
-  (`olo_system::secrets::SECRETS_KEY`, which PAM unlocks at login; a
-  kept secret, so Backup carries it, and the store with it as a vault:
-  "Programs' Secrets"), and for the rest of the login in the kernel's
-  session keyring (`kernel.rs`: `olo-secrets:` and the store's path, so
-  a test's key never meets the real one), so olo-secrets started again
-  (an upgrade, a crash) opens it without GNOME Keyring, which has quit.
-- **Taking over** (at login, or switched on): the key, the store, then
+  Its key is 32 random bytes, sealed by the login password beside the
+  store (`login_key.rs`: `secrets.login`, "OLOL", a format byte, a
+  nonce, the key sealed with XChaCha20-Poly1305 under the key the
+  password gives, `olo_login_key::login_key`: Argon2id, 64 MiB, 3
+  passes, salted by the uid and /etc/machine-id, 99 ms here), kept in
+  GNOME Keyring's login keyring too where it was made there
+  (`olo_system::secrets::SECRETS_KEY`; a kept secret, so Backup carries
+  it, and the store with it as a vault: "Programs' Secrets"), and for
+  the rest of the login in the kernel's session keyring (`kernel.rs`:
+  `olo-secrets:` and the store's path, so a test's key never meets the
+  real one), so olo-secrets started again (an upgrade, a crash) opens it
+  without asking anything.
+- **The login password opens it** (`crates/pam-keyring`,
+  `pam_olo_keyring.so`, in olo-login's password service in
+  `pam_gnome_keyring`'s place: `-auth optional` after `password-auth`,
+  `-session optional` after `pam_keyinit`; tools/install-login.sh puts it
+  in /usr/lib64/security). At authentication it derives the key the
+  typed password gives and keeps it with the PAM handle; once the
+  session opens it puts it in the login's session keyring
+  (`olo-secrets:login-key`, the user's, gone in ten minutes, and with
+  the login). It never fails a login and never reads the person's files;
+  with no password (a face, a fingerprint, the greeter) it does nothing.
+  olo-secrets takes the key once (read, then invalidated) and opens the
+  sealed store key with it (`key`). With none from PAM (another login
+  screen, a face, a fingerprint) or the password changed since it was
+  sealed, it takes GNOME Keyring's copy if GNOME Keyring is answering
+  (another login screen's PAM unlocked it), else asks for the password
+  through Olo's prompter (`ask_password`: the one used before, if it
+  changed) until it opens the seal; then it seals again with this
+  login's. The first time (nothing sealed yet) it takes GNOME Keyring's
+  copy, or makes a key for a new store. Tested in a real PAM run
+  (`tests/pam.rs`, private services and a session keyring of the test's
+  own): the typed password's key arrives in the session keyring, and a
+  stack without a password leaves nothing.
+- **Taking over** (at login, or switched on): the key, the store, then,
+  when GNOME Keyring is answering or its keyrings
+  (`$XDG_DATA_HOME/keyrings/*.keyring`) changed since the last copy (a
+  GNOME session since: D-Bus starts it, and it asks for its password
+  through Olo's prompter; neither, and nothing of GNOME's starts),
   every GNOME Keyring item new or changed since the last copy
   (`Data::imported`: identity, its `Modified`; identity is collection,
   label and attributes without `xdg:schema`, which GNOME Keyring adds to
@@ -9715,6 +9848,19 @@ wakeups) and follows the switch live.
   `Unlock` gives a prompt asking for the account password in Olo's
   keyring window (`ask_password`), checked by PAM. Changes made while
   serving are noted (`Data::changed`, `deleted`).
+- **The Secret portal** (`service.rs`, `Portal`:
+  `org.freedesktop.impl.portal.Secret` at `/org/freedesktop/portal/
+  desktop`, version 1): each program's own secret, which sandboxed
+  programs, and Chrome and Electron apps (Slack), ask the portal for
+  first. Kept in `login` as GNOME Keyring's portal keeps it (`app_id`
+  and `xdg:schema` `org.freedesktop.portal.Secret`, "Application key for
+  …"), so those copied from it are what each program gets; made (64
+  random bytes) the first time a program asks, then written to the
+  portal's file descriptor, which is closed. olo-session describes it
+  to the portal as `olo-secrets.portal` (`DBusName=org.freedesktop.
+  secrets`: whoever answers for the keyring, so GNOME Keyring, which
+  serves the same, when Olo's is off) and routes Secret to it. Tried
+  through the real frontend on a test bus: the same 64 bytes both times.
 - **Handing back** (switched off): the name given up, then what changed
   while Olo answered written into GNOME Keyring (D-Bus starts it again;
   it asks for the password to unlock through Olo's prompter) and what was
@@ -10326,7 +10472,64 @@ Programs not built on the kit take Olo's look as far as their toolkit
 allows. `toolkits.rs` publishes the palette where GTK 3, GTK 4,
 libadwaita and Chrome read it (GSettings through dconf, the Olo and
 Olo-dark GTK themes, GTK 4's user stylesheet, BeOS's close-left,
-zoom-right title buttons); see its module comment. Fonts are hinted as
+zoom-right title buttons); see its module comment. The GSettings keys
+are `olo_theme::toolkit::desktop_settings`, which olo-portal's Settings
+serves too (sandboxed programs, and those asking the portal), so the
+two say the same.
+
+**dconf is Olo's** (`apps/dconf`, `olo-dconf`). Programs read GSettings
+from dconf's database themselves (`~/.config/dconf/user`, mapped) and
+ask `ca.desrt.dconf` on the session bus to change it; olo-dconf answers
+for it in GNOME's dconf-service's place, with the same interface and the
+same file, so nothing that reads it changes, and a GNOME session later
+reads what was set under Olo. `ca.desrt.dconf.Writer` at
+`/ca/desrt/dconf/Writer/NAME`: `Change(ay) → s` takes a change as
+clients send it (a GVariant `a{smv}`, read by its framing alone in
+`changeset.rs`, so each value is stored as the bytes the program sent,
+never decoded and encoded again), makes it in the database as it is on
+disk then (read again each time, so nothing another writer did is
+lost; a folder path with no value resets the folder), writes the file
+whole (GLib's GVDB format, `gvdb.rs`, as dconf's writer makes it: every
+folder up to "/" an `L` item listing its children, each item keyed by
+what it adds to its parent's key, one bucket per item, no bloom
+filter), renames it into place with its mode kept, sets the readers'
+shared flag (`$XDG_RUNTIME_DIR/dconf/NAME`'s first byte, then removes
+it: each reader opens the file again), answers with a tag, and only
+then signals `Notify(prefix, paths, tag)`, so the writer knows its tag
+first. `Init()` makes an empty database if there's none. olo-session
+names it for D-Bus activation while an Olo session runs
+(`graphical::take_dconf`: `$XDG_RUNTIME_DIR/dbus-1/services/
+ca.desrt.dconf.service`, which the bus reads before `~/.local/share`'s
+and the system's: tried with dbus-broker 37, the same name in all
+three, and the runtime folder's was the one started; gone with the
+session's `stop` or the login, so a GNOME session has GNOME's), has the
+bus read its services again, and stops `dconf.service` if GNOME's was
+already answering (an app wrote a setting before the session got that
+far): the next change starts Olo's. It goes after ten minutes with
+nothing asked, giving up its name before answering what came meanwhile
+(the next change starts it again). Checked with GNOME's own tools:
+`olo-dconf --rewrite IN OUT` (a database written again as olo-dconf
+writes it) of a copy of a real database (69 keys) gives the same
+`dconf dump /`, byte for byte; through the service on a test bus,
+`dconf write`, `read`, `list`, `reset -f` of a folder and `gsettings
+set`/`get` work, and a running `dconf watch /` and `gsettings monitor`
+see each change. A write (the `dconf` command run each time) takes
+29 to 30 ms against GNOME's 37 ms; idle it costs nothing (0.0% of a
+core, 0 wakeups/s), in 5.3 MB against GNOME's 6.8 MB.
+
+**No gvfs.** GIO (GLib's files: GTK and GNOME programs, Chrome) loads
+GNOME's gvfs when it's installed, which starts gvfsd, gvfsd-fuse,
+gvfsd-metadata and volume monitors on the session bus. What olo-session
+starts gets `GIO_USE_VFS=local` and `GIO_USE_VOLUME_MONITOR=unix`
+(`olo_xdg::GIO_LOCAL`, set in `set_session_env`, and by
+`olo_xdg::upgrade_env` for a session started on an older build as its
+programs re-exec), so GIO uses its own local files (trash and recent
+files are GIO's own there) and the system's mounts, and none of gvfs
+starts; network folders, phones and cameras are Olo's Tracker's. It's
+never exported to systemd or D-Bus activation, which keep it after
+logging out, so a GNOME login afterwards has gvfs. (Checked on a test
+bus that can start services: with them, `gio info trash:///` says
+"Operation not supported" and no gvfs process starts.) Fonts are hinted as
 the kit hints them (`font-hinting` slight, `font-antialiasing`
 grayscale). The pointer: programs asking for one by name
 (cursor-shape-v1: GTK 4, Chrome and Electron, Qt 6) get app_server's;

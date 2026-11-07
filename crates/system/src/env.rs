@@ -58,6 +58,19 @@ pub fn reload_units() -> Result<()> {
     bus::call::<_, ()>(bus::session()?, "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "Reload", &())
 }
 
+/// Have the session bus read its service files again (one written or
+/// taken away).
+pub fn reload_bus_services() -> Result<()> {
+    bus::call::<_, ()>(bus::session()?, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ReloadConfig", &())
+}
+
+/// The process answering for `name` on the session bus, if one does.
+pub fn bus_name_pid(name: &str) -> Option<u32> {
+    let conn = bus::session().ok()?;
+    let owner: String = bus::call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetNameOwner", &(name,)).ok()?;
+    bus::call(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixProcessID", &(owner.as_str(),)).ok()
+}
+
 /// Start (`start` true) or stop a systemd user unit, without waiting for
 /// the job to finish.
 pub fn start_unit(name: &str, start: bool) -> Result<()> {

@@ -1,0 +1,30 @@
+[package]
+name = "olo-installer"
+description = "Olo Setup: a stock Fedora made Olo, in one full-screen program (Windows 95's Setup, in BeOS's look)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "olo-installer"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-ui.workspace = true
+olo-doctor = { path = "../doctor" }
+olo-system.workspace = true
+olo-xdg.workspace = true
+olo-theme.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+libc = "0.2"
+# GitHub over HTTPS, the SHA-256 checked, the .tar.zst opened.
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+sha2 = "0.11"
+zstd = "0.14"
+tar = "0.4"
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }

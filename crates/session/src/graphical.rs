@@ -38,13 +38,15 @@ After=graphical-session-pre.target
 /// backends: Olo's portal for what it serves (screen sharing and remote
 /// control, screenshots, keeping awake, Open and Save panels, Open With,
 /// the permission dialogs other portals ask through, the desktop's look
-/// as Settings, notifications), the keyring for secrets, and none for
-/// the rest (no backend: the portal says the interface isn't there).
+/// as Settings, notifications), the keyring (olo-secrets, or GNOME
+/// Keyring when Olo's is turned off: `OLO_SECRETS_PORTAL`) for programs'
+/// secrets, and none for the rest (no backend: the portal says the
+/// interface isn't there).
 const PORTALS: &str = "\
 # Written by olo-session: the desktop portals for Olo.
 [preferred]
 default=none
-org.freedesktop.impl.portal.Secret=gnome-keyring
+org.freedesktop.impl.portal.Secret=olo-secrets
 org.freedesktop.impl.portal.Settings=olo
 org.freedesktop.impl.portal.Notification=olo
 org.freedesktop.impl.portal.ScreenCast=olo
@@ -96,6 +98,16 @@ DBusName=org.freedesktop.impl.portal.desktop.olo
 Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.RemoteDesktop;org.freedesktop.impl.portal.Inhibit;org.freedesktop.impl.portal.Screenshot;org.freedesktop.impl.portal.Access;org.freedesktop.impl.portal.Account;org.freedesktop.impl.portal.FileChooser;org.freedesktop.impl.portal.AppChooser;org.freedesktop.impl.portal.Background;org.freedesktop.impl.portal.Email;org.freedesktop.impl.portal.Wallpaper;org.freedesktop.impl.portal.GlobalShortcuts;org.freedesktop.impl.portal.Print;org.freedesktop.impl.portal.Settings;org.freedesktop.impl.portal.Notification;
 ";
 
+/// The keyring's portal backend: whoever answers for the keyring
+/// (`org.freedesktop.secrets`), olo-secrets or, turned off, GNOME
+/// Keyring, which serves the same interface at the same path.
+const OLO_SECRETS_PORTAL: &str = "\
+# Written by olo-session: the keyring's portal backend (olo-secrets).
+[portal]
+DBusName=org.freedesktop.secrets
+Interfaces=org.freedesktop.impl.portal.Secret;
+";
+
 fn config_home() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| Some(PathBuf::from(std::env::var_os("HOME")?).join(".config")))
 }
@@ -133,6 +145,7 @@ fn write_files(config: &Path, data: &Path, runtime: &Path) -> std::io::Result<Wr
     let _ = std::fs::remove_file(config.join("systemd").join("user").join(OLD_TARGET));
     let conf = put(&config.join("xdg-desktop-portal").join("olo-portals.conf"), PORTALS)?;
     let backend = put(&data.join("xdg-desktop-portal").join("portals").join("olo.portal"), OLO_PORTAL)?;
+    let backend = put(&data.join("xdg-desktop-portal").join("portals").join("olo-secrets.portal"), OLO_SECRETS_PORTAL)? || backend;
     let drop_in = put(&portal_drop_in(runtime), PORTAL_DROP_IN)?;
     let unit = put(&config.join("systemd").join("user").join(TARGET), TARGET_UNIT)? || drop_in;
     if let Some(bin_dir) = crate::exe().parent() {
@@ -211,6 +224,52 @@ pub fn start() {
     {
         log(format!("could not restart xdg-desktop-portal: {e}"));
     }
+    if let Some(bin) = crate::exe().parent() {
+        take_dconf(bin, &crate::runtime_dir());
+    }
+}
+
+/// Olo's dconf service (olo-dconf) for `ca.desrt.dconf`, in GNOME's
+/// dconf-service's place: D-Bus starts it on demand, as it would GNOME's.
+fn dconf_service(bin: &Path) -> String {
+    format!("[D-BUS Service]\nName=ca.desrt.dconf\nExec={}\n", bin.join("olo-dconf").display())
+}
+
+/// Where it's described while an Olo session runs: the runtime folder's
+/// services, which the session bus reads before `~/.local/share`'s and
+/// the system's (tried with dbus-broker 37: the same name in both, the
+/// runtime folder's started), and which go with the login, so a GNOME
+/// session later has GNOME's again.
+fn dconf_service_path(runtime: &Path) -> PathBuf {
+    runtime.join("dbus-1/services/ca.desrt.dconf.service")
+}
+
+fn reload_bus() {
+    if let Err(e) = olo_system::env::reload_bus_services() {
+        log(format!("could not reload the session bus's services: {e}"));
+    }
+}
+
+/// Settings kept in dconf go through Olo's service from now on: it's
+/// named for `ca.desrt.dconf` (the bus told to read its services again),
+/// and GNOME's, if it answered before (an app wrote a setting before the
+/// session got this far), is stopped, so the next change starts Olo's.
+fn take_dconf(bin: &Path, runtime: &Path) {
+    if !bin.join("olo-dconf").is_file() {
+        return;
+    }
+    match put(&dconf_service_path(runtime), &dconf_service(bin)) {
+        Ok(true) => reload_bus(),
+        Ok(false) => {}
+        Err(e) => return log(format!("could not name Olo's dconf service: {e}")),
+    }
+    let gnome = olo_system::env::bus_name_pid("ca.desrt.dconf").filter(|pid| std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| exe.file_name().is_some_and(|n| n == "dconf-service")));
+    if let Some(pid) = gnome {
+        log(format!("GNOME's dconf-service (pid {pid}) was answering for dconf: stopped, Olo's answers from the next change"));
+        if let Err(e) = olo_system::env::start_unit("dconf.service", false) {
+            log(format!("could not stop dconf.service: {e}"));
+        }
+    }
 }
 
 /// End it (the portals and other session services stop with it), and
@@ -219,6 +278,9 @@ pub fn start() {
 pub fn stop() {
     let _ = std::fs::remove_file(crate::runtime_dir().join("olo").join("gtk-4.0.css"));
     let _ = std::fs::remove_file(portal_drop_in(&crate::runtime_dir()));
+    if std::fs::remove_file(dconf_service_path(&crate::runtime_dir())).is_ok() {
+        reload_bus();
+    }
     let _ = std::fs::remove_file(crate::runtime_dir().join(olo_xdg::legacy::OLD).join("gtk-4.0.css"));
     if let Err(e) = olo_system::env::start_unit(TARGET, false) {
         log(format!("could not stop {TARGET}: {e}"));
@@ -270,6 +332,8 @@ mod tests {
         ] {
             assert!(conf.contains(&format!("\norg.freedesktop.impl.portal.{iface}=")), "{iface}");
         }
+        let secrets = std::fs::read_to_string(data.join("xdg-desktop-portal/portals/olo-secrets.portal")).unwrap();
+        assert!(conf.contains("\norg.freedesktop.impl.portal.Secret=olo-secrets\n") && secrets.contains("DBusName=org.freedesktop.secrets\nInterfaces=org.freedesktop.impl.portal.Secret;"));
         let backend = std::fs::read_to_string(data.join("xdg-desktop-portal/portals/olo.portal")).unwrap();
         assert!(backend.contains("DBusName=org.freedesktop.impl.portal.desktop.olo"));
         // What the config sends to Olo's backend, it says it has.
@@ -280,6 +344,13 @@ mod tests {
         let drop_in = std::fs::read_to_string(portal_drop_in(&runtime)).unwrap();
         assert!(drop_in.contains("[Service]\nEnvironment=XDG_CURRENT_DESKTOP=Olo\n"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dconf_is_olo_s_while_it_runs() {
+        let text = dconf_service(Path::new("/home/u/.local/bin"));
+        assert_eq!(text, "[D-BUS Service]\nName=ca.desrt.dconf\nExec=/home/u/.local/bin/olo-dconf\n");
+        assert_eq!(dconf_service_path(Path::new("/run/user/1000")), Path::new("/run/user/1000/dbus-1/services/ca.desrt.dconf.service"));
     }
 
     #[test]

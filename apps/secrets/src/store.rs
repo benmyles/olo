@@ -2,9 +2,10 @@
 //! `$XDG_CONFIG_HOME/olo/secrets.store`: "OLOS", a format byte, a
 //! 24-byte nonce, then the JSON sealed with XChaCha20-Poly1305 (the header
 //! as associated data), as Passwords' vault is. Its key is 32 random bytes
-//! kept in GNOME Keyring's login keyring (`olo_system::secrets::
-//! SECRETS_KEY`), which PAM unlocks at login; `OLO_SECRETS_KEYFILE` keeps
-//! it in a file instead (tests). The session collection is kept in memory
+//! sealed by the login password beside it (`login_key.rs`), and kept in
+//! GNOME Keyring's login keyring too where it was made there
+//! (`olo_system::secrets::SECRETS_KEY`); `OLO_SECRETS_KEYFILE` keeps it
+//! in a file instead (tests). The session collection is kept in memory
 //! only, as GNOME Keyring's is.
 
 use std::{

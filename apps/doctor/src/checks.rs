@@ -89,6 +89,26 @@ const FOREIGN: &[(&str, &str)] = &[
     ("gsd-color", "GNOME's colour daemon"),
 ];
 
+/// GNOME's services Olo has its own in place of: one running in an Olo
+/// session was started by something before Olo's took over (the start of
+/// the session, a program started before an upgrade) and isn't needed.
+/// GNOME Keyring only while Olo's keyring answers.
+const GNOME_SERVICES: &[(&str, &str)] = &[
+    ("dconf-service", "GNOME's dconf service (olo-dconf answers in its place)"),
+    ("xdg-desktop-portal-gnome", "GNOME's portal backend (olo-portal is the portals' backend)"),
+    ("xdg-desktop-portal-gtk", "GTK's portal backend (olo-portal is the portals' backend)"),
+    ("gnome-keyring-daemon", "GNOME Keyring (Olo's keyring answers in its place)"),
+    ("gvfsd", "gvfs (programs Olo starts use GIO's own files)"),
+    ("gvfsd-fuse", "gvfs's FUSE folder"),
+    ("gvfsd-metadata", "gvfs's metadata"),
+    ("gvfs-udisks2-volume-monitor", "gvfs's disk monitor"),
+    ("gvfs-mtp-volume-monitor", "gvfs's phone monitor"),
+    ("gvfs-gphoto2-volume-monitor", "gvfs's camera monitor"),
+    ("gvfs-afc-volume-monitor", "gvfs's iPhone monitor"),
+    ("gvfs-goa-volume-monitor", "gvfs's online accounts monitor"),
+    ("goa-daemon", "GNOME Online Accounts"),
+];
+
 /// The programs that are another desktop's session itself: one running
 /// in another login (another session's scope) means that desktop is
 /// logged in there, and the daemons are its own.
@@ -444,6 +464,7 @@ pub fn scan(roots: &Roots) -> Report {
     let input_names = input_device_names(&roots.fs);
     remappers(roots, &procs, &input_names, &mut r);
     foreign(roots, &procs, &mut r);
+    gnome_services(roots, &procs, &mut r);
     let rule_current = input_rule(roots, &mut r);
     autosuspend(roots, rule_current, &mut r);
     display_rule(roots, &mut r);
@@ -659,6 +680,44 @@ fn foreign(roots: &Roots, procs: &[Proc], r: &mut Report) {
         title: if mine.len() == 1 { "A program of another desktop runs in this session".into() } else { format!("{} programs of another desktop run in this session", mine.len()) },
         detail: format!("{}. They answer to keys and power events meant for Olo, and some grab devices. Olo does all of this itself; they aren't needed here and are quit.", names.join("; ")),
         fix: Some(Fix { label: "Quit Them".into(), root: false, steps }),
+    });
+}
+
+/// Nothing of GNOME's needed: its services Olo has its own in place of
+/// (`GNOME_SERVICES`), if any runs in this session (not when GNOME is
+/// logged in elsewhere: they're its own), quit by the fix.
+fn gnome_services(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let ours = |p: &Proc| p.uid == roots.uid;
+    if procs.iter().filter(|p| ours(p) && DESKTOPS.contains(&p.name.as_str())).any(|p| p.scope.is_some() && p.scope != roots.scope) {
+        return;
+    }
+    let keyring_ours = secrets_status(roots).is_some_and(|v| v["serving"].as_bool() == Some(true));
+    let found: Vec<(&Proc, &str)> = procs
+        .iter()
+        .filter(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope))
+        .filter(|p| p.name != "gnome-keyring-daemon" || keyring_ours)
+        .filter_map(|p| GNOME_SERVICES.iter().find(|(n, _)| *n == p.name).map(|(_, what)| (p, *what)))
+        .collect();
+    if found.is_empty() {
+        // (GNOME's settings daemons are another desktop's: `foreign` says so.)
+        if procs.iter().any(|p| ours(p) && (p.scope.is_none() || p.scope == roots.scope) && FOREIGN.iter().any(|(n, _)| *n == p.name)) {
+            return;
+        }
+        r.fine.push(Fine { title: "Nothing of GNOME's runs".into(), detail: "Olo answers for dconf, the portals and the keyring itself, and programs it starts use GIO's own files.".into() });
+        return;
+    }
+    let names: Vec<String> = found.iter().map(|(p, what)| format!("{what} ({}, process {})", p.name, p.pid)).collect();
+    let gvfs = found.iter().any(|(p, _)| p.name.starts_with("gvfs"));
+    r.findings.push(Finding {
+        id: "gnome:services".into(),
+        severity: Severity::Advice,
+        title: if found.len() == 1 { "One of GNOME's services runs".into() } else { format!("{} of GNOME's services run", found.len()) },
+        detail: format!(
+            "{}. Olo has its own in their place; something started these before Olo's took over (the start of the session, or a program started before an upgrade), and they aren't needed. Quitting them is safe: what asks for dconf, a portal or the keyring reaches Olo's.{}",
+            names.join("; "),
+            if gvfs { " Programs started before keep asking gvfs for network folders until they're started again." } else { "" }
+        ),
+        fix: Some(Fix { label: "Quit Them".into(), root: false, steps: found.iter().map(|(p, _)| Step::Signal { pid: p.pid, signal: libc::SIGTERM }).collect() }),
     });
 }
 
@@ -1317,6 +1376,17 @@ fn soundwire_part(mfg: &str, part: &str) -> Option<&'static str> {
 /// is never made: Passwords couldn't keep its key (the ThinkPad P1
 /// Gen 9, 2026-11-04).
 fn login_keyring(roots: &Roots, r: &mut Report) {
+    // Olo's keyring answering, its key sealed by the login password
+    // (pam_olo_keyring opens it at Olo's login screen): nothing of GNOME's
+    // is needed.
+    let sealed = roots.bin.parent().is_some_and(|local| local.parent().is_some_and(|home| home.join(".config/olo/secrets.login").exists()));
+    if sealed && secrets_status(roots).is_some_and(|v| v["serving"].as_bool() == Some(true)) {
+        r.fine.push(Fine {
+            title: "Olo's keyring opens when you log in".into(),
+            detail: "Programs' secrets are in Olo's keyring, which your login password opens (at Olo's login screen; another asks for it once).".into(),
+        });
+        return;
+    }
     if !roots.fs.join("usr/bin/gnome-keyring-daemon").exists() {
         return;
     }
@@ -1918,6 +1988,28 @@ mod tests {
     }
 
     #[test]
+    fn gnome_s_services_found_and_quit() {
+        let (fs, roots) = machine("gnome");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // The user's services (no login's scope): dconf, gvfs, GNOME Keyring.
+        w("proc/950/cmdline", "/usr/libexec/dconf-service\0");
+        w("proc/951/cmdline", "/usr/libexec/gvfsd\0");
+        w("proc/952/cmdline", "/usr/bin/gnome-keyring-daemon\0--start\0");
+        w("proc/953/cmdline", "/usr/libexec/xdg-desktop-portal\0");
+        let f = scan(&roots).find("gnome:services").cloned().unwrap();
+        // (GNOME Keyring only while Olo's keyring answers.)
+        assert_eq!(f.title, "2 of GNOME's services run", "{}", f.detail);
+        assert!(f.detail.contains("dconf-service, process 950") && f.detail.contains("network folders"), "{}", f.detail);
+        assert_eq!(f.fix.unwrap().steps, [Step::Signal { pid: 950, signal: libc::SIGTERM }, Step::Signal { pid: 951, signal: libc::SIGTERM }]);
+        w(&format!("run/user/{}/olo-secrets.json", roots.uid), "{\"serving\": true}");
+        assert_eq!(scan(&roots).find("gnome:services").unwrap().title, "3 of GNOME's services run");
+    }
+
+    #[test]
     fn finds_what_is_wrong_and_what_is_fine() {
         let (fs, mut roots) = machine("wrong");
         // Programs' temporary files in memory too.
@@ -2020,6 +2112,7 @@ mod tests {
             [
                 "No input remapper is running",
                 "No other desktop's daemons run in this session",
+                "Nothing of GNOME's runs",
                 "Olo's input rule is installed",
                 "1 USB input device stays awake",
                 "Olo's display rule is installed",
