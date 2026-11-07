@@ -4892,7 +4892,20 @@ impl Window {
                 if !self.mouse_hit_test.ids.is_empty() {
                     self.refresh();
                 }
-                PlatformInput::MouseExited(mouse_exited)
+                // Olo: and, no button held, a move to nowhere, so what
+                // follows the pointer by its moves sees it go (a key,
+                // chart or row lit under it stayed lit when it left the
+                // window from there: DeskCalc's keys, a graph's readout).
+                // Held, it's a drag's, left as it is.
+                if mouse_exited.pressed_button.is_none() {
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position: self.mouse_position,
+                        pressed_button: None,
+                        modifiers: mouse_exited.modifiers,
+                    })
+                } else {
+                    PlatformInput::MouseExited(mouse_exited)
+                }
             }
             PlatformInput::ModifiersChanged(modifiers_changed) => {
                 self.modifiers = modifiers_changed.modifiers;

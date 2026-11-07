@@ -223,7 +223,17 @@ What it means in numbers, on release builds:
   clock): the cost follows what changed, not what's on screen: a
   spinner's row, not the terminal. The whole desktop stays in single
   digits of one core with an agent working in a full-screen Terminal
-  (Terminal: 1.2 ms a frame whole, 0.1 ms of it for the grid).
+  (Terminal: 1.2 ms a frame whole, 0.1 ms of it for the grid). A widget
+  whose look follows the pointer (lit when hovered, pushed when
+  pressed) has the view it's painted in drawn again: `let view =
+  window.current_view()` as it paints, `cx.notify(view)` in its
+  handler, as GPUI's own hover styles do. Not `window.refresh()`,
+  which renders every view of the window again, cached or not: the
+  kit's buttons, sidebars, dashboard cards, slim scroll bars and tab
+  strips did, and a pointer swept over Notifications' history (a
+  screen of 200 cards) took frames of 9 to 46 ms, its others 2 ms
+  (now 3.1 to 3.3 ms at worst; refresh is for what changes the whole
+  window: its size, its scale, its look).
 * **A lot changing** (scrolling, a live resize, video): every frame
   within 8.3 ms (rule 9), drawn by the GPU, and no more CPU than that
   takes.
@@ -996,6 +1006,16 @@ show the person what it's talking about.
 
 The widgets are listed under "The GPUI kit" below; this is how they
 behave, so that something an app draws itself behaves the same.
+
+The pointer leaving a window un-hovers everything in it. Olo's GPUI
+takes the pointer out of the window (its hit test empty, the window
+drawn again) and, no button held, gives the window a move to nowhere,
+so state kept from the pointer's moves goes too (a graph's readout, a
+key lit under it: before, they stayed lit after the pointer left from
+there). A div's `on_mouse_move` is called only while the pointer is
+over it: state an app keeps from it (DeskCalc's key under the pointer)
+is cleared in `on_hover(false)` (an `id` makes the div able to say),
+and a canvas's hover drawn only while its hitbox `is_hovered`.
 
 An app's own files (its settings in the config folder, what it
 remembers in the state folder) go through `store` (`olo_kit_base::store`,

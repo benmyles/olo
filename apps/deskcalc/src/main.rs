@@ -18,7 +18,7 @@ use olo_ui::{
     Menu, WindowOptions, agent,
     gpui::{
         self, App, AppContext as _, Bounds, Context, Entity, Focusable, FontWeight, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-        ParentElement as _, Pixels, Render, Styled as _, Subscription, Window, actions, canvas, div, point, px, size,
+        ParentElement as _, Pixels, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window, actions, canvas, div, point, px, size,
     },
     instance::{self, Launch},
     style::{self, Align},
@@ -447,6 +447,14 @@ impl Render for DeskCalc {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
             .on_mouse_move(cx.listener(Self::mouse_move))
+            // (Its moves come only while the pointer is over it: gone, no
+            // key is under it, or the last stayed lit.)
+            .id("calculator")
+            .on_hover(cx.listener(|calc, inside: &bool, _, cx| {
+                if !*inside && calc.hovered.take().is_some() {
+                    cx.notify();
+                }
+            }))
             .child(keypad)
             .child(display)
     }

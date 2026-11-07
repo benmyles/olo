@@ -355,8 +355,9 @@ impl RenderOnce for Graph {
                         }
                     });
                     // Hovering: the time under the pointer and each value
-                    // then.
-                    if let Some(pos) = hover.filter(|pos| inner.contains(pos)) {
+                    // then. (While it is still over the graph: gone from the
+                    // window, it left no move here to clear `hover` with.)
+                    if let Some(pos) = hover.filter(|pos| inner.contains(pos) && hitbox.is_hovered(window)) {
                         let t = time_at(pos.x);
                         style::vline(window, pos.x, inner.top(), inner.bottom(), style::c(olo_theme::mix(p.document_text, p.document_background, 0.5)));
                         let lines: Vec<(Hsla, String)> = series.iter().map(|line| (line.color, format!("{}: {}", line.name, line.at(t).map(|v| say(line, v)).unwrap_or_else(|| "–".into())))).collect();
