@@ -8472,7 +8472,8 @@ boot splash and RPM Fusion, each with its words under it), Installing
 it's doing under it, the stages and notes so far; a failure says what
 and why in red, what to do, and Try Again), and Olo Is Installed (Log
 Out, or Restart when the login screen or splash changed; and "Olo is a
-work of love, dedicated to the late Samwise, an English Labrador.").
+work of love, dedicated to Sir Samwise, the bestest English Labrador
+that ever walked the earth." in Ben's words).
 About, from Welcome, says what Olo is and the dedication. None of Olo
 is installed when it starts, so it carries what the kit draws with
 (build.rs: Olo's fonts, its pages' icons at every size, the wordmark),

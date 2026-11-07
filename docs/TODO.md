@@ -38,7 +38,10 @@ something nobody here has is in "Blocked", with what it waits for.
   stopped and run again (each step checks what's done), and says what to
   do when something fails. Its About (and a line on its last page):
   that Olo is a work of love, dedicated to the late Samwise, an English
-  Labrador. Tested whole in a VM (QEMU with KVM: a fresh Fedora 45
+  Labrador (Ben, 2026-11-07: "it should say dedicated to sir samwise, the
+  bestest english labrador that ever walked the earth or something nice
+  like that": it says "Olo is a work of love, dedicated to Sir Samwise,
+  the bestest English Labrador that ever walked the earth."). Tested whole in a VM (QEMU with KVM: a fresh Fedora 45
   Workstation install, the installer downloaded and run, a reboot into
   Olo, Olo used: its apps opened, a file opened, Preferences changed),
   screenshots of every step kept, at the VM's screen's scale and 2×.

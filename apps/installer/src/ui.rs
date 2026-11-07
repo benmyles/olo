@@ -393,7 +393,9 @@ impl Setup {
                     }
                     _ => col().child(heading("Setup Stopped")).child(para("Olo isn't installed yet. Run Setup again to go on: it keeps what it has done and downloaded.")),
                 };
-                let c = c.child(div().pt(px(m::SECTION)).child(StringView::new("Olo is a work of love, dedicated to the late Samwise, an English Labrador.").wrap(true).dim(true)));
+                let c = c.child(
+                    div().pt(px(m::SECTION)).child(StringView::new("Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth.").wrap(true).dim(true)),
+                );
                 ("Finish", "olo", c.into_any_element())
             }
         }
@@ -488,7 +490,7 @@ fn about(cx: &mut Context<Setup>) -> impl IntoElement + use<> {
                 .child(div().flex().flex_col().child(heading("Olo Setup")).child(StringView::new(format!("Version {}", env!("CARGO_PKG_VERSION"))).dim(true))),
         )
         .child(para("Olo is a desktop in the spirit of BeOS: fast, light, and made to be understood, for people and for the agents working beside them."))
-        .child(para("Olo is a work of love, dedicated to the late Samwise, an English Labrador."))
+        .child(para("Olo is a work of love, dedicated to Sir Samwise, the bestest English Labrador that ever walked the earth."))
         .child(div().flex().justify_end().child(Button::new("OK").id("about-ok").default(true).on_click(move |_, cx| {
             me.update(cx, |s, cx| {
                 s.about = false;
