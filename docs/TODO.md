@@ -77,10 +77,10 @@ something nobody here has is in "Blocked", with what it waits for.
   streams are bit-exact on every device against the reference
   decoders (cb69d7a5: VP9 profile 2, AV1 10-bit, HEVC Main 10); VP9 at
   4K60 (a minute made with libvpx built in scratch): Intel's GPU 7.2% of
-  a core, nothing dropped; the processor 251%, 7 dropped. Still to do:
-  NVDEC's held pictures copied into pinned memory (its video thread
-  15.8% of a core at 4K60: CUDA copies into pageable memory through the
-  processor). The
+  a core, nothing dropped; NVIDIA's 7.0%, nothing dropped; the
+  processor 251%, 7 dropped. NVDEC's held pictures go into pinned memory
+  with CUDA sleeping while it waits: 4K60 AV1 on NVIDIA's GPU 21.9% of a
+  core → 7.0%. Nothing left but the processor's own (below). The
   processor's own: rav1d's and OpenH264's assembly is built in now
   (4K AV1 32 → 85 pictures a second, H.264 45 → 53–98), and 8-bit
   pictures are kept as bytes rather than 16-bit samples (1523b172: 4K60

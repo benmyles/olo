@@ -98,18 +98,29 @@ impl Held {
     }
 }
 
-/// Page-aligned memory of ours.
+/// Page-aligned memory of ours, pinned for the GPU's copy engine where
+/// CUDA lets it be (registered with the decoder's context: its copy then
+/// goes by DMA, not through the processor as into pageable memory).
 struct Pages {
     ptr: *mut u8,
     layout: std::alloc::Layout,
+    /// The context it's registered with (kept alive till it's let go).
+    pinned: Option<std::sync::Arc<Cuda>>,
 }
 
 impl Pages {
-    fn new(size: usize) -> Option<Pages> {
+    /// `size` bytes, registered with `cuda` (current on this thread) if
+    /// it takes them.
+    fn new(size: usize, cuda: &std::sync::Arc<Cuda>) -> Option<Pages> {
         let layout = std::alloc::Layout::from_size_align(size.next_multiple_of(4096), 4096).ok()?;
         // SAFETY: a non-zero size.
         let ptr = unsafe { std::alloc::alloc(layout) };
-        (!ptr.is_null()).then_some(Pages { ptr, layout })
+        if ptr.is_null() {
+            return None;
+        }
+        // SAFETY: our memory, this long; the context current (the caller's).
+        let pinned = cuda.register.and_then(|reg| (unsafe { reg(ptr.cast(), layout.size(), 0) } == 0).then(|| cuda.clone()));
+        Some(Pages { ptr, layout, pinned })
     }
 }
 
@@ -119,8 +130,45 @@ unsafe impl Sync for Pages {}
 
 impl Drop for Pages {
     fn drop(&mut self) {
-        // SAFETY: allocated with this layout, once.
-        unsafe { std::alloc::dealloc(self.ptr, self.layout) };
+        // SAFETY: registered with this context (pushed on this thread for
+        // the call), then allocated with this layout, once.
+        unsafe {
+            if let Some(cuda) = self.pinned.take()
+                && let Some(unregister) = cuda.unregister
+            {
+                (cuda.push)(cuda.ctx);
+                unregister(self.ptr.cast());
+                let mut was = null_mut();
+                (cuda.pop)(&mut was);
+            }
+            std::alloc::dealloc(self.ptr, self.layout);
+        }
+    }
+}
+
+/// NVDEC's CUDA context, shared by the decoder and the memory registered
+/// with it (`Pages`): destroyed when the last of them goes, so a picture
+/// a window still draws from stays registered till it's let go. It keeps
+/// libcuda loaded as long.
+struct Cuda {
+    ctx: *mut c_void,
+    destroy: CuCtxDestroy,
+    push: CuCtxPush,
+    pop: CuCtxPop,
+    register: Option<CuMemHostRegister>,
+    unregister: Option<CuMemHostUnregister>,
+    _lib: Lib,
+}
+
+// SAFETY: a CUDA context may be made current on any thread (pushed and
+// popped around each use).
+unsafe impl Send for Cuda {}
+unsafe impl Sync for Cuda {}
+
+impl Drop for Cuda {
+    fn drop(&mut self) {
+        // SAFETY: ours, once, after everything made in it.
+        unsafe { (self.destroy)(self.ctx) };
     }
 }
 
@@ -133,6 +181,8 @@ type CuCtxCreate = unsafe extern "C" fn(*mut *mut c_void, u32, i32) -> i32;
 type CuCtxDestroy = unsafe extern "C" fn(*mut c_void) -> i32;
 type CuCtxPush = unsafe extern "C" fn(*mut c_void) -> i32;
 type CuCtxPop = unsafe extern "C" fn(*mut *mut c_void) -> i32;
+type CuMemHostRegister = unsafe extern "C" fn(*mut c_void, usize, u32) -> i32;
+type CuMemHostUnregister = unsafe extern "C" fn(*mut c_void) -> i32;
 type CuMemcpy2D = unsafe extern "C" fn(*const Memcpy2D) -> i32;
 type CreateParser = unsafe extern "C" fn(*mut parse::CUvideoparser, *mut parse::CUVIDPARSERPARAMS) -> i32;
 type ParseData = unsafe extern "C" fn(parse::CUvideoparser, *mut parse::CUVIDSOURCEDATAPACKET) -> i32;
@@ -171,7 +221,6 @@ const MEMORY_HOST: u32 = 1;
 const MEMORY_DEVICE: u32 = 2;
 
 struct Fns {
-    cu_destroy: CuCtxDestroy,
     cu_push: CuCtxPush,
     cu_pop: CuCtxPop,
     memcpy: CuMemcpy2D,
@@ -209,6 +258,8 @@ struct State {
     /// they're copied into, used again once nothing holds it.
     hold: bool,
     pages: Vec<std::sync::Arc<Pages>>,
+    /// The context (the decoder's, shared with the memory registered).
+    cuda: std::sync::Arc<Cuda>,
 }
 
 pub struct Nvdec {
@@ -216,7 +267,7 @@ pub struct Nvdec {
     ctx: *mut c_void,
     parser: parse::CUvideoparser,
     create_parser: CreateParser,
-    _libs: (Lib, Lib),
+    _cuvid: Lib,
 }
 
 // SAFETY: the decoder is used from one thread at a time (the player's
@@ -241,8 +292,10 @@ impl Nvdec {
             let cu_device: CuDeviceGet = cuda.get("cuDeviceGet")?;
             let cu_create: CuCtxCreate = cuda.get("cuCtxCreate_v2")?;
             let lock_create: LockCreate = cuvid.get("cuvidCtxLockCreate")?;
+            let cu_destroy: CuCtxDestroy = cuda.get("cuCtxDestroy_v2")?;
+            let register: Option<CuMemHostRegister> = cuda.get("cuMemHostRegister_v2").or_else(|_| cuda.get("cuMemHostRegister")).ok();
+            let unregister: Option<CuMemHostUnregister> = cuda.get("cuMemHostUnregister").ok();
             let fns = Fns {
-                cu_destroy: cuda.get("cuCtxDestroy_v2")?,
                 cu_push: cuda.get("cuCtxPushCurrent_v2")?,
                 cu_pop: cuda.get("cuCtxPopCurrent_v2")?,
                 memcpy: cuda.get("cuMemcpy2D_v2")?,
@@ -265,12 +318,15 @@ impl Nvdec {
                 return Err("CUDA found no GPU".into());
             }
             let mut ctx = null_mut();
-            if cu_create(&mut ctx, 0, device) != 0 {
+            // (Blocking sync: waiting for a copy, the thread sleeps rather
+            // than spinning, as CUDA's default does.)
+            const CU_CTX_SCHED_BLOCKING_SYNC: u32 = 0x04;
+            if cu_create(&mut ctx, CU_CTX_SCHED_BLOCKING_SYNC, device) != 0 {
                 return Err("CUDA couldn't make a context".into());
             }
+            let cuda = std::sync::Arc::new(Cuda { ctx, destroy: cu_destroy, push: fns.cu_push, pop: fns.cu_pop, register, unregister, _lib: cuda });
             let mut lock: dec::CUvideoctxlock = null_mut();
             if lock_create(&mut lock, ctx) != 0 {
-                (fns.cu_destroy)(ctx);
                 return Err("NVDEC couldn't lock its context".into());
             }
             // (cuCtxCreate made it current here: let it go till it's used.)
@@ -292,8 +348,9 @@ impl Nvdec {
                 told: 0,
                 hold: false,
                 pages: Vec::new(),
+                cuda,
             });
-            let mut me = Nvdec { state, ctx, parser: null_mut(), create_parser, _libs: (cuda, cuvid) };
+            let mut me = Nvdec { state, ctx, parser: null_mut(), create_parser, _cuvid: cuvid };
             me.make_parser()?;
             Ok(me)
         }
@@ -393,7 +450,9 @@ impl Drop for Nvdec {
             let mut was = null_mut();
             (self.state.fns.cu_pop)(&mut was);
             (self.state.fns.lock_destroy)(self.state.lock);
-            (self.state.fns.cu_destroy)(self.ctx);
+            // (The context goes with the last of what holds it: memory a
+            // window still draws from may.)
+            self.state.pages.clear();
         }
     }
 }
@@ -524,7 +583,7 @@ unsafe extern "C" fn on_display(user: *mut c_void, info: *mut parse::CUVIDPARSER
     let pages = if s.hold {
         match s.pages.iter().find(|p| std::sync::Arc::strong_count(p) == 1 && p.layout.size() >= held_size) {
             Some(p) => Some(p.clone()),
-            None if s.pages.len() < HELD => Pages::new(held_size).map(|p| {
+            None if s.pages.len() < HELD => Pages::new(held_size, &s.cuda).map(|p| {
                 let p = std::sync::Arc::new(p);
                 s.pages.retain(|q| q.layout.size() >= held_size || std::sync::Arc::strong_count(q) > 1);
                 s.pages.push(p.clone());
