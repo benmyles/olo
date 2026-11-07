@@ -928,6 +928,9 @@ impl WaylandClient {
             }
         };
         let qh = event_queue.handle();
+        // Olo: the GPU the compositor composes the displays with, so the
+        // windows draw on it (and what they share with: a page's WebGL).
+        let display_device = display_device(&conn, &globals);
 
         let mut seat: Option<wl_seat::WlSeat> = None;
         #[allow(clippy::mutable_key_type)]
@@ -1012,7 +1015,7 @@ impl WaylandClient {
             serial_tracker: SerialTracker::new(),
             globals,
             gpu_context: None,
-            gpu_context_ahead: Some(BladeContext::ahead()),
+            gpu_context_ahead: Some(BladeContext::ahead_on(display_device)),
             dmabuf_modifiers: HashMap::default(),
             session_lock: None,
             connection: conn.clone(),
@@ -1740,6 +1743,70 @@ delegate_noop!(WaylandClientStatePtr: ignore wp_viewport::WpViewport);
 delegate_noop!(WaylandClientStatePtr: ignore wl_subcompositor::WlSubcompositor);
 delegate_noop!(WaylandClientStatePtr: ignore wl_subsurface::WlSubsurface);
 delegate_noop!(WaylandClientStatePtr: ignore zwp_linux_buffer_params_v1::ZwpLinuxBufferParamsV1);
+
+/// Olo: the compositor's main device (linux-dmabuf v4's default feedback):
+/// the DRM device it composes with. A second binding of the global, on a
+/// queue of its own, read in one roundtrip.
+fn display_device(conn: &Connection, globals: &GlobalList) -> Option<u64> {
+    use wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_dmabuf_feedback_v1;
+    struct Feedback(Option<u64>);
+    impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for Feedback {
+        fn event(
+            _: &mut Self,
+            _: &zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1,
+            _: zwp_linux_dmabuf_v1::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
+    }
+    impl Dispatch<zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1, ()> for Feedback {
+        fn event(
+            this: &mut Self,
+            _: &zwp_linux_dmabuf_feedback_v1::ZwpLinuxDmabufFeedbackV1,
+            event: zwp_linux_dmabuf_feedback_v1::Event,
+            _: &(),
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+            if let zwp_linux_dmabuf_feedback_v1::Event::MainDevice { device } = event
+                && let Ok(bytes) = <[u8; 8]>::try_from(device.as_slice())
+            {
+                this.0 = Some(u64::from_ne_bytes(bytes));
+            }
+        }
+    }
+    impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Feedback {
+        fn event(
+            _: &mut Self,
+            _: &wl_registry::WlRegistry,
+            _: wl_registry::Event,
+            _: &GlobalListContents,
+            _: &Connection,
+            _: &QueueHandle<Self>,
+        ) {
+        }
+    }
+    let mut queue = conn.new_event_queue::<Feedback>();
+    let qh = queue.handle();
+    let dmabuf: zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1 = globals.bind(&qh, 4..=5, ()).ok()?;
+    let feedback = dmabuf.get_default_feedback(&qh, ());
+    let mut state = Feedback(None);
+    let _ = queue.roundtrip(&mut state);
+    feedback.destroy();
+    dmabuf.destroy();
+    if std::env::var_os("OLO_GPU_DEBUG").is_some() {
+        eprintln!(
+            "gpu: the compositor composes on DRM device {:?}",
+            state.0.map(|d| (
+                ((d >> 32) & 0xffff_f000) | ((d >> 8) & 0xfff),
+                ((d >> 12) & 0xffff_ff00) | (d & 0xff)
+            ))
+        );
+    }
+    state.0
+}
 
 impl Dispatch<zwp_linux_dmabuf_v1::ZwpLinuxDmabufV1, ()> for WaylandClientStatePtr {
     fn event(

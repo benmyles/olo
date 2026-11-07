@@ -51,8 +51,17 @@ impl BladeContext {
     /// its shader compiled, while the app starts (the context ~4.4 ms and
     /// the shader ~3 ms went after the first window was asked for).
     pub fn ahead() -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
-        std::thread::spawn(|| {
-            let context = BladeContext::new()?;
+        Self::ahead_on(None)
+    }
+
+    /// Olo: [`BladeContext::ahead`] on the GPU the compositor composes the
+    /// displays with (its DRM device, from linux-dmabuf feedback), so every
+    /// window, and what it shares (a page's WebGL), draws on that GPU.
+    pub fn ahead_on(
+        display_device: Option<u64>,
+    ) -> std::thread::JoinHandle<anyhow::Result<BladeContext>> {
+        std::thread::spawn(move || {
+            let context = BladeContext::new_on(display_device)?;
             context
                 .pipelines
                 .lock()
@@ -63,6 +72,14 @@ impl BladeContext {
     }
 
     pub fn new() -> anyhow::Result<Self> {
+        Self::new_on(None)
+    }
+
+    /// Olo: a context on the GPU of DRM device `display_device` (a dev_t)
+    /// when given: the displays' GPU. Unless the person chose one
+    /// (`ZED_DEVICE_ID`).
+    pub fn new_on(display_device: Option<u64>) -> anyhow::Result<Self> {
+        let display_gpu = display_device.and_then(pci_ids_of);
         let device_id_forced = match std::env::var("ZED_DEVICE_ID") {
             Ok(val) => parse_pci_id(&val)
                 .context("Failed to parse device ID from `ZED_DEVICE_ID` environment variable")
@@ -74,9 +91,16 @@ impl BladeContext {
                 None
             }
         };
+        // Olo: the displays' GPU, if the compositor said which.
+        let device_id_forced = device_id_forced.or(display_gpu.map(|(_, device)| device));
         // Olo: a discrete GPU asleep beside the one the displays use is
-        // left asleep: its Vulkan driver isn't loaded (`asleep_aside`).
-        let aside = asleep_aside();
+        // left asleep: its Vulkan driver isn't loaded (`asleep_aside`) —
+        // unless the displays are composed on NVIDIA's.
+        let aside = if display_gpu.is_some_and(|(vendor, _)| vendor == 0x10de) {
+            None
+        } else {
+            asleep_aside()
+        };
         let made = unsafe {
             gpu::Context::init(gpu::ContextDesc {
                 presentation: true,
@@ -150,6 +174,22 @@ fn asleep_aside() -> Option<impl Drop> {
     // the variable or not (one only Vulkan's loader reads).
     unsafe { std::env::set_var(DISABLE, "*nvidia*") };
     Some(Restore)
+}
+
+/// Olo: the PCI vendor and device IDs of DRM device `dev` (a dev_t), from
+/// sysfs (nothing here wakes a GPU).
+fn pci_ids_of(dev: u64) -> Option<(u32, u32)> {
+    let (major, minor) = (
+        ((dev >> 32) & 0xffff_f000) | ((dev >> 8) & 0xfff),
+        ((dev >> 12) & 0xffff_ff00) | (dev & 0xff),
+    );
+    let base = std::path::PathBuf::from(format!("/sys/dev/char/{major}:{minor}/device"));
+    let read = |name: &str| {
+        std::fs::read_to_string(base.join(name))
+            .ok()
+            .and_then(|v| u32::from_str_radix(v.trim().trim_start_matches("0x"), 16).ok())
+    };
+    Some((read("vendor")?, read("device")?))
 }
 
 fn parse_pci_id(id: &str) -> anyhow::Result<u32> {
