@@ -12,7 +12,7 @@ use crate::{
     css::{self, style},
     dom, text,
 };
-pub use flow::{Cache, Geometry, Job, Layout, PrepareJob, Progress};
+pub use flow::{Cache, Geometry, Job, Layout, PrepareJob, Progress, Sticky};
 use std::sync::atomic::{AtomicBool, Ordering};
 pub use tree::{BoxId, BoxKind, BoxNode, BuildJob, BuildLimits, BuildProgress, Control, InlineBox, SourceSpan, TextSource, Tree};
 #[derive(Debug)]

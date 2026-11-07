@@ -63,6 +63,9 @@ pub struct Command {
     /// over the scrolled page (its bounds are viewport coordinates, which
     /// are the document's at the initial scroll).
     pub(super) fixed: bool,
+    /// Under a `position: sticky` box (that box): painted apart, moved by
+    /// the scroll (see `layout::Sticky`).
+    pub(super) sticky: Option<BoxId>,
 }
 /// The axis-aligned bounds of `r` mapped through `m`.
 pub(super) fn aabb(m: [f64; 6], r: Rect) -> Rect {
@@ -118,6 +121,9 @@ pub struct Scene {
     pub(super) index: index::Index,
     /// The fixed commands, apart: not in the page's tiles.
     pub(super) fixed_index: index::Index,
+    /// The sticky commands, apart likewise, by their roots.
+    pub(super) sticky_index: index::Index,
+    pub(super) sticky_roots: Box<[BoxId]>,
     pub(super) base: [u8; 4],
     pub(super) canvas: [u8; 4],
     extent: Rect,
@@ -386,15 +392,34 @@ impl Scene {
         out.sort_unstable();
         Ok(())
     }
-    /// Whether anything is fixed to the viewport.
-    pub fn has_fixed(&self) -> bool {
-        !self.fixed_index.ids().is_empty()
+    /// The sticky boxes with commands of their own, in tree order.
+    pub fn sticky_roots(&self) -> &[BoxId] {
+        &self.sticky_roots
     }
-    /// What the fixed commands cover, in viewport coordinates (clips
-    /// applied), or None without any.
-    pub fn fixed_extent(&self) -> Option<Rect> {
+    /// The commands under sticky box `root` over `region` (document
+    /// coordinates, at the box's flow position), in paint order.
+    pub fn query_sticky(&self, root: BoxId, region: Rect, out: &mut Vec<u32>, cancel: Option<&AtomicBool>) -> Result<()> {
+        if !valid(region) {
+            return Err(Error::Invalid);
+        }
+        self.sticky_index.query(&self.commands, &self.transforms, region, out, cancel)?;
+        out.retain(|&id| self.commands[id as usize].sticky == Some(root));
+        out.sort_unstable();
+        Ok(())
+    }
+    /// What sticky box `root`'s commands cover at its flow position.
+    pub fn sticky_extent(&self, root: BoxId) -> Option<Rect> {
+        self.layer_extent(self.sticky_index.ids().iter().copied().filter(|&id| self.commands[id as usize].sticky == Some(root)))
+    }
+    /// The signature of sticky box `root`'s commands (see `tile_signature`).
+    pub fn sticky_signature(&self, root: BoxId, cancel: Option<&AtomicBool>) -> Result<u64> {
+        let mut hits: Vec<u32> = self.sticky_index.ids().iter().copied().filter(|&id| self.commands[id as usize].sticky == Some(root)).collect();
+        hits.sort_unstable();
+        Ok(self.signature_parts(&hits, cancel)?.0)
+    }
+    fn layer_extent(&self, ids: impl Iterator<Item = u32>) -> Option<Rect> {
         let mut out: Option<Rect> = None;
-        for &id in self.fixed_index.ids() {
+        for id in ids {
             let c = &self.commands[id as usize];
             let mut reach = extent(c, &self.transforms);
             if c.clip != NONE {
@@ -408,6 +433,15 @@ impl Scene {
             out = Some(out.map_or(reach, |o| union(o, reach)));
         }
         out
+    }
+    /// Whether anything is fixed to the viewport.
+    pub fn has_fixed(&self) -> bool {
+        !self.fixed_index.ids().is_empty()
+    }
+    /// What the fixed commands cover, in viewport coordinates (clips
+    /// applied), or None without any.
+    pub fn fixed_extent(&self) -> Option<Rect> {
+        self.layer_extent(self.fixed_index.ids().iter().copied())
     }
     /// The signature of the fixed layer (see `tile_signature`).
     pub fn fixed_signature(&self, cancel: Option<&AtomicBool>) -> Result<u64> {
@@ -448,6 +482,8 @@ struct State {
     hidden: bool,
     /// Under a `position: fixed` box (see `Command::fixed`).
     fixed: bool,
+    /// Under a `position: sticky` box (see `Command::sticky`).
+    sticky: Option<BoxId>,
 }
 /// One CSS stacking context (CSS 2.2 Appendix E): the root, positioned boxes
 /// (z-index: auto ones painted as if they were contexts), opacity groups and
@@ -486,6 +522,8 @@ pub struct BuildJob<'a> {
     current_transform: u32,
     /// The box being painted is fixed to the viewport (or under one).
     current_fixed: bool,
+    /// The sticky box the one being painted is under, if any.
+    current_sticky: Option<BoxId>,
     vector_geometry: std::collections::HashMap<u32, crate::svg::used::Geometry>,
     vector_clips: std::collections::HashMap<u32, Vec<crate::svg::clip::Resolved>>,
     vector_clip_bytes: usize,
@@ -551,6 +589,7 @@ impl<'a> BuildJob<'a> {
             transforms: Vec::new(),
             current_transform: NONE,
             current_fixed: false,
+            current_sticky: None,
             vector_geometry: Default::default(),
             vector_clips: Default::default(),
             vector_clip_bytes: 0,
@@ -584,7 +623,7 @@ impl<'a> BuildJob<'a> {
         if self.draft.len() >= self.limits.commands {
             return Err(Error::Limit);
         }
-        let command = Command { bounds, primitive, clip, group: self.current_group, transform: self.current_transform, fixed: self.current_fixed };
+        let command = Command { bounds, primitive, clip, group: self.current_group, transform: self.current_transform, fixed: self.current_fixed, sticky: self.current_sticky };
         let reach = extent(&command, &self.transforms);
         self.extent = union(self.extent, if clip == NONE { reach } else { intersection(reach, self.clip_extent(clip)) });
         self.draft.push(Draft { context, slot, text, command });
@@ -986,19 +1025,21 @@ impl<'a> BuildJob<'a> {
                 break;
             };
             self.next += 1;
-            let (parent, mut context, mut clip, parent_group, parent_transform, parent_hidden, parent_fixed) = if let Some(parent) = b.parent {
+            let (parent, mut context, mut clip, parent_group, parent_transform, parent_hidden, parent_fixed, parent_sticky) = if let Some(parent) = b.parent {
                 let p = &self.states[parent.index()];
-                (p.origin, p.context, p.clip, p.group, p.transform, p.hidden, p.fixed)
+                (p.origin, p.context, p.clip, p.group, p.transform, p.hidden, p.fixed, p.sticky)
             } else {
-                (Point::default(), 0, NONE, NONE, NONE, false, false)
+                (Point::default(), 0, NONE, NONE, NONE, false, false, None)
             };
             if parent_hidden {
-                self.states.push(State { origin: parent, context, clip, group: parent_group, transform: parent_transform, hidden: true, fixed: parent_fixed });
+                self.states.push(State { origin: parent, context, clip, group: parent_group, transform: parent_transform, hidden: true, fixed: parent_fixed, sticky: parent_sticky });
                 self.progress.boxes += 1;
                 continue;
             }
             self.current_fixed = parent_fixed;
             let mut children_fixed = parent_fixed;
+            self.current_sticky = parent_sticky;
+            let mut children_sticky = parent_sticky;
             self.current_group = parent_group;
             let mut children_group = parent_group;
             self.current_transform = parent_transform;
@@ -1038,6 +1079,12 @@ impl<'a> BuildJob<'a> {
                         self.current_fixed = true;
                         children_fixed = true;
                     }
+                    // Sticky: its subtree paints apart, moved by the scroll
+                    // (a sticky box under another follows the outer one).
+                    if !parent_fixed && parent_sticky.is_none() && matches!(s.value(P::Position), Value::Keyword(K::Sticky)) {
+                        self.current_sticky = Some(id);
+                        children_sticky = Some(id);
+                    }
                     // A transformed box paints its subtree through its matrix
                     // and is a stacking context (CSS Transforms 1 §3).
                     let transformed = self.transform_of(s, outer, parent_transform)?;
@@ -1058,7 +1105,16 @@ impl<'a> BuildJob<'a> {
                     // Fully transparent: nothing of it or its content paints
                     // (a fallback picture under a canvas that drew, say).
                     if opacity == 0. {
-                        self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: true, fixed: children_fixed });
+                        self.states.push(State {
+                            origin,
+                            context,
+                            clip: children_clip,
+                            group: children_group,
+                            transform: children_transform,
+                            hidden: true,
+                            fixed: children_fixed,
+                            sticky: children_sticky,
+                        });
                         self.progress.boxes += 1;
                         continue;
                     }
@@ -1192,7 +1248,7 @@ impl<'a> BuildJob<'a> {
                     }
                 }
             }
-            self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: false, fixed: children_fixed });
+            self.states.push(State { origin, context, clip: children_clip, group: children_group, transform: children_transform, hidden: false, fixed: children_fixed, sticky: children_sticky });
             self.progress.boxes += 1;
             self.progress.commands = self.draft.len();
         }
@@ -1224,9 +1280,14 @@ impl<'a> BuildJob<'a> {
         let key = |d: &Draft| contexts[d.context as usize].path.iter().copied().chain(std::iter::once(u32::from(d.slot)));
         self.draft.sort_by(|a, b| key(a).cmp(key(b)).then(a.text.cmp(&b.text)));
         let commands: Box<[Command]> = self.draft.into_iter().map(|d| d.command).collect();
-        let (fixed_ids, page_ids): (Vec<u32>, Vec<u32>) = (0..commands.len() as u32).partition(|&i| commands[i as usize].fixed);
+        let (fixed_ids, rest): (Vec<u32>, Vec<u32>) = (0..commands.len() as u32).partition(|&i| commands[i as usize].fixed);
+        let (sticky_ids, page_ids): (Vec<u32>, Vec<u32>) = rest.into_iter().partition(|&i| commands[i as usize].sticky.is_some());
+        let mut sticky_roots: Vec<BoxId> = sticky_ids.iter().filter_map(|&i| commands[i as usize].sticky).collect();
+        sticky_roots.sort_by_key(|b| b.index());
+        sticky_roots.dedup();
         let index = index::Index::over(&commands, &self.transforms, page_ids, self.cancel)?;
         let fixed_index = index::Index::over(&commands, &self.transforms, fixed_ids, self.cancel)?;
+        let sticky_index = index::Index::over(&commands, &self.transforms, sticky_ids, self.cancel)?;
         Ok(Arc::new(Scene {
             extent: self.extent,
             layout: self.layout,
@@ -1238,6 +1299,8 @@ impl<'a> BuildJob<'a> {
             vector_clips: self.vector_clips,
             index,
             fixed_index,
+            sticky_index,
+            sticky_roots: sticky_roots.into_boxed_slice(),
             base: self.options.canvas,
             canvas: self.canvas,
         }))

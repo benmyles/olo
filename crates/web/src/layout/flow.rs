@@ -550,6 +550,40 @@ impl Geometry {
         }
     }
 }
+/// A `position: sticky` box: its place in the flow (document px), its
+/// containing block and its insets; `offset` says how far the scroll
+/// moves it from there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Sticky {
+    pub root: BoxId,
+    pub rect: Rect,
+    pub container: Rect,
+    pub top: Option<f64>,
+    pub bottom: Option<f64>,
+}
+impl Sticky {
+    /// The shift (document px, down positive) at scroll `scroll` in a
+    /// viewport `height` tall: stuck to its inset once the scroll passes
+    /// it, never beyond its containing block.
+    pub fn offset(&self, scroll: f64, height: f64) -> f64 {
+        let mut offset = 0.;
+        if let Some(top) = self.top {
+            let wanted = scroll + top - self.rect.y;
+            let limit = (self.container.y + self.container.height - (self.rect.y + self.rect.height)).max(0.);
+            offset = wanted.clamp(0., limit);
+        }
+        if let Some(bottom) = self.bottom
+            && height.is_finite()
+        {
+            let wanted = (scroll + height - bottom) - (self.rect.y + self.rect.height);
+            let limit = (self.container.y - self.rect.y).min(0.);
+            if wanted < 0. {
+                offset = wanted.max(limit);
+            }
+        }
+        offset
+    }
+}
 pub struct Layout {
     cache: Arc<Cache>,
     geometry: Box<[Geometry]>,
@@ -617,14 +651,22 @@ impl Layout {
     /// smallest box containing it, later boxes winning ties (painted above),
     /// by its node. Transforms are not followed yet.
     pub fn hit_test(&self, x: f64, y: f64) -> Option<crate::dom::NodeId> {
-        self.hit_test_scrolled(x, y, 0.)
+        self.hit_test_scrolled(x, y, 0., f64::INFINITY)
     }
     /// The node at document point (x, y) with the page scrolled by
-    /// `scroll` (CSS px): a box fixed to the viewport is where the
-    /// viewport is, so it is tested against the viewport point.
-    pub fn hit_test_scrolled(&self, x: f64, y: f64, scroll: f64) -> Option<crate::dom::NodeId> {
+    /// `scroll` (CSS px) in a viewport `height` tall: a box fixed to the
+    /// viewport is where the viewport is, so it is tested against the
+    /// viewport point; a sticky box is where the scroll put it.
+    pub fn hit_test_scrolled(&self, x: f64, y: f64, scroll: f64, height: f64) -> Option<crate::dom::NodeId> {
         let tree = &self.cache.tree;
         let fixed = self.fixed_boxes();
+        // Each box's sticky shift, through its sticky root.
+        let stickies = self.sticky();
+        let mut shift = vec![0f64; self.geometry.len()];
+        for (id, b) in tree.iter() {
+            let own = stickies.iter().find(|s| s.root == id).map(|s| s.offset(scroll, height));
+            shift[id.index()] = own.unwrap_or_else(|| b.parent.map_or(0., |p| shift[p.index()]));
+        }
         let mut best: Option<(f64, bool, usize, BoxId)> = None;
         // Absolute positions by one walk, parents before children.
         let mut origins = vec![(0f64, 0f64); self.geometry.len()];
@@ -638,7 +680,7 @@ impl Layout {
             }
             let r = Rect { x: ox + g.border_box.x, y: oy + g.border_box.y, width: g.border_box.width, height: g.border_box.height };
             let is_fixed = fixed[id.index()];
-            let y = if is_fixed { y - scroll } else { y };
+            let y = if is_fixed { y - scroll } else { y - shift[id.index()] };
             if x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height {
                 continue;
             }
@@ -649,6 +691,42 @@ impl Layout {
             }
         }
         best.and_then(|(_, _, _, id)| tree.get(id)).map(|b| b.node)
+    }
+    /// The `position: sticky` boxes (not under fixed ones): where each
+    /// sits in the flow, its containing block and its insets, for the
+    /// shift the scroll gives it (CSS Positioned Layout 3 §3.4).
+    pub fn sticky(&self) -> Vec<Sticky> {
+        let tree = &self.cache.tree;
+        let fixed = self.fixed_boxes();
+        let mut out = Vec::new();
+        let mut scratch = math::Scratch::default();
+        for (id, b) in tree.iter() {
+            if fixed[id.index()] {
+                continue;
+            }
+            let Some(style) = tree.style(id) else { continue };
+            if !matches!(style.value(P::Position), Value::Keyword(K::Sticky)) {
+                continue;
+            }
+            let (Some(rect), Some(parent)) = (self.bounds(id), b.parent) else { continue };
+            let Some(parent_bounds) = self.bounds(parent) else { continue };
+            let Some(pg) = self.geometry(parent) else { continue };
+            let container = Rect {
+                x: parent_bounds.x + pg.border_width.left + pg.padding.left,
+                y: parent_bounds.y + pg.border_width.top + pg.padding.top,
+                width: (parent_bounds.width - pg.border_width.horizontal() - pg.padding.horizontal()).max(0.),
+                height: (parent_bounds.height - pg.border_width.vertical() - pg.padding.vertical()).max(0.),
+            };
+            let queries = QueryBasis::viewport(Viewport { width: container.width, height: container.height, scale: self.scale });
+            let inset = |p: P, scratch: &mut math::Scratch| used::length(style, p, Some(container.height), None, queries, scratch, None, self.scale).ok().flatten();
+            let top = inset(P::Top, &mut scratch);
+            let bottom = inset(P::Bottom, &mut scratch);
+            if top.is_none() && bottom.is_none() {
+                continue;
+            }
+            out.push(Sticky { root: id, rect, container, top, bottom });
+        }
+        out
     }
     /// Which boxes are fixed to the viewport (a `position: fixed` box and
     /// its descendants, unless a transformed ancestor contains it).

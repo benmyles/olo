@@ -724,20 +724,15 @@ impl<'a> BuildJob<'a> {
                     if s.axes().writing_mode != WritingMode::HorizontalTb {
                         self.note("vertical writing mode laid out horizontally", node);
                     }
-                    // Fixed boxes follow the viewport's containing block; at the
-                    // initial scroll that is where absolute places them. Sticky
-                    // boxes sit where relative would until they would scroll off.
+                    // Fixed boxes follow the viewport's containing block: laid
+                    // out as absolute at the initial scroll, painted as a layer
+                    // the scroll leaves alone. Sticky boxes sit in the flow (no
+                    // offsets: `Used::relative` reads the style's own
+                    // position) and are painted shifted as the scroll has them
+                    // (`Layout::sticky`).
                     let position = match s.value(Property::Position) {
-                        Value::Keyword(Keyword::Absolute) => Keyword::Absolute,
-                        Value::Keyword(Keyword::Fixed) => {
-                            self.note("position: fixed as absolute", node);
-                            Keyword::Absolute
-                        }
-                        Value::Keyword(Keyword::Relative) => Keyword::Relative,
-                        Value::Keyword(Keyword::Sticky) => {
-                            self.note("position: sticky as relative", node);
-                            Keyword::Relative
-                        }
+                        Value::Keyword(Keyword::Absolute | Keyword::Fixed) => Keyword::Absolute,
+                        Value::Keyword(Keyword::Relative | Keyword::Sticky) => Keyword::Relative,
                         _ => Keyword::Static,
                     };
                     let absolute = position == Keyword::Absolute;

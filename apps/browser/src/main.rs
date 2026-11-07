@@ -55,6 +55,8 @@ struct Browser {
     tiles: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>,
     /// The fixed layer over the tiles (viewport device coordinates).
     fixed: Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>,
+    /// The sticky layers, moved with the scroll.
+    sticky: Vec<worker::StickyLayer>,
     labels: Vec<worker::Label>,
     status: String,
     blocked_action: Option<&'static str>,
@@ -126,6 +128,7 @@ impl Browser {
             key: None,
             tiles: Vec::new(),
             fixed: Vec::new(),
+            sticky: Vec::new(),
             labels: Vec::new(),
             status: "Loading…".into(),
             blocked_action: None,
@@ -304,9 +307,12 @@ impl Browser {
         let x = f64::from(f32::from(at.x - bounds.left()));
         let viewport_y = f64::from(f32::from(at.y - bounds.top()));
         let y = viewport_y + f64::from(self.scroll) / scale;
-        // Fixed labels paint over the page: tried first, at viewport coordinates.
-        let label = self.labels.iter().rev().filter(|l| l.fixed).chain(self.labels.iter().rev().filter(|l| !l.fixed)).find(|l| {
-            let ly = if l.fixed { viewport_y } else { y };
+        let height_css = f64::from(f32::from(bounds.size.height));
+        let shift = |i: usize| self.sticky.get(i).map_or(0., |l| l.sticky.offset(f64::from(self.scroll) / scale, height_css));
+        // Fixed and sticky labels paint over the page: tried first, where
+        // they are shown.
+        let label = self.labels.iter().rev().filter(|l| l.fixed || l.sticky.is_some()).chain(self.labels.iter().rev().filter(|l| !l.fixed && l.sticky.is_none())).find(|l| {
+            let ly = if l.fixed { viewport_y } else { y - l.sticky.map_or(0., shift) };
             x >= l.rect.x && x < l.rect.x + l.rect.width && ly >= l.rect.y && ly < l.rect.y + l.rect.height
         });
         let node = label.and_then(|l| l.node);
@@ -448,6 +454,14 @@ impl Browser {
                 self.recycle(layer.into_iter().map(|(_, image)| image).collect());
                 return;
             }
+            worker::Reply::Sticky(id, layers) if id == self.id => {
+                let old = std::mem::replace(&mut self.sticky, layers);
+                self.recycle(old.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).collect());
+            }
+            worker::Reply::Sticky(_, layers) => {
+                self.recycle(layers.into_iter().flat_map(|l| l.tiles.into_iter().map(|(_, image)| image)).collect());
+                return;
+            }
             worker::Reply::Content { focus_targets, .. } => {
                 if !focus_targets.is_empty() {
                     let _ = self.tx.send(worker::Message::RecycleTargets(focus_targets));
@@ -493,8 +507,9 @@ impl Render for Browser {
         let tiles = self.tiles.clone();
         let focused = self.interaction.focus;
         let document_snapshot = self.document_snapshot.clone();
-        let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed)).collect();
+        let labels: Vec<_> = self.labels.iter().map(|l| (l.text.clone(), l.rect, l.link.clone(), l.image, l.fixed, l.sticky)).collect();
         let fixed = self.fixed.clone();
+        let sticky: Vec<(olo_web::layout::Sticky, Vec<(olo_web::paint::DeviceRect, Arc<RenderImage>)>)> = self.sticky.iter().map(|l| (l.sticky, l.tiles.clone())).collect();
         let viewport = self.viewport.clone();
         let scroll = self.scroll;
         let extent = self.extent;
@@ -527,6 +542,21 @@ impl Render for Browser {
                         );
                         let _ = window.paint_image_nearest(b, image.clone());
                     }
+                    // Sticky boxes: over the tiles, each shifted as the scroll
+                    // has it (CSS Positioned Layout 3 §3.4).
+                    let scroll_css = f64::from(scroll) / scale;
+                    let height_css = f64::from(f32::from(bounds.size.height));
+                    let shift = |i: usize| sticky.get(i).map_or(0., |(st, _)| st.offset(scroll_css, height_css));
+                    for (st, layer_tiles) in &sticky {
+                        let offset = st.offset(scroll_css, height_css);
+                        for (r, image) in layer_tiles {
+                            let b = Bounds::new(
+                                point(bounds.left() + px((f64::from(r.x) / scale) as f32), bounds.top() + px((f64::from(r.y - scroll) / scale + offset) as f32)),
+                                size(px((f64::from(r.width) / scale) as f32), px((f64::from(r.height) / scale) as f32)),
+                            );
+                            let _ = window.paint_image_nearest(b, image.clone());
+                        }
+                    }
                     // Fixed to the viewport: over the tiles, unscrolled.
                     for (r, image) in &fixed {
                         let b = Bounds::new(
@@ -535,7 +565,7 @@ impl Render for Browser {
                         );
                         let _ = window.paint_image_nearest(b, image.clone());
                     }
-                    for (text, r, link, image, fixed) in &labels {
+                    for (text, r, link, image, fixed, sticky_index) in &labels {
                         agent::record(
                             window,
                             cx,
@@ -554,7 +584,7 @@ impl Render for Browser {
                                 focused: link.as_ref().is_some_and(|l| Some(l.node) == focused),
                                 enabled: true,
                                 bounds: Bounds::new(
-                                    point(bounds.left() + px(r.x as f32), bounds.top() + px((r.y - if *fixed { 0. } else { f64::from(scroll) / scale }) as f32)),
+                                    point(bounds.left() + px(r.x as f32), bounds.top() + px((r.y - if *fixed { 0. } else { f64::from(scroll) / scale } + sticky_index.map_or(0., shift)) as f32)),
                                     size(px(r.width as f32), px(r.height as f32)),
                                 ),
                                 ..Default::default()

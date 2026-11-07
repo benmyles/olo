@@ -113,12 +113,13 @@ Next, in impact order (each removes a fallback kind or a visible gap):
   values (8 ms), then parallel
   styling (elements are independent given their parent), SIMD text
   shaping and rasterisation, GPU compositing of the scene.
-- [ ] `position: fixed` and `position: sticky` (painted as absolute and
-  relative): stripe.com's header leaves the viewport when the page
-  scrolls, where Chrome's stays (and every site's sticky header with
-  it). Both are scroll-dependent offsets: their subtrees painted over
-  the scrolled tiles at viewport coordinates each frame, hit-tested
-  there too.
+- [x] `position: fixed` and `position: sticky`: layers over the page's
+  tiles (the scene indexes their commands apart; the worker rasterises
+  each in tiles kept by signature), the fixed one unscrolled, each
+  sticky one shifted as the scroll has it (`layout::Sticky::offset`,
+  top and bottom insets, within its containing block); hit-testing and
+  the agent labels follow. Not yet: left/right insets, sticky inside a
+  scrolling container, scripts seeing the stuck position.
 - [ ] Dark pages: pages render on a white canvas with the standard light
   system colours (as Chrome does; Olo's palette no longer colours the
   page). Next: honour a page's `color-scheme` and `prefers-color-scheme`,

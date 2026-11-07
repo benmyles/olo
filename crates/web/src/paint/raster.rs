@@ -1,5 +1,5 @@
 use super::*;
-use crate::layout::Rect;
+use crate::layout::{BoxId, Rect};
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, Transform};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeviceRect {
@@ -11,6 +11,13 @@ pub struct DeviceRect {
 pub struct Tile {
     pub region: DeviceRect,
     pixmap: Pixmap,
+}
+/// What a tile holds: the page, the fixed layer, or a sticky box's.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Layer {
+    Page,
+    Fixed,
+    Sticky(BoxId),
 }
 impl Tile {
     pub fn rgba(&self) -> &[u8] {
@@ -30,15 +37,21 @@ fn paint(color: [u8; 4]) -> Paint<'static> {
 }
 impl Engine {
     pub fn raster(&mut self, scene: &Scene, region: DeviceRect, cancel: Option<&AtomicBool>) -> Result<Tile> {
-        self.raster_layer(scene, region, false, cancel)
+        self.raster_layer(scene, region, Layer::Page, cancel)
     }
     /// The fixed layer over `region` (viewport device pixels): the
     /// commands under `position: fixed` boxes on a transparent tile, to
     /// composite over the scrolled page.
     pub fn raster_fixed(&mut self, scene: &Scene, region: DeviceRect, cancel: Option<&AtomicBool>) -> Result<Tile> {
-        self.raster_layer(scene, region, true, cancel)
+        self.raster_layer(scene, region, Layer::Fixed, cancel)
     }
-    fn raster_layer(&mut self, scene: &Scene, region: DeviceRect, fixed: bool, cancel: Option<&AtomicBool>) -> Result<Tile> {
+    /// Sticky box `root`'s layer over `region` (document device pixels at
+    /// its flow position): transparent, moved by the scroll when shown.
+    pub fn raster_sticky(&mut self, scene: &Scene, root: BoxId, region: DeviceRect, cancel: Option<&AtomicBool>) -> Result<Tile> {
+        self.raster_layer(scene, region, Layer::Sticky(root), cancel)
+    }
+    fn raster_layer(&mut self, scene: &Scene, region: DeviceRect, layer: Layer, cancel: Option<&AtomicBool>) -> Result<Tile> {
+        let fixed = layer != Layer::Page;
         check(cancel)?;
         let pixels = (region.width as usize).checked_mul(region.height as usize).ok_or(Error::Limit)?;
         if pixels > self.limits().tile_pixels {
@@ -91,10 +104,10 @@ impl Engine {
             tiny_skia::Rect::from_ltrb((x - f64::from(region.x)) as f32, (y - f64::from(region.y)) as f32, (right - f64::from(region.x)) as f32, (bottom - f64::from(region.y)) as f32)
         };
         let mut hits = Vec::new();
-        if fixed {
-            scene.query_fixed(rect, &mut hits, cancel)?
-        } else {
-            scene.query(rect, &mut hits, cancel)?
+        match layer {
+            Layer::Page => scene.query(rect, &mut hits, cancel)?,
+            Layer::Fixed => scene.query_fixed(rect, &mut hits, cancel)?,
+            Layer::Sticky(root) => scene.query_sticky(root, rect, &mut hits, cancel)?,
         }
         // OLO_TILE_PROFILE: time per primitive kind, per tile.
         let profile = std::env::var_os("OLO_TILE_PROFILE").map(|_| std::time::Instant::now());

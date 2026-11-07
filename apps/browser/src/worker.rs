@@ -70,6 +70,15 @@ pub struct Label {
     pub link: Option<Arc<crate::links::Link>>,
     /// Fixed to the viewport: `rect` is viewport coordinates.
     pub fixed: bool,
+    /// Under a sticky box: which (an index into the page's sticky layers),
+    /// whose shift at the current scroll applies to `rect`.
+    pub sticky: Option<usize>,
+}
+/// A sticky box's layer: its tiles at its flow position (document device
+/// coordinates), shown shifted by `sticky.offset(scroll, height)`.
+pub struct StickyLayer {
+    pub sticky: layout::Sticky,
+    pub tiles: Vec<(paint::DeviceRect, Arc<RenderImage>)>,
 }
 pub enum Reply {
     Status(u64, String),
@@ -96,6 +105,8 @@ pub enum Reply {
     /// The page's fixed layer (viewport device coordinates), painted over
     /// the tiles wherever they scroll; empty when nothing is fixed.
     Fixed(u64, Vec<(paint::DeviceRect, Arc<RenderImage>)>),
+    /// The page's sticky layers, one per sticky box; empty without any.
+    Sticky(u64, Vec<StickyLayer>),
     Error(u64, String),
 }
 /// Which pass of a page: the static page first, shown at once, then the
@@ -364,8 +375,8 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                 let target = match input.kind {
                                     olo_js::InputKind::Key { .. } | olo_js::InputKind::Scroll => None,
                                     _ => {
-                                        let scroll = last.as_ref().map_or(0., |r| f64::from(r.scroll) / r.key.scale);
-                                        c.page.scene.layout().hit_test_scrolled(input.x, input.y, scroll)
+                                        let (scroll, height) = last.as_ref().map_or((0., f64::INFINITY), |r| (f64::from(r.scroll) / r.key.scale, f64::from(r.key.height) / r.key.scale));
+                                        c.page.scene.layout().hit_test_scrolled(input.x, input.y, scroll, height)
                                     }
                                 };
                                 live.realm.input(&input, target);
@@ -1022,8 +1033,19 @@ fn render(
     let viewport_rect = layout::Rect { x: 0., y: 0., width: visible.width, height: visible.height };
     let mut fixed_hits = Vec::new();
     scene.query_fixed(viewport_rect, &mut fixed_hits, Some(&r.cancel))?;
+    // Sticky boxes' content, each with its layer (shifted by the scroll).
+    let stickies = scene.layout().sticky();
+    let mut sticky_hits: Vec<(u32, usize)> = Vec::new();
+    for (i, st) in stickies.iter().enumerate() {
+        if let Some(extent) = scene.sticky_extent(st.root) {
+            let mut ids = Vec::new();
+            scene.query_sticky(st.root, extent, &mut ids, Some(&r.cancel))?;
+            sticky_hits.extend(ids.into_iter().map(|id| (id, i)));
+        }
+    }
     let mut labels = Vec::new();
-    for (id, fixed) in hits.into_iter().map(|id| (id, false)).chain(fixed_hits.into_iter().map(|id| (id, true))) {
+    for (id, fixed, sticky) in hits.into_iter().map(|id| (id, false, None)).chain(fixed_hits.into_iter().map(|id| (id, true, None))).chain(sticky_hits.into_iter().map(|(id, i)| (id, false, Some(i))))
+    {
         let vector = matches!(scene.commands()[id as usize].primitive, paint::Primitive::Vector { .. });
         let image = vector || matches!(scene.commands()[id as usize].primitive, paint::Primitive::Image { .. });
         let node = scene.node(id);
@@ -1044,7 +1066,7 @@ fn render(
             Some(node) => crate::links::resolve(&page.document, node, &cached.base, &cached.origin, &mut cached.links)?,
             None => None,
         };
-        labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed });
+        labels.push(Label { image, text: text.into_owned().into(), rect, node, link, fixed, sticky });
     }
     proxy.send(Reply::Content {
         id: r.id,
@@ -1197,6 +1219,67 @@ fn render(
         }
     }
     proxy.send(Reply::Fixed(r.id, fixed_layer));
+    // The sticky layers: each sticky box's commands at its flow position,
+    // in tiles kept by signature; the window moves them with the scroll.
+    let mut sticky_layers = Vec::new();
+    for st in &stickies {
+        // One layer per sticky box, in order (the labels index them), with
+        // no tiles when nothing of it paints.
+        let Some(extent) = scene.sticky_extent(st.root) else {
+            sticky_layers.push(StickyLayer { sticky: *st, tiles: Vec::new() });
+            continue;
+        };
+        let scale = scene.device_scale();
+        let x0 = (extent.x * scale).floor().max(0.) as i32;
+        let y0 = (extent.y * scale).floor().max(0.) as i32;
+        let x1 = ((extent.x + extent.width) * scale).ceil().min(f64::from(x0) + 4096.) as i32;
+        let y1 = ((extent.y + extent.height) * scale).ceil().min(f64::from(y0) + 4096.) as i32;
+        if x1 <= x0 || y1 <= y0 {
+            sticky_layers.push(StickyLayer { sticky: *st, tiles: Vec::new() });
+            continue;
+        }
+        let layer_signature = scene.sticky_signature(st.root, Some(&r.cancel))?;
+        let mut layer_tiles = Vec::new();
+        for y in (y0.div_euclid(256) * 256..y1).step_by(256) {
+            for x in (x0.div_euclid(256) * 256..x1).step_by(256) {
+                if r.cancel.load(Ordering::Relaxed) {
+                    return Err(paint::Error::Cancelled.into());
+                }
+                let region = paint::DeviceRect { x, y, width: 256, height: 256 };
+                let signature = {
+                    use std::hash::{Hash, Hasher};
+                    let mut h = std::hash::DefaultHasher::new();
+                    layer_signature.hash(&mut h);
+                    (x, y, st.root.index()).hash(&mut h);
+                    h.finish()
+                };
+                *clock = clock.wrapping_add(1);
+                let key = (x | (1 << 29) | ((st.root.index() as i32 & 0x3FF) << 18), y);
+                let image = if let Some((image, stamp, kept)) = cache.get_mut(&key)
+                    && *kept == signature
+                {
+                    *stamp = *clock;
+                    image.clone()
+                } else {
+                    let tile = painter.raster_sticky(scene, st.root, region, Some(&r.cancel))?;
+                    let mut bytes = tile.into_rgba();
+                    for p in bytes.as_chunks_mut::<4>().0 {
+                        p.swap(0, 2)
+                    }
+                    let image = olo_ui::widgets::image_view::from_bgra(256, 256, bytes).ok_or("Sticky layer upload failed")?;
+                    if cache.len() >= 256 {
+                        let key = *cache.iter().min_by_key(|(_, (_, stamp, _))| *stamp).unwrap().0;
+                        cache.remove(&key);
+                    }
+                    cache.insert(key, (image.clone(), *clock, signature));
+                    image
+                };
+                layer_tiles.push((region, image));
+            }
+        }
+        sticky_layers.push(StickyLayer { sticky: *st, tiles: layer_tiles });
+    }
+    proxy.send(Reply::Sticky(r.id, sticky_layers));
     if pass == Pass::Live && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
         eprintln!("  tiles: {repainted} of {total} repainted in {:.1} ms", painting.elapsed().as_secs_f64() * 1000.);
     }
