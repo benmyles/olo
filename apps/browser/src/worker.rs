@@ -516,7 +516,7 @@ impl Host for PageHost {
         Ok(Color::new(Space::Srgb, [f64::from(v[0]) / 255., f64::from(v[1]) / 255., f64::from(v[2]) / 255.], f64::from(v[3]) / 255., 0))
     }
     fn font(&self, r: &FontRequest) -> style::Result<FontMetrics> {
-        self.scope.metrics(r, None).map(|m| m.style).map_err(style::Error::Font)
+        self.scope.metrics(r, None).map(|m| m.style_at(self.scale)).map_err(style::Error::Font)
     }
     fn font_context(&self) -> u64 {
         self.scope.context()

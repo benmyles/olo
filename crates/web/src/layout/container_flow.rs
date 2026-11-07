@@ -60,6 +60,22 @@ pub(super) struct Container {
     column_gap: f64,
     width: f64,
     height: Option<f64>,
+    /// `min-height` and `max-height`: a container taller than its content
+    /// through `min-height` aligns its tracks in that height.
+    min_height: f64,
+    max_height: f64,
+}
+impl Container {
+    /// The height tracks are aligned in: the used height, or `min-height`
+    /// when it exceeds the content's `natural` height; None when the
+    /// content decides (nothing to distribute).
+    fn definite_height(height: Option<f64>, min_height: f64, max_height: f64, natural: f64) -> Option<f64> {
+        match height {
+            Some(h) => Some(h.min(max_height).max(min_height)),
+            None if min_height > natural => Some(min_height.min(max_height)),
+            None => None,
+        }
+    }
 }
 /// A span of tracks (end exclusive) with its min- and max-content widths.
 type Contribution = (usize, usize, f64, f64);
@@ -467,7 +483,7 @@ impl Job<'_> {
             }
             Kind::ColumnFlex { reverse: matches!(style.value(P::FlexDirection), Value::Keyword(K::ColumnReverse)), justify: keyword(style, P::JustifyContent) }
         };
-        self.containers.push(Container { id, kind, items, row_gap, column_gap, width, height });
+        self.containers.push(Container { id, kind, items, row_gap, column_gap, width, height, min_height: used.min_height, max_height: used.max_height });
         Ok(())
     }
     fn auto_tracks(&mut self, value: &Value, available: Option<f64>, queries: QueryBasis) -> Result<Vec<Track>> {
@@ -502,6 +518,8 @@ impl Job<'_> {
         }
         let container = self.containers.pop().ok_or(Error::Invalid)?;
         let scale = self.scale;
+        let (used_height, min_height, max_height) = (container.height, container.min_height, container.max_height);
+        let definite_height = move |natural: f64| Container::definite_height(used_height, min_height, max_height, natural);
         let content_height = match container.kind {
             Kind::Row { columns, spacing } => {
                 let height = container.items.iter().map(|i| i.outer_height).fold(0f64, f64::max);
@@ -534,11 +552,15 @@ impl Job<'_> {
             }
             Kind::Grid { columns, rows, align_content, justify_content } => {
                 let contributions: Vec<(usize, usize, f64, f64)> = container.items.iter().map(|i| (i.cell.rows.0, i.cell.rows.1, i.outer_height, i.outer_height)).collect();
-                let row_sizes = size_tracks(&rows, &contributions, container.height, container.row_gap, matches!(align_content, K::Normal | K::Stretch), scale);
-                let total_rows = row_sizes.iter().sum::<f64>() + container.row_gap * row_sizes.len().saturating_sub(1) as f64;
+                let stretch = matches!(align_content, K::Normal | K::Stretch);
+                let gaps = |sizes: &[f64]| sizes.iter().sum::<f64>() + container.row_gap * sizes.len().saturating_sub(1) as f64;
+                let natural = gaps(&size_tracks(&rows, &contributions, None, container.row_gap, stretch, scale));
+                let height = definite_height(natural);
+                let row_sizes = size_tracks(&rows, &contributions, height, container.row_gap, stretch, scale);
+                let total_rows = gaps(&row_sizes);
                 let total_columns = columns.iter().sum::<f64>() + container.column_gap * columns.len().saturating_sub(1) as f64;
                 let column_offset = distribute(justify_content, container.width - total_columns, columns.len());
-                let row_offset = distribute(align_content, container.height.map_or(0., |h| h - total_rows), row_sizes.len());
+                let row_offset = distribute(align_content, height.map_or(0., |h| h - total_rows), row_sizes.len());
                 let mut column_starts = Vec::with_capacity(columns.len() + 1);
                 let mut x = column_offset.0;
                 for (i, w) in columns.iter().enumerate() {
@@ -587,7 +609,8 @@ impl Job<'_> {
                 // Hypothetical main sizes: a numeric basis replaces the content height.
                 let mut sizes: Vec<f64> =
                     container.items.iter().map(|i| i.basis.map_or(i.outer_height, |b| b + i.used.padding.vertical() + i.used.border.vertical() + i.used.margin.vertical())).collect();
-                if let Some(h) = container.height {
+                let height = definite_height(sizes.iter().sum::<f64>() + gaps);
+                if let Some(h) = height {
                     let free = h - sizes.iter().sum::<f64>() - gaps;
                     if free > 0. {
                         let total: f64 = container.items.iter().map(|i| i.grow).sum();
@@ -607,7 +630,7 @@ impl Job<'_> {
                     }
                 }
                 let total = sizes.iter().sum::<f64>() + gaps;
-                let free = container.height.map_or(0., |h| h - total);
+                let free = height.map_or(0., |h| h - total);
                 let grown = container.items.iter().any(|i| i.grow > 0.) && free > 0.;
                 let (offset, between) = if grown { (0., 0.) } else { distribute(justify, free, n) };
                 let order: Vec<usize> = if reverse { (0..n).rev().collect() } else { (0..n).collect() };
@@ -624,7 +647,7 @@ impl Job<'_> {
                     g.border_box.x = used::grid(item.used.margin.left + dx.max(0.), scale) + item.used.relative.x;
                     g.border_box.y = used::grid(y + item.used.margin.top, scale) + item.used.relative.y;
                     let inner = sizes[i] - item.used.margin.vertical();
-                    if (inner - g.border_box.height).abs() > 1e-9 && (item.basis.is_some() || container.height.is_some()) {
+                    if (inner - g.border_box.height).abs() > 1e-9 && (item.basis.is_some() || height.is_some()) {
                         g.border_box.height = used::grid(inner.max(0.), scale);
                     }
                     g.margin = item.used.margin;

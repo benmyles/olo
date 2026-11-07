@@ -22,6 +22,18 @@ pub struct ResolvedMetrics {
     pub line_gap: f64,
     pub fallbacks: Fallbacks,
 }
+impl ResolvedMetrics {
+    /// The style metrics for a device scale: Chrome rounds a face's ascent,
+    /// descent and line gap to whole device pixels (Blink's SimpleFontData
+    /// at the scaled size), so `line-height: normal` is that sum; the same
+    /// here, or no page's lines land where Chrome's do. The other metrics
+    /// stay fractional, as Chrome's do.
+    pub fn style_at(&self, scale: f64) -> FontMetrics {
+        let scale = if scale.is_finite() && scale > 0. { scale } else { 1. };
+        let round = |v: f64| (v * scale + 0.5).floor() / scale;
+        FontMetrics { normal_line_height: (round(self.ascent) + round(-self.descent) + round(self.line_gap)).max(0.), ..self.style }
+    }
+}
 // Preserve fractional HVAR/VVAR deltas instead of ttf-parser's public u16
 // convenience advances, which round before scaling to CSS pixels.
 fn advance(face: &ttf_parser::Face<'_>, glyph: ttf_parser::GlyphId, vertical: bool, limit: usize) -> Option<f64> {
