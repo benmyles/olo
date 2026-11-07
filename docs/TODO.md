@@ -405,6 +405,12 @@ something nobody here has is in "Blocked", with what it waits for.
   to end with real processes: a 20 s stream finished whole while new
   requests were answered in a second.
 
+  2026-11-07: app_server restarting (an upgrade's reload, a crash) still cut
+  every stream ("Connection lost mid-response"): the kit re-executed the
+  pool at once when the compositor went. It now hands over first (35ee3e09;
+  a tunnel across `tsession reload` broke before, held after). *Left*: the
+  next upgrades on the machine with no agent's answer cut (the first may
+  still be, run by the old pool).
 - **Passwords in Chrome: credit cards filled** (Ben, 2026-11-06): "olo
   passwords chrome integration should recognize credit card forms and
   show the credit cards in the olo context menu for filling". Olo's
