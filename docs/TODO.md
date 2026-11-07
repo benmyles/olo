@@ -15,6 +15,21 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Deskbar widgets' tips: the top five processes** (Ben, 2026-11-07:
+  "for relevant widgets like cpu, gpu, memory, network make it so that
+  hovering over the widget also shows the top 5 highest consuming
+  processes"). Read only while a tip is up (Activity Monitor's sampling,
+  on the widgets' worker), never otherwise.
+
+- **A resting display still looks every 100 ms** (found 2026-11-07,
+  looking into the Intel GPU): `render::IDLE_POLL`, the safety net for
+  changes that don't wake a display (`Backend::wake`). An idle
+  headless session's app_server: 0.3% of a core, 16 wakeups a second,
+  each look gathering and comparing every element (strace: timerfd armed
+  ~100 ms each time). Find what changes without waking (keep_warm's
+  pixel, timers not hooked up), wake for each, then make the poll a long
+  safety net (seconds) or none; measure idle before and after.
+
 - **Voice Processing's delay down from 40 ms** (Ben, 2026-11-07, of
   "Cleaning up the microphone's sound: 40 ms behind": "we need that to
   be way more optimized so that it is not introducing any kind of
@@ -60,12 +75,59 @@ something nobody here has is in "Blocked", with what it waits for.
   tab offers Unfloat (Ben: "there also needs to be an option to
   "Unfloat" a floating window too"), back into the tiling or focus.
 
-- **Intel's render GT busy on an idle desktop**: on 2026-11-07 its idle
-  residency rose 4 ms in a second (the media GT's 928), so the GPU never
-  rests (RC6). Find what keeps it awake (app_server drawing every frame?
-  a forcewake held?), measure with `timings` and the GT's residency.
+- **DiskBackup** (Ben, 2026-11-07, after the work items before it):
+  "build DiskBackup which is an olo native app and service for
+  continuous, minimal impact (in terms of cpu/mem/network usage -- it
+  should always just use background resources) full disk backups that
+  are stored in the cloud (for now just build google drive storage
+  support but do it in a way where we leave the door open to add more
+  providers in the future). the app should automate all setup that
+  needs to happen to connect to gdrive and start backing up there, and
+  backups should be encrypted with a token/key that lives in olo
+  passwords and the app should be able to restore from the target and
+  the user can choose what to restore in an easy to use ux and it should
+  also support versioning in a way that minimizes disk usage so only
+  changes and deltas need to be kept and it should also compress
+  everything. make sure it's all ultra efficient, background resources
+  only, highly customizable with excellent defaults, it should include a
+  deskbar widget too and the ability to run as a service so the app
+  itself doesn't need to be open for backups to happen, and it should
+  integrate with all the olo stuff in all the places that make sense. it
+  should always provide very clear and transparent status about
+  everything it's doing and has done. it should of course support
+  excludes and it should have a bunch of built-in exclude
+  groups/templates that cover e.g. all kinds of files that can be
+  regenerated e.g. build/debug files for programming languages, node
+  modules, downloaded cargo cache stuff and so on. also include
+  integration with olo tracker so in olo tracker anything where the most
+  recent version is backed up gets a slightly modified icon with a
+  little green tick in the bottom right. and if you right click you can
+  see older versions and restore them and so on. and everything has to
+  continue to be super responsive and built to work great even with slow
+  and awkward storage backends like google drive. and also obviously we
+  should support files of any size and so on, handling all the plumbing
+  needed to make this all work properly with any storage backend."
+  To think through first: content-defined chunks (deduplicated across
+  versions and files, compressed, encrypted, packed into large objects
+  for a slow store), an index kept locally and in the store, a storage
+  trait (Google Drive first: OAuth set up by the app, resumable
+  uploads, rate limits), a service at idle priority (I/O and CPU) that
+  follows changes (fanotify) rather than scanning, Doctor and Deskbar
+  and Tracker and Passwords where they fit.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Intel's render GT on an idle desktop: not stuck** (Ben: "do intel
+  gpu"). The 4 ms of rest a second first seen was a passing load. With
+  Olo idle (a test session of its own, settled) the render GT rests as
+  it did without it (816 ms a second against ~800: nothing measurable);
+  on your desktop it rests ~800 ms a second, awake the rest because your
+  displays draw 32, 12 and 13 frames a second as things on them change
+  (agents' terminals, the clock): work following change. One thing to
+  know: Performance mode puts Intel's GPU on Fastest, its lowest clock
+  held at 1600 MHz (`/etc/olo/gpus.json`), so whenever it wakes it runs
+  fast; Balanced and Power Saver don't. What it did find: app_server's
+  100 ms look at resting displays (Not started).
 
 - **Syntax colouring for justfiles in the Viewer** (Ben, 2026-11-07:
   "add syntax highlighting for justfiles to viewer"). A just grammar of
