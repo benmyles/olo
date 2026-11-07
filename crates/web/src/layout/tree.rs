@@ -126,19 +126,21 @@ pub struct Tree {
     text_bytes: usize,
 }
 impl Tree {
-    /// This tree with other styles for the same document and boxes (a
-    /// restyle that moved nothing).
-    pub fn with_styles(&self, styles: Arc<StyleTree>) -> Self {
+    /// This tree with other styles for the same boxes (a restyle that
+    /// moved nothing), for the document as it is now (its revision moved
+    /// on; the styles were made against it) and with images rebound to
+    /// it (a redrawn canvas is the same box with new pixels).
+    pub fn with_styles(&self, styles: Arc<StyleTree>, document: &Document, images: Option<Arc<crate::image::Set>>) -> Self {
         Self {
             vectors: self.vectors.clone(),
-            images: self.images.clone(),
+            images: images.or_else(|| self.images.clone()),
             boxes: self.boxes.clone(),
             sources: self.sources.clone(),
             styles,
             inlines: self.inlines.clone(),
             controls: self.controls.clone(),
             document: self.document,
-            revision: self.revision,
+            revision: if document.id() == self.document { document.revision() } else { self.revision },
             text_bytes: self.text_bytes,
         }
     }

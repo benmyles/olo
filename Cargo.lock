@@ -7686,7 +7686,10 @@ dependencies = [
 name = "olo-js"
 version = "0.1.0"
 dependencies = [
+ "glow",
+ "khronos-egl",
  "olo-web",
+ "tiny-skia 0.12.0",
  "url",
  "v8",
 ]

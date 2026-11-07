@@ -51,6 +51,9 @@ pub struct Request {
 }
 pub enum Message {
     Render(Box<Request>),
+    /// An image the live page's scripts asked for, fetched (from the
+    /// worker's own loads).
+    ImageLoaded(u64, Result<Arc<olo_web::image::Image>, String>),
     /// Input from the person, for the live page's scripts (document
     /// coordinates in CSS px).
     Input(olo_js::Input),
@@ -104,6 +107,8 @@ struct Live {
     realm: olo_js::Realm,
     /// Cancelled when the page goes (its fetches and measurements stop).
     cancel: crate::network::Cancel,
+    /// Fetches the images its scripts ask for, off this thread.
+    images: ImageLoads,
     started: Instant,
     next_due_ms: Option<f64>,
     rendered: u64,
@@ -111,6 +116,50 @@ struct Live {
     last_eval: Option<String>,
     /// Since the last summary: advances, script time, renders, render time.
     stats: (usize, f64, usize, f64, Instant),
+}
+/// Whether an error only says the work was cancelled (a newer request
+/// took over), as every phase reports it.
+fn is_cancellation(error: &page::Error) -> bool {
+    error.to_string().ends_with("Cancelled")
+}
+/// What fetching an image for the live page's scripts takes: the loads
+/// run on their own threads and answer through the worker's channel.
+#[derive(Clone)]
+struct ImageLoads {
+    loader: Arc<crate::network::Loader>,
+    document: crate::network::Resource,
+    scope: Scope,
+    key: Key,
+    cancel: crate::network::Cancel,
+    tx: mpsc::Sender<Message>,
+}
+impl ImageLoads {
+    /// Start every load the scripts asked for since the last time.
+    fn dispatch(&self, realm: &mut olo_js::Realm) {
+        for request in realm.take_image_requests() {
+            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                eprintln!("  image requested: {}", request.url);
+            }
+            let this = self.clone();
+            let spawned = std::thread::Builder::new().name("browser-image".into()).spawn(move || {
+                let result = url::Url::parse(&request.url).map_err(|e| e.to_string()).and_then(|url| {
+                    let host = PageHost::new(&this.scope, &this.key);
+                    let svg = |bytes: &[u8]| olo_web::svg_image::rasterize(bytes, &host, &this.scope, this.key.scale, Some(&this.cancel)).map_err(|e| format!("SVG image: {e}").into());
+                    this.loader.image(&this.document, url, 64 << 20, &this.cancel, |_| {}, &svg).map_err(|e| e.to_string())
+                });
+                if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                    match &result {
+                        Ok(i) => eprintln!("  image loaded: {} ({}x{})", request.url, i.width(), i.height()),
+                        Err(e) => eprintln!("  image failed: {} ({e})", request.url),
+                    }
+                }
+                let _ = this.tx.send(Message::ImageLoaded(request.id, result));
+            });
+            if let Err(e) = spawned {
+                let _ = self.tx.send(Message::ImageLoaded(request.id, Err(format!("image thread: {e}"))));
+            }
+        }
+    }
 }
 impl Drop for Live {
     fn drop(&mut self) {
@@ -141,9 +190,11 @@ struct Cached {
 }
 pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
     let (tx, rx) = mpsc::channel::<Message>();
+    let own_tx = tx.clone();
     std::thread::Builder::new()
         .name("browser-page".into())
         .spawn(move || {
+            let tx = own_tx;
             let run = || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 // Olo's own fonts first (the sans family with its italic, the
                 // mono family, the symbol and maths faces), then the system's,
@@ -193,7 +244,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                             Ok(message) => pending.push_back(message),
                             Err(mpsc::TryRecvError::Disconnected) => break,
                             Err(mpsc::TryRecvError::Empty) => {
-                                let result = render(r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Scripted);
+                                let result = render(r, &loader, &tx, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Scripted);
                                 if let Err(error) = result
                                     && !r.cancel.load(Ordering::Relaxed)
                                 {
@@ -227,17 +278,36 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         // The live page's clock: run what is due, render if changed.
                         if let Some(r) = &last
                             && !r.cancel.load(Ordering::Relaxed)
-                            && let Err(error) = render(r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Live)
+                            && let Err(error) = render(r, &loader, &tx, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Live)
                         {
-                            eprintln!("Browser live: {error}");
-                            if let Some(c) = cached.as_mut() {
-                                c.live = None;
+                            // A newer request cancelled this render: the live
+                            // page goes on under it. Anything else ends it.
+                            if !r.cancel.load(Ordering::Relaxed) && !is_cancellation(&error) {
+                                eprintln!("Browser live: {error}");
+                                if let Some(c) = cached.as_mut() {
+                                    c.live = None;
+                                }
                             }
                         }
                         continue;
                     };
                     let mut r = match message {
                         Message::Render(r) => r,
+                        Message::ImageLoaded(id, result) => {
+                            // The live page's scripts hear of it now; what
+                            // they draw renders at once.
+                            if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                                eprintln!("  image delivered: {id} (live page: {})", cached.as_ref().is_some_and(|c| c.live.is_some()));
+                            }
+                            if let Some(c) = cached.as_mut()
+                                && let Some(live) = c.live.as_mut()
+                            {
+                                live.realm.image_loaded(id, result);
+                                live.images.dispatch(&mut live.realm);
+                                live.next_due_ms = Some(0.);
+                            }
+                            continue;
+                        }
                         Message::Input(input) => {
                             // Pointer and keys reach the live page's scripts; a
                             // change they make renders at once.
@@ -249,13 +319,14 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                                     _ => c.page.scene.layout().hit_test(input.x, input.y),
                                 };
                                 live.realm.input(&input, target);
+                                live.images.dispatch(&mut live.realm);
                                 if live.realm.revision() != live.rendered {
                                     live.next_due_ms = Some(0.);
                                     live.last_render = Instant::now() - LIVE_RENDER_INTERVAL;
                                 }
                                 if let Some(r) = &last
                                     && !r.cancel.load(Ordering::Relaxed)
-                                    && let Err(error) = render(r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Live)
+                                    && let Err(error) = render(r, &loader, &tx, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Live)
                                 {
                                     eprintln!("Browser live: {error}");
                                 }
@@ -276,6 +347,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                         match message {
                             Message::Render(new) => r = new,
                             Message::Input(input) => kept.push_back(Message::Input(input)),
+                            Message::ImageLoaded(id, result) => kept.push_back(Message::ImageLoaded(id, result)),
                             Message::Recycle(images) => drop(images),
                             Message::RecycleTargets(targets) => drop(targets),
                         }
@@ -285,7 +357,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
                     if r.cancel.load(Ordering::Relaxed) {
                         continue;
                     }
-                    let result = render(&r, &loader, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Static);
+                    let result = render(&r, &loader, &tx, &scope, &mut shaper, &mut painter, &mut cached, &proxy, &mut tiles, &mut clock, Pass::Static);
                     last = Some((*r).clone());
                     if let Err(error) = result
                         && !r.cancel.load(Ordering::Relaxed)
@@ -308,6 +380,7 @@ pub fn start(proxy: Proxy) -> mpsc::Sender<Message> {
 fn render(
     r: &Request,
     loader: &Arc<crate::network::Loader>,
+    tx: &mpsc::Sender<Message>,
     scope: &Scope,
     shaper: &mut shaping::Engine,
     painter: &mut paint::Engine,
@@ -328,6 +401,12 @@ fn render(
         let Some(live) = c.live.as_mut() else { return Ok(()) };
         let now_ms = live.started.elapsed().as_secs_f64() * 1000.;
         let advanced = live.realm.advance(now_ms, Duration::from_millis(30));
+        live.images.dispatch(&mut live.realm);
+        if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+            for line in live.realm.take_console() {
+                eprintln!("  live console: {line}");
+            }
+        }
         live.next_due_ms = advanced.next_due_ms;
         live.stats.0 += 1;
         live.stats.1 += advanced.spent_ms;
@@ -352,28 +431,32 @@ fn render(
             let doc = live.realm.snapshot();
             let viewport = layout::Viewport { width: f64::from(r.key.width) / r.key.scale, height: f64::from(r.key.height) / r.key.scale, scale: r.key.scale };
             let started = Instant::now();
+            // The live page's own cancellation, not the request's: a newer
+            // request from the window supersedes what this render shows,
+            // but the page goes on under it.
+            let cancel = live.cancel.clone();
             if let Some(document) = &c.document {
                 let light = document.light();
                 let mut resource = |kind: page::ResourceKind, base: Option<&str>, href: &str| -> page::Result<Option<page::Resource>> {
                     Ok(match kind {
                         page::ResourceKind::Stylesheet => {
                             let absolute = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok().map(|u| Arc::<str>::from(u.as_str()));
-                            loader.stylesheet(&light, base, href, &r.cancel, |_| {}).ok().map(|s| page::Resource::Stylesheet(s, absolute))
+                            loader.stylesheet(&light, base, href, &cancel, |_| {}).ok().map(|s| page::Resource::Stylesheet(s, absolute))
                         }
                         page::ResourceKind::Font => {
                             let url = base.and_then(|b| light.url.join(b).ok()).unwrap_or_else(|| light.url.clone()).join(href).ok();
-                            url.and_then(|u| loader.font(&light, u, &r.cancel, |_| {}).ok()).map(page::Resource::Font)
+                            url.and_then(|u| loader.font(&light, u, &cancel, |_| {}).ok()).map(page::Resource::Font)
                         }
                         page::ResourceKind::Image => None,
                     })
                 };
-                if c.page.refresh(&doc, Some(&r.cancel), &mut resource)? && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
+                if c.page.refresh(&doc, Some(&cancel), &mut resource)? && std::env::var_os("OLO_BROWSER_TIMING").is_some() {
                     eprintln!("  live render: stylesheets changed, rules remade");
                 }
             }
             let host = PageHost::new(c.page.scope(), &r.key);
             let canvases = live.realm.canvases();
-            c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&r.cancel), |_, _| {})?;
+            c.page.rerender(doc, canvases, &host, shaper, painter, viewport, Some(&cancel), |_, _| {})?;
             if std::env::var_os("OLO_BROWSER_TIMING").is_some() {
                 eprintln!("  live render: revision {} -> {} in {:.0} ms", live.rendered, revision, started.elapsed().as_secs_f64() * 1000.);
             }
@@ -464,6 +547,8 @@ fn render(
         // The live page's own cancellation: later requests from the window
         // cancel their predecessors, not the page living on.
         let live_cancel = crate::network::Cancel::default();
+        // The page's decoded images so far, for scripts asking about them.
+        let known_images = Arc::new(images.clone());
         let mut run_scripts = |doc: olo_web::dom::Document, quirks: bool, measurer: page::Measurer| -> page::Result<olo_web::dom::Document> {
             let Some(document) = &document else {
                 return Ok(doc);
@@ -569,8 +654,25 @@ fn render(
                 })
             };
             let started = Instant::now();
-            let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), Some(measure)).map_err(|e| page::Error::from(e.as_str()))?;
+            // Images the scripts load (textures, canvas sources, `img`
+            // elements they make): the page's own at once, others fetched
+            // on their own threads and delivered to the live page.
+            let image_lookup: olo_js::ImageLookup = {
+                let known = known_images.clone();
+                Box::new(move |url: &str| url::Url::parse(url).ok().and_then(|u| known.get(&u).cloned().flatten()))
+            };
+            let image_loads = ImageLoads { loader: loader.clone(), document: document.light(), scope: scope.clone(), key: r.key.clone(), cancel: live_cancel.clone(), tx: tx.clone() };
+            let mut realm = olo_js::Realm::new(doc, config, Some(fetcher), Some(measure)).map_err(|e| page::Error::from(e.as_str()))?.with_image_lookup(Some(image_lookup));
+            // OLO_BROWSER_EVAL_FIRST=FILE: its expression run before the
+            // page's scripts (to patch what they will call, for debugging).
+            if let Some(js) = std::env::var("OLO_BROWSER_EVAL_FIRST").ok().and_then(|f| std::fs::read_to_string(f).ok()) {
+                match realm.eval(&js) {
+                    Ok(value) => eprintln!("Browser eval (first): {value}"),
+                    Err(e) => eprintln!("Browser eval (first) failed: {e}"),
+                }
+            }
             let report = realm.run_page(&scripts);
+            image_loads.dispatch(&mut realm);
             let scripted_at = Instant::now();
             // OLO_BROWSER_EVAL=JS: an expression run after the page's scripts,
             // its value logged, for comparing with Chrome.
@@ -587,6 +689,7 @@ fn render(
             canvas_slot = realm.canvases();
             live_slot = Some(Live {
                 realm,
+                images: image_loads,
                 cancel: live_cancel.clone(),
                 started: scripted_at,
                 next_due_ms: Some(0.),
@@ -774,7 +877,7 @@ fn render(
             let host = PageHost::new(page.scope(), &r.key);
             if let Err(error) = page.restyle(&host, shaper, painter, host.viewport, Some(&r.cancel), |_, _| {}) {
                 page.interaction = previous;
-                return Err(error);
+                return Err(page::Error::from(format!("restyle for the viewport: {error}").as_str()));
             }
             *viewport_dependent = host.viewport_used.get();
         } else {

@@ -475,8 +475,8 @@ impl Layout {
     }
     /// This layout with other styles for the same boxes: a restyle that
     /// changed only what is painted keeps every position and size.
-    pub fn with_styles(&self, styles: Arc<StyleTree>) -> Self {
-        let tree = Arc::new(self.cache.tree.with_styles(styles));
+    pub fn with_styles(&self, styles: Arc<StyleTree>, document: &crate::dom::Document, images: Option<Arc<crate::image::Set>>) -> Self {
+        let tree = Arc::new(self.cache.tree.with_styles(styles, document, images));
         let cache = Arc::new(Cache {
             tree,
             texts: self.cache.texts.clone(),

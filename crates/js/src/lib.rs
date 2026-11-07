@@ -12,6 +12,7 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
 pub mod canvas;
 pub mod html;
+pub mod webgl;
 use olo_web::{
     css::{
         self,
@@ -28,7 +29,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Instant,
 };
-const PRELUDE: &str = include_str!("prelude.js");
+const PRELUDE: &str = concat!(include_str!("prelude.js"), "\n", include_str!("webgl.js"));
 /// What the page is, for `location`, `navigator` and the viewport.
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -66,6 +67,16 @@ pub struct Fetched {
 }
 /// Fetches a URL (method, body) for scripts; the browser supplies one.
 pub type Fetcher = Box<dyn FnMut(&str, &str, &str) -> Result<Fetched, String>>;
+/// An image already decoded for the page, by absolute URL (no I/O); the
+/// browser supplies one. Images it doesn't have are requested
+/// (`Realm::take_image_requests`) and delivered (`Realm::image_loaded`)
+/// when fetched, off this thread.
+pub type ImageLookup = Box<dyn FnMut(&str) -> Option<Arc<olo_web::image::Image>>>;
+/// An image the scripts asked for: fetched and decoded by the browser.
+pub struct ImageRequest {
+    pub id: u64,
+    pub url: String,
+}
 /// Lays out the document as it is now, for what scripts measure; the
 /// browser supplies one (olo_web::page::Measurer behind a host).
 pub type Measure = Box<dyn FnMut(&Document, Option<&olo_web::page::Measured>) -> Option<olo_web::page::Measured>>;
@@ -157,6 +168,16 @@ struct State {
     fetcher: Option<Fetcher>,
     /// The page's canvases, by element, drawn by its scripts.
     canvases: HashMap<NodeId, canvas::Canvas>,
+    /// The page's WebGL canvases, by element, drawn by the GPU.
+    gl: HashMap<NodeId, webgl::Context>,
+    image_lookup: Option<ImageLookup>,
+    /// Images the scripts loaded, by `img` element.
+    images: HashMap<NodeId, Arc<olo_web::image::Image>>,
+    /// Image loads asked for and not yet taken by the browser, then in
+    /// flight until delivered.
+    image_requests: Vec<(u64, NodeId, String)>,
+    images_in_flight: HashMap<u64, NodeId>,
+    next_image: u64,
     measure: Option<Measure>,
     /// The last layout, good while the document's revision is its own.
     measured: Option<olo_web::page::Measured>,
@@ -198,6 +219,12 @@ impl Realm {
             templates: None,
             fetcher,
             canvases: HashMap::new(),
+            gl: HashMap::new(),
+            image_lookup: None,
+            images: HashMap::new(),
+            image_requests: Vec::new(),
+            images_in_flight: HashMap::new(),
+            next_image: 1,
             measure,
             measured: None,
             layout_seconds: 0.,
@@ -226,6 +253,68 @@ impl Realm {
         let mut realm = Self { isolate, context, state };
         realm.run(PRELUDE, "prelude.js").map_err(|e| format!("prelude: {e}"))?;
         Ok(realm)
+    }
+    /// Console lines logged since last taken (the live page's).
+    pub fn take_console(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.state.borrow_mut().report.console)
+    }
+    /// Supply the lookup of images the page already has decoded.
+    pub fn with_image_lookup(self, lookup: Option<ImageLookup>) -> Self {
+        self.state.borrow_mut().image_lookup = lookup;
+        self
+    }
+    /// The image loads scripts asked for since last taken; the browser
+    /// fetches each and answers with `image_loaded`.
+    pub fn take_image_requests(&mut self) -> Vec<ImageRequest> {
+        let mut s = self.state.borrow_mut();
+        let taken = std::mem::take(&mut s.image_requests);
+        taken
+            .into_iter()
+            .map(|(id, node, url)| {
+                s.images_in_flight.insert(id, node);
+                ImageRequest { id, url }
+            })
+            .collect()
+    }
+    /// An image load's outcome: the element gets its image (or none) and
+    /// its scripts hear `load` (or `error`).
+    pub fn image_loaded(&mut self, id: u64, result: Result<Arc<olo_web::image::Image>, String>) {
+        let state = self.state.clone();
+        let (node, size) = {
+            let mut s = state.borrow_mut();
+            let Some(node) = s.images_in_flight.remove(&id) else { return };
+            let size = match result {
+                Ok(image) => {
+                    let size = image.natural();
+                    s.images.insert(node, image);
+                    Some(size)
+                }
+                Err(e) => {
+                    s.report.console.push(format!("[warn] image: {e}"));
+                    None
+                }
+            };
+            (node, size)
+        };
+        v8::scope!(let scope, &mut self.isolate);
+        let context = v8::Local::new(scope, &self.context);
+        let scope = &mut v8::ContextScope::new(scope, context);
+        v8::tc_scope!(let tc, scope);
+        let global = context.global(tc);
+        let Some(name) = v8::String::new(tc, "__olo_imageLoaded") else { return };
+        let Some(f) = global.get(tc, name.into()).and_then(|f| v8::Local::<v8::Function>::try_from(f).ok()) else { return };
+        let Some(element) = wrap(tc, &state, node) else { return };
+        let size: v8::Local<v8::Value> = match size {
+            Some((w, h)) => {
+                let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(tc, w.round()).into(), v8::Number::new(tc, h.round()).into()];
+                v8::Array::new_with_elements(tc, &items).into()
+            }
+            None => v8::null(tc).into(),
+        };
+        if f.call(tc, global.into(), &[element.into(), size]).is_none() {
+            let error = exception_text(tc, "image load");
+            state.borrow_mut().report.errors.push(error);
+        }
     }
     /// Run one script; an exception is recorded and returned, not fatal.
     pub fn run(&mut self, source: &str, name: &str) -> Result<(), String> {
@@ -345,8 +434,12 @@ impl Realm {
     /// The canvases the scripts drew on, as images, by element: bound into
     /// the page's images, a canvas renders like an image of its pixels.
     pub fn canvases(&self) -> Vec<(NodeId, Arc<olo_web::image::Image>)> {
-        let s = self.state.borrow();
-        s.canvases.iter().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))).collect()
+        let mut s = self.state.borrow_mut();
+        let mut out: Vec<_> = s.canvases.iter().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))).collect();
+        out.extend(s.gl.iter_mut().filter(|(_, c)| c.touched).filter_map(|(n, c)| c.image().map(|i| (*n, i))));
+        // Images the scripts loaded into `img` elements render too.
+        out.extend(s.images.iter().map(|(n, i)| (*n, i.clone())));
+        out
     }
     /// The document as it is now, copied, for rendering while the scripts
     /// keep theirs.
@@ -498,6 +591,12 @@ impl State {
             templates: None,
             fetcher: None,
             canvases: HashMap::new(),
+            gl: HashMap::new(),
+            image_lookup: None,
+            images: HashMap::new(),
+            image_requests: Vec::new(),
+            images_in_flight: HashMap::new(),
+            next_image: 1,
             measure: None,
             measured: None,
             layout_seconds: 0.,
@@ -743,8 +842,13 @@ fn canvas_op<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId,
     if op == "drawImage" {
         let source = array.and_then(|a| a.get_index(scope, 0)).and_then(|v| node_of(scope, v));
         let pixels = {
-            let s = state.borrow();
-            source.and_then(|src| s.canvases.get(&src)).map(|c| (c.pixels().to_vec(), c.width(), c.height()))
+            let mut s = state.borrow_mut();
+            match source {
+                Some(src) if s.canvases.contains_key(&src) => s.canvases.get(&src).map(|c| (c.pixels().to_vec(), c.width(), c.height())),
+                Some(src) if s.images.contains_key(&src) => s.images.get(&src).map(|i| (i.rgba().to_vec(), i.width(), i.height())),
+                Some(src) => s.gl.get_mut(&src).and_then(|c| c.image()).map(|i| (i.rgba().to_vec(), i.width(), i.height())),
+                None => None,
+            }
         };
         let Some((pixels, sw, sh)) = pixels else { return None };
         let mut s = state.borrow_mut();
@@ -1010,6 +1114,12 @@ const NATIVES: &[&str] = &[
     "runScript",
     "canvasSize",
     "canvasOp",
+    "canvasPixels",
+    "loadImage",
+    "imageSize",
+    "imagePixels",
+    "glCreate",
+    "glOp",
     "rect",
     "paddingRect",
     "scrollSize",
@@ -1097,6 +1207,83 @@ fn wrap<'s>(scope: &mut v8::PinScope<'s, '_>, state: &Shared, node: NodeId) -> O
 }
 fn string<'s>(scope: &mut v8::PinScope<'s, '_>, s: &str) -> v8::Local<'s, v8::Value> {
     v8::String::new(scope, s).map_or_else(|| v8::undefined(scope).into(), |v| v.into())
+}
+/// A script value as a GL argument: numbers (booleans as 0/1), strings,
+/// typed arrays and buffers as their bytes.
+fn gl_arg(scope: &mut v8::PinScope, v: v8::Local<v8::Value>) -> webgl::Arg {
+    use webgl::Kind;
+    if v.is_null_or_undefined() {
+        return webgl::Arg::Null;
+    }
+    if v.is_number() || v.is_boolean() {
+        return webgl::Arg::Num(v.number_value(scope).unwrap_or(0.));
+    }
+    if v.is_string() {
+        return webgl::Arg::Str(v.to_rust_string_lossy(scope));
+    }
+    if let Ok(view) = v.try_cast::<v8::ArrayBufferView>() {
+        let kind = if v.is_float32_array() {
+            Kind::F32
+        } else if v.is_int32_array() {
+            Kind::I32
+        } else if v.is_uint32_array() {
+            Kind::U32
+        } else if v.is_int16_array() {
+            Kind::I16
+        } else if v.is_uint16_array() {
+            Kind::U16
+        } else if v.is_int8_array() {
+            Kind::I8
+        } else if v.is_uint8_array() || v.is_uint8_clamped_array() {
+            Kind::U8
+        } else {
+            Kind::Raw
+        };
+        let mut bytes = vec![0u8; view.byte_length()];
+        view.copy_contents(&mut bytes);
+        return webgl::Arg::Bytes(bytes, kind);
+    }
+    if let Ok(buffer) = v.try_cast::<v8::ArrayBuffer>() {
+        let len = buffer.byte_length();
+        // SAFETY: the buffer's store is `len` bytes long while it is alive.
+        let bytes = buffer.data().map_or_else(Vec::new, |p| unsafe { std::slice::from_raw_parts(p.as_ptr() as *const u8, len) }.to_vec());
+        return webgl::Arg::Bytes(bytes, Kind::Raw);
+    }
+    if let Ok(array) = v.try_cast::<v8::Array>() {
+        let bytes = (0..array.length()).flat_map(|i| (array.get_index(scope, i).and_then(|x| x.number_value(scope)).unwrap_or(0.) as f32).to_le_bytes()).collect();
+        return webgl::Arg::Bytes(bytes, Kind::F32);
+    }
+    webgl::Arg::Null
+}
+/// Premultiplied RGBA8 as straight RGBA8.
+fn unpremultiply(rgba: &[u8]) -> Vec<u8> {
+    let mut out = rgba.to_vec();
+    for px in out.chunks_exact_mut(4) {
+        let a = u32::from(px[3]);
+        if a != 0 && a != 255 {
+            for c in &mut px[..3] {
+                *c = ((u32::from(*c) * 255 + a / 2) / a).min(255) as u8;
+            }
+        }
+    }
+    out
+}
+#[derive(Clone, Copy)]
+enum ByteKind {
+    U8,
+    I32,
+    F32,
+}
+/// Bytes as a typed array of the given kind over a fresh buffer.
+fn bytes_array<'s>(scope: &mut v8::PinScope<'s, '_>, bytes: Vec<u8>, kind: ByteKind) -> v8::Local<'s, v8::Value> {
+    let len = bytes.len();
+    let store = v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
+    let buffer = v8::ArrayBuffer::with_backing_store(scope, &store);
+    match kind {
+        ByteKind::U8 => v8::Uint8Array::new(scope, buffer, 0, len).map_or_else(|| v8::undefined(scope).into(), |a| a.into()),
+        ByteKind::I32 => v8::Int32Array::new(scope, buffer, 0, len / 4).map_or_else(|| v8::undefined(scope).into(), |a| a.into()),
+        ByteKind::F32 => v8::Float32Array::new(scope, buffer, 0, len / 4).map_or_else(|| v8::undefined(scope).into(), |a| a.into()),
+    }
 }
 fn arg_string(scope: &mut v8::PinScope, args: &v8::FunctionCallbackArguments, i: i32) -> String {
     let v = args.get(i);
@@ -1597,13 +1784,140 @@ fn native(scope: &mut v8::PinScope, args: v8::FunctionCallbackArguments, mut rv:
                 let w = args.get(1).number_value(scope).unwrap_or(300.).max(0.) as u32;
                 let h = args.get(2).number_value(scope).unwrap_or(150.).max(0.) as u32;
                 let mut s = state.borrow_mut();
-                match s.canvases.get_mut(&n) {
-                    Some(c) => c.resize(w, h),
-                    None => {
-                        if let Some(c) = canvas::Canvas::new(w, h) {
-                            s.canvases.insert(n, c);
+                if let Some(c) = s.gl.get_mut(&n) {
+                    c.resize(w, h);
+                } else {
+                    match s.canvases.get_mut(&n) {
+                        Some(c) => c.resize(w, h),
+                        None => {
+                            if let Some(c) = canvas::Canvas::new(w, h) {
+                                s.canvases.insert(n, c);
+                            }
                         }
                     }
+                }
+            }
+        }
+        // A canvas's pixels (2D or WebGL), straight RGBA rows from the top,
+        // as a Uint8Array: for textures and drawImage between canvases.
+        "canvasPixels" => {
+            if let Some(n) = node(scope, 0) {
+                let mut s = state.borrow_mut();
+                let bytes = if let Some(c) = s.canvases.get(&n) { Some(c.image_data(0, 0, c.width(), c.height())) } else { s.gl.get_mut(&n).and_then(|c| c.pixels()) };
+                drop(s);
+                if let Some(bytes) = bytes {
+                    rv.set(bytes_array(scope, bytes, ByteKind::U8));
+                }
+            }
+        }
+        // Load an image into an `img` element: (element, absolute URL).
+        // Answers [naturalWidth, naturalHeight] when the page has it
+        // already, else undefined: it is requested, and `__olo_imageLoaded`
+        // follows (null when nothing can load it).
+        "loadImage" => {
+            if let Some(n) = node(scope, 0) {
+                let url = arg_string(scope, &args, 1);
+                let mut s = state.borrow_mut();
+                let known = match s.image_lookup.as_mut() {
+                    Some(f) => f(&url),
+                    None => None,
+                };
+                match known {
+                    Some(image) => {
+                        let (w, h) = image.natural();
+                        s.images.insert(n, image);
+                        drop(s);
+                        let items: Vec<v8::Local<v8::Value>> = vec![v8::Number::new(scope, w.round()).into(), v8::Number::new(scope, h.round()).into()];
+                        rv.set(v8::Array::new_with_elements(scope, &items).into());
+                    }
+                    None if s.image_lookup.is_some() => {
+                        let id = s.next_image;
+                        s.next_image += 1;
+                        s.image_requests.push((id, n, url));
+                    }
+                    None => rv.set_null(),
+                }
+            }
+        }
+        // [naturalWidth, naturalHeight, pixelWidth, pixelHeight] of a loaded
+        // image element, or null.
+        "imageSize" => {
+            if let Some(n) = node(scope, 0) {
+                let size = state.borrow().images.get(&n).map(|i| (i.natural(), i.width(), i.height()));
+                if let Some(((w, h), pw, ph)) = size {
+                    let items: Vec<v8::Local<v8::Value>> = vec![
+                        v8::Number::new(scope, w.round()).into(),
+                        v8::Number::new(scope, h.round()).into(),
+                        v8::Number::new(scope, f64::from(pw)).into(),
+                        v8::Number::new(scope, f64::from(ph)).into(),
+                    ];
+                    rv.set(v8::Array::new_with_elements(scope, &items).into());
+                }
+            }
+        }
+        // A loaded image's pixels, straight RGBA rows from the top (for
+        // textures), as a Uint8Array.
+        "imagePixels" => {
+            if let Some(n) = node(scope, 0) {
+                let bytes = state.borrow().images.get(&n).map(|i| unpremultiply(i.rgba()));
+                if let Some(bytes) = bytes {
+                    rv.set(bytes_array(scope, bytes, ByteKind::U8));
+                }
+            }
+        }
+        // A WebGL context for a canvas: (canvas, width, height,
+        // premultipliedAlpha, preserveDrawingBuffer, version). True if the
+        // GPU is there.
+        "glCreate" => {
+            let ok = node(scope, 0).is_some_and(|n| {
+                let w = args.get(1).number_value(scope).unwrap_or(300.).max(1.) as u32;
+                let h = args.get(2).number_value(scope).unwrap_or(150.).max(1.) as u32;
+                let premultiplied = args.get(3).number_value(scope).unwrap_or(1.) != 0.;
+                let preserve = args.get(4).number_value(scope).unwrap_or(0.) != 0.;
+                let mut s = state.borrow_mut();
+                if s.gl.contains_key(&n) {
+                    return true;
+                }
+                match webgl::Gl::shared().and_then(|gl| webgl::Context::new(gl, w, h, premultiplied, preserve)) {
+                    Ok(c) => {
+                        s.canvases.remove(&n);
+                        s.gl.insert(n, c);
+                        true
+                    }
+                    Err(e) => {
+                        s.report.console.push(format!("webgl: {e}"));
+                        false
+                    }
+                }
+            });
+            rv.set_bool(ok);
+        }
+        // One GL call: the canvas, the operation, its arguments (an array).
+        "glOp" => {
+            if let Some(n) = node(scope, 0) {
+                let op = arg_string(scope, &args, 1);
+                let array = v8::Local::<v8::Array>::try_from(args.get(2)).ok();
+                let count = array.map_or(0, |a| a.length());
+                let mut converted = Vec::with_capacity(count as usize);
+                for i in 0..count {
+                    let v = array.and_then(|a| a.get_index(scope, i));
+                    converted.push(v.map_or(webgl::Arg::Null, |v| gl_arg(scope, v)));
+                }
+                let out = {
+                    let mut s = state.borrow_mut();
+                    match s.gl.get_mut(&n) {
+                        Some(c) => c.op(&op, &converted),
+                        None => webgl::Out::None,
+                    }
+                };
+                match out {
+                    webgl::Out::None => {}
+                    webgl::Out::Num(v) => rv.set(v8::Number::new(scope, v).into()),
+                    webgl::Out::Bool(b) => rv.set_bool(b),
+                    webgl::Out::Str(t) => rv.set(string(scope, &t)),
+                    webgl::Out::Floats(f) => rv.set(bytes_array(scope, f.iter().flat_map(|x| x.to_le_bytes()).collect(), ByteKind::F32)),
+                    webgl::Out::Ints(f) => rv.set(bytes_array(scope, f.iter().flat_map(|x| x.to_le_bytes()).collect(), ByteKind::I32)),
+                    webgl::Out::Bytes(b) => rv.set(bytes_array(scope, b, ByteKind::U8)),
                 }
             }
         }

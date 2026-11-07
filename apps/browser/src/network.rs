@@ -64,6 +64,7 @@ struct CachedResponse {
 }
 /// What the session cache holds before starting over.
 const SESSION_CACHE_BYTES: usize = 256 << 20;
+#[derive(Clone)]
 pub struct Resource {
     pub url: Url,
     pub bytes: Vec<u8>,

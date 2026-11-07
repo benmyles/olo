@@ -420,7 +420,10 @@
     value: { get() { const tag = N.nodeName(this); if (tag === 'TEXTAREA') return N.textContent(this); if (tag === 'SELECT') { const o = N.query(this, 'option[selected]', false) || N.query(this, 'option', false); return o ? o.value : ''; } if (tag === 'OPTION') { const v = N.attr(this, 'value'); return v == null ? N.textContent(this) : v; } const v = this._value; return v !== undefined ? v : (N.attr(this, 'value') || ''); }, set(v) { const tag = N.nodeName(this); if (tag === 'TEXTAREA') N.setTextContent(this, String(v)); else Object.defineProperty(this, '_value', { value: String(v), writable: true, configurable: true }); } },
     defaultValue: reflect('value'),
     start: reflect('start', 'number'), span: reflect('span', 'number'), colSpan: reflect('colspan', 'number'), rowSpan: reflect('rowspan', 'number'), size: reflect('size', 'number'), maxLength: reflect('maxlength', 'number'), minLength: reflect('minlength', 'number'), rows: reflect('rows', 'number'), cols: reflect('cols', 'number'),
-    naturalWidth: { get() { return 0; } }, naturalHeight: { get() { return 0; } }, complete: { get() { return true; } },
+    naturalWidth: { get() { const z = imageSizeOf(this); return z ? z[0] : 0; } }, naturalHeight: { get() { const z = imageSizeOf(this); return z ? z[1] : 0; } },
+    complete: { get() { if (N.nodeName(this) !== 'IMG') return true; const e = imageLoads.get(this); if (e) return e.state !== 'loading'; return !N.attr(this, 'src') && !N.attr(this, 'srcset') || !!imageSizeOf(this); } },
+    currentSrc: { get() { const e = imageLoads.get(this); return e ? e.url : (N.attr(this, 'src') ? resolveURL(N.attr(this, 'src')) : ''); } },
+    decode: { value() { const el = this; return new Promise((resolve, reject) => { const e = imageLoads.get(el); if (!e || e.state === 'loaded') { if (imageSizeOf(el)) resolve(); else reject(new DOMException('The source image cannot be decoded.', 'EncodingError')); return; } if (e.state === 'error') { reject(new DOMException('The source image cannot be decoded.', 'EncodingError')); return; } el.addEventListener('load', () => resolve(), { once: true }); el.addEventListener('error', () => reject(new DOMException('The source image cannot be decoded.', 'EncodingError')), { once: true }); }); } },
     offsetWidth: { get() { const r = N.rect(this); return r ? Math.round(r[2]) : 0; } }, offsetHeight: { get() { const r = N.rect(this); return r ? Math.round(r[3]) : 0; } },
     offsetTop: { get() { const r = N.rect(this); if (!r) return 0; const p = this.offsetParent; const pr = p && p !== documentNode ? N.paddingRect(p) : null; return Math.round(r[1] - (pr ? pr[1] : 0)); } },
     offsetLeft: { get() { const r = N.rect(this); if (!r) return 0; const p = this.offsetParent; const pr = p && p !== documentNode ? N.paddingRect(p) : null; return Math.round(r[0] - (pr ? pr[0] : 0)); } },
@@ -502,6 +505,54 @@
     getBBox() { return new DOMRect(0, 0, 0, 0); }, getCTM() { return null; }, getScreenCTM() { return null; }, getTotalLength() { return 0; },
   });
   define(HTMLElement.prototype, {});
+  // Images: a `src` (or `srcset`) set by script loads the image through the
+  // engine as a task, then `load` (or `error`) fires; an image the parser
+  // made loads when first asked about. Natural sizes come from the engine.
+  const imageLoads = new WeakMap();
+  const firstCandidate = (srcset) => { const m = /^\s*([^\s,]+)/.exec(String(srcset || '')); return m ? m[1] : null; };
+  const imageURL = (el) => { const src = N.attr(el, 'src'); const raw = src != null && src !== '' ? src : firstCandidate(N.attr(el, 'srcset')); return raw ? resolveURL(raw) : null; };
+  const loadImageElement = (el) => {
+    const url = imageURL(el);
+    if (!url) { imageLoads.delete(el); return; }
+    const prev = imageLoads.get(el);
+    if (prev && prev.url === url && prev.state !== 'error') return;
+    const entry = { url, state: 'loading', size: null };
+    imageLoads.set(el, entry);
+    setTimeout(() => {
+      if (imageLoads.get(el) !== entry) return;
+      const size = N.loadImage(el, url);
+      if (size === undefined) return; // requested: __olo_imageLoaded follows
+      if (size) { entry.state = 'loaded'; entry.size = size; dispatch(el, new Event('load')); } else { entry.state = 'error'; dispatch(el, new Event('error')); }
+    }, 0);
+  };
+  global.__olo_imageLoaded = (el, size) => {
+    const entry = imageLoads.get(el);
+    if (!entry || entry.state !== 'loading') return;
+    if (size) { entry.state = 'loaded'; entry.size = size; dispatch(el, new Event('load')); } else { entry.state = 'error'; dispatch(el, new Event('error')); }
+  };
+  const imageSizeOf = (el) => {
+    if (N.nodeName(el) !== 'IMG') return null;
+    const e = imageLoads.get(el);
+    if (e) return e.size;
+    const known = N.imageSize(el);
+    if (known) return known;
+    const url = imageURL(el);
+    if (!url) return null;
+    const size = N.loadImage(el, url);
+    imageLoads.set(el, { url, state: size === undefined ? 'loading' : size ? 'loaded' : 'error', size: size || null });
+    return size || null;
+  };
+  const imagePixelSize = (el) => { const z = imageSizeOf(el); if (!z) return null; const full = N.imageSize(el); return full ? [full[2], full[3]] : [z[0], z[1]]; };
+  {
+    const src = Object.getOwnPropertyDescriptor(Element.prototype, 'src');
+    define(Element.prototype, {
+      src: { get: src.get, set(v) { src.set.call(this, v); if (N.nodeName(this) === 'IMG') loadImageElement(this); } },
+      srcset: { get() { return N.attr(this, 'srcset') || ''; }, set(v) { N.setAttr(this, 'srcset', String(v)); if (N.nodeName(this) === 'IMG') loadImageElement(this); } },
+    });
+    const setAttribute = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) { setAttribute.call(this, name, value); const n = String(name).toLowerCase(); if ((n === 'src' || n === 'srcset') && N.nodeName(this) === 'IMG') loadImageElement(this); };
+  }
+  global.__olo_imageSizeOf = imageSizeOf; global.__olo_imagePixelSize = imagePixelSize;
   // Text and Comment
   define(Text.prototype, {
     data: { get() { return N.data(this); }, set(v) { N.setData(this, String(v)); } },
@@ -1023,7 +1074,7 @@
     isPointInPath() { return false; } isPointInStroke() { return false; }
     fillRect(x, y, w, h) { canvasOp(this, 'fillRect', [x, y, w, h]); } strokeRect(x, y, w, h) { canvasOp(this, 'strokeRect', [x, y, w, h]); } clearRect(x, y, w, h) { canvasOp(this, 'clearRect', [x, y, w, h]); }
     fillText() {} strokeText() {} measureText(text) { return new TextMetrics(String(text).length * (parseFloat(this.font) || 10) * 0.5); }
-    drawImage(image, ...rest) { if (image && isNode(image) && N.nodeName(image) === 'CANVAS') { ensureCanvas(image); canvasOp(this, 'drawImage', [image].concat(rest)); } }
+    drawImage(image, ...rest) { const src = imageSource(image); if (src) canvasOp(this, 'drawImage', [src].concat(rest)); }
     drawFocusIfNeeded() {}
     createLinearGradient(x0, y0, x1, y1) { return new CanvasGradient(this, canvasOp(this, 'createLinearGradient', [x0, y0, x1, y1])); }
     createRadialGradient(x0, y0, r0, x1, y1, r1) { return new CanvasGradient(this, canvasOp(this, 'createRadialGradient', [x0, y0, r0, x1, y1, r1])); }
@@ -1036,7 +1087,22 @@
   }
   global.CanvasRenderingContext2D = CanvasRenderingContext2D; global.CanvasGradient = CanvasGradient; global.CanvasPattern = CanvasPattern; global.TextMetrics = TextMetrics; global.Path2D = Path2D; global.ImageData = ImageData;
   global.OffscreenCanvas = class OffscreenCanvas { constructor(w, h) { this.width = w; this.height = h; } getContext(kind) { if (String(kind) === '2d') { if (!this._ctx) this._ctx = new CanvasRenderingContext2D(this); return this._ctx; } return null; } convertToBlob() { return Promise.resolve(new Blob([])); } transferToImageBitmap() { return { width: this.width, height: this.height, close() {} }; } };
-  global.createImageBitmap = () => Promise.resolve({ width: 0, height: 0, close() {} }); global.ImageBitmap = class ImageBitmap {};
+  // A drawable source: a canvas (made if need be), a loaded image, an
+  // ImageBitmap of either.
+  const imageSource = (image) => {
+    if (image instanceof ImageBitmap) image = image._source;
+    if (!image || !isNode(image)) return null;
+    const n = N.nodeName(image);
+    if (n === 'CANVAS') { ensureCanvas(image); return image; }
+    if (n === 'IMG') return imageSizeOf(image) ? image : null;
+    return null;
+  };
+  class ImageBitmap { constructor(source, w, h) { this._source = source; this.width = w; this.height = h; } close() { this._source = null; } }
+  global.createImageBitmap = (source) => new Promise((resolve, reject) => {
+    const done = () => { const src = imageSource(source); if (!src) { reject(new DOMException('The source image cannot be decoded.', 'InvalidStateError')); return; } const z = N.nodeName(src) === 'IMG' ? imagePixelSize(src) : [src.width, src.height]; resolve(new ImageBitmap(src, z[0], z[1])); };
+    if (source && isNode(source) && N.nodeName(source) === 'IMG' && !source.complete) { source.addEventListener('load', done, { once: true }); source.addEventListener('error', () => reject(new DOMException('The source image cannot be decoded.', 'InvalidStateError')), { once: true }); } else done();
+  });
+  global.ImageBitmap = ImageBitmap; global.__olo_imageSource = imageSource;
   global.AudioContext = class AudioContext { constructor() { this.state = 'suspended'; this.destination = {}; } resume() { return Promise.resolve(); } close() { return Promise.resolve(); } createGain() { return { connect() {}, gain: { value: 1 } }; } createOscillator() { return { connect() {}, start() {}, stop() {}, frequency: { value: 440 } }; } };
   global.webkitAudioContext = global.AudioContext;
   global.speechSynthesis = { speak() {}, cancel() {}, getVoices: () => [], addEventListener() {} };

@@ -225,10 +225,11 @@ impl Engine {
                         ((bounds.y + ty) * scale - f64::from(region.y)) as f32,
                     );
                     let transform = transform.post_concat(ct);
-                    if !transform.is_valid() {
-                        return Err(Error::Unsupported("SVG viewport transform precision"));
+                    // A degenerate transform (a scale of zero, as an
+                    // animation passes through) draws nothing.
+                    if transform.is_valid() {
+                        super::vector::raster(out, vector, used_geometry, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
                     }
-                    super::vector::raster(out, vector, used_geometry, resolved_clips.map(Vec::as_slice).unwrap_or(&[]), transform, vector_mask, self.limits(), &mut layer_work, cancel)?;
                 }
                 Primitive::Fill { color } => {
                     if c.transform != u32::MAX {

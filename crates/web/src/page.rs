@@ -112,8 +112,8 @@ impl Prepared {
             return Ok(());
         }
         self.images = Some(match &self.images {
-            Some(set) => set.with_extra(&self.document, extra, Default::default(), cancel)?,
-            None => crate::image::Set::from_bindings(&self.document, extra, Default::default(), cancel)?,
+            Some(set) => set.with_extra(&self.document, extra, SCRIPTED_IMAGE_LIMITS, cancel)?,
+            None => crate::image::Set::from_bindings(&self.document, extra, SCRIPTED_IMAGE_LIMITS, cancel)?,
         });
         Ok(())
     }
@@ -183,6 +183,8 @@ pub const UA: &str = concat!(
     "input[type=hidden i]{display:none}",
 );
 #[allow(clippy::too_many_arguments)] // Explicit worker resources, viewport, cancellation and progress.
+/// Room for what scripts draw and load on top of the page's own images.
+const SCRIPTED_IMAGE_LIMITS: crate::image::Limits = crate::image::Limits { pixels: 64 << 20, bytes: 256 << 20, bindings: 2048 };
 pub fn load(
     source: Arc<str>,
     host: &impl Host,
@@ -396,7 +398,10 @@ impl Measurer {
         let mut phases = [0f64; 6];
         // The previous measurement's defaults, while the host is the same:
         // styles compare equal only against the same defaults.
-        let defaults = match previous.filter(|m| m.defaults.is_current(host)) {
+        // (Another host, another scope: the previous styles and layout
+        // hold fonts from the old one and are not reused.)
+        let previous = previous.filter(|m| m.defaults.is_current(host));
+        let defaults = match previous {
             Some(m) => m.defaults.clone(),
             None => Defaults::new(host, Default::default(), cancel)?,
         };
@@ -415,7 +420,7 @@ impl Measurer {
         phases[0] = started.elapsed().as_secs_f64() * 1000.;
         let kept = previous.filter(|p| styles.geometry_kept() && p.viewport == viewport);
         let layout = if let Some(p) = kept {
-            Arc::new(p.layout.with_styles(styles))
+            Arc::new(p.layout.with_styles(styles, doc, None))
         } else {
             let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
             // The images were bound to the document before the scripts changed
@@ -1109,8 +1114,8 @@ impl Page {
         }
         if !canvases.is_empty() {
             self.images = Some(match &self.images {
-                Some(set) => set.with_extra(&doc, canvases, Default::default(), cancel)?,
-                None => crate::image::Set::from_bindings(&doc, canvases, Default::default(), cancel)?,
+                Some(set) => set.with_extra(&doc, canvases, SCRIPTED_IMAGE_LIMITS, cancel)?,
+                None => crate::image::Set::from_bindings(&doc, canvases, SCRIPTED_IMAGE_LIMITS, cancel)?,
             });
         }
         let media = media_for(host, viewport);
@@ -1191,11 +1196,15 @@ fn render(
     previous: Option<&layout::Layout>,
     mut progress: impl FnMut(Phase, usize),
 ) -> Result<(Arc<paint::Scene>, usize, layout::Fallbacks)> {
+    // The previous layout's styles stand in only while they were computed
+    // against this host (its scope, with the fonts); otherwise they hold
+    // fonts from another scope.
+    let previous = previous.filter(|p| p.cache().tree().styles().defaults().is_some_and(|d| d.is_current(host)));
     let previous_styles = previous.map(|p| p.cache().tree().styles().as_ref());
     let mut fallbacks = layout::Fallbacks::default();
     let timing = std::env::var_os("OLO_WEB_TIMING").map(|_| std::time::Instant::now());
     let mut stamps = [0f64; 5];
-    let defaults = match previous_styles.and_then(|p| p.defaults()).filter(|d| d.is_current(host)) {
+    let defaults = match previous_styles.and_then(|p| p.defaults()) {
         Some(d) => d,
         None => Defaults::new(host, Default::default(), cancel)?,
     };
@@ -1231,7 +1240,7 @@ fn render(
     let kept = previous.filter(|p| styles.geometry_kept() && p.device_scale() == viewport.scale && same_bindings(p));
     let layout = if let Some(p) = kept {
         fallbacks.merge(&p.cache().fallbacks());
-        Arc::new(p.with_styles(styles))
+        Arc::new(p.with_styles(styles, doc, images.cloned()))
     } else {
         progress(Phase::Boxes, 0);
         let mut job = layout::BuildJob::new(doc, styles, Default::default(), cancel)?;
