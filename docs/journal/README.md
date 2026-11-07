@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Olo Doctor: ignored findings, quietly last
+
+*10:49* — Every finding has Ignore beside its fix. What's ignored leaves the count, Fix All, the tray's bag and the notifications, and is listed last under Ignored, dim, with Stop Ignoring and its fix should the person change their mind. Doctor also offers Olo's own login screen where another's greets (not shown here: the sandbox's build has no olo-login).
+
+![Olo Doctor: ignored findings, quietly last](2026-11-07/104951-olo-doctor-ignored-findings-quietly-last.png)
+
 ### Power ▸ Graphics says what each GPU is on now
 
 *01:28* — Ben asked whether changing the power mode changes the NVIDIA GPU's clock. It does in Power Saver (its clock capped at 70%), but its box showed only its Custom slider, at the card's top clock whatever the mode, while Intel's sliders moved: now each GPU's line says what the mode has it on, in numbers (here Performance: Intel 1650–2450 MHz; NVIDIA as its driver has it, since a laptop's takes no power limit), and Custom's sliders show Custom's own settings, which don't move with the mode.
