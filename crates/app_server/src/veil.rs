@@ -50,7 +50,9 @@ const FADE: Duration = Duration::from_millis(400);
 /// than flashed (windows can be back in a third of a second).
 const LEAST: Duration = Duration::from_millis(900);
 /// The background: Olo's dark, as the wordmark-on-dark is made for.
-const BACKGROUND: [f32; 4] = [0.118, 0.118, 0.133, 1.0];
+pub(crate) const BACKGROUND: [f32; 4] = [0.118, 0.118, 0.133, 1.0];
+/// The line's colour.
+const LINE: [u8; 4] = [0xd8, 0xd8, 0xdc, 0xff];
 /// What it's for: an upgrade's restart, or a session starting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Why {
@@ -263,6 +265,28 @@ fn picture(why: Why, scale: f64, stage: usize) -> Option<(MemoryRenderBuffer, (i
 /// The picture at `scale` with `stage` stages done: the wordmark, the
 /// icons (dim till lit), the line under them; whole device pixels.
 fn drawn(why: Why, scale: f64, stage: usize) -> Option<Pixmap> {
+    drawn_as(why, scale, stage, None, Parts::All).map(|d| d.pixmap)
+}
+
+/// What of the picture is drawn: all of it, or (the boot splash's, shown
+/// on its own as the computer shuts down, `plymouth.rs`) the wordmark.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Parts {
+    All,
+    Wordmark,
+}
+
+/// The picture drawn, and where its row of icons is in it (device
+/// pixels): its top and an icon's slot (its side).
+pub(crate) struct Drawn {
+    pub pixmap: Pixmap,
+    pub row_top: u32,
+    pub icon_slot: u32,
+}
+
+/// The picture at `scale` with `stage` stages done, saying `line` (else
+/// what the stage says), `parts` of it drawn; the same size whichever.
+pub(crate) fn drawn_as(why: Why, scale: f64, stage: usize, line: Option<&str>, parts: Parts) -> Option<Drawn> {
     let (icon_names, says) = stages(why);
     let px = |pt: u32| (pt as f64 * scale).round() as u32;
     let wordmark_w = fitting(&[256, 320, 384, 448, 512], px(WORDMARK));
@@ -282,6 +306,10 @@ fn drawn(why: Why, scale: f64, stage: usize) -> Option<Pixmap> {
     let x = ((width - wordmark.width()) / 2) as i32;
     pm.draw_pixmap(x, 0, wordmark.as_ref(), &paint(1.0), tiny_skia::Transform::identity(), None);
     let top = wordmark.height() + px(28);
+    let drawn = |pixmap| Some(Drawn { pixmap, row_top: top, icon_slot });
+    if parts == Parts::Wordmark {
+        return drawn(pm);
+    }
     let left = (width - row_w) / 2;
     for (k, icon) in icons.iter().enumerate() {
         let slot_x = left + k as u32 * (icon_slot + gap);
@@ -291,11 +319,11 @@ fn drawn(why: Why, scale: f64, stage: usize) -> Option<Pixmap> {
         pm.draw_pixmap(ix as i32, iy as i32, icon.as_ref(), &paint(opacity), tiny_skia::Transform::identity(), None);
     }
     let said = says[stage.saturating_sub(1).min(says.len() - 1)];
-    let line = if stage < 4 { format!("{said}…") } else { said.to_owned() };
+    let line = line.map(str::to_owned).unwrap_or_else(|| if stage < 4 { format!("{said}…") } else { said.to_owned() });
     let tw = crate::text::measure(&line, text_size, false);
     let ty = top + icon_slot + px(20);
-    crate::text::draw(&mut pm, &line, ((width as f32 - tw) / 2.0).round(), ty as f32, text_size, false, [0xd8, 0xd8, 0xdc, 0xff]);
-    Some(pm)
+    crate::text::draw(&mut pm, &line, ((width as f32 - tw) / 2.0).round(), ty as f32, text_size, false, LINE);
+    drawn(pm)
 }
 
 #[cfg(test)]

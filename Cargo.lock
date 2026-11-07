@@ -317,6 +317,7 @@ dependencies = [
  "olo-crash",
  "olo-hvif",
  "olo-images",
+ "olo-kit-base",
  "olo-palm",
  "olo-protocol",
  "olo-sync",

@@ -33,6 +33,9 @@ type Launch = (u64, Vec<String>, Vec<(String, String)>);
 
 /// The greeter's own user (data/sysusers).
 const GREETER_USER: &str = "olo-greeter";
+/// The longest Plymouth's boot splash waits for the login screen before
+/// it gives the console back (`plymouth.rs`).
+const SPLASH_WAITS: std::time::Duration = std::time::Duration::from_secs(30);
 
 enum Msg {
     Greeter(UnixStream),
@@ -40,6 +43,19 @@ enum Msg {
     GreeterGone(u64),
     Worker(u64, FromWorker),
     WorkerGone(u64),
+    /// The login screen hasn't come since Plymouth let go of the screen.
+    SplashLate,
+}
+
+/// Plymouth's boot splash, as the login screen takes over from it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Splash {
+    /// Gone (or never there: a test, a restart of the daemon).
+    Gone,
+    /// Showing the boot.
+    Showing,
+    /// Told to let go of the screen for the login screen's session.
+    LetGo,
 }
 
 /// What a worker is for.
@@ -75,6 +91,7 @@ struct Daemon {
     pending: Option<Launch>,
     /// The greeter's session, to start once its worker is in.
     pending_greeter: Option<Launch>,
+    splash: Splash,
 }
 
 pub fn run(config: Config) -> i32 {
@@ -106,7 +123,8 @@ pub fn run(config: Config) -> i32 {
             }
         }
     });
-    let mut d = Daemon { config, tx, workers: HashMap::new(), next: 1, greeter: None, user: None, pending: None, pending_greeter: None };
+    let splash = if config.test.is_none() && crate::plymouth::Splash::system().running() { Splash::Showing } else { Splash::Gone };
+    let mut d = Daemon { config, tx, workers: HashMap::new(), next: 1, greeter: None, user: None, pending: None, pending_greeter: None, splash };
     d.greeter_session();
     for msg in rx {
         d.handle(msg);
@@ -209,8 +227,22 @@ impl Daemon {
         if self.config.test.is_some() || self.workers.values().any(|w| w.role == Role::GreeterSession || w.started) {
             return;
         }
+        if self.splash == Splash::Showing {
+            // Plymouth lets go of the screen first; it quits once the login
+            // screen shows (or gives the console back if it doesn't).
+            crate::plymouth::Splash::system().deactivate();
+            self.splash = Splash::LetGo;
+            let tx = self.tx.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(SPLASH_WAITS);
+                let _ = tx.send(Msg::SplashLate);
+            });
+        }
         crate::vt::activate(self.config.vt);
-        let Some(id) = self.spawn(Role::GreeterSession, GREETER_USER) else { return };
+        let Some(id) = self.spawn(Role::GreeterSession, GREETER_USER) else {
+            self.splash_gone(false);
+            return;
+        };
         let session = self.config.programs.join("olo-session");
         let socket = olo_greet::socket_path();
         let env = vec![
@@ -221,6 +253,15 @@ impl Daemon {
         ];
         // (Its PAM lets it in without a question.)
         self.pending_greeter = Some((id, vec![session.display().to_string(), "--tty-udev".into(), "--greeter".into()], env));
+    }
+
+    /// Plymouth quit, its last picture left for the login screen
+    /// (`keep`), else the console given back.
+    fn splash_gone(&mut self, keep: bool) {
+        if self.splash != Splash::Gone {
+            crate::plymouth::Splash::system().quit(keep);
+            self.splash = Splash::Gone;
+        }
     }
 
     fn root(&self) -> PathBuf {
@@ -244,6 +285,8 @@ impl Daemon {
                     let _ = tx.send(Msg::GreeterGone(id));
                 });
                 self.greeter = Some((id, stream));
+                // The login screen is up: the boot splash makes way.
+                self.splash_gone(true);
             }
             Msg::GreeterGone(id) => {
                 if self.greeter.as_ref().is_some_and(|(g, _)| *g == id) {
@@ -258,6 +301,12 @@ impl Daemon {
             }
             Msg::Worker(id, m) => self.heard(id, m),
             Msg::WorkerGone(id) => self.gone(id),
+            Msg::SplashLate => {
+                if self.splash == Splash::LetGo {
+                    eprintln!("olo-login: the login screen didn't show; the console is back");
+                    self.splash_gone(false);
+                }
+            }
         }
     }
 
@@ -386,7 +435,9 @@ impl Daemon {
                 if let Some((winner, command, env)) = self.pending.take() {
                     self.send(winner, &ToWorker::Start { command, env });
                 } else {
-                    // It ended (it crashed, or was ended): again.
+                    // It ended (it crashed, or was ended): again, the boot
+                    // splash gone so its console shows why if this fails too.
+                    self.splash_gone(false);
                     self.greeter_session();
                 }
             }
