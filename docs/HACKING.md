@@ -10999,8 +10999,11 @@ start):
   only that is undone, after a reload too. Checked: `status_of`'s test
   (a lock, Do Not Disturb, a voice clip that isn't a call, a pause
   that doesn't end one), and the page's calls against a fake Slack in
-  node (/var/tmp's harness: each case's calls, a status of the
-  person's own left, ours changed by them kept); not yet against
+  node (`node tools/dev/slack-status-check.mjs
+  apps/chrome/extension/slack-page.js`: each case's calls, a status of
+  the person's own left, ours changed by them kept), and
+  `watch_listening` against a private PipeWire (a virtual microphone
+  recorded counts; a speaker's monitor recorded doesn't); not yet against
   Slack itself, which would change the person's status where others
   see it.
 
