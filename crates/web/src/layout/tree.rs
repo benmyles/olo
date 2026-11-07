@@ -144,6 +144,10 @@ impl Tree {
     pub fn image(&self, index: u32) -> Option<&Arc<crate::image::Image>> {
         self.images.as_ref()?.image(index)
     }
+    /// A `background-image` by the URL as written in the stylesheet.
+    pub fn background(&self, url: &str) -> Option<&Arc<crate::image::Image>> {
+        self.images.as_ref()?.background(url)
+    }
     pub fn text_bytes(&self) -> usize {
         self.text_bytes
     }

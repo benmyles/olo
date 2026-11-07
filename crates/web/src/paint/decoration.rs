@@ -10,7 +10,7 @@ use crate::{
     },
     layout::Rect,
 };
-use tiny_skia::{BlendMode, FillRule, GradientStop, LinearGradient, Mask, Paint, Path, PathBuilder, Pixmap, Point, RadialGradient, Shader, SpreadMode, Transform};
+use tiny_skia::{BlendMode, FillRule, FilterQuality, GradientStop, LinearGradient, Mask, Paint, Path, PathBuilder, Pattern, Pixmap, Point, RadialGradient, Shader, SpreadMode, Transform};
 /// Each corner's horizontal and vertical radii in CSS pixels, top-left first.
 pub type Radii = [[f64; 2]; 4];
 struct Basis(f64);
@@ -24,6 +24,12 @@ fn resolve(n: &crate::css::properties::Numeric, basis: f64) -> f64 {
 }
 /// A computed length-percentage in CSS pixels, percentages of `basis`.
 pub(super) fn resolve_any(n: &crate::css::properties::Numeric, basis: f64) -> f64 {
+    // A keyword's constant percentage (`center` is 50%) is of the basis too.
+    if let Some(q) = n.expression().constant()
+        && q.ty.kind() == Some(math::Dimension::Percentage)
+    {
+        return q.value / 100. * basis;
+    }
     n.resolve(&Basis(basis), &mut math::Scratch::default(), Default::default(), None).unwrap_or(0.)
 }
 /// The corner radii of a box, percentages against its size, scaled down
@@ -283,9 +289,11 @@ pub(super) fn raster(
     region: DeviceRect,
     mask: Option<&Mask>,
     transform: Transform,
-    limits: Limits,
+    engine: &mut Engine,
+    tree: &crate::layout::Tree,
     cancel: Option<&AtomicBool>,
 ) -> Result<()> {
+    let limits = engine.limits();
     let radii = radii(s, outer);
     let Some(border_path) = path(outer, &radii, scale, region) else { return Ok(()) };
     let current = s.used_color(P::Color)?;
@@ -374,8 +382,15 @@ pub(super) fn raster(
                 Value::Keyword(K::ContentBox) => content_box,
                 _ => padding_box,
             };
-            for image in images.0.iter().rev().flatten() {
+            for (layer, image) in images.0.iter().enumerate().rev() {
                 check(cancel)?;
+                let Some(image) = image else { continue };
+                if let Image::Url(url) = image {
+                    if let Some(bitmap) = tree.background(url) {
+                        image_layer(out, s, layer, bitmap, origin_box, clip_path, scale, region, mask, transform, engine, cancel)?;
+                    }
+                    continue;
+                }
                 let Some(shader) = shader(image, current, origin_box, scale, region) else { continue };
                 let p = Paint { shader, anti_alias: rounded(&radii) || !transform.is_identity(), ..Default::default() };
                 out.fill_path(clip_path, &p, FillRule::Winding, transform, mask);
@@ -414,6 +429,106 @@ pub(super) fn raster(
             super::border::raster(out, outer, inner, [colors[0], colors[1], colors[2], colors[3]], scale, region, mask, transform, cancel)?;
         }
     }
+    Ok(())
+}
+/// One `background-image: url()` layer (CSS Backgrounds 3 §3): sized by
+/// `background-size` against its positioning area, placed by
+/// `background-position`, tiled by `background-repeat`, clipped to the
+/// box's clip path. Drawn as a pattern of the image's nearest mip level.
+#[allow(clippy::too_many_arguments)]
+fn image_layer(
+    out: &mut Pixmap,
+    s: &Style,
+    layer: usize,
+    image: &std::sync::Arc<crate::image::Image>,
+    area: Rect,
+    clip_path: &Path,
+    scale: f64,
+    region: DeviceRect,
+    mask: Option<&Mask>,
+    transform: Transform,
+    engine: &mut Engine,
+    cancel: Option<&AtomicBool>,
+) -> Result<()> {
+    use crate::css::properties::{RepeatAxis, Size};
+    let (natural_w, natural_h) = (f64::from(image.width()), f64::from(image.height()));
+    if natural_w <= 0. || natural_h <= 0. || area.width <= 0. || area.height <= 0. {
+        return Ok(());
+    }
+    let ratio = natural_w / natural_h;
+    let nth = |n: usize| if n == 0 { 0 } else { layer % n };
+    let (w, h) = match s.value(P::BackgroundSize) {
+        Value::Sizes(sizes) if !sizes.0.is_empty() => match &sizes.0[nth(sizes.0.len())] {
+            Size::Auto => (natural_w, natural_h),
+            Size::Cover => {
+                let f = (area.width / natural_w).max(area.height / natural_h);
+                (natural_w * f, natural_h * f)
+            }
+            Size::Contain => {
+                let f = (area.width / natural_w).min(area.height / natural_h);
+                (natural_w * f, natural_h * f)
+            }
+            Size::Explicit(w, h) => {
+                let w = w.as_ref().map(|w| resolve_any(w, area.width));
+                let h = h.as_ref().map(|h| resolve_any(h, area.height));
+                match (w, h) {
+                    (Some(w), Some(h)) => (w, h),
+                    (Some(w), None) => (w, w / ratio),
+                    (None, Some(h)) => (h * ratio, h),
+                    (None, None) => (natural_w, natural_h),
+                }
+            }
+        },
+        _ => (natural_w, natural_h),
+    };
+    if !(w.is_finite() && h.is_finite()) || w <= 0. || h <= 0. {
+        return Ok(());
+    }
+    // Percentages of background-position are of the free space.
+    let (x, y) = match s.value(P::BackgroundPosition) {
+        Value::Positions(p) if !p.0.is_empty() => {
+            let (px, py) = &p.0[nth(p.0.len())];
+            (resolve_any(px, area.width - w), resolve_any(py, area.height - h))
+        }
+        _ => (0., 0.),
+    };
+    let (rx, ry) = match s.value(P::BackgroundRepeat) {
+        Value::Repeats(r) if !r.0.is_empty() => r.0[nth(r.0.len())],
+        _ => (RepeatAxis::Repeat, RepeatAxis::Repeat),
+    };
+    let repeat_x = rx != RepeatAxis::NoRepeat;
+    let repeat_y = ry != RepeatAxis::NoRepeat;
+    let pixmap = super::image::surface(engine, image, w * scale, h * scale, cancel)?;
+    // The tile's origin and size in untransformed device space.
+    let origin = Point::from_xy(((area.x + x) * scale - f64::from(region.x)) as f32, ((area.y + y) * scale - f64::from(region.y)) as f32);
+    let (tile_w, tile_h) = ((w * scale) as f32, (h * scale) as f32);
+    let pattern = Transform::from_scale(tile_w / pixmap.width() as f32, tile_h / pixmap.height() as f32).post_translate(origin.x, origin.y);
+    let spread = if repeat_x || repeat_y { SpreadMode::Repeat } else { SpreadMode::Pad };
+    let paint = Paint { shader: Pattern::new((*pixmap).as_ref(), spread, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
+    if repeat_x && repeat_y {
+        out.fill_path(clip_path, &paint, FillRule::Winding, transform, mask);
+        return Ok(());
+    }
+    // Without repeat along an axis, only the tile's band along it paints.
+    let far = 1e7f32;
+    let Some(band) =
+        tiny_skia::Rect::from_xywh(if repeat_x { -far } else { origin.x }, if repeat_y { -far } else { origin.y }, if repeat_x { 2. * far } else { tile_w }, if repeat_y { 2. * far } else { tile_h })
+    else {
+        return Ok(());
+    };
+    if (region.width as usize).saturating_mul(region.height as usize) > engine.limits().layer_bytes {
+        return Err(Error::Limit);
+    }
+    let mut m = match mask {
+        Some(mask) => mask.clone(),
+        None => {
+            let mut m = Mask::new(region.width, region.height).ok_or(Error::Limit)?;
+            m.data_mut().fill(255);
+            m
+        }
+    };
+    m.intersect_path(&PathBuilder::from_rect(band), FillRule::Winding, true, transform);
+    out.fill_path(clip_path, &paint, FillRule::Winding, transform, Some(&m));
     Ok(())
 }
 /// How far a box's outer shadows extend past its border box, per side.

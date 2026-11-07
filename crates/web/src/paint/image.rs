@@ -190,6 +190,15 @@ pub(super) fn transformed(
     if width <= 0. || height <= 0. {
         return Ok(());
     }
+    let pixmap = surface(engine, image, width, height, cancel)?;
+    let pattern = Transform::from_scale(rect.width() / pixmap.width() as f32, rect.height() / pixmap.height() as f32).post_translate(rect.x(), rect.y());
+    let paint = Paint { shader: Pattern::new((*pixmap).as_ref(), SpreadMode::Pad, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
+    out.fill_rect(rect, &paint, transform, mask);
+    Ok(())
+}
+/// The image as a tiny-skia surface at the mip level nearest `width` ×
+/// `height` device pixels, for drawing through a pattern shader.
+pub(super) fn surface(engine: &mut Engine, image: &Arc<crate::image::Image>, width: f64, height: f64, cancel: Option<&AtomicBool>) -> Result<Arc<Pixmap>> {
     let max_level = 31 - image.width().max(image.height()).leading_zeros();
     let lod =
         if width < f64::from(image.width()) && height < f64::from(image.height()) { ((f64::from(image.width()) / width).max(f64::from(image.height()) / height).log2() - 0.5).max(0.) } else { 0. };
@@ -206,11 +215,7 @@ pub(super) fn transformed(
         }
     };
     let plane = source.as_ref().map_or_else(|| Plane::from(image.as_ref()), |p| p.plane());
-    let pixmap = engine.premultiplied(image, level, plane, cancel)?;
-    let pattern = Transform::from_scale(rect.width() / pixmap.width() as f32, rect.height() / pixmap.height() as f32).post_translate(rect.x(), rect.y());
-    let paint = Paint { shader: Pattern::new((*pixmap).as_ref(), SpreadMode::Pad, FilterQuality::Bilinear, 1., pattern), anti_alias: true, ..Default::default() };
-    out.fill_rect(rect, &paint, transform, mask);
-    Ok(())
+    engine.premultiplied(image, level, plane, cancel)
 }
 impl Engine {
     /// The image's pixels at a mip level as a tiny-skia surface (the same

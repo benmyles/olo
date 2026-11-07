@@ -613,3 +613,52 @@ fn generated_content_paints_before_and_after_text_and_blocks() {
     assert_eq!(pixel(&t, 1, 3), [0, 0, 0, 255]);
     assert_eq!(pixel(&t, 11, 3), [255; 4]);
 }
+
+#[test]
+fn background_image_layers_tile_position_size_and_clip() {
+    use olo_web::{image::Image, page};
+    let mut b = Builder::new(Default::default());
+    b.load_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inline-fixtures/plain.ttf"), |_| {}, None).unwrap();
+    let scope = FontSet::new(b.finish(None).unwrap(), GenericPolicy::new(&["Olo Inline plain"]).unwrap(), Default::default()).unwrap().scope("en").unwrap();
+    let host = native_host::NativeHost(scope.clone());
+    // A 2 × 2 image: red left, blue right.
+    let rgba: Vec<u8> = [[255, 0, 0, 255], [0, 0, 255, 255], [255, 0, 0, 255], [0, 0, 255, 255]].concat();
+    let image = Image::from_rgba(2, 2, rgba, Default::default(), None).unwrap();
+    let render = |css: &str| {
+        let html = format!("<!doctype html><html><head><style>body,div{{margin:0;padding:0;border:0}}div{{width:40px;height:40px}}{css}</style></head><body><div></div></body></html>");
+        let mut shaper = Shaper::default();
+        let mut p = paint::Engine::default();
+        let page = page::load_assets(
+            Arc::from(html),
+            &host,
+            &scope,
+            &mut shaper,
+            &mut p,
+            layout::Viewport { width: 100., height: 100., scale: 1. },
+            None,
+            |_, _| {},
+            |kind, _, href| Ok((kind == page::ResourceKind::Image && href == "a.png").then(|| page::Resource::Image(image.clone()))),
+        )
+        .unwrap();
+        assert!(page.fallbacks.is_empty(), "{}", page.fallbacks);
+        let tile = p.raster(&page.scene, paint::DeviceRect { x: 0, y: 0, width: 100, height: 100 }, None).unwrap();
+        tile.into_rgba()
+    };
+    let px = |t: &[u8], x: usize, y: usize| -> [u8; 4] { t[(y * 100 + x) * 4..][..4].try_into().unwrap() };
+    // Repeated at its natural size: red and blue alternate every pixel.
+    let t = render("div{background:url(a.png)}");
+    assert_eq!(px(&t, 0, 0), [255, 0, 0, 255]);
+    assert_eq!(px(&t, 1, 0), [0, 0, 255, 255]);
+    assert_eq!(px(&t, 39, 39), [0, 0, 255, 255]);
+    assert_eq!(px(&t, 50, 50), [255; 4], "outside the box");
+    // Sized to 20px and centred, no repeat: the box's corner is white and
+    // the middle splits red | blue at x = 20.
+    let t = render("div{background:url(a.png) center / 20px 20px no-repeat}");
+    assert_eq!(px(&t, 2, 2), [255; 4]);
+    assert_eq!(px(&t, 14, 20), [255, 0, 0, 255]);
+    assert_eq!(px(&t, 26, 20), [0, 0, 255, 255]);
+    // cover: scaled to the box, so the right half is blue everywhere.
+    let t = render("div{background:url(a.png) center / cover no-repeat}");
+    assert_eq!(px(&t, 5, 35), [255, 0, 0, 255]);
+    assert_eq!(px(&t, 35, 5), [0, 0, 255, 255]);
+}

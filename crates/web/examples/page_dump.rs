@@ -117,7 +117,15 @@ fn main() {
                     let file = dir.join("fonts").join(Path::new(name).file_name().unwrap_or_default());
                     Ok(std::fs::read(file).ok().map(|b| page::Resource::Font(Arc::from(b))))
                 }
-                page::ResourceKind::Image => Ok(None),
+                page::ResourceKind::Image => {
+                    // PNG files next to the page (tiny-skia decodes; its pixels
+                    // are premultiplied, which the image type takes as straight:
+                    // exact for opaque images).
+                    let path = dir.join(name.trim_start_matches('/'));
+                    let Ok(pixmap) = tiny_skia::Pixmap::load_png(&path) else { return Ok(None) };
+                    let image = olo_web::image::Image::from_rgba(pixmap.width(), pixmap.height(), pixmap.data().to_vec(), Default::default(), None).map_err(|_| olo_web::paint::Error::Limit)?;
+                    Ok(Some(page::Resource::Image(image)))
+                }
             }
         },
     );

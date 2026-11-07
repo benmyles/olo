@@ -422,7 +422,7 @@ impl<'a> BuildJob<'a> {
         let shadows = matches!(s.value(P::BoxShadow), Value::Shadows(_));
         if decoration::rounded(&radii) || images || shadows {
             if let Value::Images(list) = s.value(P::BackgroundImage)
-                && list.0.iter().flatten().any(|i| matches!(i, crate::css::properties::Image::Url(_)))
+                && list.0.iter().flatten().any(|i| matches!(i, crate::css::properties::Image::Url(url) if self.layout.cache().tree().background(url).is_none()))
             {
                 self.note("background image not loaded", id);
             }

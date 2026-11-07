@@ -231,7 +231,7 @@ impl Engine {
                     let tree = scene.layout.cache().tree();
                     let s = tree.style(*owner).ok_or(Error::Invalid)?;
                     let g = scene.layout.geometry(*owner).ok_or(Error::Invalid)?;
-                    super::decoration::raster(out, s, g, *outer, scale, region, mask.as_ref(), ct, self.limits(), cancel)?;
+                    super::decoration::raster(out, s, g, *outer, scale, region, mask.as_ref(), ct, self, tree, cancel)?;
                 }
                 Primitive::Border { owner, colors } => {
                     let b = scene.layout.geometry(*owner).ok_or(Error::Invalid)?.border_width;

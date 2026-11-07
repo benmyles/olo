@@ -224,7 +224,7 @@ fn render(
                 let mut url = base.and_then(|b| document.url.join(b).ok()).unwrap_or_else(|| document.url.clone()).join(href)?;
                 url.set_fragment(None);
                 resources += 1;
-                if resources > 256 {
+                if resources > 1024 {
                     return Err("Page exceeds the development resource request limit".into());
                 }
                 proxy.send(Reply::Status(r.id, "Loading font…".into()));
@@ -244,7 +244,7 @@ fn render(
                     return Ok(image.as_ref().map(|image| page::Resource::Image(image.clone())));
                 }
                 resources += 1;
-                if resources > 256 {
+                if resources > 1024 {
                     return Err("Page exceeds the development resource request limit".into());
                 }
                 proxy.send(Reply::Status(r.id, "Loading image…".into()));
@@ -263,7 +263,7 @@ fn render(
                 };
             }
             resources += 1;
-            if resources > 256 {
+            if resources > 1024 {
                 return Err("Page exceeds the development resource request limit".into());
             }
             proxy.send(Reply::Status(r.id, "Loading stylesheet…".into()));

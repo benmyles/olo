@@ -94,15 +94,19 @@ fn media_for(host: &impl Host, viewport: layout::Viewport) -> css::media::Media 
     css::media::Media::screen(viewport.width, viewport.height, viewport.scale, host.scheme() == css::color::Scheme::Dark)
 }
 /// Compile every sheet for one medium, with the `@font-face` rules met.
-fn compile(sheets: &[(css::Syntax, Origin, Option<Arc<str>>)], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<(css::cascade::RuleSet, bool, Vec<css::fonts::FontFace>)> {
+type Compiled = (css::cascade::RuleSet, bool, Vec<css::fonts::FontFace>, Vec<(Arc<str>, Option<Arc<str>>)>);
+fn compile(sheets: &[(css::Syntax, Origin, Option<Arc<str>>)], media: css::media::Media, cancel: Option<&AtomicBool>) -> Result<Compiled> {
     let mut builder = SheetBuilder::new(Default::default()).with_media(media);
     for (syntax, origin, base) in sheets {
         builder.add_sheet_from(syntax, *origin, base.clone(), cancel)?;
     }
     let dependent = builder.media_dependent();
     let faces = builder.font_faces().to_vec();
-    Ok((builder.finish(cancel)?, dependent, faces))
+    let backgrounds = builder.background_urls().to_vec();
+    Ok((builder.finish(cancel)?, dependent, faces, backgrounds))
 }
+/// At most this many `background-image` files per page.
+const BACKGROUND_IMAGES: usize = 256;
 /// At most this many web fonts, and this many decoded bytes, per page.
 const FONT_FACES: usize = 64;
 const FONT_BYTES: usize = 64 * 1024 * 1024;
@@ -208,11 +212,36 @@ pub fn prepare(
     let mut base = None;
     let mut style_nodes = Vec::new();
     let mut image_nodes = Vec::new();
+    let mut inline_backgrounds: Vec<Arc<str>> = Vec::new();
     while let Some(node) = next {
         if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
             return Err(paint::Error::Cancelled.into());
         }
         if doc.node_type(node)? == NodeType::Element {
+            // Inline `style="background-image: url(…)"`: its images are
+            // fetched with the sheets'.
+            if let Some(style) = doc.attribute(node, "style")?
+                && style.contains("url(")
+                && inline_backgrounds.len() < BACKGROUND_IMAGES
+                && let Ok(syntax) = css::Syntax::parse(Arc::from(style), Default::default(), cancel)
+                && let Ok(declarations) = syntax.declarations(cancel)
+            {
+                for d in declarations {
+                    if let Ok(css::properties::Declaration::Known { values, .. }) = css::properties::Declaration::compile(&d, Default::default(), cancel) {
+                        for a in values.iter() {
+                            if let css::properties::Value::Images(images) = &a.value {
+                                for image in images.0.iter().flatten() {
+                                    if let css::properties::Image::Url(url) = image
+                                        && !inline_backgrounds.contains(url)
+                                    {
+                                        inline_backgrounds.push(url.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             match doc.name(node)? {
                 Some("base") if base.is_none() => {
                     if let Some(href) = doc.attribute(node, "href")? {
@@ -320,8 +349,33 @@ pub fn prepare(
             _ => return Err(paint::Error::Invalid.into()),
         }
     }
-    let images = if image_bindings.is_empty() { None } else { Some(crate::image::Set::new(&doc, image_bindings, Default::default(), cancel)?) };
-    let (rules, media_dependent, faces) = compile(&sheets, media, cancel)?;
+    let (rules, media_dependent, faces, background_urls) = compile(&sheets, media, cancel)?;
+    // background-image files, from the sheets (relative to each sheet) and
+    // inline styles (relative to the document), keyed by the URL as written.
+    let mut backgrounds: std::collections::HashMap<Arc<str>, Arc<crate::image::Image>> = Default::default();
+    let inline: Vec<(Arc<str>, Option<Arc<str>>)> = inline_backgrounds.into_iter().map(|u| (u, None)).collect();
+    for (url, sheet_base) in background_urls.iter().chain(inline.iter()).take(BACKGROUND_IMAGES) {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            return Err(paint::Error::Cancelled.into());
+        }
+        if backgrounds.contains_key(url) {
+            continue;
+        }
+        match resource(ResourceKind::Image, sheet_base.as_deref().or(base.as_deref()), url)? {
+            Some(Resource::Image(image)) => {
+                if image_unique.insert(Arc::as_ptr(&image)) {
+                    image_bytes = image_bytes.checked_add(image.payload_bytes()).ok_or(paint::Error::Limit)?;
+                    if image_bytes > crate::image::Limits::default().bytes {
+                        return Err(paint::Error::Limit.into());
+                    }
+                }
+                backgrounds.insert(url.clone(), image);
+            }
+            None => resource_issues += 1,
+            _ => return Err(paint::Error::Invalid.into()),
+        }
+    }
+    let images = if image_bindings.is_empty() && backgrounds.is_empty() { None } else { Some(crate::image::Set::with_backgrounds(&doc, image_bindings, backgrounds, Default::default(), cancel)?) };
     // Web fonts: the first decodable source of each face. A face whose file
     // fails to load or decode is simply unavailable, as in other browsers.
     let mut loaded = Vec::new();
@@ -428,7 +482,7 @@ impl Page {
         }
         let media = media_for(host, viewport);
         if self.media_dependent && media != self.media {
-            let (rules, dependent, _) = compile(&self.sheets, media, cancel)?;
+            let (rules, dependent, _, _) = compile(&self.sheets, media, cancel)?;
             self.rules = rules;
             self.media_dependent = dependent;
             self.interaction_mask = self.rules.state_mask();

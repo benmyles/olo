@@ -68,6 +68,9 @@ pub struct SheetBuilder {
     media: Option<crate::css::media::Media>,
     media_dependent: bool,
     faces: Vec<crate::css::fonts::FontFace>,
+    /// `url()` images of `background-image` declarations, with the URL of
+    /// the sheet each came from, in order; a page fetches them.
+    backgrounds: Vec<(Arc<str>, Option<Arc<str>>)>,
     /// The URL of the sheet being added, for its `@font-face` sources.
     base: Option<Arc<str>>,
     failed: bool,
@@ -86,6 +89,7 @@ impl SheetBuilder {
             media: None,
             media_dependent: false,
             faces: Vec::new(),
+            backgrounds: Vec::new(),
             base: None,
             failed: false,
         }
@@ -115,6 +119,27 @@ impl SheetBuilder {
     /// The `@font-face` rules met so far, in order, under true conditions only.
     pub fn font_faces(&self) -> &[crate::css::fonts::FontFace] {
         &self.faces
+    }
+    /// The `background-image` URLs met so far and the sheet URL each
+    /// resolves against, in order, under true conditions only.
+    pub fn background_urls(&self) -> &[(Arc<str>, Option<Arc<str>>)] {
+        &self.backgrounds
+    }
+    const BACKGROUNDS: usize = 1024;
+    fn note_backgrounds(&mut self, d: &p::Declaration) {
+        let p::Declaration::Known { values, .. } = d else { return };
+        for a in values.iter() {
+            if let p::Value::Images(images) = &a.value {
+                for image in images.0.iter().flatten() {
+                    if let p::Image::Url(url) = image
+                        && self.backgrounds.len() < Self::BACKGROUNDS
+                        && !self.backgrounds.iter().any(|(u, b)| u == url && *b == self.base)
+                    {
+                        self.backgrounds.push((url.clone(), self.base.clone()));
+                    }
+                }
+            }
+        }
     }
     pub fn add_sheet(&mut self, syntax: &Syntax, origin: Origin, cancelled: Option<&AtomicBool>) -> Result<()> {
         self.add_sheet_from(syntax, origin, None, cancelled)
@@ -282,7 +307,10 @@ impl SheetBuilder {
                             return Err(Error::Limit);
                         }
                         match p::Declaration::compile(&d, self.limits.properties, cancelled) {
-                            Ok(d) => declarations.push(d),
+                            Ok(d) => {
+                                self.note_backgrounds(&d);
+                                declarations.push(d)
+                            }
                             Err(e @ (p::Error::Invalid | p::Error::UnknownProperty | p::Error::Unsupported(_))) => self.issue(Issue::Property(e, d.name().unwrap_or("").into()))?,
                             Err(e) => return Err(Error::Property(e)),
                         }

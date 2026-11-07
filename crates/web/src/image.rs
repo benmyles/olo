@@ -1,6 +1,7 @@
 //! Immutable decoded image assets, supplied by a resource worker. No I/O or
 //! codec dependency lives here. Pixels are shared across boxes/restyles.
 use crate::dom::{Document, Namespace, NodeId};
+use std::collections::HashMap;
 use std::{
     collections::HashSet,
     sync::{
@@ -115,10 +116,21 @@ pub struct Set {
     document: u64,
     revision: u64,
     bindings: Box<[(NodeId, Arc<Image>)]>,
+    /// `background-image` images by the URL as written in the stylesheet.
+    backgrounds: HashMap<Arc<str>, Arc<Image>>,
     bytes: usize,
 }
 impl Set {
-    pub fn new(document: &Document, mut bindings: Vec<(NodeId, Arc<Image>)>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+    pub fn new(document: &Document, bindings: Vec<(NodeId, Arc<Image>)>, limits: Limits, cancel: Option<&AtomicBool>) -> Result<Arc<Self>, Error> {
+        Self::with_backgrounds(document, bindings, HashMap::new(), limits, cancel)
+    }
+    pub fn with_backgrounds(
+        document: &Document,
+        mut bindings: Vec<(NodeId, Arc<Image>)>,
+        backgrounds: HashMap<Arc<str>, Arc<Image>>,
+        limits: Limits,
+        cancel: Option<&AtomicBool>,
+    ) -> Result<Arc<Self>, Error> {
         check(cancel)?;
         if bindings.len() > limits.bindings || bindings.len() > u32::MAX as usize {
             return Err(Error::Limit);
@@ -126,6 +138,16 @@ impl Set {
         let mut unique = HashSet::new();
         let mut bytes = 0usize;
         let mut pixels = 0usize;
+        for image in backgrounds.values() {
+            check(cancel)?;
+            if unique.insert(Arc::as_ptr(image)) {
+                bytes = bytes.checked_add(image.payload_bytes()).ok_or(Error::Limit)?;
+                pixels = pixels.checked_add(image.payload_bytes() / 4).ok_or(Error::Limit)?;
+                if bytes > limits.bytes || pixels > limits.pixels {
+                    return Err(Error::Limit);
+                }
+            }
+        }
         for (node, image) in &bindings {
             check(cancel)?;
             if document.namespace(*node).map_err(Error::Dom)? != Some(Namespace::Html) || document.name(*node).map_err(Error::Dom)? != Some("img") {
@@ -144,7 +166,7 @@ impl Set {
             return Err(Error::Invalid);
         }
         check(cancel)?;
-        Ok(Arc::new(Self { document: document.id(), revision: document.revision(), bindings: bindings.into_boxed_slice(), bytes }))
+        Ok(Arc::new(Self { document: document.id(), revision: document.revision(), bindings: bindings.into_boxed_slice(), backgrounds, bytes }))
     }
     pub fn validate(&self, document: &Document) -> Result<(), Error> {
         if document.id() == self.document && document.revision() == self.revision { Ok(()) } else { Err(Error::Stale) }
@@ -165,6 +187,9 @@ impl Set {
     }
     pub fn image(&self, index: u32) -> Option<&Arc<Image>> {
         self.bindings.get(index as usize).map(|(_, image)| image)
+    }
+    pub fn background(&self, url: &str) -> Option<&Arc<Image>> {
+        self.backgrounds.get(url)
     }
     pub fn payload_bytes(&self) -> usize {
         self.bytes + std::mem::size_of_val(self.bindings.as_ref())
