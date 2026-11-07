@@ -166,6 +166,7 @@ fn about_of(s: &Style, outer: Rect) -> Option<[f64; 6]> {
     let (ox, oy) = (outer.x + ox, outer.y + oy);
     Some(crate::css::properties::multiply_transforms([1., 0., 0., 1., ox, oy], crate::css::properties::multiply_transforms(local, [1., 0., 0., 1., -ox, -oy])))
 }
+static COMMAND_SERIALS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 /// A matrix that only moves (no scale, rotation or skew).
 fn is_translation(m: [f64; 6]) -> bool {
     (m[0] - 1.).abs() < 1e-9 && m[1].abs() < 1e-9 && m[2].abs() < 1e-9 && (m[3] - 1.).abs() < 1e-9 && m[4].is_finite() && m[5].is_finite()
@@ -180,6 +181,9 @@ pub struct Scene {
     /// Shared with the scenes patched from this one (`with_transforms`): the
     /// same commands, which `same_commands` tells.
     pub(super) commands: Arc<[Command]>,
+    /// The commands' identity: unique to each list built (an address is
+    /// not: the next list may land where a dropped one was).
+    commands_serial: u64,
     pub(super) clips: Box<[Clip]>,
     pub(super) groups: Box<[Group]>,
     /// Cumulative affine matrices of transformed boxes, document space to
@@ -511,6 +515,21 @@ impl Scene {
         let LayerKind::Moved(root) = self.strata.get(i)?.kind else { return None };
         self.moved.iter().find(|m| m.root == root)
     }
+    /// What its tiles are painted from, as an identity: its commands (shared
+    /// by the scenes patched from one another) and its matrices' values. Two
+    /// scenes with one identity paint every tile the same (moved layers
+    /// placed apart): a frame that only moves layers needs no tile looked at.
+    pub fn paint_identity(&self) -> (usize, u64) {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::hash::DefaultHasher::new();
+        for m in self.transforms.iter() {
+            for v in m {
+                v.to_bits().hash(&mut h);
+            }
+        }
+        self.strata.len().hash(&mut h);
+        (self.commands_serial as usize, h.finish())
+    }
     /// How many surface layers (live canvases shown apart) it has.
     pub fn surface_count(&self) -> usize {
         self.strata.iter().filter(|s| matches!(s.kind, LayerKind::Surface(_))).count()
@@ -569,6 +588,7 @@ impl Scene {
                 extent: self.extent,
                 layout,
                 commands: self.commands.clone(),
+                commands_serial: self.commands_serial,
                 clips: self.clips.clone(),
                 groups: self.groups.clone(),
                 transforms: self.transforms.clone(),
@@ -609,6 +629,7 @@ impl Scene {
             extent,
             layout,
             commands: self.commands.clone(),
+            commands_serial: self.commands_serial,
             clips: self.clips.clone(),
             groups: self.groups.clone(),
             transforms: transforms.into_boxed_slice(),
@@ -1647,6 +1668,7 @@ impl<'a> BuildJob<'a> {
             extent: self.extent,
             layout: self.layout,
             commands,
+            commands_serial: COMMAND_SERIALS.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             clips: self.clips.into_boxed_slice(),
             groups: self.groups.into_boxed_slice(),
             transforms: self.transforms.into_boxed_slice(),

@@ -368,6 +368,10 @@ struct Cached {
     /// The last labels: the scene they were made from, when, at which
     /// scroll and size.
     label_cache: Option<(Arc<olo_web::paint::Scene>, Instant, i32, (u32, u32), Vec<Label>)>,
+    /// The last scene's paint identity (and size) and its tiles'
+    /// signatures, by stratum and place.
+    paint_identity: Option<(((usize, u64), u32, u32, u64))>,
+    tile_signatures: HashMap<(usize, i32, i32), Option<u64>>,
     navigation: u64,
     focus_targets: Option<Arc<crate::navigation::FocusTargets>>,
     anchor_scroll: Option<f64>,
@@ -1187,6 +1191,8 @@ fn render(
             targets_scene: None,
             targets_revision: 0,
             label_cache: None,
+            paint_identity: None,
+            tile_signatures: HashMap::new(),
             anchor_scroll: None,
         });
         cache.clear();
@@ -1411,6 +1417,11 @@ fn render(
     // tiles with nothing of the stratum skipped.
     let mut layers: Vec<LayerTiles> = Vec::new();
     let mut shown_shared: Vec<u64> = Vec::new();
+    // The tiles' signatures, kept for a next scene that paints the same.
+    let identity = (scene.paint_identity(), r.key.width, r.key.height, scene.device_scale().to_bits());
+    let same_paint = cached.paint_identity == Some(identity);
+    let previous_signatures = std::mem::take(&mut cached.tile_signatures);
+    let mut signatures: HashMap<(usize, i32, i32), Option<u64>> = HashMap::with_capacity(previous_signatures.len());
     for (si, stratum) in scene.strata().iter().enumerate() {
         if let paint::LayerKind::Surface(_) = stratum.kind {
             // A live surface: its image shown as it is, scrolled with the
@@ -1558,15 +1569,23 @@ fn render(
                     }
                     signature
                 } else {
-                    let (signature, any) = scene.stratum_tile_signature(si, tile_rect, Some(&r.cancel))?;
-                    if si > 0 && !any {
-                        // Nothing of this layer here: no tile.
-                        continue;
-                    }
-                    use std::hash::{Hash, Hasher};
-                    let mut h = std::hash::DefaultHasher::new();
-                    (signature, si).hash(&mut h);
-                    h.finish()
+                    // The scene paints what the last did (only moved layers
+                    // placed anew): the tile's signature then is the last one's.
+                    let known = if same_paint { previous_signatures.get(&(si, x, y)).copied() } else { None };
+                    let signature = match known {
+                        Some(known) => known,
+                        None => {
+                            let (signature, any) = scene.stratum_tile_signature(si, tile_rect, Some(&r.cancel))?;
+                            use std::hash::{Hash, Hasher};
+                            let mut h = std::hash::DefaultHasher::new();
+                            (signature, si).hash(&mut h);
+                            (si == 0 || any).then(|| h.finish())
+                        }
+                    };
+                    signatures.insert((si, x, y), signature);
+                    // Nothing of this layer here: no tile.
+                    let Some(signature) = signature else { continue };
+                    signature
                 };
                 // Each stratum's tiles apart in the cache (x stays below 2^16).
                 // Each stratum's tiles apart (a moved layer's x may be negative).
@@ -1606,6 +1625,8 @@ fn render(
         }
     }
     TILE_PARTS.with(|t| *t.borrow_mut() = tile_parts_store);
+    cached.paint_identity = Some(identity);
+    cached.tile_signatures = signatures;
     // A canvas whose frame is in a shared texture but which the scene shows
     // otherwise (under a transform, in a group): read back from now on.
     if let Some(live) = cached.live.as_mut() {
