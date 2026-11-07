@@ -3,6 +3,7 @@ mod clip;
 mod display;
 mod flex;
 mod font;
+mod grid;
 mod numeric;
 mod parse;
 mod registry;
@@ -10,6 +11,7 @@ use super::{Component, Components, Kind, Statement, StatementKind, color, math, 
 pub use clip::{GeometryBox, Inset, LocalUrl};
 pub use display::{Display, Inner, Internal, Outer};
 pub use font::{Families, Family, GenericFamily};
+pub use grid::{AutoRepeat, Entry as TrackEntry, GridLine, Track, TrackSize, Tracks};
 pub use numeric::{Numeric, NumericKind, Range};
 pub use registry::{Keyword, Name, Property, Shorthand};
 use smallvec::SmallVec;
@@ -89,6 +91,8 @@ pub enum Value {
     Families(Families),
     LocalUrl(LocalUrl),
     Inset(Inset),
+    Tracks(Tracks),
+    GridLine(GridLine),
     Pending(Arc<Pending>),
 }
 
@@ -110,6 +114,8 @@ impl Value {
             Self::Families(f) => f.reserved_bytes(),
             Self::LocalUrl(u) => u.reserved_bytes(),
             Self::Inset(s) => s.reserved_bytes(),
+            Self::Tracks(t) => t.reserved_bytes(),
+            Self::GridLine(l) => l.reserved_bytes(),
             Self::Color(v) => v.expression_reserved_bytes(),
             Self::Pending(v) => size_of::<Pending>() + 2 * size_of::<usize>() + v.tokens.arena_reserved_bytes(),
             _ => 0,

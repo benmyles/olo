@@ -242,9 +242,14 @@ struct Cursor {
     style: NodeId,
     close: bool,
     inline: bool,
+    /// The paragraph an atomic inline interrupted, resumed when its content is built.
+    restore: Option<Box<Pending>>,
 }
 struct Pending {
     container: BoxId,
+    /// The anonymous text box, created when the paragraph starts so atomic
+    /// inlines and replaced elements can be its children in document order.
+    text_box: BoxId,
     source: String,
     spans: Vec<SourceSpan>,
     inlines: Vec<InlineBox>,
@@ -259,8 +264,6 @@ struct OpenInline {
 pub struct BuildJob<'a> {
     clip_sources: crate::svg::clip::Sources<'a>,
     vectors: Vec<crate::svg::Viewport>,
-    vector_nodes: std::collections::HashMap<NodeId, u32>,
-    replaced_nodes: std::collections::HashMap<NodeId, [f32; 2]>,
     vector_bytes: usize,
     vector_work: usize,
     images: Option<Arc<crate::image::Set>>,
@@ -291,8 +294,6 @@ impl<'a> BuildJob<'a> {
             images: None,
             clip_sources: Default::default(),
             vectors: Vec::new(),
-            vector_nodes: Default::default(),
-            replaced_nodes: Default::default(),
             vector_bytes: 0,
             vector_work: 0,
             fallbacks: Fallbacks::default(),
@@ -314,7 +315,7 @@ impl<'a> BuildJob<'a> {
             inlines: Vec::new(),
             controls: Vec::new(),
             open: Vec::new(),
-            stack: vec![Cursor { next: document.first_child(document.root())?, container: root, style: document.root(), close: false, inline: false }],
+            stack: vec![Cursor { next: document.first_child(document.root())?, container: root, style: document.root(), close: false, inline: false, restore: None }],
             pending: None,
             progress: BuildProgress { boxes: 1, ..Default::default() },
             failed: false,
@@ -365,34 +366,55 @@ impl<'a> BuildJob<'a> {
         if p.source.bytes().all(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r'))
             && p.inlines.is_empty()
             && p.controls.is_empty()
-            && (self.styles.snapshot(self.boxes[p.container.index()].style_node).is_some_and(super::flow::is_flex)
+            && (self.styles.snapshot(self.boxes[p.container.index()].style_node).is_some_and(|s| super::flow::is_flex(s) || super::flow::is_grid(s))
                 || p.spans.iter().all(|s| self.styles.snapshot(s.style_node).and_then(|s| WhiteSpace::for_style(s).ok()).is_some_and(|w| w.collapse == Collapse::Collapse)))
         {
+            // Its text box and source slot were made when the paragraph
+            // started; it has no children (no controls), and nothing came after.
+            self.remove_last(p.text_box)?;
+            let BoxKind::InlineContent { source } = self.boxes.get(p.text_box.index()).map_or(BoxKind::InlineContent { source: self.sources.len() as u32 - 1 }, |b| b.kind) else {
+                return Err(Error::Invalid);
+            };
+            if source as usize + 1 != self.sources.len() {
+                return Err(Error::Invalid);
+            }
+            self.sources.pop();
             return Ok(());
         }
         let owner = p.spans.first().map_or(self.boxes[p.container.index()].style_node, |s| s.style_node);
-        let source = u32::try_from(self.sources.len()).map_err(|_| Error::Limit)?;
-        let text_box = self.add(self.boxes[p.container.index()].node, owner, BoxKind::InlineContent { source }, p.container)?;
-        for &(at, kind) in &p.controls {
-            if kind == ControlKind::Object {
-                check(self.cancel)?;
-                let span = p.spans.get(p.spans.partition_point(|s| s.range.end <= at)).filter(|s| s.range.start == at).ok_or(Error::Invalid)?;
-                let kind = if let Some(&vector) = self.vector_nodes.get(&span.node) {
-                    BoxKind::InlineVector { vector }
-                } else if let Some(&natural) = self.replaced_nodes.get(&span.node) {
-                    BoxKind::InlineReplaced { natural }
-                } else {
-                    let image = self.images.as_ref().and_then(|images| images.index(span.node)).ok_or(Error::Invalid)?;
-                    BoxKind::InlineImage { image }
-                };
-                self.add(span.node, span.style_node, kind, text_box)?;
-            }
-        }
+        let text_box = p.text_box;
+        let BoxKind::InlineContent { source } = self.boxes[text_box.index()].kind else { return Err(Error::Invalid) };
+        self.boxes[text_box.index()].style_node = owner;
         let start = u32::try_from(self.inlines.len()).map_err(|_| Error::Limit)?;
         self.inlines.extend(p.inlines);
         let end = u32::try_from(self.inlines.len()).map_err(|_| Error::Limit)?;
         self.controls.extend(p.controls.into_iter().map(|(offset, kind)| Control { source, offset, kind }));
-        self.sources.push(TextSource { container: p.container, source: Arc::from(p.source), spans: p.spans.into_boxed_slice(), inlines: start..end });
+        let slot = self.sources.get_mut(source as usize).ok_or(Error::Invalid)?;
+        *slot = TextSource { container: p.container, source: Arc::from(p.source), spans: p.spans.into_boxed_slice(), inlines: start..end };
+        Ok(())
+    }
+    /// Unlink and drop the box just added, which has no children.
+    fn remove_last(&mut self, id: BoxId) -> Result<()> {
+        if id.index() + 1 != self.boxes.len() || self.boxes[id.index()].first_child.is_some() {
+            return Err(Error::Invalid);
+        }
+        let parent = self.boxes[id.index()].parent.ok_or(Error::Invalid)?;
+        let mut previous = None;
+        let mut at = self.boxes[parent.index()].first_child;
+        while let Some(child) = at {
+            if child == id {
+                break;
+            }
+            previous = Some(child);
+            at = self.boxes[child.index()].next_sibling;
+        }
+        match previous {
+            Some(previous) => self.boxes[previous.index()].next_sibling = None,
+            None => self.boxes[parent.index()].first_child = None,
+        }
+        self.boxes[parent.index()].last_child = previous;
+        self.boxes.pop();
+        self.progress.boxes = self.boxes.len();
         Ok(())
     }
     fn pending(&mut self, container: BoxId) -> Result<&mut Pending> {
@@ -402,7 +424,14 @@ impl<'a> BuildJob<'a> {
                 open.index = inlines.len();
                 inlines.push(InlineBox { node: open.node, range: 0..0, first: open.first, last: false });
             }
-            self.pending = Some(Pending { container, source: String::new(), spans: Vec::new(), inlines, controls: Vec::new() });
+            // Reserve the source slot now: an atomic inline's own paragraph
+            // can finish before this one and must not take its index.
+            let source = u32::try_from(self.sources.len()).map_err(|_| Error::Limit)?;
+            self.sources.push(TextSource { container, source: Arc::from(""), spans: Box::new([]), inlines: 0..0 });
+            let container_node = self.boxes[container.index()].node;
+            let style_node = self.boxes[container.index()].style_node;
+            let text_box = self.add(container_node, style_node, BoxKind::InlineContent { source }, container)?;
+            self.pending = Some(Pending { container, text_box, source: String::new(), spans: Vec::new(), inlines, controls: Vec::new() });
         }
         let p = self.pending.as_mut().unwrap();
         if p.inlines.len() > self.limits.inline_boxes.saturating_sub(self.inlines.len()) {
@@ -438,7 +467,30 @@ impl<'a> BuildJob<'a> {
         if self.stack.len() >= self.limits.depth {
             return Err(Error::Limit);
         }
-        self.stack.push(Cursor { next: self.document.first_child(node)?, container, style, close, inline: false });
+        self.stack.push(Cursor { next: self.document.first_child(node)?, container, style, close, inline: false, restore: None });
+        Ok(())
+    }
+    /// An atomic inline (inline-block, inline-flex, inline-grid, inline-table):
+    /// a block formatting context that sits in its paragraph as one object.
+    /// Its own content is built with the paragraph set aside, then resumed.
+    fn atomic(&mut self, node: NodeId, container: BoxId, flex_or_grid: bool) -> Result<()> {
+        self.append_object(node, container, node, BoxKind::Block { flow_root: true, root: false, absolute: false })?;
+        let p = self.pending.as_ref().ok_or(Error::Invalid)?;
+        let block = self.boxes[p.text_box.index()].last_child.ok_or(Error::Invalid)?;
+        if self.stack.len() >= self.limits.depth {
+            return Err(Error::Limit);
+        }
+        let _ = flex_or_grid;
+        let restore = self.pending.take().map(Box::new);
+        self.stack.push(Cursor { next: self.document.first_child(node)?, container: block, style: node, close: true, inline: false, restore });
+        Ok(())
+    }
+    /// A replaced element or atomic inline in its paragraph: the object
+    /// control in the text and the box as the text box's next child.
+    fn append_object(&mut self, node: NodeId, container: BoxId, style: NodeId, kind: BoxKind) -> Result<()> {
+        self.append(node, container, style, ControlKind::Object.carrier(), Some(ControlKind::Object))?;
+        let text_box = self.pending.as_ref().ok_or(Error::Invalid)?.text_box;
+        self.add(node, style, kind, text_box)?;
         Ok(())
     }
     fn text(&mut self, node: NodeId, container: BoxId, style: NodeId) -> Result<()> {
@@ -495,12 +547,20 @@ impl<'a> BuildJob<'a> {
             let Some(node) = frame.next else {
                 let close = frame.close;
                 let inline = frame.inline;
+                let restore = frame.restore.take();
                 self.stack.pop();
                 if inline {
                     self.close_inline()?;
                 }
                 if close {
                     self.flush()?
+                }
+                if restore.is_some() {
+                    // The atomic inline's content is built; its paragraph goes on.
+                    if self.pending.is_some() {
+                        return Err(Error::Invalid);
+                    }
+                    self.pending = restore.map(|p| *p);
                 }
                 continue;
             };
@@ -587,9 +647,8 @@ impl<'a> BuildJob<'a> {
                         self.vector_work += source.work;
                         self.progress.visited += source.visited.saturating_sub(1);
                         self.vectors.push(source);
-                        self.vector_nodes.insert(node, vector);
                         match display {
-                            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))?,
+                            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append_object(node, container, node, BoxKind::InlineVector { vector })?,
                             _ => {
                                 self.flush()?;
                                 let id = self.add(node, node, BoxKind::BlockVector { vector }, container)?;
@@ -645,7 +704,7 @@ impl<'a> BuildJob<'a> {
                             continue;
                         };
                         match display {
-                            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))?,
+                            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append_object(node, container, node, BoxKind::InlineImage { image })?,
                             _ => {
                                 self.flush()?;
                                 let id = self.add(node, node, BoxKind::BlockImage { image }, container)?;
@@ -687,22 +746,24 @@ impl<'a> BuildJob<'a> {
                     }
                     match display {
                         Display::Contents => self.push(node, container, node, false)?,
+                        Display::Box { outer: Outer::Inline, inner: inner @ (Inner::FlowRoot | Inner::Flex | Inner::Grid | Inner::Table), .. } => {
+                            if inner == Inner::Table {
+                                self.note("inline-table as inline-block", node);
+                            }
+                            if position != Keyword::Static {
+                                self.note("positioned inline", node);
+                            }
+                            if !matches!(s.value(Property::VerticalAlign), Value::Keyword(Keyword::Baseline | Keyword::Middle)) {
+                                self.note("vertical-align on an atomic inline", node);
+                            }
+                            self.atomic(node, container, matches!(inner, Inner::Flex | Inner::Grid))?;
+                        }
                         Display::Box { outer: Outer::Inline, inner, list_item } => {
-                            // Inline-level boxes that are not plain inlines (inline-block,
-                            // inline-flex, inline-grid, inline-table) flow their content
-                            // inline until atomic inlines exist.
-                            if inner != Inner::Flow || list_item {
-                                self.note(
-                                    match inner {
-                                        Inner::FlowRoot => "inline-block as inline",
-                                        Inner::Flex => "inline-flex as inline",
-                                        Inner::Grid => "inline-grid as inline",
-                                        Inner::Table => "inline-table as inline",
-                                        Inner::Ruby => "ruby as inline",
-                                        Inner::Flow => "inline list item as inline",
-                                    },
-                                    node,
-                                );
+                            if inner == Inner::Ruby {
+                                self.note("ruby as inline", node);
+                            }
+                            if list_item {
+                                self.note("inline list item as inline", node);
                             }
                             if position != Keyword::Static {
                                 self.note("positioned inline", node);
@@ -727,8 +788,7 @@ impl<'a> BuildJob<'a> {
                                 self.note("run-in as block", node);
                             }
                             match inner {
-                                Inner::Flow | Inner::FlowRoot | Inner::Flex => {}
-                                Inner::Grid => self.note("grid as block", node),
+                                Inner::Flow | Inner::FlowRoot | Inner::Flex | Inner::Grid => {}
                                 Inner::Table => self.note("table as block", node),
                                 Inner::Ruby => self.note("ruby as block", node),
                             }
@@ -777,6 +837,10 @@ impl<'a> BuildJob<'a> {
             return Err(Error::Incomplete);
         }
         let text_bytes = self.sources.iter().map(|s| s.source.len()).sum();
+        // Nested paragraphs (atomic inlines) finish before their parents; the
+        // control index needs source order.
+        let mut controls = self.controls;
+        controls.sort_by_key(|c| (c.source, c.offset));
         Ok(Arc::new(Tree {
             images: self.images,
             vectors: self.vectors.into_boxed_slice(),
@@ -785,7 +849,7 @@ impl<'a> BuildJob<'a> {
             revision: self.document.revision(),
             styles: self.styles,
             inlines: self.inlines.into_boxed_slice(),
-            controls: self.controls.into_boxed_slice(),
+            controls: controls.into_boxed_slice(),
             boxes: self.boxes.into_boxed_slice(),
             sources: self.sources.into_boxed_slice(),
         }))
@@ -817,10 +881,7 @@ impl BuildJob<'_> {
     /// atomic inline or a block, following its display.
     fn replaced(&mut self, node: NodeId, display: Display, container: BoxId, natural: [f32; 2], absolute: bool) -> Result<()> {
         match display {
-            Display::Box { outer: Outer::Inline, .. } if !absolute => {
-                self.replaced_nodes.insert(node, natural);
-                self.append(node, container, node, ControlKind::Object.carrier(), Some(ControlKind::Object))
-            }
+            Display::Box { outer: Outer::Inline, .. } if !absolute => self.append_object(node, container, node, BoxKind::InlineReplaced { natural }),
             _ => {
                 self.flush()?;
                 let id = self.add(node, node, BoxKind::BlockReplaced { natural }, container)?;

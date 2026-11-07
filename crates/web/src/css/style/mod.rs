@@ -233,6 +233,8 @@ pub enum Value {
     Families(Families),
     LocalUrl(p::LocalUrl),
     Inset(p::Inset),
+    Tracks(p::Tracks),
+    GridLine(p::GridLine),
     /// Explicit nonzero oblique angle in degrees; bare oblique is a keyword.
     Oblique(f64),
 }
@@ -246,6 +248,8 @@ impl Value {
             (Self::Families(a), Self::Families(b)) => a == b,
             (Self::LocalUrl(a), Self::LocalUrl(b)) => a == b,
             (Self::Inset(a), Self::Inset(b)) => a.same(b),
+            (Self::Tracks(a), Self::Tracks(b)) => a.same(b),
+            (Self::GridLine(a), Self::GridLine(b)) => a == b,
             (Self::Oblique(a), Self::Oblique(b)) => a.to_bits() == b.to_bits(),
             _ => false,
         }
@@ -259,6 +263,8 @@ impl Value {
             Self::Families(f) => f.reserved_bytes(),
             Self::LocalUrl(u) => u.reserved_bytes(),
             Self::Inset(s) => s.reserved_bytes(),
+            Self::Tracks(t) => t.reserved_bytes(),
+            Self::GridLine(l) => l.reserved_bytes(),
             _ => 0,
         }
     }

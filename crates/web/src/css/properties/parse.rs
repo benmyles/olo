@@ -28,6 +28,31 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
         }
         return font::Families::parse(values, cancelled).map(|f| smallvec::smallvec![Assignment { property: Property::FontFamily, value: Value::Families(f) }]);
     }
+    // Track lists and the grid shorthands take any number of components.
+    if let Name::Longhand(property @ (Property::GridTemplateColumns | Property::GridTemplateRows | Property::GridAutoColumns | Property::GridAutoRows)) = name {
+        let mut parts = values.clone().filter(|c| c.kind() != Kind::Whitespace);
+        if let Some(c) = parts.next()
+            && parts.next().is_none()
+            && c.kind() == Kind::Ident
+            && let Some(wide) = wide(c.text().unwrap())
+        {
+            return Ok(name.wide(wide));
+        }
+        return grid::parse_tracks(values, limits, cancelled).map(|value| smallvec::smallvec![Assignment { property, value }]);
+    }
+    if let Name::Shorthand(shorthand) = name
+        && matches!(shorthand.expansion(), Expansion::Grid)
+    {
+        let mut parts = values.clone().filter(|c| c.kind() != Kind::Whitespace);
+        if let Some(c) = parts.next()
+            && parts.next().is_none()
+            && c.kind() == Kind::Ident
+            && let Some(wide) = wide(c.text().unwrap())
+        {
+            return Ok(name.wide(wide));
+        }
+        return grid::parse_shorthand(shorthand, values, limits, cancelled);
+    }
     let mut parts = SmallVec::<[Component<'_>; 4]>::new();
     for c in values.clone().filter(|c| c.kind() != Kind::Whitespace) {
         if parts.len() == 4 {
@@ -62,6 +87,7 @@ pub(super) fn known(name: Name, values: Components<'_>, limits: Limits, cancelle
                 Expansion::WideOnly => Err(Error::Invalid),
                 Expansion::WhiteSpace => white_space(&parts),
                 Expansion::Flex => super::flex::parse(&parts, limits, cancelled),
+                Expansion::Grid => unreachable!("grid shorthands parse before part collection"),
                 Expansion::Border => border(&parts, properties, limits, cancelled),
                 Expansion::Quad | Expansion::Repeat => {
                     if parts.len() > properties.len() {
@@ -202,6 +228,31 @@ fn longhand(property: Property, values: Components<'_>, parts: &[Component<'_>],
             }
             Ok(Value::Display(Display::parse(parts)?))
         }
+        Grammar::GridLine => grid::parse_line(parts),
+        Grammar::GridAutoFlow => {
+            let (mut flow, mut dense) = (None, false);
+            if parts.len() > 2 {
+                return Err(Error::Invalid);
+            }
+            for &c in parts {
+                if let Some(k) = keyword(c, &[Keyword::Row, Keyword::Column]) {
+                    if flow.replace(k).is_some() {
+                        return Err(Error::Invalid);
+                    }
+                } else if keyword(c, &[Keyword::Dense]).is_some() && !dense {
+                    dense = true;
+                } else {
+                    return Err(Error::Invalid);
+                }
+            }
+            Ok(Value::Keyword(match (flow, dense) {
+                (Some(Keyword::Column), false) => Keyword::Column,
+                (Some(Keyword::Column), true) => Keyword::ColumnDense,
+                (_, true) => Keyword::RowDense,
+                _ => Keyword::Row,
+            }))
+        }
+        Grammar::Tracks => unreachable!("track lists parse before part collection"),
         Grammar::Color(keywords) => {
             if parts.len() == 1
                 && let Some(k) = keyword(parts[0], keywords)
@@ -267,7 +318,7 @@ pub(super) fn component(grammar: Grammar, c: Component<'_>, limits: Limits, canc
             unsupported_function(c)?;
             Numeric::compile(c, NumericKind::LengthPercentage, Range::Nonnegative, limits, cancelled).map(Value::Numeric)
         }
-        Grammar::Display | Grammar::FontFamily | Grammar::FontStyle => Err(Error::Invalid),
+        Grammar::Display | Grammar::FontFamily | Grammar::FontStyle | Grammar::Tracks | Grammar::GridLine | Grammar::GridAutoFlow => Err(Error::Invalid),
     }
 }
 fn wide(s: &str) -> Option<variables::Wide> {

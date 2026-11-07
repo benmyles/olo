@@ -14,11 +14,22 @@ impl Job<'_> {
     /// Measured min/max-content widths of one text source, once per retained Text.
     pub(super) fn measure_text(&mut self, source: u32, queries: QueryBasis, basis: f64) -> Result<inline::IntrinsicWidths> {
         let text = self.cache.texts.get(source as usize).ok_or(Error::Invalid)?.clone();
-        let key = Arc::as_ptr(&text) as usize;
+        // Equal paragraphs share one Text; with inline objects their widths
+        // still differ per paragraph, so those measure per source.
+        let key = if text.object_count() == 0 { Arc::as_ptr(&text) as usize } else { usize::MAX - source as usize };
         if let Some(cached) = self.intrinsics.get(&key).or_else(|| self.cache.intrinsics.as_ref().and_then(|m| m.get(&key))) {
             return Ok(*cached);
         }
-        let widths = match inline::IntrinsicJob::new(text.clone(), Some(self.scale), self.limits.text, self.cancel) {
+        // Inline edges (padding, margins on spans) are not in the measuring
+        // job's model; such paragraphs are measured by laying them out.
+        let edged = self
+            .cache
+            .tree
+            .inline_boxes(source)
+            .ok_or(Error::Invalid)?
+            .iter()
+            .any(|b| self.cache.tree.styles.snapshot(b.node).is_some_and(|s| used::has_inline_edge(s, true) || used::has_inline_edge(s, false)));
+        let widths = match if edged { Err(inline::Error::Unsupported("inline edges")) } else { inline::IntrinsicJob::new(text.clone(), Some(self.scale), self.limits.text, self.cancel) } {
             Ok(mut job) => loop {
                 let before = job.progress().work;
                 let p = job.step(256)?;
@@ -27,7 +38,7 @@ impl Job<'_> {
                     break job.finish()?;
                 }
             },
-            Err(inline::Error::Unsupported(_)) => self.measure_by_layout(source, &text, queries, basis)?,
+            Err(inline::Error::Unsupported(_)) => self.measure_by_layout(source, queries, basis)?,
             Err(e) => return Err(e.into()),
         };
         self.intrinsics.insert(key, widths);
@@ -36,7 +47,7 @@ impl Job<'_> {
     /// Text the measuring job does not cover (bidi, several shaping runs,
     /// inline objects, soft hyphens): lay it out at no width and at unbounded
     /// width. The widest line of each is the min-/max-content width, by definition.
-    fn measure_by_layout(&mut self, source: u32, text: &Arc<inline::Text>, queries: QueryBasis, width: f64) -> Result<inline::IntrinsicWidths> {
+    fn measure_by_layout(&mut self, source: u32, queries: QueryBasis, width: f64) -> Result<inline::IntrinsicWidths> {
         let cache = self.cache.clone();
         let container = cache.tree.text_source(source).ok_or(Error::Invalid)?.container;
         let style = cache.tree.style(container).ok_or(Error::Invalid)?;
@@ -50,10 +61,12 @@ impl Job<'_> {
         }
         let id = id.ok_or(Error::Invalid)?;
         let mut widths = inline::IntrinsicWidths::default();
+        let (text, spacing) = self.prepare_inline(source, style, width, queries)?;
+        let text = &text;
         for (i, available) in [0., 1e7].into_iter().enumerate() {
             check(self.cancel)?;
-            let objects = if text.object_count() != 0 { self.inline_objects(id, source, text, width, None, queries)?.0 } else { Vec::new() };
-            let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text.clone(), style, self.scope, available, self.scale, self.limits.text, self.cancel, Vec::new())?;
+            let objects = if text.object_count() != 0 { self.inline_objects(id, source, text, width, None, queries, true)?.0 } else { Vec::new() };
+            let mut j = inline::Job::for_style_with_spacing_at_scale(self.engine, text.clone(), style, self.scope, available, self.scale, self.limits.text, self.cancel, spacing.clone())?;
             if !objects.is_empty() {
                 j = j.with_objects(objects)?;
             }

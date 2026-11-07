@@ -19,6 +19,9 @@ pub(super) enum Grammar {
     Color(&'static [Keyword]),
     Size(SizeKind),
     Display,
+    Tracks,
+    GridLine,
+    GridAutoFlow,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Expansion {
@@ -29,6 +32,7 @@ pub(super) enum Expansion {
     Quad,
     Repeat,
     Unordered,
+    Grid,
 }
 macro_rules! keyword_registry {
     ($($id:ident => $name:literal),* $(,)?) => {
@@ -60,6 +64,7 @@ keyword_registry! {
     Clip => "clip",
     Collapse => "collapse",
     Column => "column",
+    ColumnDense => "column dense",
     ColumnReverse => "column-reverse",
     Contain => "contain",
     Content => "content",
@@ -118,6 +123,8 @@ keyword_registry! {
     Ridge => "ridge",
     Right => "right",
     Row => "row",
+    RowDense => "row dense",
+    Dense => "dense",
     RowReverse => "row-reverse",
     Rtl => "rtl",
     ScaleDown => "scale-down",
@@ -173,6 +180,7 @@ macro_rules! property_registry {
     }
 }
 property_registry! {
+    AlignContent, "align-content", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::SpaceBetween,Keyword::SpaceAround,Keyword::SpaceEvenly,Keyword::Baseline]), "normal", false;
     AlignItems, "align-items", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Baseline]), "normal", false;
     AlignSelf, "align-self", Grammar::Keywords(&[Keyword::Auto,Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Baseline]), "auto", false;
     BackgroundColor, "background-color", Grammar::Color(&[]), "transparent", false;
@@ -216,6 +224,15 @@ property_registry! {
     FontStyle, "font-style", Grammar::FontStyle, "normal", true;
     FontWeight, "font-weight", Grammar::Numeric(NumericKind::Number, Range::FontWeight, &[Keyword::Normal,Keyword::Bold,Keyword::Bolder,Keyword::Lighter]), "normal", true;
     FontWidth, "font-width", Grammar::FontWidth, "normal", true;
+    GridAutoColumns, "grid-auto-columns", Grammar::Tracks, "auto", false;
+    GridAutoFlow, "grid-auto-flow", Grammar::GridAutoFlow, "row", false;
+    GridAutoRows, "grid-auto-rows", Grammar::Tracks, "auto", false;
+    GridColumnEnd, "grid-column-end", Grammar::GridLine, "auto", false;
+    GridColumnStart, "grid-column-start", Grammar::GridLine, "auto", false;
+    GridRowEnd, "grid-row-end", Grammar::GridLine, "auto", false;
+    GridRowStart, "grid-row-start", Grammar::GridLine, "auto", false;
+    GridTemplateColumns, "grid-template-columns", Grammar::Tracks, "none", false;
+    GridTemplateRows, "grid-template-rows", Grammar::Tracks, "none", false;
     Height, "height", Grammar::Size(SizeKind::Preferred), "auto", false;
     InlineSize, "inline-size", Grammar::Size(SizeKind::Preferred), "auto", false;
     InsetBlockEnd, "inset-block-end", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
@@ -224,6 +241,8 @@ property_registry! {
     InsetInlineStart, "inset-inline-start", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
     Isolation, "isolation", Grammar::Keywords(&[Keyword::Auto,Keyword::Isolate]), "auto", false;
     JustifyContent, "justify-content", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::SpaceBetween,Keyword::SpaceAround,Keyword::SpaceEvenly]), "normal", false;
+    JustifyItems, "justify-items", Grammar::Keywords(&[Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Baseline]), "normal", false;
+    JustifySelf, "justify-self", Grammar::Keywords(&[Keyword::Auto,Keyword::Normal,Keyword::Stretch,Keyword::FlexStart,Keyword::FlexEnd,Keyword::Center,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Baseline]), "auto", false;
     Left, "left", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Auto]), "auto", false;
     LetterSpacing, "letter-spacing", Grammar::Numeric(NumericKind::LengthPercentage, Range::All, &[Keyword::Normal]), "normal", true;
     LineHeight, "line-height", Grammar::Numeric(NumericKind::LineHeight, Range::Nonnegative, &[Keyword::Normal]), "normal", true;
@@ -302,7 +321,7 @@ macro_rules! shorthand_registry {
 shorthand_registry! {
     // all resets every implemented longhand except direction. Custom properties
     // and the not-yet-implemented unicode-bidi are excluded by definition.
-    All, "all", [AlignItems,AlignSelf,BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
+    All, "all", [AlignContent,AlignItems,AlignSelf,BackgroundColor,BlockSize,BorderBottomColor,BorderBottomStyle,BorderBottomWidth,BorderLeftColor,BorderLeftStyle,BorderLeftWidth,BorderRightColor,BorderRightStyle,BorderRightWidth,BorderTopColor,BorderTopStyle,BorderTopWidth,Bottom,BoxSizing,CaretColor,Clear,ClipPath,ClipRule,Color,ColumnGap,ContainerType,Display,Fill,FillOpacity,FillRule,FlexBasis,FlexDirection,FlexGrow,FlexShrink,FlexWrap,Float,FloodColor,FloodOpacity,FontFamily,FontSize,FontStyle,FontWeight,FontWidth,GridAutoColumns,GridAutoFlow,GridAutoRows,GridColumnEnd,GridColumnStart,GridRowEnd,GridRowStart,GridTemplateColumns,GridTemplateRows,Height,InlineSize,InsetBlockEnd,InsetBlockStart,InsetInlineEnd,InsetInlineStart,Isolation,JustifyContent,JustifyItems,JustifySelf,Left,LetterSpacing,LineHeight,MarginBlockEnd,MarginBlockStart,MarginBottom,MarginInlineEnd,MarginInlineStart,MarginLeft,MarginRight,MarginTop,MaxBlockSize,MaxHeight,MaxInlineSize,MaxWidth,MinBlockSize,MinHeight,MinInlineSize,MinWidth,ObjectFit,Opacity,Order,OverflowBlock,OverflowInline,OverflowWrap,OverflowX,OverflowY,PaddingBlockEnd,PaddingBlockStart,PaddingBottom,PaddingInlineEnd,PaddingInlineStart,PaddingLeft,PaddingRight,PaddingTop,PointerEvents,Position,Resize,Right,RowGap,StopColor,StopOpacity,Stroke,StrokeOpacity,TextAlign,TextAlignLast,TextDecorationColor,TextOrientation,TextWrapMode,Top,VerticalAlign,Visibility,WhiteSpaceCollapse,Width,WordBreak,WordSpacing,WritingMode,X,Y,Rx,Ry,ZIndex], WideOnly;
     Border, "border", [BorderTopWidth,BorderRightWidth,BorderBottomWidth,BorderLeftWidth,BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle,BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Border;
     BorderColor, "border-color", [BorderTopColor,BorderRightColor,BorderBottomColor,BorderLeftColor], Quad;
     BorderStyle, "border-style", [BorderTopStyle,BorderRightStyle,BorderBottomStyle,BorderLeftStyle], Quad;
@@ -310,6 +329,12 @@ shorthand_registry! {
     Flex, "flex", [FlexGrow,FlexShrink,FlexBasis], Flex;
     FlexFlow, "flex-flow", [FlexDirection,FlexWrap], Unordered;
     Gap, "gap", [RowGap,ColumnGap], Repeat;
+    Grid, "grid", [GridTemplateRows,GridTemplateColumns,GridAutoRows,GridAutoColumns,GridAutoFlow], Grid;
+    GridArea, "grid-area", [GridRowStart,GridColumnStart,GridRowEnd,GridColumnEnd], Grid;
+    GridColumn, "grid-column", [GridColumnStart,GridColumnEnd], Grid;
+    GridGap, "grid-gap", [RowGap,ColumnGap], Repeat;
+    GridRow, "grid-row", [GridRowStart,GridRowEnd], Grid;
+    GridTemplate, "grid-template", [GridTemplateRows,GridTemplateColumns], Grid;
     Inset, "inset", [Top,Right,Bottom,Left], Quad;
     InsetBlock, "inset-block", [InsetBlockStart,InsetBlockEnd], Repeat;
     InsetInline, "inset-inline", [InsetInlineStart,InsetInlineEnd], Repeat;
@@ -320,6 +345,9 @@ shorthand_registry! {
     Padding, "padding", [PaddingTop,PaddingRight,PaddingBottom,PaddingLeft], Quad;
     PaddingBlock, "padding-block", [PaddingBlockStart,PaddingBlockEnd], Repeat;
     PaddingInline, "padding-inline", [PaddingInlineStart,PaddingInlineEnd], Repeat;
+    PlaceContent, "place-content", [AlignContent,JustifyContent], Repeat;
+    PlaceItems, "place-items", [AlignItems,JustifyItems], Repeat;
+    PlaceSelf, "place-self", [AlignSelf,JustifySelf], Repeat;
     WhiteSpace, "white-space", [WhiteSpaceCollapse,TextWrapMode], WhiteSpace;
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -331,6 +359,12 @@ impl Name {
     pub fn parse(name: &str) -> Option<Self> {
         if name.eq_ignore_ascii_case("font-stretch") {
             return Some(Self::Longhand(Property::FontWidth));
+        }
+        if name.eq_ignore_ascii_case("grid-row-gap") {
+            return Some(Self::Longhand(Property::RowGap));
+        }
+        if name.eq_ignore_ascii_case("grid-column-gap") {
+            return Some(Self::Longhand(Property::ColumnGap));
         }
         if let Ok(i) = Property::ALL.binary_search_by(|p| ascii_cmp(p.as_str(), name)) {
             return Some(Self::Longhand(Property::ALL[i]));

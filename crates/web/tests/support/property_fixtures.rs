@@ -43,6 +43,7 @@ fn compare(value: &Value, expected: &Json, property: &str) -> Check {
     }
     let expected = expected.as_str().ok_or_else(|| unsupported("non-string scalar reference"))?;
     match value {
+        Value::Tracks(_) | Value::GridLine(_) => Err(unsupported("grid value reference")),
         Value::Numeric(n) => {
             let (reference, suffix) = scalar(expected).ok_or_else(|| unsupported("noncanonical numeric reference or relative host"))?;
             if suffix == "%" {

@@ -16,6 +16,8 @@ use std::{
 };
 #[path = "absolute_flow.rs"]
 mod absolute_flow;
+#[path = "container_flow.rs"]
+mod container_flow;
 #[path = "flex_flow.rs"]
 mod flex_flow;
 #[path = "intrinsic_flow.rs"]
@@ -25,6 +27,7 @@ pub(super) fn is_flex(style: &crate::css::style::Style) -> bool {
 }
 /// Flex containers whose main axis is horizontal get flex formatting; column
 /// containers stack their items like blocks until column layout exists.
+pub(in crate::layout) use container_flow::is_grid;
 pub(super) fn is_row_flex(style: &crate::css::style::Style) -> bool {
     is_flex(style) && matches!(style.value(P::FlexDirection), Value::Keyword(K::Row | K::RowReverse))
 }
@@ -367,6 +370,8 @@ struct Frame {
     collapse_bottom: bool,
     through: bool,
     queries: QueryBasis,
+    /// A text box laying out its atomic inlines before its lines.
+    atomic_host: bool,
 }
 struct Completed {
     before: Strut,
@@ -395,6 +400,7 @@ pub struct Job<'a> {
     texts: Vec<Option<inline::Layout>>,
     stack: Vec<Frame>,
     flex: Vec<flex_flow::Frame<'a>>,
+    containers: Vec<container_flow::Container>,
     absolute: Vec<absolute_flow::Deferred>,
     absolute_at: usize,
     absolute_indices: HashMap<BoxId, usize>,
@@ -460,8 +466,10 @@ impl<'a> Job<'a> {
                 collapse_bottom: false,
                 through: false,
                 queries: QueryBasis::viewport(viewport),
+                atomic_host: false,
             }],
             flex: Vec::new(),
+            containers: Vec::new(),
             absolute: Default::default(),
             absolute_at: 0,
             absolute_indices: HashMap::new(),
@@ -503,6 +511,10 @@ impl<'a> Job<'a> {
             a.used
         } else if let Some(used) = self.flex_child_used(id)? {
             used
+        } else if let Some(used) = self.container_child_used(id)? {
+            used
+        } else if let Some(used) = self.atomic_used(id, style, parent, queries)? {
+            used
         } else {
             Used::new(style, parent.width, parent.height.map(|h| parent.height(h)), parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?
         };
@@ -516,13 +528,11 @@ impl<'a> Job<'a> {
             border_width: used.border,
             margin: used.margin,
         };
-        if is_flex(style) {
-            if is_row_flex(style) {
-                let frame = flex_flow::Frame::new(id, b.first_child, style, used, queries, &mut self.scratch, &mut self.fallbacks, self.cancel, self.scale)?;
-                self.flex.push(frame);
-            } else {
-                self.note("column flex as block", id);
-            }
+        if is_row_flex(style) {
+            let frame = flex_flow::Frame::new(id, b.first_child, style, used, queries, &mut self.scratch, &mut self.fallbacks, self.cancel, self.scale)?;
+            self.flex.push(frame);
+        } else if container_flow::is_grid(style) || container_flow::is_column_flex(style) {
+            self.begin_container(id, style, used, queries)?;
         }
         let queries = queries.descendants(style, used.width, used.height(0.))?;
         self.stack.push(Frame {
@@ -537,14 +547,19 @@ impl<'a> Job<'a> {
             collapse_bottom,
             through,
             queries,
+            atomic_host: false,
         });
         Ok(())
     }
     fn place(&mut self, id: BoxId, result: Completed) -> Result<()> {
-        if self.place_flex(id, result.relative_y)? {
+        if self.place_flex(id, result.relative_y)? || self.place_container(id)? {
             return Ok(());
         }
         let f = self.stack.last_mut().ok_or(Error::Invalid)?;
+        if f.atomic_host {
+            // The line layout places atomic inlines from their object fragments.
+            return Ok(());
+        }
         let y = if f.at_start && f.collapse_top {
             f.top = f.top.union(result.before);
             if result.through {
@@ -575,54 +590,13 @@ impl<'a> Job<'a> {
         let parent = self.stack.last().ok_or(Error::Invalid)?;
         let parent = ParentFrame { id: parent.id, used: parent.used, queries: parent.queries };
         let style = cache.tree.style(parent.id).ok_or(Error::Invalid)?;
-        let available = self.flex_child_used(id)?.map_or(parent.used.width, |u| u.width);
-        let mut text = cache.texts[source as usize].clone();
-        let mut spacing = Vec::new();
-        let mut breaks = Vec::new();
-        for b in self.cache.tree.inline_boxes(source).ok_or(Error::Invalid)? {
-            check(self.cancel)?;
-            let s = self.cache.tree.styles.snapshot(b.node).ok_or(Error::Stale)?;
-            if !used::has_inline_edge(s, true) && !used::has_inline_edge(s, false) {
-                continue;
-            }
-            let ((left, left_break), (right, right_break)) = used::inline_edges(s, parent.used.width, parent.queries, &mut self.scratch, self.cancel, self.scale)?;
-            if !left_break && !right_break {
-                continue;
-            }
-            let start = boundary(text.prepared(), b.range.start)?;
-            let end = boundary(text.prepared(), b.range.end)?;
-            if b.first && left_break {
-                breaks.push(start);
-            }
-            if b.last && right_break {
-                breaks.push(end);
-            }
-            if start == end {
-                let advance = if b.first { left } else { 0. } + if b.last { right } else { 0. };
-                spacing.push(inline::Spacing { at: start, advance, side: if start == 0 { inline::Side::Start } else { inline::Side::End } });
-            } else {
-                if b.first && left_break {
-                    spacing.push(inline::Spacing { at: start, advance: left, side: inline::Side::Start });
-                }
-                if b.last && right_break {
-                    spacing.push(inline::Spacing { at: end, advance: right, side: inline::Side::End });
-                }
-            }
-        }
-        for c in text.prepared().controls().iter().filter(|c| c.kind() == prepare::ControlKind::Object) {
-            let at = boundary(text.prepared(), c.offset())?;
-            breaks.extend([at, at + 3]);
-        }
-        breaks.retain(|b| *b > 0 && (*b as usize) < text.prepared().text().len());
-        breaks.sort_unstable();
-        breaks.dedup();
-        if text.paragraph().shaping_breaks() != breaks.as_slice() {
-            // Percentage/calc edges can become zero at this width. Keep the
-            // width-independent cache, but shape the actual used boundaries.
-            text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), self.limits.text, self.cancel)?;
-        }
+        let available = match self.flex_child_used(id)? {
+            Some(u) => u.width,
+            None => self.container_child_used(id)?.map_or(parent.used.width, |u| u.width),
+        };
+        let (text, spacing) = self.prepare_inline(source, style, parent.used.width, parent.queries)?;
         let (objects, image_geometry) = if text.object_count() != 0 {
-            self.inline_objects(id, source, &text, parent.used.width, parent.used.height.map(|h| parent.used.height(h)), parent.queries)?
+            self.inline_objects(id, source, &text, parent.used.width, parent.used.height.map(|h| parent.used.height(h)), parent.queries, false)?
         } else {
             (Vec::new(), Vec::new())
         };
@@ -654,7 +628,8 @@ impl<'a> Job<'a> {
     }
     /// The atomic inlines of one text box in source order: their sizes for line
     /// layout and their geometry, resolved against the containing block.
-    pub(super) fn inline_objects(&mut self, id: BoxId, source: u32, text: &Arc<inline::Text>, width: f64, height: Option<f64>, queries: QueryBasis) -> Result<InlineObjects> {
+    #[allow(clippy::too_many_arguments)] // Explicit containing-block geometry and worker resources.
+    pub(super) fn inline_objects(&mut self, id: BoxId, source: u32, text: &Arc<inline::Text>, width: f64, height: Option<f64>, queries: QueryBasis, measuring: bool) -> Result<InlineObjects> {
         let cache = self.cache.clone();
         let container = cache.tree.get(id).ok_or(Error::Invalid)?.parent.ok_or(Error::Invalid)?;
         let style = cache.tree.style(container).ok_or(Error::Invalid)?;
@@ -666,27 +641,111 @@ impl<'a> Job<'a> {
         while let Some(child) = next {
             let b = cache.tree.get(child).ok_or(Error::Invalid)?;
             next = b.next_sibling;
-            if !matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. }) {
-                return Err(Error::Invalid);
-            }
             check(self.cancel)?;
-            let natural = cache.tree.natural(child)?;
             let s = cache.tree.style(child).ok_or(Error::Stale)?;
-            let used = super::images::used(s, width, height, natural, false, false, queries, &mut self.scratch, self.cancel, self.scale)?;
             let text_source = cache.tree.text_source(source).ok_or(Error::Invalid)?;
             let raw = image_controls.next().ok_or(Error::Invalid)?.offset;
             if text_source.span_at(raw).ok_or(Error::Invalid)?.node != b.node {
                 return Err(Error::Invalid);
             }
             let at = boundary(prepared, raw)?;
-            let g = super::images::geometry(used);
-            let height = g.border_box.height + used.margin.vertical();
-            let ascent =
-                if matches!(b.kind, BoxKind::InlineVector { .. }) && matches!(s.value(P::VerticalAlign), Value::Keyword(K::Middle)) { (height + style.font().metrics.ex) / 2. } else { height };
-            objects.push(inline::Object { at, advance: g.border_box.width + used.margin.horizontal(), ascent, descent: height - ascent });
+            let middle = matches!(s.value(P::VerticalAlign), Value::Keyword(K::Middle));
+            let (g, margin) = if matches!(b.kind, BoxKind::Block { .. }) {
+                // An atomic inline: laid out already, or measured when this
+                // paragraph's intrinsic width is being measured.
+                if measuring {
+                    let w = self.intrinsic(child, queries, width, 0)?;
+                    let mut m = |p| used::length(s, p, Some(width), Some(0.), queries, &mut self.scratch, self.cancel, self.scale).map(|v| v.unwrap_or(0.));
+                    let margin = Edges { left: m(P::MarginLeft)?, right: m(P::MarginRight)?, top: 0., bottom: 0. };
+                    (Geometry { border_box: Rect { x: 0., y: 0., width: w.max_content, height: 0. }, margin, ..Default::default() }, margin)
+                } else {
+                    let g = self.geometry[child.index()];
+                    (g, g.margin)
+                }
+            } else {
+                let natural = cache.tree.natural(child)?;
+                let used = super::images::used(s, width, height, natural, false, false, queries, &mut self.scratch, self.cancel, self.scale)?;
+                (super::images::geometry(used), used.margin)
+            };
+            let height = g.border_box.height + margin.vertical();
+            let ascent = if middle && matches!(b.kind, BoxKind::InlineVector { .. } | BoxKind::Block { .. }) { (height + style.font().metrics.ex) / 2. } else { height };
+            objects.push(inline::Object { at, advance: g.border_box.width + margin.horizontal(), ascent, descent: height - ascent });
             image_geometry.push((child, g, at));
         }
         Ok((objects, image_geometry))
+    }
+    /// The paragraph's text shaped at this width's inline edges, and the edge
+    /// spacing to lay it out with. Percentage edges can change the shaping
+    /// boundaries, so the width-independent text is reshaped when they do.
+    pub(super) fn prepare_inline(&mut self, source: u32, style: &crate::css::style::Style, width: f64, queries: QueryBasis) -> Result<(Arc<inline::Text>, Vec<inline::Spacing>)> {
+        let cache = self.cache.clone();
+        let mut text = cache.texts[source as usize].clone();
+        let mut spacing = Vec::new();
+        let mut breaks = Vec::new();
+        for b in cache.tree.inline_boxes(source).ok_or(Error::Invalid)? {
+            check(self.cancel)?;
+            let s = cache.tree.styles.snapshot(b.node).ok_or(Error::Stale)?;
+            if !used::has_inline_edge(s, true) && !used::has_inline_edge(s, false) {
+                continue;
+            }
+            let ((left, left_break), (right, right_break)) = used::inline_edges(s, width, queries, &mut self.scratch, self.cancel, self.scale)?;
+            if !left_break && !right_break {
+                continue;
+            }
+            let start = boundary(text.prepared(), b.range.start)?;
+            let end = boundary(text.prepared(), b.range.end)?;
+            if b.first && left_break {
+                breaks.push(start);
+            }
+            if b.last && right_break {
+                breaks.push(end);
+            }
+            if start == end {
+                let advance = if b.first { left } else { 0. } + if b.last { right } else { 0. };
+                spacing.push(inline::Spacing { at: start, advance, side: if start == 0 { inline::Side::Start } else { inline::Side::End } });
+            } else {
+                if b.first && left_break {
+                    spacing.push(inline::Spacing { at: start, advance: left, side: inline::Side::Start });
+                }
+                if b.last && right_break {
+                    spacing.push(inline::Spacing { at: end, advance: right, side: inline::Side::End });
+                }
+            }
+        }
+        for c in text.prepared().controls().iter().filter(|c| c.kind() == prepare::ControlKind::Object) {
+            let at = boundary(text.prepared(), c.offset())?;
+            breaks.extend([at, at + 3]);
+        }
+        breaks.retain(|b| *b > 0 && (*b as usize) < text.prepared().text().len());
+        breaks.sort_unstable();
+        breaks.dedup();
+        if text.paragraph().shaping_breaks() != breaks.as_slice() {
+            text = shape_text(self.engine, self.scope, style, text.prepared().clone(), breaks.into_boxed_slice(), self.limits.text, self.cancel)?;
+        }
+        Ok((text, spacing))
+    }
+    /// The width of an atomic inline about to lay out under its text box's
+    /// host frame: fit-content within the paragraph's available width.
+    fn atomic_used(&mut self, id: BoxId, style: &crate::css::style::Style, parent: Used, queries: QueryBasis) -> Result<Option<Used>> {
+        if !self.stack.last().is_some_and(|f| f.atomic_host) {
+            return Ok(None);
+        }
+        let mut used = Used::flex(style, parent.width, parent.height.map(|h| parent.height(h)), queries, &mut self.scratch, self.cancel, self.scale)?;
+        let specified = used::length(style, P::Width, Some(parent.width), None, queries, &mut self.scratch, self.cancel, self.scale)?;
+        let extra = used.padding.horizontal() + used.border.horizontal();
+        used.width = match specified {
+            Some(w) => {
+                let border_box = matches!(style.value(P::BoxSizing), Value::Keyword(K::BorderBox));
+                (w - if border_box { extra } else { 0. }).max(0.)
+            }
+            None => {
+                let (w, _) = self.intrinsic_content(id, queries, parent.width, 0)?;
+                let available = (parent.width - extra - used.margin.horizontal()).max(0.);
+                w.max_content.min(available).max(w.min_content.min(available)).max(0.)
+            }
+        };
+        used.width = used::grid(used.width, self.scale);
+        Ok(Some(used))
     }
     pub fn step(&mut self, budget: usize) -> Result<Progress> {
         if self.failed {
@@ -717,6 +776,32 @@ impl<'a> Job<'a> {
                 self.begin_absolute()?;
                 continue;
             }
+            if self.stack.last().is_some_and(|f| f.atomic_host) {
+                // Lay out the text box's atomic inlines, then its lines.
+                let f = self.stack.last_mut().ok_or(Error::Invalid)?;
+                let mut child = f.next;
+                while let Some(c) = child {
+                    let b = &self.cache.tree.boxes[c.index()];
+                    if matches!(b.kind, BoxKind::Block { .. }) {
+                        break;
+                    }
+                    child = b.next_sibling;
+                }
+                match child {
+                    Some(c) => {
+                        f.next = self.cache.tree.boxes[c.index()].next_sibling;
+                        self.enter(c)?;
+                    }
+                    None => {
+                        let host = self.stack.pop().ok_or(Error::Invalid)?;
+                        let BoxKind::InlineContent { source } = self.cache.tree.boxes[host.id.index()].kind else { return Err(Error::Invalid) };
+                        let r = self.text(host.id, source)?;
+                        self.place(host.id, r)?;
+                        self.progress.boxes += 1;
+                    }
+                }
+                continue;
+            }
             let child = if self.flex.last().is_some_and(|f| self.stack.last().is_some_and(|parent| f.id == parent.id)) {
                 match self.flex_tick()? {
                     flex_flow::Tick::Pending => continue,
@@ -740,9 +825,39 @@ impl<'a> Job<'a> {
                 match b.kind {
                     BoxKind::Block { .. } => self.enter(child)?,
                     BoxKind::InlineContent { source } => {
-                        let r = self.text(child, source)?;
-                        self.place(child, r)?;
-                        self.progress.boxes += 1
+                        let mut atomic = b.first_child;
+                        while let Some(c) = atomic {
+                            let cb = &self.cache.tree.boxes[c.index()];
+                            if matches!(cb.kind, BoxKind::Block { .. }) {
+                                break;
+                            }
+                            atomic = cb.next_sibling;
+                        }
+                        if atomic.is_some() {
+                            if self.stack.len() >= self.limits.depth {
+                                return Err(Error::Limit);
+                            }
+                            let parent = self.stack.last().ok_or(Error::Invalid)?;
+                            let (used, queries) = (parent.used, parent.queries);
+                            self.stack.push(Frame {
+                                id: child,
+                                next: b.first_child,
+                                used,
+                                cursor: 0.,
+                                pending: Strut::default(),
+                                top: Strut::default(),
+                                at_start: true,
+                                collapse_top: false,
+                                collapse_bottom: false,
+                                through: false,
+                                queries,
+                                atomic_host: true,
+                            });
+                        } else {
+                            let r = self.text(child, source)?;
+                            self.place(child, r)?;
+                            self.progress.boxes += 1
+                        }
                     }
                     BoxKind::BlockImage { .. } | BoxKind::BlockVector { .. } | BoxKind::BlockReplaced { .. } => {
                         let frame = self.stack.last().ok_or(Error::Invalid)?;
@@ -751,7 +866,11 @@ impl<'a> Job<'a> {
                         let s = self.cache.tree.style(child).ok_or(Error::Invalid)?;
                         let natural = self.cache.tree.natural(child)?;
                         let mut used = super::images::used(s, parent.width, parent.height.map(|h| parent.height(h)), natural, true, parent.rtl, queries, &mut self.scratch, self.cancel, self.scale)?;
-                        if let Some(flexed) = self.flex_child_used(child)? {
+                        let flexed = match self.flex_child_used(child)? {
+                            Some(u) => Some(u),
+                            None => self.container_child_used(child)?,
+                        };
+                        if let Some(flexed) = flexed {
                             // The flex line decided the main size; an auto height keeps the ratio.
                             let ratio = if natural.0 > 0. && natural.1 > 0. { natural.0 / natural.1 } else { 0. };
                             if matches!(s.value(P::Height), Value::Keyword(K::Auto)) && ratio > 0. && flexed.width != used.width {
@@ -768,7 +887,11 @@ impl<'a> Job<'a> {
                     BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. } | BoxKind::Viewport => return Err(Error::Invalid),
                 }
             } else {
-                let f = self.stack.pop().ok_or(Error::Invalid)?;
+                let mut f = self.stack.pop().ok_or(Error::Invalid)?;
+                if let Some(height) = self.finish_container(f.id)? {
+                    f.cursor = height;
+                    f.pending = Strut::default();
+                }
                 let auto = f.cursor + if f.collapse_bottom { 0. } else { f.pending.value() };
                 let height = f.used.height(auto.max(0.));
                 let g = &mut self.geometry[f.id.index()];

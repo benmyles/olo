@@ -11,20 +11,22 @@ Finish its real pages/journeys and all 30 configurations before choosing
 another site. The engine renders every page end to end and records what it
 substituted in `Page::fallbacks` (see JOURNAL, 2026-11-06 evening); work is
 chosen by what is visibly wrong against Chrome and by the fallback counts,
-not by the first refusal. Stripe's homepage currently renders with 1,054
+not by the first refusal. Stripe's homepage currently renders with 759
 fallbacks; no configuration is accepted yet.
 
 Next, in impact order (each removes a fallback kind or a visible gap):
 
-- [ ] Stacking order: paint stacking contexts and z-index in CSS order
-  (83 boxes on Stripe paint in tree order; the hero image covers its text).
-- [ ] Column flex formatting (120 containers lay out as blocks).
+- [x] Stacking order: stacking contexts and z-index in CSS paint order.
+- [x] `@media` and `@supports` (every site rendered its narrow layout before).
+- [x] Grid formatting (track sizing, auto-placement, lines and spans, gaps,
+  alignment; areas, dense packing and column flow remain), column flex,
+  atomic inlines (inline-block, inline-flex, inline-grid) laid out by
+  fit-content inside their paragraph.
 - [ ] Web fonts: `@font-face` with WOFF2 (Brotli + glyf reconstruction),
   `unicode-range`, font loading on the worker; Stripe uses Sohne.
 - [ ] Styled inline runs: a paragraph shaped from several fonts/sizes
-  (55 inlines flattened into their paragraph's typography).
-- [ ] Grid formatting (35 containers as blocks), inline-block/inline-flex as
-  atomic inlines (38), flex wrapping (10), vertical-align (33 images).
+  (46 inlines flattened into their paragraph's typography).
+- [ ] Flex wrapping (8), vertical-align (23 images), opacity groups (45).
 - [ ] Paint: background images and gradients, border-radius, box-shadow,
   transforms, opacity groups, dashed/dotted borders, inline backgrounds.
 - [ ] Text: letter-spacing/word-spacing (95), word-break/overflow-wrap (525),

@@ -443,10 +443,10 @@ impl<'a> BuildJob<'a> {
             while let Some(id) = child {
                 let b = layout.cache().tree().get(id).ok_or(Error::Invalid)?;
                 child = b.next_sibling;
-                if !matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. }) {
-                    return Err(Error::Invalid);
+                // Atomic inlines (blocks under a text box) paint themselves.
+                if matches!(b.kind, BoxKind::InlineImage { .. } | BoxKind::InlineVector { .. } | BoxKind::InlineReplaced { .. }) {
+                    image_owners.push((b.node.slot(), id));
                 }
-                image_owners.push((b.node.slot(), id));
             }
             image_owners.sort_unstable_by_key(|(node, _)| *node);
         }

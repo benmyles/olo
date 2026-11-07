@@ -187,6 +187,7 @@ impl Job<'_> {
             collapse_bottom: false,
             through: false,
             queries: d.queries,
+            atomic_host: false,
         });
         self.enter(d.id)
     }

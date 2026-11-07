@@ -5307,3 +5307,40 @@ Those are the next work items in impact order: stacking order (z-index),
 column flex, web fonts (WOFF2), styled inline runs, grid, inline-block,
 and the painting of background images, gradients, border radius and
 shadows. Tests that asserted refusals now assert the recorded fallbacks.
+
+## 2026-11-06 (night): media queries, stacking order, grid, column flex, atomic inlines
+
+Four fallbacks became engine features, chosen by what Stripe showed:
+
+- `@media` and `@supports` (`css/media.rs`): every `@media` block had been
+  dropped, so every site rendered its narrow layout and Stripe showed its
+  mobile header. Queries are evaluated against the viewport, scale and
+  colour scheme with three-valued logic; the page keeps its parsed sheets
+  and recompiles them when the medium changes (resize, scheme).
+- Stacking order: the paint builder sorts by stacking context and
+  z-index (CSS 2.2 Appendix E) instead of a group counter; the hero image
+  sits behind its text.
+- Grid (`css/properties/grid.rs`, `layout/container_flow.rs`): track lists
+  with lengths, fr, auto, min/max-content, minmax(), repeat() and
+  auto-fill/auto-fit; grid lines and spans, the grid-* and place-*
+  shorthands; sparse row-flow auto-placement; track sizing with intrinsic
+  contributions, maximisation, fr distribution and auto-track stretch;
+  rows from laid-out item heights; justify/align-self and -content.
+  Column flex uses the same "children lay out first, then are placed"
+  mechanism (gaps, grow/shrink, justify, align). Stripe's heading is a
+  single copy again (its gradient twin shares the grid cell).
+- Atomic inlines: inline-block, inline-flex and inline-grid are block
+  formatting contexts laid out under their paragraph's text box at their
+  fit-content width, then placed from the line layout's object
+  fragments. Paragraphs are created when they start (so atomics and
+  replaced elements are children in document order); nested paragraphs
+  reserve their source slot. `width: fit-content` flex items measure
+  their content. Stripe's buttons went from 48px slivers to their
+  content size.
+
+stripe.com at 1000 × 700 (journal screenshot): header with the desktop
+navigation, hero heading, both buttons, the customer logo row; 759
+fallbacks, led by word-break/overflow-wrap (485), letter-spacing (113),
+flattened inline typography (46), opacity (45). Visible gaps: the web
+font, the hero image's transform and size, gradient text, and sections
+below the fold not yet compared.

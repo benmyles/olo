@@ -3700,5 +3700,11 @@
   "title": "Browser: Stripe's desktop header, from @media",
   "caption": "@media and @supports are evaluated against the viewport, scale and colour scheme (rules under a false query are left out; the medium is re-evaluated on resize), and paint follows CSS stacking order (stacking contexts, z-index), so the hero image sits behind its text. The desktop navigation appears; the heading is still drawn twice (its gradient copy shares a grid cell, and grid is laid out as blocks) and the web font is not loaded.",
   "image": "2026-11-06/210442-browser-stripe-s-desktop-header-from-media.png"
+ },
+ {
+  "time": "2026-11-06T21:29:37",
+  "title": "Browser: Stripe's hero laid out by grid and flex",
+  "caption": "Grid, column flex and atomic inlines (inline-block, inline-flex) are laid out for real: Stripe's heading is a single copy, its buttons take their content size, and the customer logos sit in a row. 759 fallbacks remain; the web font and the hero image's transform are the visible gaps.",
+  "image": "2026-11-06/212937-browser-stripe-s-hero-laid-out-by-grid-and-flex.png"
  }
 ]

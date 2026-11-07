@@ -108,10 +108,10 @@ impl<'a> Frame<'a> {
 }
 
 fn needs_intrinsic(s: &Style) -> bool {
-    matches!(s.value(P::MinWidth), Value::Keyword(K::Auto | K::MinContent | K::MaxContent))
-        || [P::Width, P::MaxWidth].into_iter().any(|p| matches!(s.value(p), Value::Keyword(K::MinContent | K::MaxContent)))
-        || matches!(s.value(P::FlexBasis), Value::Keyword(K::Content | K::MinContent | K::MaxContent))
-        || (matches!(s.value(P::FlexBasis), Value::Keyword(K::Auto)) && matches!(s.value(P::Width), Value::Keyword(K::Auto)))
+    matches!(s.value(P::MinWidth), Value::Keyword(K::Auto | K::MinContent | K::MaxContent | K::FitContent))
+        || [P::Width, P::MaxWidth].into_iter().any(|p| matches!(s.value(p), Value::Keyword(K::MinContent | K::MaxContent | K::FitContent)))
+        || matches!(s.value(P::FlexBasis), Value::Keyword(K::Content | K::MinContent | K::MaxContent | K::FitContent))
+        || (matches!(s.value(P::FlexBasis), Value::Keyword(K::Auto)) && matches!(s.value(P::Width), Value::Keyword(K::Auto | K::FitContent)))
 }
 #[allow(clippy::too_many_arguments)]
 fn item(
@@ -195,6 +195,8 @@ fn item(
     let mut size = |p, fallback| match s.value(p) {
         Value::Keyword(K::MinContent) => Ok(Some(widths.min_content)),
         Value::Keyword(K::MaxContent) => Ok(Some(widths.max_content)),
+        // fit-content: the content's range, clamped by the container.
+        Value::Keyword(K::FitContent) => Ok(Some(widths.max_content.min(parent.width - extra).max(widths.min_content.min(parent.width - extra)).max(0.))),
         _ => used::length(s, p, Some(parent.width), fallback, queries, scratch, cancel, scale)
             .map(|v| v.map(|v| (v - if border_box && matches!(s.value(p), Value::Numeric(_)) { extra } else { 0. }).max(0.))),
     };

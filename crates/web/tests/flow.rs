@@ -777,3 +777,107 @@ fn unimplemented_placement_renders_in_flow_and_records_the_node() {
         assert!(tree.iter().any(|(_, b)| b.node == node && matches!(b.kind, BoxKind::Block { .. })));
     }
 }
+
+#[test]
+fn grid_tracks_place_items_and_size_rows_from_content() {
+    let s = scope();
+    let mut e = Engine::default();
+    // Three columns: fixed, flexible, flexible; items auto-placed row by row.
+    let (d, t) = tree(
+        "<div id=g><div id=a>A</div><div id=b>B</div><div id=c>C</div><div id=d style='height:50px'>D</div></div>",
+        "#g{display:grid;grid-template-columns:100px 1fr 2fr;column-gap:10px;row-gap:5px}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    // 400 − 100 − two 10px gaps = 280 for the flexible tracks: 93⅓ and 186⅔, on the layout grid.
+    let close = |a: layout::Rect, b: layout::Rect| (a.x - b.x).abs() < 0.1 && (a.y - b.y).abs() < 0.1 && (a.width - b.width).abs() < 0.1 && (a.height - b.height).abs() < 0.1;
+    assert_eq!(rect(&d, &l, "a"), layout::Rect { x: 0., y: 0., width: 100., height: 20. });
+    assert!(close(rect(&d, &l, "b"), layout::Rect { x: 110., y: 0., width: 280. / 3., height: 20. }), "{:?}", rect(&d, &l, "b"));
+    assert!(close(rect(&d, &l, "c"), layout::Rect { x: 110. + 280. / 3. + 10., y: 0., width: 560. / 3., height: 20. }), "{:?}", rect(&d, &l, "c"));
+    // The second row starts after the first row and the row gap; its height is its content's.
+    assert_eq!(rect(&d, &l, "d"), layout::Rect { x: 0., y: 25., width: 100., height: 50. });
+    assert_eq!(rect(&d, &l, "g").height, 75.);
+    // Explicit lines and spans, items sharing a cell, and repeat().
+    let (d, t) = tree(
+        "<div id=g><div id=a style='grid-column:1/3'>A</div><div id=b style='grid-area:1/1/2/2'>B</div><div id=c style='grid-column:span 2'>C</div></div>",
+        "#g{display:grid;grid-template-columns:repeat(4,1fr)}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    // b is placed first (definite row and column); a's auto row skips the
+    // row it would overlap b in; c follows a from the cursor (CSS Grid 2 §8.5).
+    assert_eq!(rect(&d, &l, "b"), layout::Rect { x: 0., y: 0., width: 100., height: 20. });
+    assert_eq!(rect(&d, &l, "a"), layout::Rect { x: 0., y: 20., width: 200., height: 20. });
+    assert_eq!(rect(&d, &l, "c"), layout::Rect { x: 200., y: 20., width: 200., height: 20. });
+    // Auto columns take their content's width; justify-self positions inside the area.
+    let (d, t) = tree("<div id=g><div id=a>AB</div><div id=b style='justify-self:center'>CD</div></div>", "#g{display:grid;grid-template-columns:auto 200px}", &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "a"), layout::Rect { x: 0., y: 0., width: 200., height: 20. });
+    assert_eq!(rect(&d, &l, "b"), layout::Rect { x: 280., y: 0., width: 40., height: 20. });
+}
+#[test]
+fn column_flex_stacks_items_with_gaps_alignment_and_growth() {
+    let s = scope();
+    let mut e = Engine::default();
+    let (d, t) = tree(
+        "<div id=f><div id=a>A</div><div id=b style='align-self:center'>BB</div><div id=c style='flex-grow:1'>C</div></div>",
+        "#f{display:flex;flex-direction:column;row-gap:10px;height:200px}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "a"), layout::Rect { x: 0., y: 0., width: 400., height: 20. });
+    assert_eq!(rect(&d, &l, "b"), layout::Rect { x: 180., y: 30., width: 40., height: 20. });
+    // The growing item takes the free space: 200 − 20 − 20 − 20 gaps = 140.
+    assert_eq!(rect(&d, &l, "c"), layout::Rect { x: 0., y: 60., width: 400., height: 140. });
+    let (d, t) = tree("<div id=f><div id=a>A</div><div id=b>B</div></div>", "#f{display:flex;flex-direction:column;justify-content:center;height:100px}", &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "a").y, 30.);
+    assert_eq!(rect(&d, &l, "b").y, 50.);
+}
+#[test]
+fn flex_items_wrapping_inline_level_links_take_their_content_width() {
+    let s = scope();
+    let mut e = Engine::default();
+    // The test font is 20px per letter and 10px per space: "Get started" is
+    // 210, the SVG 15, and each link's padding 32.
+    let (d, t) = tree(
+        "<div id=f><div id=a><a id=l style='display:inline-flex;padding:8px 16px'>Get started<svg width=15 height=8></svg></a></div><div id=b><a style='display:inline-block;padding:8px 16px'>Sign up with Google</a></div></div>",
+        "#f{display:flex;column-gap:16px}",
+        &s,
+        1,
+    );
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 900., 1);
+    let a = rect(&d, &l, "a");
+    let b = rect(&d, &l, "b");
+    assert_eq!(a.width, 210. + 15. + 32.);
+    assert_eq!(b.width, 350. + 32.);
+    assert_eq!(b.x, a.width + 16.);
+}
+#[test]
+fn fit_content_flex_items_inside_a_flex_row_size_from_their_content() {
+    // Stripe's button group: inline-flex links, blockified as flex items,
+    // with width: fit-content and min-width: 0.
+    let s = scope();
+    let mut e = Engine::default();
+    let css = ".hds-button{white-space:nowrap;font-weight:700;font-size:16px;line-height:1;width:fit-content;letter-spacing:0;gap:8px;height:fit-content;display:inline-flex;align-items:center;padding:15.5px 16px 16.5px}.hds-button-group{display:flex;flex-wrap:wrap;gap:8px;position:relative;width:100%}.hds-button-group>.hds-button{flex-grow:1;justify-content:center;overflow:hidden}.hds-button-group>.hds-button{min-width:0;flex-grow:unset;justify-content:unset}.hds-nowrap-svg{display:inline;white-space:nowrap}";
+    let html = "<div id=g class=hds-button-group><a id=a class=hds-button href=x>Get started<span class=hds-nowrap-svg><svg width=5 height=8></svg></span></a><a id=b class=hds-button href=y>Sign up with Google</a></div>";
+    let (d, t) = tree(html, css, &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 600., 1);
+    let a = rect(&d, &l, "a");
+    let b = rect(&d, &l, "b");
+    // Text (16px font: 11 glyphs), gap, 5px arrow and 32px padding; 48px tall.
+    assert!((a.width - (168. + 8. + 5. + 32.)).abs() < 0.1, "{a:?}");
+    assert_eq!(a.height, 48.);
+    assert!((b.x - (a.width + 8.)).abs() < 0.1, "{b:?}");
+    assert!(b.width > 300. && b.width < 320., "{b:?}");
+}
