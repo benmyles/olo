@@ -256,13 +256,28 @@ pub const CURSOR_SIZE: u32 = 22;
 /// its plain one for a name it doesn't know.
 pub const CURRENT_DESKTOP: &str = "Olo:GNOME";
 
+/// GIO (GLib's files, in GTK and GNOME programs, Chrome) without GNOME's
+/// gvfs: its own local files and the system's mounts (`unix`), so no
+/// gvfsd, gvfsd-fuse, gvfsd-metadata or volume monitors start for the
+/// programs Olo starts. (Trash and recent files are GIO's own on local
+/// files; Olo's Tracker is the file manager.) Set for what olo-session
+/// starts, never exported to systemd, so a GNOME login after has gvfs.
+pub const GIO_LOCAL: [(&str, &str); 2] = [("GIO_USE_VFS", "local"), ("GIO_USE_VOLUME_MONITOR", "unix")];
+
 /// For an Olo program re-executing in place after an upgrade: bring up to
 /// date what the environment kept from a session started on an older build
-/// (`XDG_CURRENT_DESKTOP` said only "Olo"), so the programs it starts
-/// from then on have [`CURRENT_DESKTOP`] without a new session.
+/// (`XDG_CURRENT_DESKTOP` said only "Olo"; no [`GIO_LOCAL`]), so the
+/// programs it starts from then on have them without a new session.
 pub fn upgrade_env(cmd: &mut std::process::Command) {
     if std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d == "Olo") {
         cmd.env("XDG_CURRENT_DESKTOP", CURRENT_DESKTOP);
+    }
+    if std::env::var_os("OLO_SESSION").is_some() {
+        for (k, v) in GIO_LOCAL {
+            if std::env::var_os(k).is_none() {
+                cmd.env(k, v);
+            }
+        }
     }
 }
 

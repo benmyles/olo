@@ -1354,7 +1354,8 @@ fn set_session_env(display: &str, ipc: &Path) {
         ("XCURSOR_THEME", olo_xdg::CURSOR_THEME.into()),
         ("XCURSOR_SIZE", olo_xdg::CURSOR_SIZE.to_string()),
     ];
-    for (k, v) in vars {
+    // GIO without gvfs, for what the session starts (olo_xdg::GIO_LOCAL).
+    for (k, v) in vars.into_iter().chain(olo_xdg::GIO_LOCAL.map(|(k, v)| (k, v.to_owned()))) {
         // SAFETY: single-threaded start-up.
         unsafe { std::env::set_var(k, v) };
     }

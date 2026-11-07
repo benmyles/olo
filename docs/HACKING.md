@@ -8155,6 +8155,13 @@ scan made for the sudo user). What it looks for:
   KWin, gsd-*): quit. Never another login's: a desktop shell of this user
   in another `session-N.scope` means that desktop is logged in there, and
   everything of it is its own.
+- **GNOME's services Olo has its own in place of** (`GNOME_SERVICES`:
+  dconf-service, GNOME's and GTK's portal backends, gvfs's daemons and
+  volume monitors, GNOME Online Accounts, and GNOME Keyring while Olo's
+  keyring answers), running in this session or as the user's services
+  (not when GNOME is logged in elsewhere): advice, quit by the fix (what
+  asks for dconf, a portal or the keyring reaches Olo's). None, and
+  nothing of another desktop either: "Nothing of GNOME's runs".
 - **USB input devices allowed to sleep** (an interface of class 03 with
   an input node under it, a receiver's paired devices a level down;
   `power/control` not `on`), and **Olo's udev rules** (71-olo-input,
@@ -10377,7 +10384,21 @@ writes it) of a copy of a real database (69 keys) gives the same
 set`/`get` work, and a running `dconf watch /` and `gsettings monitor`
 see each change. A write (the `dconf` command run each time) takes
 29 to 30 ms against GNOME's 37 ms; idle it costs nothing (0.0% of a
-core, 0 wakeups/s), in 5.3 MB against GNOME's 6.8 MB. Fonts are hinted as
+core, 0 wakeups/s), in 5.3 MB against GNOME's 6.8 MB.
+
+**No gvfs.** GIO (GLib's files: GTK and GNOME programs, Chrome) loads
+GNOME's gvfs when it's installed, which starts gvfsd, gvfsd-fuse,
+gvfsd-metadata and volume monitors on the session bus. What olo-session
+starts gets `GIO_USE_VFS=local` and `GIO_USE_VOLUME_MONITOR=unix`
+(`olo_xdg::GIO_LOCAL`, set in `set_session_env`, and by
+`olo_xdg::upgrade_env` for a session started on an older build as its
+programs re-exec), so GIO uses its own local files (trash and recent
+files are GIO's own there) and the system's mounts, and none of gvfs
+starts; network folders, phones and cameras are Olo's Tracker's. It's
+never exported to systemd or D-Bus activation, which keep it after
+logging out, so a GNOME login afterwards has gvfs. (Checked on a test
+bus that can start services: with them, `gio info trash:///` says
+"Operation not supported" and no gvfs process starts.) Fonts are hinted as
 the kit hints them (`font-hinting` slight, `font-antialiasing`
 grayscale). The pointer: programs asking for one by name
 (cursor-shape-v1: GTK 4, Chrome and Electron, Qt 6) get app_server's;
