@@ -26,11 +26,17 @@ use crate::{
     media,
 };
 
-/// Frames decoded ahead (about a fifth of a second at 30 fps)...
+/// Frames decoded ahead (a tenth of a second at 60 fps)...
 const AHEAD: usize = 6;
-/// ...unless that would hold more than this, when large pictures get
-/// fewer (never under two).
-const QUEUE_BYTES: usize = 24 << 20;
+/// ...unless that would hold more than this, when larger pictures get
+/// fewer (never under two). A 4K picture as planes is 12 MB: six of
+/// them (at 24 MB it had two, 33 ms at 60 fps, and any hiccup a
+/// decoder had dropped pictures: NVDEC's H.264 150 a minute).
+const QUEUE_BYTES: usize = 80 << 20;
+
+/// How long the clock waits for a late decoder (with no sound to follow)
+/// before it goes on without it.
+const HOLD: Duration = Duration::from_millis(200);
 
 /// How far the clock may drift from the sound before it is pulled back.
 const DRIFT: f64 = 0.12;
@@ -289,6 +295,14 @@ impl Planar {
 
 #[derive(Default)]
 struct Shared {
+    /// Pictures shown, those passed over (already late when their turn
+    /// came: dropped), and those shown late (a frame or more after
+    /// their time): `Video::playback`.
+    shown: u64,
+    skipped: u64,
+    late: u64,
+    /// They were logged (played to the end).
+    told: bool,
     queue: VecDeque<Frame>,
     /// Frames to keep ahead, from the pictures' size.
     ahead: usize,
@@ -323,6 +337,8 @@ struct Clock {
     finished: bool,
     /// Show the next frame whatever its time (after a seek, when paused).
     show_next: bool,
+    /// Waiting for the decoder since (`HOLD`).
+    starving: Option<Instant>,
 }
 
 impl Clock {
@@ -376,7 +392,7 @@ impl Video {
             .flatten();
         Video {
             shared,
-            clock: Mutex::new(Clock { at: 0.0, since: playing.then(Instant::now), heard_ms: 0, finished: false, show_next: opts.picture }),
+            clock: Mutex::new(Clock { at: 0.0, since: playing.then(Instant::now), heard_ms: 0, finished: false, show_next: opts.picture, starving: None }),
             audio: opts.sound.then(|| audio::Player::start_with(input, playing)),
             duration,
             picture: opts.picture,
@@ -486,6 +502,12 @@ impl Video {
         self.shared.0.lock().unwrap().decoding
     }
 
+    /// How smoothly it has played so far.
+    pub fn playback(&self) -> Playback {
+        let sh = self.shared.0.lock().unwrap();
+        Playback { shown: sh.shown, dropped: sh.skipped, late: sh.late }
+    }
+
     /// Which GPUs here decode its stream, once it has started.
     pub fn decoders(&self) -> Decoders {
         self.shared.0.lock().unwrap().decoders
@@ -523,22 +545,52 @@ impl Video {
                 }
             }
         }
-        let now = c.now();
         let (m, cv) = &*self.shared;
         let mut sh = m.lock().unwrap();
+        // Waiting for the decoder (starting, or a stall), with no sound
+        // to keep up with: the clock waits too, for a while, so the next
+        // picture is shown late rather than those after it passed over;
+        // a decoder that can't keep up at all is caught up with by
+        // passing pictures over, not played slower.
+        let silent = c.since.is_some() && self.sound().is_none();
+        let starved = silent && sh.queue.is_empty() && !sh.eof && sh.seek.is_none();
+        if starved && c.starving.get_or_insert_with(Instant::now).elapsed() < HOLD {
+            c.at = c.now();
+            c.since = Some(Instant::now());
+        }
+        // The first picture: the clock starts with it (the decoder's
+        // starting took its time).
+        if silent
+            && sh.shown == 0
+            && let Some(f) = sh.queue.front()
+            && c.now() > f.pts
+        {
+            c.at = f.pts;
+            c.since = Some(Instant::now());
+        }
+        let now = c.now();
         let mut due = None;
+        let mut passed = 0;
+        let stepping = c.show_next;
         while let Some(f) = sh.queue.front() {
             if f.pts > now + 0.004 && !c.show_next {
                 break;
             }
+            passed += u64::from(due.is_some());
             due = sh.queue.pop_front();
             if c.show_next {
                 c.show_next = false;
                 break;
             }
         }
-        if due.is_some() {
+        if let Some(f) = &due {
             cv.notify_all();
+            c.starving = None;
+            sh.shown += 1;
+            if !stepping && c.since.is_some() {
+                sh.skipped += passed;
+                sh.late += u64::from(now - f.pts > LATE);
+            }
         }
         let next = sh.queue.front().map(|f| Duration::from_secs_f64((f.pts - now).max(0.004)));
         let ended = if self.picture {
@@ -548,6 +600,10 @@ impl Video {
             now >= self.duration || self.sound().is_some_and(|a| a.state.finished.load(Ordering::Relaxed))
         };
         if ended && c.since.is_some() {
+            if !sh.told && sh.shown > 0 {
+                sh.told = true;
+                tracing::info!("video: played to its end: {} pictures shown, {} dropped, {} late; decoded on {}", sh.shown, sh.skipped, sh.late, sh.decoding);
+            }
             c.at = self.duration;
             c.since = None;
             c.finished = true;
@@ -569,10 +625,29 @@ impl Video {
 impl Drop for Video {
     fn drop(&mut self) {
         let (m, cv) = &*self.shared;
-        m.lock().unwrap().stop = true;
+        let mut sh = m.lock().unwrap();
+        sh.stop = true;
+        if sh.shown > 0 && !sh.told {
+            tracing::info!("video: {} pictures shown, {} dropped, {} late; decoded on {}", sh.shown, sh.skipped, sh.late, sh.decoding);
+        }
+        drop(sh);
         cv.notify_all();
     }
 }
+
+/// How smoothly a video has played: pictures shown, dropped (passed over,
+/// already late when their turn came) and shown late (a frame or more
+/// after their time).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Playback {
+    pub shown: u64,
+    pub dropped: u64,
+    pub late: u64,
+}
+
+/// A picture shown this long after its time was late (more than a
+/// frame at 60 a second, with the display's own frame of slack).
+const LATE: f64 = 0.025;
 
 /// How [`Video::start_with`] starts.
 #[derive(Debug, Clone, Copy)]
@@ -598,10 +673,10 @@ pub enum Device {
     /// by the player's worker.
     #[default]
     Default,
-    /// The built-in GPU where its driver decodes the video (Intel's
-    /// decodes AV1 and VP9), else NVIDIA's where there is one and the
-    /// computer isn't on battery (waking it costs power), else the
-    /// processor.
+    /// The built-in GPU where its driver decodes the video (Intel's:
+    /// AV1 and VP9 with Fedora's driver, H.264 and HEVC too with the
+    /// full one), else NVIDIA's where there is one and the computer isn't
+    /// on battery (waking it costs power), else the processor.
     Automatic,
     /// NVIDIA's GPU (NVDEC).
     Nvidia,
@@ -623,12 +698,7 @@ pub struct Decoders {
 impl Decoders {
     #[cfg(feature = "gpui")]
     fn of(planes: bool, codec: Codec) -> Decoders {
-        let va = match codec {
-            Codec::Av1 => Some(olo_vaapi::decode::Codec::Av1),
-            Codec::Vp9 => Some(olo_vaapi::decode::Codec::Vp9),
-            Codec::H264 | Codec::Hevc => None,
-        };
-        Decoders { nvidia: planes && olo_video::nvdec::available(), intel: planes && va.is_some_and(olo_vaapi::decode::available) }
+        Decoders { nvidia: planes && olo_video::nvdec::available(), intel: planes && olo_vaapi::decode::available(va_codec(codec)) }
     }
 
     #[cfg(not(feature = "gpui"))]
@@ -816,9 +886,45 @@ enum Decoder {
     /// NVIDIA's GPU (pictures as planes for the window's GPU).
     #[cfg(feature = "gpui")]
     Nv(Box<Nv>),
-    /// Intel's or AMD's GPU through VA-API: AV1 and VP9 (as planes too).
+    /// Intel's or AMD's GPU through VA-API (as planes too).
     #[cfg(feature = "gpui")]
-    Va(Box<olo_vaapi::decode::Decoder>),
+    Va(Box<Va>),
+}
+
+/// VA-API's decoder, and what it needs of the stream, as NVDEC does.
+#[cfg(feature = "gpui")]
+struct Va {
+    dec: olo_vaapi::decode::Decoder,
+    hevc: Option<hevc::Config>,
+    fresh: bool,
+}
+
+/// The codec as VA-API's decoder names it.
+#[cfg(feature = "gpui")]
+fn va_codec(codec: Codec) -> olo_vaapi::decode::Codec {
+    match codec {
+        Codec::Av1 => olo_vaapi::decode::Codec::Av1,
+        Codec::Vp9 => olo_vaapi::decode::Codec::Vp9,
+        Codec::H264 => olo_vaapi::decode::Codec::H264,
+        Codec::Hevc => olo_vaapi::decode::Codec::Hevc,
+    }
+}
+
+/// A sample as a GPU's parser takes it: HEVC's NAL units Annex B (start
+/// codes, not lengths), with its parameter sets first after a start or
+/// a seek (`fresh`); others as they are.
+#[cfg(feature = "gpui")]
+fn annex_b<'a>(hevc: Option<&hevc::Config>, fresh: &mut bool, data: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
+    let Some(cfg) = hevc else { return std::borrow::Cow::Borrowed(data) };
+    let mut out = Vec::with_capacity(data.len() + 128);
+    if std::mem::take(fresh) {
+        for set in &cfg.sets {
+            out.extend_from_slice(&[0, 0, 0, 1]);
+            out.extend_from_slice(set);
+        }
+    }
+    media::avcc_to_annexb(data, usize::from(cfg.nal_len), &mut out);
+    std::borrow::Cow::Owned(out)
 }
 
 /// NVDEC, and what it needs of the stream: HEVC's parameter sets and its
@@ -835,16 +941,7 @@ struct Nv {
 impl Nv {
     /// `data` as NVDEC's parser takes it.
     fn packet<'a>(&mut self, data: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
-        let Some(cfg) = &self.hevc else { return std::borrow::Cow::Borrowed(data) };
-        let mut out = Vec::with_capacity(data.len() + 128);
-        if std::mem::take(&mut self.fresh) {
-            for set in &cfg.sets {
-                out.extend_from_slice(&[0, 0, 0, 1]);
-                out.extend_from_slice(set);
-            }
-        }
-        media::avcc_to_annexb(data, usize::from(cfg.nal_len), &mut out);
-        std::borrow::Cow::Owned(out)
+        annex_b(self.hevc.as_ref(), &mut self.fresh, data)
     }
 }
 
@@ -882,13 +979,9 @@ impl Decoder {
                 d => d,
             };
             // Intel's (or AMD's) GPU, for what its driver decodes: AV1
-            // and VP9 as Fedora's drivers have it.
-            let va = match codec {
-                Codec::Av1 => Some(olo_vaapi::decode::Codec::Av1),
-                Codec::Vp9 => Some(olo_vaapi::decode::Codec::Vp9),
-                Codec::H264 | Codec::Hevc => None,
-            }
-            .filter(|c| planes && olo_vaapi::decode::available(*c));
+            // and VP9 with Fedora's drivers, H.264 and HEVC too with the
+            // full one (Olo Doctor installs it).
+            let va = Some(va_codec(codec)).filter(|c| planes && olo_vaapi::decode::available(*c));
             // Automatic: the built-in GPU where it decodes this (already
             // awake, and the screen's), else NVIDIA's on mains power.
             let (intel, nvidia) = match device {
@@ -901,7 +994,8 @@ impl Decoder {
                 match olo_vaapi::decode::Decoder::new(c) {
                     Ok(dec) => {
                         let on = if dec.driver().contains("Intel") { ON_INTEL } else { ON_OTHER_GPU };
-                        return Ok((Decoder::Va(Box::new(dec)), on));
+                        let hevc = (codec == Codec::Hevc).then(|| demux.hevc().map(|(c, _)| c)).flatten();
+                        return Ok((Decoder::Va(Box::new(Va { dec, hevc, fresh: true })), on));
                     }
                     Err(e) => tracing::info!("video: VA-API: {e}; the processor decodes"),
                 }
@@ -1050,7 +1144,10 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
                         n.fresh = true;
                     }
                     #[cfg(feature = "gpui")]
-                    Decoder::Va(v) => v.reset(),
+                    Decoder::Va(v) => {
+                        v.dec.reset();
+                        v.fresh = true;
+                    }
                     _ => dec = Decoder::new(codec, demux.as_ref())?,
                 }
                 times.clear();
@@ -1133,7 +1230,15 @@ fn decode(input: &Input, shared: &(Mutex<Shared>, Condvar)) -> Result<(), String
             #[cfg(feature = "gpui")]
             (Decoder::Va(v), p) => {
                 va_out.clear();
-                let failed = p.as_ref().and_then(|p| v.decode(&p.data, (p.pts * 1e6) as i64, &mut va_out).err());
+                let failed = match &p {
+                    Some(p) => {
+                        let data = annex_b(v.hevc.as_ref(), &mut v.fresh, &p.data);
+                        v.dec.decode(&data, (p.pts * 1e6) as i64, &mut va_out).err()
+                    }
+                    // (H.264's and HEVC's last pictures, held for their
+                    // order.)
+                    None => v.dec.flush(&mut va_out).err(),
+                };
                 if let Some(e) = failed {
                     tracing::info!("video {}: VA-API: {e}; the processor decodes", input.name);
                     dec = Decoder::new(codec, demux.as_ref())?;
@@ -1806,8 +1911,10 @@ mod tests {
         assert_eq!(ours.size, [w, h]);
         let worst = ours.rgba.as_chunks::<4>().0.iter().zip(theirs.as_chunks::<4>().0.iter()).map(|(a, b)| (0..3).map(|i| (a[i] as i32 - b[i] as i32).abs()).max().unwrap()).max().unwrap();
         assert!(worst <= 2, "differs from OpenH264's conversion by {worst}");
-        // Big pictures get fewer frames ahead, never under two.
-        assert_eq!((QUEUE_BYTES / (2920 * 2000 * 3 / 2)).clamp(2, AHEAD), 2);
+        // 4K's planes get all six ahead (a tenth of a second at 60);
+        // bigger pictures fewer, never under two.
+        assert_eq!((QUEUE_BYTES / (3840 * 2160 * 3 / 2)).clamp(2, AHEAD), AHEAD);
+        assert_eq!((QUEUE_BYTES / (7680 * 4320 * 3 / 2)).clamp(2, AHEAD), 2);
         assert_eq!((QUEUE_BYTES / (1280 * 720 * 3 / 2)).clamp(2, AHEAD), AHEAD);
     }
 

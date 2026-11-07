@@ -298,9 +298,18 @@ impl Styled<'_> {
         sync_mode(self.mode, self.doc);
     }
 
+    /// The file Markdown picture `src` is in: one beside the document, or
+    /// one on the web, fetched there.
+    fn picture_path(pictures: &RefCell<pictures::Pictures>, folder: Option<&Path>, src: &str) -> Option<PathBuf> {
+        if src.starts_with("https://") || src.starts_with("http://") {
+            return Some(pictures.borrow_mut().web(src));
+        }
+        markdown_picture(src, folder)
+    }
+
     /// A Markdown picture's size, if it's loaded (fit to the text).
     fn picture_size(pictures: &RefCell<pictures::Pictures>, folder: Option<&Path>, width: f32, src: &str) -> Option<(f32, f32)> {
-        let path = markdown_picture(src, folder)?;
+        let path = Styled::picture_path(pictures, folder, src)?;
         let img = pictures.borrow_mut().image(&path)?;
         let s = img.size(0);
         Some(pictures::fit((s.width.0.max(1) as u32, s.height.0.max(1) as u32), width.max(40.0), 600.0))
@@ -325,6 +334,16 @@ impl editor::Document for Styled<'_> {
         }
     }
 
+    fn link_at(&mut self, at: usize) -> Option<String> {
+        match &mut *self.mode {
+            Mode::Markdown(look) => {
+                look.sync(self.doc.text(), self.doc.generation);
+                look.link_at(at)
+            }
+            _ => None,
+        }
+    }
+
     fn paragraph(&mut self, range: Range<usize>) -> editor::Paragraph {
         self.sync();
         let (pictures, folder, width) = (self.pictures, self.folder, self.width);
@@ -335,7 +354,8 @@ impl editor::Document for Styled<'_> {
                 look.sync(self.doc.text(), self.doc.generation);
                 return look.paragraph(range, self.palette, &mut |src| {
                     let size = Styled::picture_size(pictures, folder, width, src)?;
-                    let image = pictures.borrow_mut().image(&markdown_picture(src, folder)?);
+                    let path = Styled::picture_path(pictures, folder, src)?;
+                    let image = pictures.borrow_mut().image(&path);
                     Some(editor::Picture { image, size })
                 });
             }
@@ -510,6 +530,10 @@ impl EditorHost for DocView {
         cx.notify();
     }
 
+    fn open_link(&mut self, _: usize, link: String, _: &mut Window, _: &mut Context<Self>) {
+        self.open(link);
+    }
+
     fn context_menu(&mut self, _: usize, at: Point<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
         let editable = !self.read_only && !self.loading;
         let spelling = self.common.borrow().spelling;
@@ -571,6 +595,25 @@ impl EditorHost for DocView {
 }
 
 impl DocView {
+    /// Opens link `to` (Open Link, or the command key and a click): a
+    /// file from the document's folder, a URL by what opens it, on a
+    /// worker (it may start an app). Not a link within the document
+    /// (`#heading`).
+    fn open(&self, to: String) {
+        if to.starts_with('#') {
+            return;
+        }
+        let target = match olo_xdg::open::Target::parse(&to) {
+            olo_xdg::open::Target::Path(p) if p.is_relative() => olo_xdg::open::Target::Path(self.path.as_deref().and_then(Path::parent).map_or(p.clone(), |f| f.join(p))),
+            t => t,
+        };
+        std::thread::spawn(move || {
+            if let Err(e) = olo_xdg::open::open(&target) {
+                tracing::warn!("opening {to}: {e}");
+            }
+        });
+    }
+
     fn new(app: WeakEntity<StyledEdit>, path: Option<PathBuf>, untitled: usize, pictures: Rc<RefCell<pictures::Pictures>>, common: Rc<RefCell<Common>>, cx: &mut Context<Self>) -> DocView {
         let ruler_view = cx.new(|_| Ruler::new());
         let sub = cx.subscribe(&ruler_view, |d: &mut DocView, _, e: &RulerEvent, cx| d.ruled(e, cx));
@@ -859,16 +902,8 @@ impl DocView {
                 // A link to a file is from the document's folder; opened by
                 // what opens its kind, on a worker (it may start an app).
                 // (Not a link within the document, `#heading`.)
-                if let Some(to) = self.link.take().filter(|t| !t.starts_with('#')) {
-                    let target = match olo_xdg::open::Target::parse(&to) {
-                        olo_xdg::open::Target::Path(p) if p.is_relative() => olo_xdg::open::Target::Path(self.path.as_deref().and_then(Path::parent).map_or(p.clone(), |f| f.join(p))),
-                        t => t,
-                    };
-                    std::thread::spawn(move || {
-                        if let Err(e) = olo_xdg::open::open(&target) {
-                            tracing::warn!("opening {to}: {e}");
-                        }
-                    });
+                if let Some(to) = self.link.take() {
+                    self.open(to);
                 }
                 return;
             }

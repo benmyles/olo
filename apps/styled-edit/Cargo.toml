@@ -13,6 +13,10 @@ olo-crash.workspace = true
 olo-ui.workspace = true
 olo-theme.workspace = true
 olo-xdg.workspace = true
+# Pictures on the web, fetched (`pictures::fetch`).
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+sha2 = "0.11"
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -26,6 +26,13 @@
 //!   k}}`, Slack's commands for the palette (its channels and people, Jump
 //!   To…, Search…), asked as the palette opens; choosing one sends `{slack:
 //!   {go: COMMAND}}`.
+//!
+//! And from us, as Olo's state changes: `{slack: {status: {away, dnd,
+//! dnd_until, call}}}`, which Slack's status follows (slack-page.js):
+//! away while the screen is locked (app_server's power state), Do Not
+//! Disturb with Olo's (Notifications' state, and until when its settings
+//! say), in a meeting during a call (an app recording from a microphone
+//! for 20 s, until none has for 10: `olo_system::audio::watch_listening`).
 
 use std::{
     collections::HashMap,
@@ -136,6 +143,7 @@ impl Slack {
             NoteEvent::Replied { .. } => {}
         });
         std::thread::Builder::new().name("slack-cache".into()).spawn(|| tidy(&cache())).ok();
+        follow_olo(out.clone());
         Slack { here, out, notes, shown, badge: None, asking: Arc::default(), next: Arc::new(AtomicU64::new(1)) }
     }
 
@@ -236,6 +244,155 @@ impl Slack {
                 crate::host::send(&out, &json!({ "slack": { "go": command } }));
             }
             ok
+        }
+    }
+}
+
+/// What Slack's status follows, as it changes.
+enum Change {
+    Locked(bool),
+    Quiet {
+        on: bool,
+        until: Option<u64>,
+    },
+    /// The apps recording from a microphone (None: no sound server).
+    Listening(Option<Vec<String>>),
+}
+
+/// A call is an app recording this long (a voice clip isn't), and is
+/// over when none has for this long.
+const CALL_STARTS: Duration = Duration::from_secs(20);
+const CALL_ENDS: Duration = Duration::from_secs(10);
+
+/// Olo's state, followed (each part on a thread of its own, woken by its
+/// source: app_server's events, the kernel's for Notifications' state
+/// file, the sound server's), and told the extension when it changes.
+fn follow_olo(out: Out) {
+    let (tx, rx) = mpsc::channel::<Change>();
+    let locked = tx.clone();
+    let spawned = std::thread::Builder::new().name("slack-lock".into()).spawn(move || {
+        use olo_protocol::{Client, Event, EventKind, Reply, Request};
+        loop {
+            if let Ok(mut c) = Client::connect() {
+                if let Ok(Reply::Power { status }) = c.request(&Request::PowerStatus)
+                    && locked.send(Change::Locked(status.locked)).is_err()
+                {
+                    return;
+                }
+                if let Ok(events) = c.into_events_of(&[EventKind::Power]) {
+                    for e in events {
+                        match e {
+                            Ok(Event::PowerChanged { status }) => {
+                                if locked.send(Change::Locked(status.locked)).is_err() {
+                                    return;
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(_) => break,
+                        }
+                    }
+                }
+            }
+            // app_server restarting (an upgrade): its next one.
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    });
+    let quiet = tx.clone();
+    let watched = std::thread::Builder::new().name("slack-quiet".into()).spawn(move || {
+        use olo_protocol::notifications::{NotificationSettings, NotificationState};
+        // Quiet now (by hand or by its schedule), and until when if it
+        // was turned on for a while.
+        let read = move || {
+            let on = NotificationState::load().is_some_and(|s| s.quiet);
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            let settings = NotificationSettings::load();
+            let until = settings.dnd_until.filter(|&t| on && settings.dnd && t > now);
+            Change::Quiet { on, until }
+        };
+        if quiet.send(read()).is_err() {
+            return;
+        }
+        let again = quiet.clone();
+        let _watch = olo_kit_base::watch::watch([NotificationState::path(), NotificationSettings::path()], move |_| {
+            let _ = again.send(read());
+        });
+        // (The watch lives as long as this thread: the host's.)
+        loop {
+            std::thread::park();
+        }
+    });
+    let listening = tx;
+    let heard = std::thread::Builder::new().name("slack-call".into()).spawn(move || {
+        olo_system::audio::watch_listening(move |apps| {
+            let _ = listening.send(Change::Listening(apps));
+        })
+    });
+    if let Err(e) = spawned.and(watched).and(heard.map(|_| ())) {
+        tracing::warn!("olo-slack: Slack's status won't follow Olo's: {e}");
+    }
+    let told = std::thread::Builder::new().name("slack-status".into()).spawn(move || {
+        status_of(&rx, CALL_STARTS, CALL_ENDS, |status| crate::host::send(&out, &json!({ "slack": { "status": status } })));
+    });
+    if let Err(e) = told {
+        tracing::warn!("olo-slack: Slack's status won't follow Olo's: {e}");
+    }
+}
+
+/// Olo's state from its changes, `tell` given it each time it changes
+/// (`{away, dnd, dnd_until, call}`), until the changes end. A call is
+/// recording for `starts`, over after none for `ends`.
+fn status_of(rx: &mpsc::Receiver<Change>, starts: Duration, ends: Duration, mut tell: impl FnMut(Value)) {
+    use std::time::Instant;
+    let (mut locked, mut quiet, mut until) = (false, false, None);
+    // Recording since, and quiet since (a call starts and ends).
+    let (mut recording, mut silent): (Option<Instant>, Option<Instant>) = (None, None);
+    let mut call = false;
+    let mut said: Option<Value> = None;
+    loop {
+        // Waiting for a change, or for a call to start or end.
+        let wait = match (recording, silent) {
+            (Some(t), _) if !call => Some(starts.saturating_sub(t.elapsed())),
+            (_, Some(t)) if call => Some(ends.saturating_sub(t.elapsed())),
+            _ => None,
+        };
+        let change = match wait {
+            Some(w) => match rx.recv_timeout(w) {
+                Ok(c) => Some(c),
+                Err(mpsc::RecvTimeoutError::Timeout) => None,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return,
+            },
+            None => match rx.recv() {
+                Ok(c) => Some(c),
+                Err(_) => return,
+            },
+        };
+        match change {
+            Some(Change::Locked(l)) => locked = l,
+            Some(Change::Quiet { on, until: u }) => (quiet, until) = (on, u),
+            Some(Change::Listening(apps)) => {
+                if apps.is_some_and(|a| !a.is_empty()) {
+                    recording.get_or_insert_with(Instant::now);
+                    silent = None;
+                } else {
+                    recording = None;
+                    if call {
+                        silent.get_or_insert_with(Instant::now);
+                    }
+                }
+            }
+            None => {}
+        }
+        if recording.is_some_and(|t| t.elapsed() >= starts) {
+            call = true;
+        }
+        if silent.is_some_and(|t| t.elapsed() >= ends) {
+            call = false;
+            silent = None;
+        }
+        let status = json!({ "away": locked, "dnd": quiet, "dnd_until": until, "call": call });
+        if said.as_ref() != Some(&status) {
+            tell(status.clone());
+            said = Some(status);
         }
     }
 }
@@ -367,5 +524,52 @@ mod tests {
         assert_eq!(file_name("..."), "picture");
         assert_eq!(file_name("image 720.png"), "image_720.png");
         assert_eq!(file_name(""), "picture");
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+
+    /// Locking, Do Not Disturb and a call each say so once; a short
+    /// recording (a voice clip) isn't a call; a call ends after the
+    /// quiet that ends it, not at a moment's pause.
+    #[test]
+    fn slack_s_status_follows_olo_s() {
+        let (tx, rx) = mpsc::channel();
+        let (said_tx, said) = mpsc::channel();
+        let ms = Duration::from_millis;
+        let t = std::thread::spawn(move || status_of(&rx, ms(200), ms(150), |v| said_tx.send(v).unwrap()));
+        let next = || said.recv_timeout(ms(1000)).expect("a status");
+        let none = || assert!(said.recv_timeout(ms(80)).is_err(), "nothing more");
+        let mic = |on: bool| Change::Listening(Some(if on { vec!["Google Chrome".to_owned()] } else { Vec::new() }));
+
+        tx.send(Change::Locked(false)).unwrap();
+        assert_eq!(next(), json!({ "away": false, "dnd": false, "dnd_until": null, "call": false }));
+        tx.send(Change::Locked(true)).unwrap();
+        assert_eq!(next()["away"], true);
+        tx.send(Change::Locked(true)).unwrap();
+        none();
+        tx.send(Change::Quiet { on: true, until: Some(2000) }).unwrap();
+        let s = next();
+        assert_eq!((s["dnd"].clone(), s["dnd_until"].clone()), (json!(true), json!(2000)));
+        // A voice clip: recorded for less than a call takes.
+        tx.send(mic(true)).unwrap();
+        std::thread::sleep(ms(100));
+        tx.send(mic(false)).unwrap();
+        none();
+        // A call: recording on.
+        tx.send(mic(true)).unwrap();
+        let s = next();
+        assert_eq!(s["call"], true);
+        // A moment's pause doesn't end it; a long one does.
+        tx.send(mic(false)).unwrap();
+        std::thread::sleep(ms(50));
+        tx.send(mic(true)).unwrap();
+        none();
+        tx.send(mic(false)).unwrap();
+        assert_eq!(next()["call"], false);
+        drop(tx);
+        t.join().unwrap();
     }
 }

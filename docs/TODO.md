@@ -52,16 +52,20 @@ something nobody here has is in "Blocked", with what it waits for.
   and AV1 (HEVC 246% of a core → 41.6%, H.264 100% → 29%, AV1 368% →
   26%), handing over to the processor if it fails; View ▸ Decode With
   (saying what decodes now) and Preferences ▸ GPUs ▸ Video Playback.
-  Intel's GPU decodes AV1 and VP9 through VA-API (bit-exact against
-  the reference decoder; 4K60 AV1 at 60, 22% of a core), offered in
-  both choices; Automatic takes it where it decodes the video. Fedora's
-  Intel driver has no H.264 or HEVC, so those stay on NVDEC or the
-  processor there.
+  Intel's GPU decodes all four through VA-API (bit-exact against the
+  reference decoder; 4K60 at 60 with 21–25% of a core; a minute of
+  each, H.264, HEVC and AV1, with 0, 1 and 0 pictures dropped, NVDEC's
+  H.264 5), offered in both choices; Automatic takes
+  it where it decodes the video. H.264 and HEVC need RPM Fusion's full
+  driver (Fedora's leaves them out), which Olo Doctor installs (Ben,
+  2026-11-06: "we don't care about fedora's silly no-proprietary
+  stance, just have it install whatever gets the job done and olo
+  doctor manage it").
   Still to do: pictures kept on the GPU rather than copied back
   (NVDEC's through CUDA–Vulkan interop, VA-API's as dmabufs; the copy
   and upload are most of the 1.1 ms a frame left); VP9 at 4K and
   10-bit video checked on samples (none here yet, and nothing here
-  encodes VP9); a minute of each format with no frame dropped. The
+  encodes VP9). The
   processor's own: rav1d's and OpenH264's assembly is built in now
   (4K AV1 32 → 85 pictures a second, H.264 45 → 53–98); still, every
   decoder's pictures are copied as 16-bit samples (25 MB a 4K
@@ -77,14 +81,21 @@ something nobody here has is in "Blocked", with what it waits for.
   (the start-up screen's picture as a theme), built and tried headless
   and on a vkms seat; switching the machine over is Ben's to say.
 
-- **olo-slack: its status follows Olo's** (Ben, 2026-11-04): away when
-  the screen locks, Do Not Disturb with Olo's, in a meeting during a
-  call; through Slack's web API from its signed-in page.
+## Done, waiting for Ben to try or confirm
 
 - **StyledEdit: ⌘-click opens a link; pictures on the web shown** (from
-  the StyledEdit entry: "Not done").
+  the StyledEdit entry: "Not done"). Done (HACKING, Markdown): the
+  kit's editor opens a document's link on ⌘-click (a hand over it with
+  ⌘ held), and a Markdown picture's https address is fetched into the
+  cache and shown.
 
-## Done, waiting for Ben to try or confirm
+- **olo-slack: its status follows Olo's** (Ben, 2026-11-04): away when
+  the screen locks, Do Not Disturb with Olo's, in a meeting during a
+  call; through Slack's web API from its signed-in page. Built (HACKING,
+  "Slack", Status) and checked against a fake Slack, not against Slack
+  itself: that would change Ben's status where others see it. To try:
+  lock the screen (Slack shows away), turn on Do Not Disturb (Slack's
+  bell snoozed), join a call in any app for 20 s ("In a meeting").
 
 - ~~**Screen recording in Screenshot, all of CleanShot X's**~~ (Ben, 2026-11-04,
   again 2026-11-06: "where is the screen recording app?"). The
@@ -586,9 +597,8 @@ something nobody here has is in "Blocked", with what it waits for.
   or exported (PDF, Word, OpenDocument, RTF, HTML) a Markdown document
   is set as it looks and code coloured by its syntax (as Markdown,
   Markdown is its own text).
-  *Left* (Ben): try it on his own Markdown and code. Not done:
-  pictures on the web aren't fetched; ⌘-click on a link (its menu's
-  Open Link does it).
+  *Left* (Ben): try it on his own Markdown and code. Since: pictures
+  on the web are fetched and shown; ⌘-click opens a link.
 
 - **The kit takes over what every app re-implements** (Ben,
   2026-11-01: "anything these windows/apps are doing that's reusable

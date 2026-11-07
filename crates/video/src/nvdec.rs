@@ -133,6 +133,10 @@ struct State {
     full_range: bool,
     out: Vec<Picture>,
     error: Option<String>,
+    /// The decoder's decode surfaces, and how many the parser was told
+    /// it has (0: a new parser, not told yet).
+    surfaces: u32,
+    told: u32,
 }
 
 pub struct Nvdec {
@@ -200,7 +204,7 @@ impl Nvdec {
             // (cuCtxCreate made it current here: let it go till it's used.)
             let mut was = null_mut();
             (fns.cu_pop)(&mut was);
-            let state = Box::new(State { fns, codec, lock, decoder: null_mut(), width: 0, height: 0, deep: false, matrix: 2, full_range: false, out: Vec::new(), error: None });
+            let state = Box::new(State { fns, codec, lock, decoder: null_mut(), width: 0, height: 0, deep: false, matrix: 2, full_range: false, out: Vec::new(), error: None, surfaces: 0, told: 0 });
             let mut me = Nvdec { state, ctx, parser: null_mut(), create_parser, _libs: (cuda, cuvid) };
             me.make_parser()?;
             Ok(me)
@@ -215,6 +219,7 @@ impl Nvdec {
                 (self.state.fns.destroy_parser)(self.parser);
                 self.parser = null_mut();
             }
+            self.state.told = 0;
             let mut p: parse::CUVIDPARSERPARAMS = std::mem::zeroed();
             p.CodecType = self.state.codec.cuda();
             p.ulMaxNumDecodeSurfaces = 1;
@@ -304,6 +309,19 @@ unsafe extern "C" fn on_sequence(user: *mut c_void, format: *mut parse::CUVIDEOF
     // SAFETY: the parser gives back the state it was given, and a format.
     let (s, f) = unsafe { (&mut *user.cast::<State>(), &*format) };
     let deep = f.bit_depth_luma_minus8 > 0;
+    let area = &f.display_area;
+    let (w, h) = ((area.right - area.left).max(2) as u32, (area.bottom - area.top).max(2) as u32);
+    // The same sequence again (its parameter sets sent before each key
+    // frame): nothing to do, and nothing the parser should change (1),
+    // once it has been told its surfaces. Asking the GPU again each time
+    // stalled each key frame's pictures.
+    if !s.decoder.is_null() && (s.width, s.height, s.deep) == (w, h, deep) {
+        if s.told != 0 {
+            return 1;
+        }
+        s.told = s.surfaces;
+        return s.told as c_int;
+    }
     if f.chroma_format != dec::cudaVideoChromaFormat_enum::cudaVideoChromaFormat_420 {
         s.error = Some("NVDEC here decodes 4:2:0 only".into());
         return 0;
@@ -318,17 +336,12 @@ unsafe extern "C" fn on_sequence(user: *mut c_void, format: *mut parse::CUVIDEOF
         s.error = Some(format!("this GPU's NVDEC doesn't decode {:?} {}×{} at {} bits", s.codec, f.coded_width, f.coded_height, 8 + f.bit_depth_luma_minus8));
         return 0;
     }
-    let area = &f.display_area;
-    let (w, h) = ((area.right - area.left).max(2) as u32, (area.bottom - area.top).max(2) as u32);
     let surfaces = u32::from(f.min_num_decode_surfaces).max(1) + 4;
     let vsd = &f.video_signal_description;
     // (video_format: 3 bits, then video_full_range_flag.)
     let full_range = vsd.video_full_range_flag() != 0;
     let matrix = vsd.matrix_coefficients;
     if !s.decoder.is_null() {
-        if (s.width, s.height, s.deep) == (w, h, deep) {
-            return surfaces as c_int;
-        }
         // SAFETY: ours, made for another format.
         unsafe { (s.fns.destroy_decoder)(s.decoder) };
         s.decoder = null_mut();
@@ -362,6 +375,7 @@ unsafe extern "C" fn on_sequence(user: *mut c_void, format: *mut parse::CUVIDEOF
         return 0;
     }
     (s.width, s.height, s.deep, s.matrix, s.full_range) = (w, h, deep, matrix, full_range);
+    (s.surfaces, s.told) = (surfaces, surfaces);
     surfaces as c_int
 }
 

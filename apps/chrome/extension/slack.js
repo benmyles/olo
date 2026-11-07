@@ -2,7 +2,8 @@
 // background.js registers it for Slack's address), beside slack-page.js
 // in the page's own world. It carries the page's notifications and app
 // badge to the extension and Olo's answers back; says Slack's unread
-// count as its title shows it; opens links out of Slack with Olo's
+// count as its title shows it; carries Olo's state to slack-page.js,
+// which Slack's status follows; opens links out of Slack with Olo's
 // default apps (the person's own browser, not this Chrome); lists
 // Slack's channels and people for the palette (only when asked: nothing
 // is watched for it); and goes where the palette or a link says.
@@ -183,6 +184,11 @@
       if (m.command === "jump") press("k");
       else if (m.command === "search") press("g");
       else if (m.command?.startsWith("open ")) go(m.command.slice(5));
+    } else if (m.type === "slack-status") {
+      toPage({ type: "status", status: m.status });
     }
   });
+
+  // Olo's state for Slack's status, as this page comes in.
+  tell({ type: "slack-status?" });
 })();

@@ -8,7 +8,8 @@
 // shows it in Olo's Notifications. A click on it there is the
 // notification's `click` here (Slack goes to the conversation), its
 // going its `close`. The page's app badge (`navigator.setAppBadge`) is
-// Slack's count on its Deskbar entry.
+// Slack's count on its Deskbar entry. And Slack's status follows Olo's
+// (away, Do Not Disturb, in a meeting: `follow`).
 
 (() => {
   if (window.__oloSlack) return;
@@ -143,12 +144,138 @@
   };
 
   // From Olo, through slack.js: one was clicked, or went.
+  // ---- Slack's status, following Olo's ----
+  //
+  // Away while the screen is locked (Slack's presence, back to automatic
+  // after), Do Not Disturb with Olo's (Slack's snooze, for as long), and
+  // "In a meeting" while a call goes on (an app recording from a
+  // microphone, as the host says). Through Slack's own web API, as its
+  // client calls it: each signed-in workspace's token (`localConfig_v2`)
+  // and its address, with the page's sign-in. Only what Olo set is undone
+  // (kept in `oloSlackStatus`, so a reload remembers): a status, snooze
+  // or presence the person chose stays.
+
+  const MEETING = { status_text: "In a meeting", status_emoji: ":spiral_calendar_pad:" };
+  const OURS = "oloSlackStatus";
+
+  function teams() {
+    try {
+      const c = JSON.parse(localStorage.getItem("localConfig_v2") || "null");
+      return Object.values(c?.teams || {}).filter((t) => typeof t?.token === "string" && /^https?:\/\//.test(t?.url || ""));
+    } catch {
+      return [];
+    }
+  }
+
+  async function api(team, method, params = {}) {
+    const body = new FormData();
+    body.set("token", team.token);
+    for (const [k, v] of Object.entries(params)) body.set(k, typeof v === "string" ? v : JSON.stringify(v));
+    const base = team.url.endsWith("/") ? team.url : team.url + "/";
+    const r = await fetch(`${base}api/${method}`, { method: "POST", body, credentials: "include" });
+    const j = await r.json().catch(() => ({ ok: false, error: `${r.status}` }));
+    if (!j.ok) console.warn(`olo-slack: ${method}: ${j.error}`);
+    return j;
+  }
+
+  function ours() {
+    try {
+      return JSON.parse(localStorage.getItem(OURS) || "{}") || {};
+    } catch {
+      return {};
+    }
+  }
+  const keep = (o) => localStorage.setItem(OURS, JSON.stringify(o));
+
+  let want = null;
+  let busy = false;
+  let renew = 0;
+
+  // Olo's state ({away, dnd, dnd_until, call}): Slack's made to follow it,
+  // one change at a time, the latest winning.
+  function follow(status) {
+    want = status;
+    if (!busy) settle();
+  }
+
+  async function settle() {
+    busy = true;
+    try {
+      while (want) {
+        const s = want;
+        want = null;
+        await apply(s);
+      }
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function apply(s) {
+    const all = teams();
+    if (!all.length) return;
+    const o = ours();
+    for (const team of all) {
+      const id = team.id || team.url;
+      const mine = (o[id] ||= {});
+      // Away while locked.
+      if (s.away && !mine.away) {
+        if ((await api(team, "users.setPresence", { presence: "away" })).ok) mine.away = true;
+      } else if (!s.away && mine.away) {
+        await api(team, "users.setPresence", { presence: "auto" });
+        mine.away = false;
+      }
+      // Do Not Disturb: as long as Olo's says, else a day (taken again
+      // then while it lasts).
+      if (s.dnd) {
+        const minutes = s.dnd_until ? Math.max(1, Math.ceil((s.dnd_until * 1000 - Date.now()) / 60000)) : 1440;
+        if (!mine.dnd || mine.dnd_until !== (s.dnd_until || null)) {
+          if ((await api(team, "dnd.setSnooze", { num_minutes: String(minutes) })).ok) {
+            mine.dnd = true;
+            mine.dnd_until = s.dnd_until || null;
+          }
+        }
+      } else if (mine.dnd) {
+        await api(team, "dnd.endSnooze");
+        mine.dnd = false;
+        mine.dnd_until = null;
+      }
+      // In a meeting, unless the person set a status of their own.
+      if (s.call && !mine.meeting) {
+        const now = await api(team, "users.profile.get");
+        if (now.ok && !now.profile?.status_text && !now.profile?.status_emoji) {
+          if ((await api(team, "users.profile.set", { profile: { ...MEETING, status_expiration: 0 } })).ok) mine.meeting = true;
+        }
+      } else if (!s.call && mine.meeting) {
+        const now = await api(team, "users.profile.get");
+        // (Still ours: cleared; one the person set since stays.)
+        if (now.ok && now.profile?.status_text === MEETING.status_text) await api(team, "users.profile.set", { profile: { status_text: "", status_emoji: "", status_expiration: 0 } });
+        mine.meeting = false;
+      }
+    }
+    keep(o);
+    // Do Not Disturb with no end: snoozed again as the day's runs out.
+    clearTimeout(renew);
+    if (s.dnd && !s.dnd_until) {
+      renew = setTimeout(() => {
+        const o = ours();
+        for (const k in o) o[k].dnd = false;
+        keep(o);
+        follow(s);
+      }, 1430 * 60000);
+    }
+  }
+
   addEventListener("message", (e) => {
     const m = e.data;
     if (e.source !== window || m?.__oloSlack !== "olo") return;
     // (A new host: the badge again, if Slack set one.)
     if (m.type === "badge?") {
       if (badge !== undefined) post({ type: "badge", count: badge });
+      return;
+    }
+    if (m.type === "status") {
+      follow(m.status || {});
       return;
     }
     const n = live.get(m.n);
