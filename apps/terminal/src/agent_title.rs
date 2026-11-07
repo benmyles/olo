@@ -36,6 +36,9 @@ use crate::agent_context::{self, TabInfo};
 pub const MCP_FLAG: &str = "--mcp";
 /// What Terminal is handed (`--set-tab-title SHELL TITLE`).
 pub const SET_FLAG: &str = "--set-tab-title";
+/// What an agent runs in its shell to set its tab's title without the
+/// tool (`olo-terminal --tab-title WORDS…`): `from_shell`.
+pub const TITLE_FLAG: &str = "--tab-title";
 /// The server's name in the agents' settings, and so the tool's prefix.
 const SERVER: &str = "olo-terminal";
 const TOOL: &str = "set_tab_title";
@@ -43,9 +46,10 @@ const TOOL: &str = "set_tab_title";
 pub const MOST: usize = 60;
 
 /// Told at the start of a session (the hook).
-pub const INSTRUCTIONS: &str = "This session runs in a tab of Olo's Terminal. Keep the tab's title saying what you are working on: call the set_tab_title tool (the olo-terminal MCP server) with a few words, such as \"Fix login redirect\", when you start on a task and whenever the work moves on to something else, passing your working directory as cwd.";
+pub const INSTRUCTIONS: &str = "This session runs in a tab of Olo's Terminal. Keep the tab's title saying what you are working on: call the set_tab_title tool (the olo-terminal MCP server) with a few words, such as \"Fix login redirect\", when you start on a task and whenever the work moves on to something else, passing your working directory as cwd. If that tool isn't available (an agent can lose its connection to the server for the rest of a session), run `olo-terminal --tab-title \"Fix login redirect\"` in your shell instead: it does the same, and never opens a window.";
 /// Told with each prompt.
-pub const REMINDER: &str = "(Olo Terminal: if this changes what you are working on, update the tab's title with set_tab_title.)";
+pub const REMINDER: &str =
+    "(Olo Terminal: if this changes what you are working on, update the tab's title with set_tab_title, or by running `olo-terminal --tab-title \"…\"` if that tool isn't available.)";
 
 fn tool() -> Value {
     json!({
@@ -79,6 +83,29 @@ pub fn set_for(lineage: &[i32], title: &str, cwd: Option<&Path>, own: Option<&Pa
     let tab = find_tab(lineage, cwd, own).ok_or("This session isn't in an Olo Terminal tab (or Terminal's setting for it is off).")?;
     hand_over(&tab, title)?;
     Ok(if title.is_empty() { "The tab's title is its own again.".into() } else { format!("The tab is titled \u{201c}{title}\u{201d}.") })
+}
+
+/// `olo-terminal --tab-title WORDS…`: the tool's work from an agent's
+/// shell, for an agent that hasn't the tool (Claude Code keeps the MCP
+/// settings a session started with and never starts a stdio server again,
+/// nor an HTTP one after five tries; the person shouldn't have to
+/// reconnect it). The tab is found as the service finds it, from this
+/// process's ancestors (the agent's shell, the agent, the tab's shell)
+/// and the folder it runs in. Never opens a window: it's handled before
+/// anything is handed to a running Terminal.
+pub fn from_shell(words: &[String]) -> std::process::ExitCode {
+    let title = tidy(&words.join(" "));
+    let own = std::env::current_dir().ok();
+    match set_for(&agent_context::ancestors(), &title, own.as_deref(), own.as_deref()) {
+        Ok(said) => {
+            println!("{said}");
+            std::process::ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("olo-terminal: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
 
 /// Set `tab`'s title through its Terminal.
@@ -509,6 +536,12 @@ mod tests {
         });
         assert_eq!(replies.len(), 2);
         assert_eq!(execs, [1]);
+    }
+
+    #[test]
+    fn the_words_name_the_command_for_an_agent_without_the_tool() {
+        let command = format!("`olo-terminal {TITLE_FLAG} ");
+        assert!(INSTRUCTIONS.contains(&command) && REMINDER.contains(&command), "{INSTRUCTIONS}\n{REMINDER}");
     }
 
     #[test]

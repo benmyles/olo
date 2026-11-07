@@ -2773,6 +2773,13 @@ fn main() {
             _ => 1,
         });
     }
+    // The same from an agent's shell, for one without the tool.
+    if args.first().map(String::as_str) == Some(agent_title::TITLE_FLAG) {
+        std::process::exit(match agent_title::from_shell(&args[1..]) {
+            c if c == std::process::ExitCode::SUCCESS => 0,
+            _ => 1,
+        });
+    }
     // The same over stdin and stdout (an agent whose settings still name it).
     if args.first().map(String::as_str) == Some(agent_title::MCP_FLAG) {
         std::process::exit(match agent_title::serve() {

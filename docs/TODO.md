@@ -247,7 +247,19 @@ something nobody here has is in "Blocked", with what it waits for.
   started from then on have it. One already running keeps the stdio
   server it started with (Claude Code doesn't read its MCP settings
   again), so one whose tool is already gone, as this session's is, gets
-  it back when it's next started.
+  it back when it's next started. Ben, 2026-11-06, still seeing "MCP
+  server 'olo-terminal' has disconnected" ("i've asked you to come up
+  with a solution/fix like 10 times. what's the deal?"): the service was
+  answering; the session showing it began on 2026-11-05 at 09:18, before
+  the move to HTTP, and four running then still had the stdio server
+  they started with. Nothing in Claude Code reconnects those, so the
+  title no longer depends on the tool: `olo-terminal --tab-title
+  WORDS…` does the same from the agent's shell, and the hook (the
+  installed binary, run with every prompt) names it for when the tool
+  isn't there. Sessions already running pick that up from their next
+  prompt after the upgrade, with no /mcp. Tried from this session (its
+  tool gone): titled, from its folder and from another; outside a tab,
+  it says so and exits 1.
 
 - **Token Pool upgrades seamlessly** (Ben, 2026-11-06): "make it so that
   on an upgrade token pool app is seamless, i.e. it should serve new

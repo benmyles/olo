@@ -9289,7 +9289,20 @@ socket are found in `olo_xdg::runtime_dir()` (`XDG_RUNTIME_DIR`, else
 and stdout (a line each way), for an agent whose settings named it
 before Terminal rewrote them; it stays as it is through upgrades
 (SIGURG ignored; olo-session leaves alone what an agent started) and
-notes its life in `~/.local/state/olo/terminal-mcp.log`. `tools/dev/agent-title-check` drives it both
+notes its life in `~/.local/state/olo/terminal-mcp.log`. Without the
+tool, an agent sets the title from its shell: `olo-terminal --tab-title
+WORDS…` (`agent_title::from_shell`, handled before anything is handed to
+a running Terminal, so it never opens a window) finds the tab as the
+service does, from its own ancestors (the agent's shell, the agent, the
+tab's shell) and its folder, and prints what the tool would say (exit 1
+outside a tab). The hook's words name it for when the tool isn't there,
+since nothing in an agent brings the tool back by itself: Claude Code
+keeps the MCP settings a session started with (one begun before
+Terminal moved it to HTTP still has the stdio server, and starts it
+again only through /mcp) and gives an HTTP server up after five tries
+(`mce`, about 15 s of the server away); the hook is the installed
+binary, so what it says reaches sessions already running from the next
+prompt. `tools/dev/agent-title-check` drives it both
 ways in a headless session: as Codex (a bare environment, outside the
 tab, by folder) and as Claude Code (from the tab's shell, across the
 server's file replaced and SIGURG). The tab shows it (`Tab::agent_title`,
