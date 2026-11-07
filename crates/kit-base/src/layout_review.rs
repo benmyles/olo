@@ -972,13 +972,24 @@ fn near_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
             // so its right edge is up to one off another's.
             let right = SAME.max(1.0 / ppp + 0.01);
             let other_way = (ra.max.x - rb.max.x).abs() <= right || (ra.center().x - rb.center().x).abs() <= SAME;
-            // (On another grid, it lines up with the window's only by chance.)
-            if (-2.0..=48.0).contains(&below) && d > SAME && d <= NEAR_EDGE && !other_way && grid_of(p, ra) == grid_of(p, rb) {
+            // (On another grid, it lines up with the window's only by
+            // chance. In another box, it lines up with that box's label
+            // and inset, not with what's outside, as a BBox's children
+            // were laid out in the box in BeOS: a check box under a box
+            // lines up with its frame by its mark, its label where the
+            // mark puts it, a few points from the box's text.)
+            if (-2.0..=48.0).contains(&below) && d > SAME && d <= NEAR_EDGE && !other_way && grid_of(p, ra) == grid_of(p, rb) && box_of(p, ra) == box_of(p, rb) {
                 let text = format!("{na} (x {xa:.0}) and {nb} under it (x {xb:.0}) almost line up on the left: line them up");
                 push(out, finding(Level::Review, "near-edge", text, ra.union(*rb)));
             }
         }
     }
+}
+
+/// The innermost box or pane (`Parts::containers`) `r` starts in, if any.
+fn box_of(p: &Parts, r: &Rect) -> Option<usize> {
+    let boxes = p.containers.iter().enumerate();
+    boxes.filter(|(_, b)| b.contains(r.min)).min_by(|(_, a), (_, b)| a.area().total_cmp(&b.area())).map(|(i, _)| i)
 }
 
 /// The grid (`Parts::grids`) `r` is laid out on, if not the window's: the

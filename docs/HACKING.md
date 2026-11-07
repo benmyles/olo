@@ -1452,10 +1452,16 @@ a quotation or a bulleted, numbered or task list, by their marks.
    mode). Never hard-code a grey: it will be wrong in the other theme.
    Semantic accent colours (graph lines, file-type tints) must be checked in
    both themes.
-2. **Spacing only from `olo_ui::metrics`** (`SPACING` 8, `TIGHT` 4,
-   `WINDOW_INSET` 12, `BOX_INSET` 10, `LABEL_GAP` 8, `CONTROL_HEIGHT` 24,
-   `LIST_ROW` 20, …). If you need a new kind of gap, add a named constant
-   there rather than a literal in your app.
+2. **Spacing only from `olo_ui::metrics`** (`SPACING` 12, `TIGHT` 6,
+   `STACK` 10, `WINDOW_INSET` 16, `BOX_INSET` 14, `LABEL_GAP` 10,
+   `MARK_SIZE` 12 and `MARK_GAP` 6, `CONTROL_HEIGHT` 24, `LIST_ROW` 20,
+   …). If you need a new kind of gap, add a named constant there rather
+   than a literal in your app. Things line up as in BeOS: a box's
+   contents with its label (both `BOX_INSET` in: BeOS's BBox drew its
+   label 10 px in, and its preferences put what it held 10 px in), and
+   a check box or radio button with what's around it by its mark, its
+   label where the mark puts it (BeOS's 20 px in; Olo's 18), so a check
+   box under a box lines up with the box's frame, not its text.
 3. **Text**: draw single lines with `style::label(window, cx, x,
    center_y, align, text, size, font, color)`; it centres capitals
    optically and puts the baseline on a device pixel. Any line that can
@@ -3875,7 +3881,9 @@ recorded otherwise.
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
-  level), `near-edge` (left edges almost lined up down a column),
+  level), `near-edge` (left edges almost lined up down a column, in
+  one box: what a box holds lines up with its own label and inset, not
+  with what's outside it),
   `off-centre` (text or an icon off-centre in the band it sits in; only
   bands no clip cuts, since a card at the foot of a scroll view is
   centred in the whole of it, not in what shows), `uneven-rows` (rows
