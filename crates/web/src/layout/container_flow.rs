@@ -61,6 +61,8 @@ pub(super) struct Container {
     width: f64,
     height: Option<f64>,
 }
+/// A span of tracks (end exclusive) with its min- and max-content widths.
+type Contribution = (usize, usize, f64, f64);
 /// One bound of a track, resolved against the container.
 #[derive(Clone, Copy, Debug)]
 enum Bound {
@@ -210,7 +212,7 @@ impl Job<'_> {
         Ok(rows)
     }
     /// Column contributions of a table (min and max, with column spans).
-    fn table_contributions(&mut self, table: BoxId, queries: QueryBasis, basis: f64) -> Result<(usize, Vec<(usize, usize, f64, f64)>)> {
+    fn table_contributions(&mut self, table: BoxId, queries: QueryBasis, basis: f64) -> Result<(usize, Vec<Contribution>)> {
         let rows = self.table_rows(table)?;
         let mut contributions = Vec::new();
         let mut columns = 0;
@@ -267,6 +269,15 @@ impl Job<'_> {
         // size_tracks places the spacing between columns; the two edge gaps are ours.
         let widths = size_tracks(&tracks, &contributions, Some((content - 2. * sx).max(0.)), sx, true, self.scale);
         used.width = used::grid(content, self.scale);
+        // Legacy centring (<center>, align=center) centres a shrink-to-fit table.
+        if specified.is_none()
+            && let Some(parent) = self.stack.last()
+            && self.cache.tree.style(parent.id).is_some_and(|p| matches!(p.value(P::TextAlign), Value::Keyword(K::WebkitCenter | K::WebkitRight)))
+        {
+            let right = self.cache.tree.style(parent.id).is_some_and(|p| matches!(p.value(P::TextAlign), Value::Keyword(K::WebkitRight)));
+            let free = (available - used.width - extra - used.margin.horizontal()).max(0.);
+            used.margin.left += used::grid(if right { free } else { free / 2. }, self.scale);
+        }
         self.tables.push(Table { id, columns: widths, spacing: (sx, sy) });
         Ok(())
     }

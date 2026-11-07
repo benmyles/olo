@@ -484,6 +484,25 @@ impl Style {
         check(cancelled)?;
         Ok(Self { defaults, values, customs: computed.customs, axes: computed.axes, font: computed.font, line_height: computed.line_height, dependencies: computed.dependencies, root: options.root })
     }
+    /// This style with one value replaced, sharing everything else.
+    pub fn with_value(&self, property: Property, value: Value) -> Self {
+        let physical = self.axes.physical(property);
+        let mut values: Vec<Entry> = self.values.to_vec();
+        match values.binary_search_by_key(&(physical as u16), |e| e.property as u16) {
+            Ok(i) => values[i].value = value,
+            Err(i) => values.insert(i, Entry { property: physical, value }),
+        }
+        Self {
+            defaults: self.defaults.clone(),
+            values: Arc::from(values),
+            customs: self.customs.clone(),
+            axes: self.axes,
+            font: self.font.clone(),
+            line_height: self.line_height,
+            dependencies: self.dependencies,
+            root: self.root,
+        }
+    }
     pub fn value(&self, property: Property) -> &Value {
         let physical = self.axes.physical(property);
         self.values.binary_search_by_key(&(physical as u16), |e| e.property as u16).ok().map_or_else(|| self.defaults.value(physical), |i| &self.values[i].value)

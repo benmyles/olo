@@ -3718,5 +3718,11 @@
   "title": "Browser: Stripe with rounded buttons and shadows",
   "caption": "border-radius, background gradients and box-shadow paint from the box's style: rounded fills, rings and clips, linear and radial gradients through tiny-skia shaders, blurred shadows on an alpha layer with the box cut out. Stripe's buttons and header now carry their radii and shadow.",
   "image": "2026-11-06/215934-browser-stripe-with-rounded-buttons-and-shadows.png"
+ },
+ {
+  "time": "2026-11-06T22:13:58",
+  "title": "Browser: Hacker News as a table",
+  "caption": "Tables lay out (columns from the cells' content, rows placing cells, border-spacing), the user-agent stylesheet covers HTML's rendering section, and presentational attributes (bgcolor, align, valign, cellpadding, width) apply; <center>'s legacy centring stops at table cells as in other browsers.",
+  "image": "2026-11-06/221358-browser-hacker-news-as-a-table.png"
  }
 ]

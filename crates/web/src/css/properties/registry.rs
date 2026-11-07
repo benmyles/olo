@@ -112,6 +112,9 @@ keyword_registry! {
     Lighter => "lighter",
     Ltr => "ltr",
     MatchParent => "match-parent",
+    WebkitCenter => "-webkit-center",
+    WebkitLeft => "-webkit-left",
+    WebkitRight => "-webkit-right",
     Math => "math",
     MaxContent => "max-content",
     Medium => "medium",
@@ -311,7 +314,7 @@ property_registry! {
     StopOpacity, "stop-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", false;
     Stroke, "stroke", Grammar::Color(&[Keyword::None]), "none", true;
     StrokeOpacity, "stroke-opacity", Grammar::Numeric(NumericKind::NumberPercentage, Range::Unit, &[]), "1", true;
-    TextAlign, "text-align", Grammar::Keywords(&[Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify,Keyword::MatchParent,Keyword::JustifyAll]), "start", true;
+    TextAlign, "text-align", Grammar::Keywords(&[Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify,Keyword::MatchParent,Keyword::JustifyAll,Keyword::WebkitCenter,Keyword::WebkitLeft,Keyword::WebkitRight]), "start", true;
     TextAlignLast, "text-align-last", Grammar::Keywords(&[Keyword::Auto,Keyword::Start,Keyword::End,Keyword::Left,Keyword::Right,Keyword::Center,Keyword::Justify]), "auto", true;
     TextDecorationColor, "text-decoration-color", Grammar::Color(&[]), "currentcolor", false;
     TextOrientation, "text-orientation", Grammar::Keywords(&[Keyword::Mixed,Keyword::Upright,Keyword::Sideways]), "mixed", true;

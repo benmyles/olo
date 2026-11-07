@@ -905,3 +905,14 @@ fn tables_size_columns_from_cells_and_place_rows() {
     assert_eq!(a.width, b.width);
     assert_eq!(a.width + b.width + 6., 400.);
 }
+#[test]
+fn empty_inlines_in_a_nowrap_container_lay_out() {
+    // Stripe's buttons: a nowrap flex container whose only paragraph is an
+    // empty span (its object child is its own paragraph's).
+    let s = scope();
+    let mut e = Engine::default();
+    let (d, t) = tree("<div id=b><span class=x></span></div>", "#b{white-space:nowrap;width:100px}", &s, 1);
+    let c = cache(&mut e, &s, t);
+    let l = fit(&mut e, &s, c, 400., 1);
+    assert_eq!(rect(&d, &l, "b").height, 0.);
+}

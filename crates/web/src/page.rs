@@ -123,7 +123,7 @@ pub const UA: &str = concat!(
     "a{color:LinkText}mark{background-color:yellow;color:black}",
     "fieldset{margin-left:2px;margin-right:2px;border:2px groove;padding-top:.35em;padding-bottom:.625em;padding-left:.75em;padding-right:.75em}legend{padding-left:2px;padding-right:2px}",
     "button,input,select,textarea{font-family:sans-serif;font-size:13.3333px;margin:0}button{display:inline-block;padding:1px 6px;border:2px outset;background-color:ButtonFace;color:ButtonText;text-align:center;white-space:nowrap}",
-    "iframe{border:2px inset}center{text-align:center}",
+    "iframe{border:2px inset}center{text-align:-webkit-center}",
     "input[type=hidden i]{display:none}",
 );
 #[allow(clippy::too_many_arguments)] // Explicit worker resources, viewport, cancellation and progress.

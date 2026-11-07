@@ -318,12 +318,13 @@ impl<'a> Job<'a> {
             && let Some(value) = attribute("align")?
         {
             let value = value.trim();
+            let cell = matches!(name, "td" | "th" | "tr" | "thead" | "tbody" | "tfoot");
             let align = if value.eq_ignore_ascii_case("center") || value.eq_ignore_ascii_case("middle") {
-                Some("center")
+                Some(if cell { "center" } else { "-webkit-center" })
             } else if value.eq_ignore_ascii_case("left") {
-                Some("left")
+                Some(if cell { "left" } else { "-webkit-left" })
             } else if value.eq_ignore_ascii_case("right") {
-                Some("right")
+                Some(if cell { "right" } else { "-webkit-right" })
             } else if value.eq_ignore_ascii_case("justify") {
                 Some("justify")
             } else {
@@ -510,6 +511,17 @@ impl<'a> Job<'a> {
             self.limits.style,
             self.cancelled,
         )?;
+        // Legacy alignment (<center>, align=) centres blocks and text but stops
+        // at table parts, as browsers' -webkit-center does (HTML §15.3.9).
+        let style = if matches!(self.document.name(node).map_err(Error::Dom)?, Some("table" | "td" | "th" | "caption" | "tr" | "thead" | "tbody" | "tfoot"))
+            && self.document.namespace(node).map_err(Error::Dom)? == Some(crate::dom::Namespace::Html)
+            && matches!(style.value(Property::TextAlign), Value::Keyword(Keyword::WebkitCenter | Keyword::WebkitLeft | Keyword::WebkitRight))
+            && !self.document.attribute(node, "align").map_err(Error::Dom)?.is_some()
+        {
+            style.with_value(Property::TextAlign, Value::Keyword(Keyword::Start))
+        } else {
+            style
+        };
         let index = self.tree.styles.len();
         self.tree.report.value_fallbacks += usize::from(style.dependencies().fallbacks);
         self.tree.styles.push(Styled { node, style, parent_box });

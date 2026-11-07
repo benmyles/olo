@@ -166,7 +166,9 @@ impl Options {
                     K::End => Ok(Align::End),
                     K::Left => Ok(Align::Left),
                     K::Right => Ok(Align::Right),
-                    K::Center => Ok(Align::Center),
+                    K::Center | K::WebkitCenter => Ok(Align::Center),
+                    K::WebkitLeft => Ok(Align::Left),
+                    K::WebkitRight => Ok(Align::Right),
                     _ => {
                         ignored.set(3);
                         Ok(Align::Start)
@@ -646,9 +648,11 @@ impl<'a> Job<'a> {
         cancel: Option<&'a AtomicBool>,
         spacing: Vec<Spacing>,
     ) -> Result<Self> {
+        // A paragraph without spans (only empty inlines) has no white-space of
+        // its own to disagree with.
         if text.paragraph.font_context() != style.font().context()
             || text.paragraph.request() != &style.font().request
-            || text.whitespace != WhiteSpace::for_style(style).map_err(|_| Error::Invalid)?
+            || !text.prepared.spans().is_empty() && text.whitespace != WhiteSpace::for_style(style).map_err(|_| Error::Invalid)?
         {
             return Err(Error::Stale);
         }
