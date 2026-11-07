@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-07
+
+### Browser: Wikipedia's main page as Chrome lays it out
+
+*00:29* — System fonts with Chrome's family policy, SVG images, mask-image icons, floats and text decoration: the main page's header, tabs, columns and floated thumbnail match Chrome at 1000 × 700.
+
+![Browser: Wikipedia's main page as Chrome lays it out](2026-11-07/002953-browser-wikipedia-s-main-page-as-chrome-lays-it-.png)
+
 ## 2026-11-06
 
 ### Browser: Stripe's hero as Chrome lays it out

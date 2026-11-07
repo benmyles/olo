@@ -3730,5 +3730,11 @@
   "title": "Browser: Stripe's hero as Chrome lays it out",
   "caption": "The engine's offline render of stripe.com at 1000 \u00d7 700 with its web fonts: transforms, the border side shorthands, Chrome's line-height rounding and min-height grid alignment put every line of the hero where Chrome puts it.",
   "image": "2026-11-06/231144-browser-stripe-s-hero-as-chrome-lays-it-out.png"
+ },
+ {
+  "time": "2026-11-07T00:29:53",
+  "title": "Browser: Wikipedia's main page as Chrome lays it out",
+  "caption": "System fonts with Chrome's family policy, SVG images, mask-image icons, floats and text decoration: the main page's header, tabs, columns and floated thumbnail match Chrome at 1000 \u00d7 700.",
+  "image": "2026-11-07/002953-browser-wikipedia-s-main-page-as-chrome-lays-it-.png"
  }
 ]

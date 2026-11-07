@@ -5525,3 +5525,52 @@ static section now lays out as Chrome does. Stylesheet issues 427 (from
 render), `text-decoration` (28), `@container` (13),
 `font-variation-settings` (11), `filter` (10), `mask-image` (16),
 `object-position` (8), `@keyframes` (9).
+
+## 2026-11-07 (early morning): the second site, Wikipedia, and what it needed
+
+Stripe's static rendering being Chrome's, the next site in the corpus,
+Wikipedia's main page, found the gaps a content site has that a
+marketing site does not. Against Chrome at 1000 × 700 it now lays out
+line for line: the header's icons, wordmark and tagline, the tabs, the
+welcome box, the two columns, the floated thumbnail with its text.
+
+- **Text decoration.** `text-decoration-line/-style/-color`, the
+  shorthand, `-webkit-text-decoration`; underlines from the font's
+  underline metrics, line-through across the x-height; the UA sheet
+  underlines links (`:any-link`, which the document answers without an
+  interaction state source), `u`, `ins`, `s`, `del`.
+- **The system's fonts.** Chrome used Liberation Sans for Wikipedia's
+  `sans-serif` (its sans-serif is Arial, which fontconfig answers with
+  Liberation Sans); we had only Noto. The browser now maps every
+  installed font file (memmap2, nothing read until used; the engine takes
+  leased bytes and stays free of unsafe code) and uses Chrome's family
+  policy on Linux: Liberation Serif for the standard font, Liberation
+  Sans for sans-serif, Noto Sans Mono for monospace, Noto Sans for
+  system-ui, fontconfig's metric aliases for Arial, Helvetica, Times New
+  Roman, Courier New, Calibri, Cambria. Verified against Chrome's
+  `CSS.getPlatformFontsForNode` (`cdp_fonts.py`): every generic and
+  common family selects the face Chrome selects. The featured article
+  wraps at the same words as Chrome's.
+- **SVG as images.** `<img src="x.svg">`, SVG backgrounds and masks go
+  through the engine's own SVG painter: parsed, styled, loaded as a
+  viewport (CSS-sized rects and clip paths resolved), rasterised at the
+  natural size for the device scale; the image keeps its density. The
+  wordmark and the puzzle globe draw.
+- **mask-image.** Wikipedia's icons are `mask-image: url(svg)` over a
+  background colour (`mask-size: 20px auto; mask-position: 50% 50%`).
+  A masked box is a stacking context whose content composites as one
+  group through the mask's alpha; `mask`, `-webkit-mask`, the
+  `-webkit-mask-*` aliases.
+- **Floats.** The thumbnail is `float: right`. Floats are their own
+  formatting contexts, shrink-to-fit, placed at the flow position against
+  the containing block's edge or earlier floats, recorded in the
+  formatting context root; every paragraph's lines in that context flow
+  beside them (the line layout takes exclusions and moves a line that
+  has no room below the float), `clear` moves blocks below, roots grow to
+  contain their floats. A test page with left and right floats, a
+  cleared block and a floated image renders as Chrome does, line for
+  line.
+
+Open on Wikipedia: list markers (bullets), the search box (a form
+control), `overflow-wrap`, the remaining 111 stylesheet issues (mostly
+`@media (prefers-color-scheme)`-dependent rules, `outline`, `filter`).
