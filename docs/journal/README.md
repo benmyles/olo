@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-07
 
+### Power ▸ Graphics says what each GPU is on now
+
+*01:28* — Ben asked whether changing the power mode changes the NVIDIA GPU's clock. It does in Power Saver (its clock capped at 70%), but its box showed only its Custom slider, at the card's top clock whatever the mode, while Intel's sliders moved: now each GPU's line says what the mode has it on, in numbers (here Performance: Intel 1650–2450 MHz; NVIDIA as its driver has it, since a laptop's takes no power limit), and Custom's sliders show Custom's own settings, which don't move with the mode.
+
+![Power ▸ Graphics says what each GPU is on now](2026-11-07/012824-power-graphics-says-what-each-gpu-is-on-now.png)
+
 ### Olo on a fresh Fedora 45, installed by Setup
 
 *00:39* — Logged in through Olo's login screen; Home open in Tracker and Preferences switched to dark.
